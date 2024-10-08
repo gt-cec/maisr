@@ -4,6 +4,7 @@ import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
 
+
 # generic agent class
 class Agent:
     def __init__(self, env, initial_direction=0, color=(0,0,0), scale=1, speed=1, agent_class="agent"):
@@ -193,3 +194,37 @@ class Ship(Agent):
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS
+
+def target_id_policy(env,aircraft_id,quadrant='full'):
+    """ Basic rule-based action policy for tactical HAI ISR project.
+    Inputs:
+        * Env: Game environment
+        * aircraft_id: ID of the aircraft being moved
+        * quadrant: Specifies whether agent is restricted to search in a specific map quadrant. Default is 'full' (all quadrants allowed). Alternatives are 'NW', 'NE', 'SW', 'SE' as strings.
+
+    Returns: Waypoint to the nearest unknown target"""
+    # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size). I want to make the green bounds easily configurable before i include them here.
+    gameboard_size = env.config["gameboard size"]
+    quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
+
+    current_state = env.get_state()
+    current_target_distances = {} # Will be {agent_idx:distance}
+    for ship_id in current_state['ships']:
+        # Loops through all ships in the environment, calculates distance from current aircraft position, finds the
+        # closest ship, and sets aircraft waypoint to that ship's location.
+        if current_state['ships'][ship_id]['observed'] == False and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
+            dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x, env.agents[aircraft_id].y - env.agents[ship_id].y)
+            current_target_distances[ship_id] = dist
+
+    if current_target_distances:
+        nearest_target_id = min(current_target_distances, key=current_target_distances.get)
+        target_waypoint = tuple((env.agents[nearest_target_id].x, env.agents[nearest_target_id].y))
+        print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
+    else:
+        target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
+    return target_waypoint
+
+def wez_id_policy():
+    pass
+def mouse_waypoint_policy():
+    pass

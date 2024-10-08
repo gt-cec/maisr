@@ -141,7 +141,7 @@ class MAISREnv(gym.Env):
         # move the agents and check for gameplay updates
         for agent in self.agents:
             # move the agents
-            agent.move()
+            agent.move() # Ryan TODO: How does this line interact with the waypoint override above?
 
             # handle ships
             if agent.agent_class == "ship":
@@ -151,11 +151,14 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
+                        # Ryan TODO: Add points for ship ID here (self.agents[aircraft_id].damage += 1)
                         if self.config["verbose"]:
                             print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
+
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist) or agent.threat == 0):
                         agent.observed_threat = True
+                        # Ryan TODO: Add points for WEZ ID here (self.agents[aircraft_id].damage += 1)
                         self.num_identified_ships += 1
                         if self.config["verbose"]:
                             print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
@@ -164,7 +167,9 @@ class MAISREnv(gym.Env):
                     if agent.in_weapon_range(distance=dist):
                         self.agents[aircraft_id].damage += 1
                         self.damage += 1
+                        # Ryan TODO: Add -points for damage here
                     # add some logic here if you want the no-go zones to damage the aircrafts
+                    # Ryan TODO: Check if AI agent damage
 
         # progress update
         if self.config["verbose"]:
@@ -173,11 +178,14 @@ class MAISREnv(gym.Env):
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
         done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)  # round is complete when all ships have been identified
+        # Ryan TODO: Add if human damage >= 100, done
+        # Ryan TODO: Add bonus points if all identified
         return state, reward, done, {}
 
 
     def get_reward(self):
         # define a custom reward function here
+        # Ryan TODO: Add points for IDing targets (+), IDing all targets (+), taking damage (-), or agent A/C dying (-)
         return -self.damage
 
 
@@ -200,6 +208,7 @@ class MAISREnv(gym.Env):
 
     # convert the environment into a state dictionary
     def get_state(self):
+        # Ryan TODO: Can define points here maybe
         state = {
             "aircrafts": {},
             "ships": {},

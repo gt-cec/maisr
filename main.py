@@ -1,5 +1,7 @@
 import pygame
 import math
+
+from agents import target_id_policy
 from env import MAISREnv
 import agents
 import random
@@ -9,8 +11,8 @@ import sys
 env_config = {
     "gameboard size": 700,
     "num aircraft": 2,  # supports any number of aircrafts, colors are set in env.py:AIRCRAFT_COLORS
-    "gameplay color": "red",
-    "targets iteration": "A",
+    "gameplay color": "white",
+    "targets iteration": "E",
     "motion iteration": "G",
     "search pattern": "ladder",
     "verbose": False
@@ -37,7 +39,13 @@ if __name__ == "__main__":
         done = False  # flag for when the run is complete
         while not done:  # game loop
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], None will use the default search behaviors
+            # Ryan TODO: create policies for agent 1 (rule based) and agent 2 (player mouse/keyboard control) and use them to set action[0] and action[1]
+            target_id_action = target_id_policy(env,100)
+            print(target_id_action)
+            actions = [(100,target_id_action)]
+
             state, reward, done, _ = env.step(actions)  # step through the environment
+
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
             if render:  # if in PyGame mode, render the environment
                 env.render()
