@@ -222,7 +222,10 @@ def target_id_policy(env,aircraft_id,quadrant='full'):
         print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
     else:
         target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
-    return target_waypoint
+    #target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y, target_waypoint[0] - env.agents[aircraft_id].x)
+    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,
+                                  target_waypoint[0] - env.agents[aircraft_id].x)
+    return target_waypoint, target_direction
 
 def wez_id_policy():
     pass
