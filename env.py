@@ -31,6 +31,7 @@ class MAISREnv(gym.Env):
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
         self.AIRCRAFT_COLORS = [(255, 165, 0), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
 
+
         # labeled ISR flight plans
         self.FLIGHTPLANS = {
             # Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN
@@ -196,7 +197,8 @@ class MAISREnv(gym.Env):
         if "gameplay color" in self.config:
             pygame.draw.rect(self.window, self.GAMEBOARD_NOGO_RED if self.config["gameplay color"] == "yellow" else self.GAMEBOARD_NOGO_YELLOW if self.config["gameplay color"] else (255, 255, 255), (self.config["gameboard size"] * 0.8, 0, self.config["gameboard size"] * 0.8, self.config["gameboard size"]))
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
-        self.__render_box__(self.config["gameboard size"] * 0.1, (0, 128, 0), 2)  # inner box
+        #self.__render_box__(self.config["gameboard size"] * 0.1, (0, 128, 0), 2)  # inner box
+        self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
         # draw the agents

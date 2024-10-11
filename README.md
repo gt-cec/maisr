@@ -39,3 +39,18 @@ See `main.py` for comments indicating where you can integrate a custom policy. T
 The state space's reward function can be set in `env.py:get_reward()`.
 
 Using gym's observation and state space definitions is not integrated, however a starting point is given in `env.py:action_space` and `env.py:observation_space`.
+
+### Summary of Ryan's changes
+* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
+* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
+* Made gameboard green buffer configurable within env_config.
+
+### Summary of Ryan's changes
+* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
+* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
+* Made gameboard green buffer configurable within env_config.
+
+### Summary of Ryan's changes
+* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
+* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
+* Made gameboard green buffer configurable within env_config.
