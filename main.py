@@ -6,8 +6,9 @@
 # Current bugs:
 #  * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
 #  * Fix score counting (agents start with around ~80 score but should be 0)
+# * Done condition doesn't trigger when all ships ID'd
 
-# Possible optmizations
+# Possible optimizations
 #  * Don't re-render every GUI element every tick. Just the updates
 
 import pygame
@@ -23,7 +24,7 @@ import sys
 # environment configuration, use this for the gameplay parameters
 env_config = {
     "gameboard size": 700, # NOTE: The rest of the GUI doesn't dynamically scale with different gameboard sizes. Stick to 700 for now
-    "num aircraft": 2,  # supports any number of aircrafts, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
+    "num aircraft": 2,  # supports any number of aircraft, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
     "gameplay color": "white",
     "gameboard border margin": 35, # Ryan added, to make green bounds configurable. Default is 10% of gameboard size
     "targets iteration": "C",
@@ -59,7 +60,8 @@ if __name__ == "__main__":
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], None will use the default search behaviors
 
             # Agent 1: target_id policy (fly towards nearest unknown target)
-            agent0_action, env.agents[env.aircraft_ids[0]].direction = target_id_policy(env,env.aircraft_ids[0],quadrant='full') # TODO: Incomplete
+            # env.agents[env.aircraft_ids[0]].direction
+            agent0_action, _ = target_id_policy(env,env.aircraft_ids[0],quadrant='full') # TODO: Incomplete
             actions.append((env.aircraft_ids[0], agent0_action))
 
             # Agent 2: Mouse click waypoint control

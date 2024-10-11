@@ -61,11 +61,12 @@ class Agent:
 
 # aircraft agent class
 class Aircraft(Agent):
-    def __init__(self, env, direction, color, speed=1, scale=1, flight_pattern="none"):
+    def __init__(self, env, direction, color, speed=1, scale=1, flight_pattern="none", policy=None):
         super().__init__(env, direction, color, scale, speed, agent_class="aircraft")
         self.damage = 0  # damage taken by the aircraft
         self.flight_pattern = flight_pattern
         self.env.aircraft_ids.append(self.agent_idx)
+        self.policy = policy
 
     def draw(self, window):
         # draw the aircraft
@@ -120,6 +121,7 @@ class Aircraft(Agent):
             else:
                 raise ValueError(f"Flight pattern ({self.flight_pattern}) is not defined in env.py!")
 
+        # Choose target point based on agent policy (TODO: In progress)
         super().move()
 
     # utility function for convert x/y proportions to gameboard proportions

@@ -176,7 +176,7 @@ class MAISREnv(gym.Env):
                     if agent.in_weapon_range(distance=dist):
                         self.agents[aircraft_id].damage += .1
                         self.damage += .1
-                        print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
+                        #print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
                         # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
                         # TODO: If AI damage > 100, destroy it. If player damage > 100, end game.
 
@@ -189,6 +189,8 @@ class MAISREnv(gym.Env):
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
         done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)  # round is complete when all ships have been identified
+        if done:
+            print('Done!')
 
         # Update score
 
