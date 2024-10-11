@@ -4,6 +4,7 @@ from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
+from isr_gui import Button
 
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
@@ -23,14 +24,18 @@ class MAISREnv(gym.Env):
         self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
         self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
         self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
-        self.AIRCRAFT_ENGAGEMENT_RADIUS = 100  # pixel width of aircraft engagement (to identify WEZ of threats)
-        self.AIRCRAFT_ISR_RADIUS = 170  # pixel width of aircraft scanner (to identify hostile vs benign)
+        self.AIRCRAFT_ENGAGEMENT_RADIUS = 50 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
+        self.AIRCRAFT_ISR_RADIUS = 85 #170  # pixel width of aircraft scanner (to identify hostile vs benign)
 
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
         self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
         self.AIRCRAFT_COLORS = [(255, 165, 0), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
 
+        self.window_x = 1300
+        self.window_y = 850
+
+        self.score = 0
 
         # labeled ISR flight plans
         self.FLIGHTPLANS = {
@@ -113,7 +118,12 @@ class MAISREnv(gym.Env):
         self.reset()
 
         if render:
-            self.window = pygame.display.set_mode((self.config["gameboard size"], self.config["gameboard size"]))
+            # TODO: Changed to add more GUI sections
+            #self.window = pygame.display.set_mode((self.config["gameboard size"], self.config["gameboard size"]))
+            self.window = pygame.display.set_mode((self.window_x,self.window_y))
+
+
+
 
 
     def reset(self):
@@ -152,25 +162,27 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
-                        # Ryan TODO: Add points for ship ID here (self.agents[aircraft_id].damage += 1)
+                        # Ryan TODO: Add self.score += 10 for ship ID here
                         if self.config["verbose"]:
                             print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
 
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist) or agent.threat == 0):
                         agent.observed_threat = True
-                        # Ryan TODO: Add points for WEZ ID here (self.agents[aircraft_id].damage += 1)
+                        # Ryan TODO: Add self.score += 5 for WEZ ID here
                         self.num_identified_ships += 1
                         if self.config["verbose"]:
                             print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
                         break
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist):
-                        self.agents[aircraft_id].damage += 1
-                        self.damage += 1
-                        # Ryan TODO: Add -points for damage here
+                        self.agents[aircraft_id].damage += .1
+                        print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
+                        self.damage += .1
+                        # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
+                        # TODO: If AI damage > 100, destroy it. If player damage > 100, end game.
+
                     # add some logic here if you want the no-go zones to damage the aircrafts
-                    # Ryan TODO: Check if AI agent damage
 
         # progress update
         if self.config["verbose"]:
@@ -179,8 +191,7 @@ class MAISREnv(gym.Env):
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
         done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)  # round is complete when all ships have been identified
-        # Ryan TODO: Add if human damage >= 100, done
-        # Ryan TODO: Add bonus points if all identified
+        # TODO: Add self.score += 20 if all targets identified
         return state, reward, done, {}
 
 
@@ -191,16 +202,72 @@ class MAISREnv(gym.Env):
 
 
     def render(self, mode='human', close=False):
+        # Set window dimensions. Used for placing buttons etc.
+        window_width, window_height = 1300, 850 #700  # Note: If you change this, you also have to change the render line in env.py:MAISREnv init function
+        game_width = self.config["gameboard size"]
+        ui_width = window_width - game_width
+
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
         # set up no-go areas
-        if "gameplay color" in self.config:
-            pygame.draw.rect(self.window, self.GAMEBOARD_NOGO_RED if self.config["gameplay color"] == "yellow" else self.GAMEBOARD_NOGO_YELLOW if self.config["gameplay color"] else (255, 255, 255), (self.config["gameboard size"] * 0.8, 0, self.config["gameboard size"] * 0.8, self.config["gameboard size"]))
+        #if "gameplay color" in self.config: # TODO: Ryan temporarily commented this out because it was stuck rendering yellow even when env_config said white.
+            #pygame.draw.rect(self.window, self.GAMEBOARD_NOGO_RED if self.config["gameplay color"] == "yellow" else self.GAMEBOARD_NOGO_YELLOW if self.config["gameplay color"] else (255, 255, 255), (self.config["gameboard size"] * 0.8, 0, self.config["gameboard size"] * 0.8, self.config["gameboard size"]))
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
         #self.__render_box__(self.config["gameboard size"] * 0.1, (0, 128, 0), 2)  # inner box
         self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
+        pygame.draw.rect(self.window, (100, 100, 100), (game_width, 0, ui_width, window_height))
+        pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
+
+        # Draw Agent Gameplan sub-window
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 10, 445, 410))  # Agent gameplan sub-window box
+        pygame.draw.rect(self.window, (200,200,200), pygame.Rect(720, 10, 445, 40))  # Agent gameplan title box
+        gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
+        self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(720+445 // 2, 10+40 // 2)))
+
+        self.target_id_button = Button("Target ID", 735, 60, 200, 80, (255, 120, 80))
+        self.target_id_button.draw(self.window)
+
+        self.wez_id_button = Button("Target + WEZ ID", 950, 60, 200, 80, (255, 120, 80)) # 15 pixel gap b/w buttons
+        self.wez_id_button.draw(self.window)
+
+        self.hold_button = Button("Hold", 735, 60+80+10, 200, 80, (255, 120, 80))
+        self.hold_button.draw(self.window)
+
+        self.waypoint_button = Button("Waypoint", 950, 60+80+10, 200, 80, (255, 120, 80))
+        self.waypoint_button.draw(self.window)
+
+        self.NW_quad_button = Button("NW quadrant", 735, 60+2*(80+10), 200, 80, (255, 120, 80))
+        self.NW_quad_button.draw(self.window)
+
+        self.NE_quad_button = Button("NE quadrant", 950, 60 + 2 * (80 + 10), 200, 80, (255, 120, 80))
+        self.NE_quad_button.draw(self.window)
+
+        self.SW_quad_button = Button("SW quadrant", 735, 60 + 3 * (80 + 10), 200, 80, (255, 120, 80))
+        self.SW_quad_button.draw(self.window)
+
+        self.SE_quad_button = Button("SE quadrant", 950, 60 + 3 * (80 + 10), 200, 80, (255, 120, 80))
+        self.SE_quad_button.draw(self.window)
+
+        # Draw Comm Log
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(720, 430, 445, 40))  # Comm log title box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 470, 445, 230))  # Comm Log sub-window box
+        comm_text_surface = pygame.font.SysFont(None, 36).render('Comm Log', True, (0, 0, 0))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 430 + 40 // 2)))
+
+        # Draw incoming comm log text (TODO: Currently not dynamic)
+        incoming_comm_surface = pygame.font.SysFont(None, 36).render('test',True,(0,0,0))
+        self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 60 // 2, 480 + 360 // 2)))
+
+        # Draw health boxes
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(10, game_width+10, 150, 70))  # Agent 0 health
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width - 150, game_width + 10, 150, 70))  # Agent 0 health
+
+        # Draw score box
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
+
+
         # draw the agents
         for agent in self.agents:
             agent.draw(self.window)

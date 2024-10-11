@@ -38,6 +38,7 @@ class Agent:
 
         dx, dy = target_point[0] - self.x, target_point[1] - self.y
         dist = math.hypot(dx, dy)
+        self.direction = math.atan2(target_point[1] - self.y, target_point[0] - self.x)  # TODO: Ryan added
 
         if dist > self.speed:  # threshold for reaching the waypoint location
             dx, dy = dx / dist, dy / dist
@@ -65,6 +66,11 @@ class Aircraft(Agent):
         self.env.aircraft_ids.append(self.agent_idx)
 
     def draw(self, window):
+        # TODO: Aircraft direction update should happen here somewhere.
+        if self.waypoint_override is not None:  # TODO testing
+            self.direction = math.atan2(self.waypoint_override[1] - self.y, self.waypoint_override[0] - self.x)
+            #print('updating direction to %s' % self.direction)
+
         if len(self.path) > 0:
             self.direction = math.atan2(self.path[0][1] - self.y, self.path[0][0] - self.x)
         # draw the aircraft
@@ -201,9 +207,8 @@ def target_id_policy(env,aircraft_id,quadrant='full'):
         * Env: Game environment
         * aircraft_id: ID of the aircraft being moved
         * quadrant: Specifies whether agent is restricted to search in a specific map quadrant. Default is 'full' (all quadrants allowed). Alternatives are 'NW', 'NE', 'SW', 'SE' as strings.
-
     Returns: Waypoint to the nearest unknown target"""
-    # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size). I want to make the green bounds easily configurable before i include them here.
+    # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size)
     gameboard_size = env.config["gameboard size"]
     quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
 
