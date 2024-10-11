@@ -36,6 +36,7 @@ class Agent:
             return
 
         dx, dy = target_point[0] - self.x, target_point[1] - self.y
+        self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
 
         if dist > self.speed:  # threshold for reaching the waypoint location
@@ -64,8 +65,6 @@ class Aircraft(Agent):
         self.env.aircraft_ids.append(self.agent_idx)
 
     def draw(self, window):
-        if len(self.path) > 0:
-            self.direction = math.atan2(self.path[0][1] - self.y, self.path[0][0] - self.x)
         # draw the aircraft
         nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
         tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
