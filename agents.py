@@ -4,6 +4,7 @@ import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
 
+# TODO: Ryan changed target_point to self.target_point in all instances (so it can be accessed inside the draw() method. Change back if it causes problems.
 
 # generic agent class
 class Agent:
@@ -22,6 +23,7 @@ class Agent:
         self.speed = speed
         self.path = []
         self.waypoint_override = None  # if an extra waypoint is specified, agent will prioritize it
+        self.target_point = None
 
     # draws the agent
     def draw(self, window, color_override=None):
@@ -30,23 +32,23 @@ class Agent:
     # move the agent towards the next waypoint
     def move(self):
         if self.waypoint_override is not None:
-            target_point = self.waypoint_override
+            self.target_point = self.waypoint_override
         elif self.path != []:
-            target_point = self.path[0]
+            self.target_point = self.path[0]
         else:
             return
 
-        dx, dy = target_point[0] - self.x, target_point[1] - self.y
+        dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
+        self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
-        self.direction = math.atan2(target_point[1] - self.y, target_point[0] - self.x)  # TODO: Ryan added
 
         if dist > self.speed:  # threshold for reaching the waypoint location
             dx, dy = dx / dist, dy / dist
             self.x += dx * self.speed
             self.y += dy * self.speed
         else:
-            self.x = target_point[0]
-            self.y = target_point[1]
+            self.x = self.target_point[0]
+            self.y = self.target_point[1]
             # if at the agent-overriding waypoint, remove it
             if self.waypoint_override is not None:
                 self.waypoint_override = None
@@ -66,13 +68,6 @@ class Aircraft(Agent):
         self.env.aircraft_ids.append(self.agent_idx)
 
     def draw(self, window):
-        # TODO: Aircraft direction update should happen here somewhere.
-        if self.waypoint_override is not None:  # TODO testing
-            self.direction = math.atan2(self.waypoint_override[1] - self.y, self.waypoint_override[0] - self.x)
-            #print('updating direction to %s' % self.direction)
-
-        if len(self.path) > 0:
-            self.direction = math.atan2(self.path[0][1] - self.y, self.path[0][0] - self.x)
         # draw the aircraft
         nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
         tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
@@ -96,6 +91,12 @@ class Aircraft(Agent):
         semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
         pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
         window.blit(shape_surf, target_rect)
+
+        if self.target_point is not None:
+            pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
+            pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
+            #pygame.draw.rect(window, (0,0,0),pygame.Rect(self.target_point[0] - 3, self.target_point[1] - 3, 6, 6)) # Draw inner box at waypoint location
+
 
     # check if another agent is in the ISR range
     def in_isr_range(self, agent=None, distance=None) -> bool:
@@ -133,6 +134,7 @@ class Ship(Agent):
         self.idx = -1  # ship index, can be the index of the agents array
         self.observed = False  # whether the ship has been observed
         self.observed_threat = False  # whether the threat level of the ship has been observed
+        self.neutral = False # TODO Added as a hack to fix potential threat ring drawing
         # set threat level of the ship
         if threat != -1:
             self.threat = threat
@@ -143,6 +145,7 @@ class Ship(Agent):
             self.color = self.env.AGENT_COLOR_THREAT
         else:
             self.color = self.env.AGENT_COLOR_OBSERVED
+            self.neutral = True # TODO Added as a hack to fix potential threat ring drawing
         # generate the ship's speed
         if self.speed != -1:
             print("Note: Ship speed was manually specified.")
@@ -183,9 +186,17 @@ class Ship(Agent):
 
     def draw(self, window):
         super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color)
-        # draw a red circle around the ship if it is a threat
-        if self.observed_threat and self.threat > 0:
-            threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
+
+        threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
+        possible_threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[3]
+        if not self.observed_threat: # Draw orange circle around unknown targets, representing the worst possible threat radius
+            pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y), possible_threat_radius * self.scale, 2)
+
+        if self.neutral:  # TODO Added as a hack to fix potential threat ring drawing. Not working properly yet -  doesn't delete the ring around neutral targets once ID'd
+            pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y),possible_threat_radius * self.scale, 2)
+
+        if self.observed_threat and self.threat > 0: # draw a red circle around the ship if it is a threat
+            #pygame.draw.circle(window, (255,255,255), (self.x, self.y),possible_threat_radius * self.scale, 2)
             pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT, (self.x, self.y), threat_radius * self.scale, 2)
 
     def move(self):

@@ -4,7 +4,8 @@ from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
-from isr_gui import Button
+from isr_gui import Button, ScoreWindow, HealthWindow
+
 
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
@@ -123,9 +124,6 @@ class MAISREnv(gym.Env):
             self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
 
-
-
-
     def reset(self):
         self.agents = []
         self.aircraft_ids = []  # indexes of the aircraft agents
@@ -162,23 +160,23 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
-                        # Ryan TODO: Add self.score += 10 for ship ID here
+                        self.score += 10
                         if self.config["verbose"]:
                             print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
 
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist) or agent.threat == 0):
                         agent.observed_threat = True
-                        # Ryan TODO: Add self.score += 5 for WEZ ID here
                         self.num_identified_ships += 1
+                        self.score += 5
                         if self.config["verbose"]:
                             print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
                         break
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist):
                         self.agents[aircraft_id].damage += .1
-                        print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
                         self.damage += .1
+                        print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
                         # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
                         # TODO: If AI damage > 100, destroy it. If player damage > 100, end game.
 
@@ -191,6 +189,9 @@ class MAISREnv(gym.Env):
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
         done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)  # round is complete when all ships have been identified
+
+        # Update score
+
         # TODO: Add self.score += 20 if all targets identified
         return state, reward, done, {}
 
@@ -199,7 +200,6 @@ class MAISREnv(gym.Env):
         # define a custom reward function here
         # Ryan TODO: Add points for IDing targets (+), IDing all targets (+), taking damage (-), or agent A/C dying (-)
         return -self.damage
-
 
     def render(self, mode='human', close=False):
         # Set window dimensions. Used for placing buttons etc.
@@ -213,7 +213,6 @@ class MAISREnv(gym.Env):
         #if "gameplay color" in self.config: # TODO: Ryan temporarily commented this out because it was stuck rendering yellow even when env_config said white.
             #pygame.draw.rect(self.window, self.GAMEBOARD_NOGO_RED if self.config["gameplay color"] == "yellow" else self.GAMEBOARD_NOGO_YELLOW if self.config["gameplay color"] else (255, 255, 255), (self.config["gameboard size"] * 0.8, 0, self.config["gameboard size"] * 0.8, self.config["gameboard size"]))
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
-        #self.__render_box__(self.config["gameboard size"] * 0.1, (0, 128, 0), 2)  # inner box
         self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
@@ -260,13 +259,21 @@ class MAISREnv(gym.Env):
         incoming_comm_surface = pygame.font.SysFont(None, 36).render('test',True,(0,0,0))
         self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 60 // 2, 480 + 360 // 2)))
 
-        # Draw health boxes
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(10, game_width+10, 150, 70))  # Agent 0 health
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width - 150, game_width + 10, 150, 70))  # Agent 0 health
+        # Draw health boxes TODO: Add support for >2 aircraft
+        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10)
+        agent0_health_window.update(self.agents[self.num_ships].damage)
+        agent0_health_window.draw(self.window)
 
-        # Draw score box
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
+        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10)
+        agent1_health_window.update(self.agents[self.num_ships+1].damage)
+        agent1_health_window.draw(self.window)
 
+        # Draw score box and update with new score value every tick
+        score_button = ScoreWindow(self.score,game_width*0.5 - 150/2, game_width + 10)
+        score_button.update(self.score)
+        score_button.draw(self.window)
+
+        #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
 
         # draw the agents
         for agent in self.agents:

@@ -3,6 +3,12 @@
 #  * Make buttons interactive.
 #  * Finish score system (started in env.py
 
+# Current bugs:
+#  * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
+#  * Fix score counting (agents start with around ~80 score but should be 0)
+
+# Possible optmizations
+#  * Don't re-render every GUI element every tick. Just the updates
 
 import pygame
 import math
@@ -17,7 +23,7 @@ import sys
 # environment configuration, use this for the gameplay parameters
 env_config = {
     "gameboard size": 700, # NOTE: The rest of the GUI doesn't dynamically scale with different gameboard sizes. Stick to 700 for now
-    "num aircraft": 2,  # supports any number of aircrafts, colors are set in env.py:AIRCRAFT_COLORS
+    "num aircraft": 2,  # supports any number of aircrafts, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
     "gameplay color": "white",
     "gameboard border margin": 35, # Ryan added, to make green bounds configurable. Default is 10% of gameboard size
     "targets iteration": "C",
@@ -69,6 +75,8 @@ if __name__ == "__main__":
                     elif env.target_id_button.is_clicked(mouse_position):
                         comm = 'Agent 0 WILCO target ID'
                         print(comm)
+
+
 
             state, reward, done, _ = env.step(actions)  # step through the environment
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
