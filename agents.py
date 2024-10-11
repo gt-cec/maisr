@@ -122,6 +122,7 @@ class Aircraft(Agent):
                 raise ValueError(f"Flight pattern ({self.flight_pattern}) is not defined in env.py!")
 
         # Choose target point based on agent policy (TODO: In progress)
+
         super().move()
 
     # utility function for convert x/y proportions to gameboard proportions
@@ -214,38 +215,55 @@ class Ship(Agent):
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS
 
-def target_id_policy(env,aircraft_id,quadrant='full'):
-    """ Basic rule-based action policy for tactical HAI ISR project.
+def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
+    """
+    Basic rule-based action policy for tactical HAI ISR project.
     Inputs:
         * Env: Game environment
         * aircraft_id: ID of the aircraft being moved
         * quadrant: Specifies whether agent is restricted to search in a specific map quadrant. Default is 'full' (all quadrants allowed). Alternatives are 'NW', 'NE', 'SW', 'SE' as strings.
-    Returns: Waypoint to the nearest unknown target"""
-    # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size)
-    gameboard_size = env.config["gameboard size"]
-    quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
+        * id_type: 'target' (only ID unknown targets but not unknown WEZs of known hostiles) or 'wez' (ID unknown WEZs)
+    Returns: Waypoint to the nearest unknown target
+    """
+    gameboard_size = env.config["gameboard size"] # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size)
+    quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(0,gameboard_size*0.5,gameboard_size*0.5,gameboard_size),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
 
     current_state = env.get_state()
     current_target_distances = {} # Will be {agent_idx:distance}
     for ship_id in current_state['ships']:
-        # Loops through all ships in the environment, calculates distance from current aircraft position, finds the
-        # closest ship, and sets aircraft waypoint to that ship's location.
-        if current_state['ships'][ship_id]['observed'] == False and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
-            dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x, env.agents[aircraft_id].y - env.agents[ship_id].y)
-            current_target_distances[ship_id] = dist
+        # Loops through all ships in the environment, calculates distance from current aircraft position, finds the closest unknown ship (or unknown WEZ), and sets aircraft waypoint to that ship's location.
+        if id_type == 'target': # If set to target, only consider unknown targets
+            if current_state['ships'][ship_id]['observed'] == False and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
+                dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x, env.agents[aircraft_id].y - env.agents[ship_id].y)
+                current_target_distances[ship_id] = dist
+        elif id_type == 'wez': # If set to wez, consider unknown targets AND known hostiles with unknown threat rings
+            if (current_state['ships'][ship_id]['observed'] == False or current_state['ships'][ship_id]['observed threat'] == False) and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
+                dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x,env.agents[aircraft_id].y - env.agents[ship_id].y)
+                current_target_distances[ship_id] = dist
 
     if current_target_distances:
         nearest_target_id = min(current_target_distances, key=current_target_distances.get)
         target_waypoint = tuple((env.agents[nearest_target_id].x, env.agents[nearest_target_id].y))
         #print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
-    else:
-        target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
-    #target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y, target_waypoint[0] - env.agents[aircraft_id].x)
-    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,
-                                  target_waypoint[0] - env.agents[aircraft_id].x)
+    else: # If all targets ID'd, loiter in center of board or specified quadrant
+        if quadrant == 'full': target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
+        elif quadrant == 'NW': target_waypoint = (gameboard_size*0.25,gameboard_size*0.25)
+        elif quadrant == 'NE': target_waypoint = (gameboard_size * 0.75, gameboard_size * 0.25)
+        elif quadrant == 'SW': target_waypoint = (gameboard_size * 0.25, gameboard_size * 0.75)
+        elif quadrant == 'SE': target_waypoint = (gameboard_size * 0.75, gameboard_size * 0.75)
+
+    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
+    return target_waypoint, target_direction
+
+def hold_policy(env,aircraft_id):
+    target_waypoint = env.agents[aircraft_id].x, env.agents[aircraft_id].y
+    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
 
 def wez_id_policy():
     pass
+    return target_waypoint, target_direction
+
 def mouse_waypoint_policy(env,aircraft_id):
     pass
+    return target_waypoint, target_direction

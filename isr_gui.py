@@ -3,10 +3,10 @@ import pygame
 import sys
 
 class Button:
-    def __init__(self, text, x, y, width, height, color):
+    def __init__(self, text, x, y, width, height):
         self.text = text
         self.rect = pygame.Rect(x,y,width,height)
-        self.color = color
+        self.color = (255, 120, 80)
         self.font = pygame.font.SysFont(None, 36)
 
     def draw(self,win):
@@ -17,7 +17,7 @@ class Button:
         win.blit(text_surface, text_rect)
 
     def is_clicked(self,pos):
-        #self.color = (self.color[0]*1.1, self.color[1]*1.1, self.color[2]*1.1)
+        self.color = (230,90,50)
         return self.rect.collidepoint(pos)
 
 # game_width*0.5 - 150/2, game_width + 10

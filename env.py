@@ -222,40 +222,44 @@ class MAISREnv(gym.Env):
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
         # Draw Agent Gameplan sub-window
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 10, 445, 410))  # Agent gameplan sub-window box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 10, 445, 430))  # Agent gameplan sub-window box
         pygame.draw.rect(self.window, (200,200,200), pygame.Rect(720, 10, 445, 40))  # Agent gameplan title box
         gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
         self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(720+445 // 2, 10+40 // 2)))
 
-        self.target_id_button = Button("Target ID", 735, 60, 200, 80, (255, 120, 80))
+        self.target_id_button = Button("Target ID", 735, 60, 200, 80)# (255, 120, 80))
         self.target_id_button.draw(self.window)
 
-        self.wez_id_button = Button("Target + WEZ ID", 950, 60, 200, 80, (255, 120, 80)) # 15 pixel gap b/w buttons
+        self.wez_id_button = Button("Target + WEZ ID", 950, 60, 200, 80) # 15 pixel gap b/w buttons
         self.wez_id_button.draw(self.window)
 
-        self.hold_button = Button("Hold", 735, 60+80+10, 200, 80, (255, 120, 80))
+        pygame.draw.line(self.window, (0, 0, 0), (720, 150),(720+445,150),4) # Separating line between target/WEZ ID selection and quadrant select
+
+        self.hold_button = Button("Hold", 735, 60 + 3 * (80 + 10)+10+10, 200, 80)
         self.hold_button.draw(self.window)
 
-        self.waypoint_button = Button("Waypoint", 950, 60+80+10, 200, 80, (255, 120, 80))
+        self.waypoint_button = Button("Waypoint", 950, 60 + 3 * (80 + 10)+10+10, 200, 80)
         self.waypoint_button.draw(self.window)
 
-        self.NW_quad_button = Button("NW quadrant", 735, 60+2*(80+10), 200, 80, (255, 120, 80))
+        self.NW_quad_button = Button("NW quadrant", 735, 60+80+10+10, 200, 80)
         self.NW_quad_button.draw(self.window)
 
-        self.NE_quad_button = Button("NE quadrant", 950, 60 + 2 * (80 + 10), 200, 80, (255, 120, 80))
+        self.NE_quad_button = Button("NE quadrant", 950, 60+80+10+10, 200, 80)
         self.NE_quad_button.draw(self.window)
 
-        self.SW_quad_button = Button("SW quadrant", 735, 60 + 3 * (80 + 10), 200, 80, (255, 120, 80))
+        self.SW_quad_button = Button("SW quadrant", 735, 60+2*(80+10)+10, 200, 80)
         self.SW_quad_button.draw(self.window)
 
-        self.SE_quad_button = Button("SE quadrant", 950, 60 + 3 * (80 + 10), 200, 80, (255, 120, 80))
+        self.SE_quad_button = Button("SE quadrant", 950, 60+2*(80+10)+10, 200, 80)
         self.SE_quad_button.draw(self.window)
 
+        pygame.draw.line(self.window, (0, 0, 0), (720, 60+2*(80+10)+10 + 10+80), (720 + 445, 60+2*(80+10)+10+10+80),4)  # Separating line between quadrant select and hold/waypoint
+
         # Draw Comm Log
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(720, 430, 445, 40))  # Comm log title box
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 470, 445, 230))  # Comm Log sub-window box
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(720, 450, 445, 40))  # Comm log title box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 485, 445, 210))  # Comm Log sub-window box
         comm_text_surface = pygame.font.SysFont(None, 36).render('Comm Log', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 430 + 40 // 2)))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 450 + 40 // 2)))
 
         # Draw incoming comm log text (TODO: Currently not dynamic)
         incoming_comm_surface = pygame.font.SysFont(None, 36).render('test',True,(0,0,0))
