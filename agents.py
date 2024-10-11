@@ -268,6 +268,67 @@ def hold_policy(env,aircraft_id,quadrant='full',id_type='target'):
     target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
 
+def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
+    """
+    "Autonomous" policy that chooses waypoints based on what it deems to be best.
+    If damage <= 50, attempts to identify closest...
+    """
+    gameboard_size = env.config["gameboard size"] # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size)
+    quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(0,gameboard_size*0.5,gameboard_size*0.5,gameboard_size),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
+
+    current_state = env.get_state()
+    current_target_distances = {} # Will be {agent_idx:distance}
+
+    # Decide whether to ID targets or targets + WEZs
+    if env.agents[aircraft_id].damage <= 50:
+        print('Autonomous policy prioritizing target+WEZ search')
+        id_type = 'wez'
+    else:
+        print('Autonomous policy prioritizing target search')
+        id_type = 'target'
+
+    # Determine which quadrant has most unknown targets (TODO: Very inefficient, combine with other for loop below
+    ship_quadrants = {'NW':0,'NE':0,'SW':0,'SE':0} # For counting how many current unknown ships in each quadrant
+    for ship_id in current_state['ships']:
+        if current_state['ships'][ship_id]['observed'] == False:
+            if current_state['ships'][ship_id]['position'][0] <= gameboard_size*0.5 and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
+                ship_quadrants['NW'] += 1
+            elif current_state['ships'][ship_id]['position'][0] <= gameboard_size*0.5 and gameboard_size*0.5 <= current_state['ships'][ship_id]['position'][1] <= gameboard_size:
+                ship_quadrants['SW'] += 1
+            elif gameboard_size*0.5 <= current_state['ships'][ship_id]['position'][0] <= gameboard_size and gameboard_size * 0.5 <= current_state['ships'][ship_id]['position'][1] <= gameboard_size:
+                ship_quadrants['SE'] += 1
+            elif gameboard_size*0.5 <= current_state['ships'][ship_id]['position'][0] <= gameboard_size and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
+                ship_quadrants['NE'] += 1
+    quadrant = max(ship_quadrants, key=ship_quadrants.get) # Set search quadrant to the one with the most unknown ships
+    print(ship_quadrants)
+    print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
+
+    for ship_id in current_state['ships']:
+        # Loops through all ships in the environment, calculates distance from current aircraft position, finds the closest unknown ship (or unknown WEZ), and sets aircraft waypoint to that ship's location.
+        if id_type == 'target': # If set to target, only consider unknown targets
+            if current_state['ships'][ship_id]['observed'] == False and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
+                dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x, env.agents[aircraft_id].y - env.agents[ship_id].y)
+                current_target_distances[ship_id] = dist
+        elif id_type == 'wez': # If set to wez, consider unknown targets AND known hostiles with unknown threat rings
+            if (current_state['ships'][ship_id]['observed'] == False or current_state['ships'][ship_id]['observed threat'] == False) and (quadrant_bounds[quadrant][0] <= current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[quadrant][1]) and (quadrant_bounds[quadrant][2] <= current_state['ships'][ship_id]['position'][1] <= quadrant_bounds[quadrant][3]):
+                dist = math.hypot(env.agents[aircraft_id].x - env.agents[ship_id].x,env.agents[aircraft_id].y - env.agents[ship_id].y)
+                current_target_distances[ship_id] = dist
+
+    if current_target_distances:
+        nearest_target_id = min(current_target_distances, key=current_target_distances.get)
+        target_waypoint = tuple((env.agents[nearest_target_id].x, env.agents[nearest_target_id].y))
+        #print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
+    else: # If all targets ID'd, loiter in center of board or specified quadrant
+        if quadrant == 'full': target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
+        elif quadrant == 'NW': target_waypoint = (gameboard_size*0.25,gameboard_size*0.25)
+        elif quadrant == 'NE': target_waypoint = (gameboard_size * 0.75, gameboard_size * 0.25)
+        elif quadrant == 'SW': target_waypoint = (gameboard_size * 0.25, gameboard_size * 0.75)
+        elif quadrant == 'SE': target_waypoint = (gameboard_size * 0.75, gameboard_size * 0.75)
+
+    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
+    return target_waypoint, target_direction
+
+
 def mouse_waypoint_policy(env,aircraft_id):
     # TODO Currently this is implemented in main.py. Might move it here.
     pass

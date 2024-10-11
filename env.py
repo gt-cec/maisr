@@ -152,7 +152,7 @@ class MAISREnv(gym.Env):
                             print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
                         break
                     # if in the ship's weapon range, damage the aircraft
-                    if agent.in_weapon_range(distance=dist):
+                    if agent.in_weapon_range(distance=dist) and agent.threat > 0:
                         if self.agents[aircraft_id].alive:
                             self.agents[aircraft_id].damage += .1
                             self.damage += .1
@@ -243,6 +243,14 @@ class MAISREnv(gym.Env):
 
         self.SE_quad_button = Button("SE quadrant", 950, 60+2*(80+10)+10, 200, 80)
         self.SE_quad_button.draw(self.window)
+
+        self.full_quad_button = Button("Full", 1200, 60+2*(80+10)+10-35, 70, 70)
+        self.full_quad_button.color = (50,180,180)
+        self.full_quad_button.draw(self.window)
+
+        self.autonomous_button = Button("Autonomous", 1200, 60 + 2 * (80 + 10) + 10 - 35 + 100, 70, 70)
+        self.autonomous_button.color = (50, 180, 180)
+        self.autonomous_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (720, 60+2*(80+10)+10 + 10+80), (720 + 445, 60+2*(80+10)+10+10+80),4)  # Separating line between quadrant select and hold/waypoint
 

@@ -3,10 +3,12 @@
 #    * Target ID should have WEZ avoidance
 #    * Add waypoint command
 #    * Hold policy should fly circles, not freeze
+#    * Move "full" button somewhere else (should probably just double check "target ID" to reset quadrants)
+#    * Autonomous policy: Very inefficient, shouldn't change quadrants until that quadrant is empty
 #  Dynamic button appearance
-#    * Target ID vs Target+WEZ ID latch when clicked
-#    * Quadrant latches when clicked
-#    * Hold latches when clicked
+#    * Target ID and Target+WEZ ID latch when clicked (and are mutually exclusive)
+#    * Quadrant buttons latch when clicked
+#    * "Hold" button latches when clicked
 #  Comm log
 #    * Center text properly
 #    * Show more than one message
@@ -23,6 +25,8 @@
 #    * Need to think through game termination criteria. If all targets ID'd, should the game end and give player bonus points for time remaining? Or continue and let them ID WEZs too?
 
 # Current bugs:
+#  * Taking damage from all hostiles as if their WEZ = max size
+#  * Game clock doesn't stop when game is paused
 #  * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
 #  * Fix score counting (agents start with around ~40 score but should be 0)
 #  * Done condition doesn't trigger when all ships ID'd
@@ -93,13 +97,13 @@ if __name__ == "__main__":
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
 
-                    # Agent 2: Mouse click waypoint control
+                    # Agent 1: Mouse click waypoint control
                     if env.config['gameboard border margin'] < mouse_position[0] < env.config['gameboard size']-env.config['gameboard border margin'] and env.config['gameboard border margin'] < mouse_position[1] < env.config['gameboard size']-env.config['gameboard border margin']:
                         print('Waypoint set to %s' % (mouse_position,))
                         agent1_action = mouse_position
                         actions.append((env.aircraft_ids[1], agent1_action))
 
-                    # Agent 1 gameplan buttons
+                    # Agent 0 gameplan buttons TODO: Comm text not accurate, make dynamic to say target or target+WEZ
                     elif env.target_id_button.is_clicked(mouse_position):
                         agent0_policy = target_id_policy
                         kwargs['id_type'] = 'target'
@@ -117,9 +121,9 @@ if __name__ == "__main__":
                         #kwargs = {}
                         env.comm_text = 'Agent 0 WILCO hold'
                         print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
-                    elif env.waypoint_button.is_clicked(mouse_position):
+
+                    elif env.waypoint_button.is_clicked(mouse_position): # TODO: In progress
                         env.comm_text = 'Waypoint gameplan not implemented'
-                        # agent0_policy = (TODO: Add)
                         print(env.comm_text)
 
                     elif env.NW_quad_button.is_clicked(mouse_position):
@@ -143,6 +147,15 @@ if __name__ == "__main__":
                         kwargs['quadrant'] = 'SE'
                         env.comm_text = 'Agent 0 WILCO target ID in SE quadrant'
                         print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+                    elif env.full_quad_button.is_clicked(mouse_position):
+                        agent0_policy = target_id_policy
+                        kwargs['quadrant'] = 'full'
+                        env.comm_text = 'Agent 0 WILCO, full map'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+                    elif env.autonomous_button.is_clicked(mouse_position):
+                        agent0_policy = autonomous_policy
+                        env.comm_text = 'Agent 0 WILCO, autonomous'
+                        print(env.comm_text)
 
                     elif env.pause_button.is_clicked(mouse_position):
                         print('Game paused')
