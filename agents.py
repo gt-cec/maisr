@@ -67,8 +67,15 @@ class Aircraft(Agent):
         self.flight_pattern = flight_pattern
         self.env.aircraft_ids.append(self.agent_idx)
         self.policy = policy
+        self.alive = True
 
     def draw(self, window):
+        if self.damage >= 100: # TODO: This only stops rendering the aircraft. Need to stop its movement too
+            if self.alive == True:
+                self.alive = False
+                print('Aircraft %s destroyed' % self.agent_idx)
+            return
+
         # draw the aircraft
         nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
         tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
@@ -255,15 +262,13 @@ def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
     target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
 
-def hold_policy(env,aircraft_id):
+def hold_policy(env,aircraft_id,quadrant='full',id_type='target'):
+    # Note: kwargs not currently used.
     target_waypoint = env.agents[aircraft_id].x, env.agents[aircraft_id].y
     target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
 
-def wez_id_policy():
-    pass
-    return target_waypoint, target_direction
-
 def mouse_waypoint_policy(env,aircraft_id):
+    # TODO Currently this is implemented in main.py. Might move it here.
     pass
-    return target_waypoint, target_direction
+    #return target_waypoint, target_direction

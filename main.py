@@ -1,14 +1,26 @@
 # TODO:
-#  * Make WEZ vs target ID a toggleable option within the same policy. One button that switches between target and WEZ, another that chooses quadrant.
-#  * Make buttons interactive.
-#  * Finish score system (started in env.py
-#  * Add point tally on screen (# of targets IDd, # of WEZs, etc)
-#  * Add timer to screen
-#  * Add logic to end game when certain conditions met
-#     * End game when human damage > 100 (failure)
-#     * All targets + WEZs ID'd (success)
-#     * Timer ran out (success if all targets ID'd, failure if not?)
-#  * Kill agent when damage > 100
+#  Agent policies
+#    * Target ID should have WEZ avoidance
+#    * Add waypoint command
+#    * Hold policy should fly circles, not freeze
+#  Dynamic button appearance
+#    * Target ID vs Target+WEZ ID latch when clicked
+#    * Quadrant latches when clicked
+#    * Hold latches when clicked
+#  Comm log
+#    * Center text properly
+#    * Show more than one message
+#    * Add timestamp
+#    * Add text when human commands a gameplan too
+#  Game end logic
+#    * End game when human damage > 100 (failure)
+#    * All targets + WEZs ID'd (success)
+#    * Timer ran out (success if all targets ID'd, failure if not?)
+#  Point system
+#    * Add +20 points when all targets ID'd
+#    * Subtract points for damage
+#    * Add point tally on screen (# of targets IDd, # of WEZs, etc)
+#    * Need to think through game termination criteria. If all targets ID'd, should the game end and give player bonus points for time remaining? Or continue and let them ID WEZs too?
 
 # Current bugs:
 #  * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
@@ -60,7 +72,7 @@ if __name__ == "__main__":
     agent0_id = env.num_ships # TODO: Delete later, added as a hack to dynamically get agent IDs
     agent1_id = env.num_ships + 1
 
-    agent0_policy, kwargs = target_id_policy, {} # Initialize agent 0's policy (will change when gameplan buttons are clicked
+    agent0_policy, kwargs = target_id_policy, {'quadrant':'full','id_type':'target'} # Initialize agent 0's policy (will change when gameplan buttons are clicked
 
     # TODO: Testing how to make buttons visually latch
     buttons_clicked = {'target_id_button':False,'wez_id_button':False,'hold_button':False,'NW_quad_button':False, 'NE_quad_button':False, 'SW_quad_button':False, 'SE_quad_button':False}
@@ -87,49 +99,65 @@ if __name__ == "__main__":
                         agent1_action = mouse_position
                         actions.append((env.aircraft_ids[1], agent1_action))
 
-                    # Agent gameplan buttons
+                    # Agent 1 gameplan buttons
                     elif env.target_id_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO target ID'
                         agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'full','id_type':'target'}
-                        print(comm)
+                        kwargs['id_type'] = 'target'
+                        env.comm_text = 'Agent 0 WILCO target ID'
+                        print(env.comm_text + ' (Gameplan: ' + str(kwargs) + ')')
 
-                    elif env.wez_id_button.is_clicked(mouse_position): # TODO: Allow specifying quadrants
-                        comm = 'Agent 0 WILCO target+WEZ ID'
+                    elif env.wez_id_button.is_clicked(mouse_position):
                         agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'full','id_type':'wez'}
-                        print(comm)
+                        kwargs['id_type'] = 'wez'
+                        env.comm_text = 'Agent 0 WILCO target+WEZ ID'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
 
                     elif env.hold_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO hold'
                         agent0_policy = hold_policy
-                        kwargs = {}
-                        print(comm)
+                        #kwargs = {}
+                        env.comm_text = 'Agent 0 WILCO hold'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
                     elif env.waypoint_button.is_clicked(mouse_position):
-                        comm = 'Waypoint gameplan not implemented'
+                        env.comm_text = 'Waypoint gameplan not implemented'
                         # agent0_policy = (TODO: Add)
-                        print(comm)
-                    elif env.NW_quad_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO target ID in NW quadrant'
-                        agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'NW','id_type':'target'}
-                        print(comm)
-                    elif env.NE_quad_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO target ID in NE quadrant'
-                        agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'NE','id_type':'target'}
-                        print(comm)
-                    elif env.SW_quad_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO target ID in SW quadrant'
-                        agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'SW','id_type':'target'}
-                        print(comm)
-                    elif env.SE_quad_button.is_clicked(mouse_position):
-                        comm = 'Agent 0 WILCO target ID in SE quadrant'
-                        agent0_policy = target_id_policy
-                        kwargs = {'quadrant':'SE','id_type':'target'}
-                        print(comm)
+                        print(env.comm_text)
 
+                    elif env.NW_quad_button.is_clicked(mouse_position):
+                        agent0_policy = target_id_policy
+                        #kwargs = {'quadrant':'NW','id_type':'target'}
+                        kwargs['quadrant'] = 'NW'
+                        env.comm_text = 'Agent 0 WILCO target ID in NW quadrant'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+                    elif env.NE_quad_button.is_clicked(mouse_position):
+                        agent0_policy = target_id_policy
+                        kwargs['quadrant'] = 'NE'
+                        env.comm_text = 'Agent 0 WILCO target ID in NE quadrant'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+                    elif env.SW_quad_button.is_clicked(mouse_position):
+                        agent0_policy = target_id_policy
+                        kwargs['quadrant'] = 'SW'
+                        env.comm_text = 'Agent 0 WILCO target ID in SW quadrant'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+                    elif env.SE_quad_button.is_clicked(mouse_position):
+                        agent0_policy = target_id_policy
+                        kwargs['quadrant'] = 'SE'
+                        env.comm_text = 'Agent 0 WILCO target ID in SE quadrant'
+                        print(env.comm_text + '(Gameplan: ' + str(kwargs) + ')')
+
+                    elif env.pause_button.is_clicked(mouse_position):
+                        print('Game paused')
+                        paused = True
+                        unpaused = False
+                        while paused:
+                            env.paused = True
+                            pygame.time.wait(200)
+                            ev = pygame.event.get()
+                            for event in ev:
+                                if event.type == pygame.MOUSEBUTTONDOWN:
+                                    mouse_position = pygame.mouse.get_pos()
+                                    if env.pause_button.is_clicked(mouse_position):
+                                        paused = False
+                                        env.paused = False
 
             state, reward, done, _ = env.step(actions)  # step through the environment
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format

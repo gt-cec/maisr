@@ -4,7 +4,7 @@ from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
-from isr_gui import Button, ScoreWindow, HealthWindow
+from isr_gui import Button, ScoreWindow, HealthWindow, TimeWindow
 
 
 class MAISREnv(gym.Env):
@@ -37,36 +37,15 @@ class MAISREnv(gym.Env):
         self.window_y = 850
 
         self.score = 0
+        self.paused = False
+        self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
+        self.agent1_dead = False
+        self.comm_text = ''
 
-        # labeled ISR flight plans
-        self.FLIGHTPLANS = {
-            # Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN
-            "square":
-                [
-                    (0, 1),  # top left
-                    (0, 0),  # bottom left
-                    (1, 0),  # bottom right
-                    (1, 1)  # top right
-                ],
-            "ladder":
-                [
-                    (1, 1),  # top right
-                    (1, .66),
-                    (0, .66),
-                    (0, .33),
-                    (1, .33),
-                    (1, 0),  # bottom right
-                    (0, 0)  # bottom left
-                ],
-            "hold":
-                [
-                    (.4, .4),
-                    (.4, .6),
-                    (.6, .6),
-                    (.6, .4)
-                ]
-        }
-
+        # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
+        self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
+                             "ladder": [(1, 1),(1, .66),(0, .66),(0, .33),(1, .33),(1, 0),(0, 0)],
+                             "hold":[(.4, .4),(.4, .6),(.6, .6),(.6, .4)]}
         self.config = config
         self.window = window
         self.clock = clock
@@ -119,7 +98,6 @@ class MAISREnv(gym.Env):
         self.reset()
 
         if render:
-            # TODO: Changed to add more GUI sections
             #self.window = pygame.display.set_mode((self.config["gameboard size"], self.config["gameboard size"]))
             self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
@@ -127,7 +105,7 @@ class MAISREnv(gym.Env):
     def reset(self):
         self.agents = []
         self.aircraft_ids = []  # indexes of the aircraft agents
-        self.damage = 0  # total damage from all agents
+        self.damage = 0  # total damage from all agents (TODO: Reset each aircraft's damage here too)
         self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
 
         # create the ships
@@ -139,7 +117,6 @@ class MAISREnv(gym.Env):
             agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1, flight_pattern=self.config["search pattern"])
         return get_state()
 
-
     def step(self, actions:list):
         # if an action was specified, handle that agent's waypoint
         if actions is not None and actions != []:
@@ -150,7 +127,9 @@ class MAISREnv(gym.Env):
         # move the agents and check for gameplay updates
         for agent in self.agents:
             # move the agents
-            agent.move() # Ryan TODO: How does this line interact with the waypoint override above?
+            if agent.agent_class == "aircraft":
+                if agent.alive:
+                    agent.move()
 
             # handle ships
             if agent.agent_class == "ship":
@@ -174,13 +153,25 @@ class MAISREnv(gym.Env):
                         break
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist):
-                        self.agents[aircraft_id].damage += .1
-                        self.damage += .1
+                        if self.agents[aircraft_id].alive:
+                            self.agents[aircraft_id].damage += .1
+                            self.damage += .1
                         #print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
                         # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
                         # TODO: If AI damage > 100, destroy it. If player damage > 100, end game.
-
                     # add some logic here if you want the no-go zones to damage the aircrafts
+
+        # Check if any aircraft are recently deceased (RIP)
+        if not self.agents[self.num_ships].alive and not self.agent0_dead:
+            self.agent0_dead = True
+            self.score -= 10
+            print('-10 points for agent wingman destruction')
+        if not self.agents[self.num_ships+1].alive and not self.agent1_dead:
+            self.agent1_dead = True
+            self.score -= 20
+            print('Human aircraft destroyed, game over')
+            pygame.time.wait(200000) # TODO: Handle this properly
+            # TODO: Draw "GAME OVER"
 
         # progress update
         if self.config["verbose"]:
@@ -262,22 +253,36 @@ class MAISREnv(gym.Env):
         self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 450 + 40 // 2)))
 
         # Draw incoming comm log text (TODO: Currently not dynamic)
-        incoming_comm_surface = pygame.font.SysFont(None, 36).render('test',True,(0,0,0))
-        self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 60 // 2, 480 + 360 // 2)))
+        incoming_comm_surface = pygame.font.SysFont(None, 36).render(self.comm_text,True,(0,0,0))
+        self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 310 // 2, 480 + 360 // 2)))
 
         # Draw health boxes TODO: Add support for >2 aircraft
-        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10)
+        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
         agent0_health_window.update(self.agents[self.num_ships].damage)
         agent0_health_window.draw(self.window)
 
-        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10)
+        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10, 'HUMAN',self.AIRCRAFT_COLORS[1])
         agent1_health_window.update(self.agents[self.num_ships+1].damage)
         agent1_health_window.draw(self.window)
 
         # Draw score box and update with new score value every tick
-        score_button = ScoreWindow(self.score,game_width*0.5 - 150/2, game_width + 10)
+        score_button = ScoreWindow(self.score,game_width*0.5 - 320/2, game_width + 10)
         score_button.update(self.score)
         score_button.draw(self.window)
+
+        self.pause_button = Button("PAUSE", game_width*0.5 - 150/2, 790, 150, 50)
+        self.pause_button.color = (220,150,40)
+        self.pause_button.draw(self.window)
+
+        self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10)
+        self.time_window.update(round(120 - pygame.time.get_ticks()/1000,0))
+        self.time_window.draw(self.window)
+
+        if self.paused: # TODO: Currently not rendering
+            print('env render function paused detected')
+            pygame.draw.rect(self.window, (220,150,4), pygame.Rect(350, 350, 200, 200))
+            paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
+            self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))
 
         #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
 
@@ -287,6 +292,8 @@ class MAISREnv(gym.Env):
         # update the display
         pygame.display.update()
         self.clock.tick(60)
+        #print(pygame.time.get_ticks()*(1/60))
+
 
     # convert the environment into a state dictionary
     def get_state(self):
