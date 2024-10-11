@@ -289,6 +289,7 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
 
     # Determine which quadrant has most unknown targets (TODO: Very inefficient, combine with other for loop below
     ship_quadrants = {'NW':0,'NE':0,'SW':0,'SE':0} # For counting how many current unknown ships in each quadrant
+    densest_quadrant = 'NW' # Just a value to initialize with
     for ship_id in current_state['ships']:
         if current_state['ships'][ship_id]['observed'] == False:
             if current_state['ships'][ship_id]['position'][0] <= gameboard_size*0.5 and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
@@ -299,9 +300,11 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
                 ship_quadrants['SE'] += 1
             elif gameboard_size*0.5 <= current_state['ships'][ship_id]['position'][0] <= gameboard_size and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
                 ship_quadrants['NE'] += 1
-    quadrant = max(ship_quadrants, key=ship_quadrants.get) # Set search quadrant to the one with the most unknown ships
-    print(ship_quadrants)
-    print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
+    new_densest_quadrant = max(ship_quadrants, key=ship_quadrants.get) # Set search quadrant to the one with the most unknown ships
+    if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[densest_quadrant]: # TODO: Not working properly yet.
+        densest_quadrant = new_densest_quadrant
+        print(ship_quadrants)
+        print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
 
     for ship_id in current_state['ships']:
         # Loops through all ships in the environment, calculates distance from current aircraft position, finds the closest unknown ship (or unknown WEZ), and sets aircraft waypoint to that ship's location.
