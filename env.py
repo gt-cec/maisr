@@ -41,6 +41,8 @@ class MAISREnv(gym.Env):
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
         self.comm_text = ''
+        self.display_time = pygame.time.get_ticks()  # Time that is used for the on-screen timer. Accounts for pausing.
+        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
 
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
@@ -183,6 +185,7 @@ class MAISREnv(gym.Env):
         if done:
             print('Done!')
 
+        self.display_time = pygame.time.get_ticks()
         # Update score
 
         # TODO: Add self.score += 20 if all targets identified
@@ -219,36 +222,46 @@ class MAISREnv(gym.Env):
         self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(720+445 // 2, 10+40 // 2)))
 
         self.target_id_button = Button("Target ID", 735, 60, 200, 80)# (255, 120, 80))
+        self.target_id_button.is_latched = self.button_latch_dict['target_id']
         self.target_id_button.draw(self.window)
 
         self.wez_id_button = Button("Target + WEZ ID", 950, 60, 200, 80) # 15 pixel gap b/w buttons
+        self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
         self.wez_id_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (720, 150),(720+445,150),4) # Separating line between target/WEZ ID selection and quadrant select
 
         self.hold_button = Button("Hold", 735, 60 + 3 * (80 + 10)+10+10, 200, 80)
+        self.hold_button.is_latched = self.button_latch_dict['hold']
         self.hold_button.draw(self.window)
 
         self.waypoint_button = Button("Waypoint", 950, 60 + 3 * (80 + 10)+10+10, 200, 80)
+        #self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
         self.waypoint_button.draw(self.window)
 
         self.NW_quad_button = Button("NW quadrant", 735, 60+80+10+10, 200, 80)
+        self.NW_quad_button.is_latched = self.button_latch_dict['NW']
         self.NW_quad_button.draw(self.window)
 
         self.NE_quad_button = Button("NE quadrant", 950, 60+80+10+10, 200, 80)
+        self.NE_quad_button.is_latched = self.button_latch_dict['NE']
         self.NE_quad_button.draw(self.window)
 
         self.SW_quad_button = Button("SW quadrant", 735, 60+2*(80+10)+10, 200, 80)
+        self.SW_quad_button.is_latched = self.button_latch_dict['SW']
         self.SW_quad_button.draw(self.window)
 
         self.SE_quad_button = Button("SE quadrant", 950, 60+2*(80+10)+10, 200, 80)
+        self.SE_quad_button.is_latched = self.button_latch_dict['SE']
         self.SE_quad_button.draw(self.window)
 
-        self.full_quad_button = Button("Full", 1200, 60+2*(80+10)+10-35, 70, 70)
+        self.full_quad_button = Button("Full", 735+200-30, 60+2*(80+10)+20-35, 70, 50)
         self.full_quad_button.color = (50,180,180)
+        self.full_quad_button.is_latched = self.button_latch_dict['full']
         self.full_quad_button.draw(self.window)
 
         self.autonomous_button = Button("Autonomous", 1200, 60 + 2 * (80 + 10) + 10 - 35 + 100, 70, 70)
+        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
@@ -282,8 +295,8 @@ class MAISREnv(gym.Env):
         self.pause_button.color = (220,150,40)
         self.pause_button.draw(self.window)
 
-        self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10)
-        self.time_window.update(round(120 - pygame.time.get_ticks()/1000,0))
+        self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10,current_time=self.display_time)
+        self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
 
         if self.paused: # TODO: Currently not rendering

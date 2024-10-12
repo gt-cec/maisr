@@ -5,19 +5,35 @@ import sys
 class Button:
     def __init__(self, text, x, y, width, height):
         self.text = text
+        self.x, self.y = x,y
+        self.width, self.height = width, height
         self.rect = pygame.Rect(x,y,width,height)
         self.color = (255, 120, 80)
         self.font = pygame.font.SysFont(None, 36)
+        self.is_latched = False
 
     def draw(self,win):
-        black = (0,0,0)
+        if self.is_latched:
+            #self.color = (230,90,50)
+            self.color = (self.color[0]*.7, self.color[1]*.7, self.color[2]*.7)
+            pygame.draw.line(win,(0,0,0),(self.x-3,self.y-3),(self.x+self.width + 3,self.y-3),4)  # Top border
+            pygame.draw.line(win, (0, 0, 0), (self.x-3, self.y + self.height + 1), (self.x + self.width + 3, self.y + self.height + 1), 4)  # Bottom border
+            pygame.draw.line(win, (0, 0, 0), (self.x - 3, self.y - 3), (self.x - 3, self.y + self.height + 1), 4)  # Left border
+            pygame.draw.line(win, (0, 0, 0), (self.x + self.width + 1, self.y - 3), (self.x + self.width + 1, self.y + self.height + 1), 4)  # Right border
+        #else:
+            #self.color = (255, 120, 80)
         pygame.draw.rect(win, self.color, self.rect)
-        text_surface = self.font.render(self.text, True, black)
+        text_surface = self.font.render(self.text, True, (0,0,0))
         text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + self.rect.height // 2))
         win.blit(text_surface, text_rect)
 
+    #def latch(self):
+     #   self.is_latched = not self.is_latched
+      #  print('Button latched: %s' % self.is_latched)
+
     def is_clicked(self,pos):
-        self.color = (230,90,50)
+        #self.is_latched = not self.is_latched
+
         return self.rect.collidepoint(pos)
 
 # game_width*0.5 - 150/2, game_width + 10
@@ -73,7 +89,7 @@ class HealthWindow:
         self.damage = damage # Note: The truth source for score is env.score. This gets updated from that.
 
 class TimeWindow:
-    def __init__(self, x, y,current_time=0):
+    def __init__(self, x, y,current_time=0): # Takes current game time in raw form (milliseconds).
         self.rect = pygame.Rect(x,y,150,70)
         self.color = (200,200,200)
         self.font = pygame.font.SysFont(None, 36)
@@ -86,9 +102,9 @@ class TimeWindow:
         timer_title_surface = self.font.render('TIME LEFT', True, black)
         win.blit(timer_title_surface, timer_title_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 0.5 * self.rect.height // 2)))
 
-        time_text_surface = self.font.render(str(round(self.current_time,1)), True, black)
+        time_text_surface = self.font.render(str(round(120 - self.current_time/1000,0)), True, black)
         time_text_rect = time_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
         win.blit(time_text_surface, time_text_rect)
 
     def update(self,time):
-        self.current_time = time # Note: The truth source for score is env.score. This gets updated from that.
+        self.current_time = time

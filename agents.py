@@ -195,7 +195,7 @@ class Ship(Agent):
         self.add_random_waypoint()
 
     def draw(self, window):
-        super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color)
+        super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color) # TODO: The self.env here might be causing problems
 
         threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
         possible_threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[3]
@@ -221,6 +221,7 @@ class Ship(Agent):
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS
+        #return math.hypot(agent.x - self.x, agent.y - self.y) <= self.env.AGENT_THREAT_RADIUS[self.threat]  #TODO Testing
 
 def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
     """
@@ -288,8 +289,7 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
         id_type = 'target'
 
     # Determine which quadrant has most unknown targets (TODO: Very inefficient, combine with other for loop below
-    ship_quadrants = {'NW':0,'NE':0,'SW':0,'SE':0} # For counting how many current unknown ships in each quadrant
-    densest_quadrant = 'NW' # Just a value to initialize with
+    ship_quadrants = {'NW':0,'NE':0,'SW':0,'SE':0,'full':0}  # For counting how many current unknown ships in each quadrant
     for ship_id in current_state['ships']:
         if current_state['ships'][ship_id]['observed'] == False:
             if current_state['ships'][ship_id]['position'][0] <= gameboard_size*0.5 and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
@@ -300,10 +300,11 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
                 ship_quadrants['SE'] += 1
             elif gameboard_size*0.5 <= current_state['ships'][ship_id]['position'][0] <= gameboard_size and current_state['ships'][ship_id]['position'][1] <= gameboard_size*0.5:
                 ship_quadrants['NE'] += 1
+
     new_densest_quadrant = max(ship_quadrants, key=ship_quadrants.get) # Set search quadrant to the one with the most unknown ships
-    if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[densest_quadrant]: # TODO: Not working properly yet.
-        densest_quadrant = new_densest_quadrant
-        print(ship_quadrants)
+    if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[quadrant]:  # TODO: Bug: Spamming console because quadrant always re-initializes as 'full'. Need to fix.
+        #densest_quadrant = new_densest_quadrant
+        quadrant = new_densest_quadrant
         print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
 
     for ship_id in current_state['ships']:
