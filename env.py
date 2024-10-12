@@ -31,8 +31,8 @@ class MAISREnv(gym.Env):
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
         self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
-        self.AIRCRAFT_COLORS = [(255, 165, 0), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
-
+        self.AIRCRAFT_COLORS = [(0, 200, 200), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
+        # Old agent0 color: (255, 165, 0)
         self.window_x = 1300
         self.window_y = 850
 
@@ -42,7 +42,8 @@ class MAISREnv(gym.Env):
         self.agent1_dead = False
         self.comm_text = ''
         self.display_time = pygame.time.get_ticks()  # Time that is used for the on-screen timer. Accounts for pausing.
-        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+        self.render_bool = render
 
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
@@ -103,7 +104,6 @@ class MAISREnv(gym.Env):
             #self.window = pygame.display.set_mode((self.config["gameboard size"], self.config["gameboard size"]))
             self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
-
     def reset(self):
         self.agents = []
         self.aircraft_ids = []  # indexes of the aircraft agents
@@ -158,22 +158,14 @@ class MAISREnv(gym.Env):
                         if self.agents[aircraft_id].alive:
                             self.agents[aircraft_id].damage += .1
                             self.damage += .1
-                        #print('Agent %s damage %s' % (aircraft_id,round(self.agents[aircraft_id].damage,2)))
                         # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
-                        # TODO: If AI damage > 100, destroy it. If player damage > 100, end game.
                     # add some logic here if you want the no-go zones to damage the aircrafts
 
         # Check if any aircraft are recently deceased (RIP)
         if not self.agents[self.num_ships].alive and not self.agent0_dead:
             self.agent0_dead = True
-            self.score -= 10
+            self.score -= 30
             print('-10 points for agent wingman destruction')
-        if not self.agents[self.num_ships+1].alive and not self.agent1_dead:
-            self.agent1_dead = True
-            self.score -= 20
-            print('Human aircraft destroyed, game over')
-            pygame.time.wait(200000) # TODO: Handle this properly
-            # TODO: Draw "GAME OVER"
 
         # progress update
         if self.config["verbose"]:
@@ -181,9 +173,28 @@ class MAISREnv(gym.Env):
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)  # round is complete when all ships have been identified
-        if done:
+        done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids) or self.agents[self.num_ships+1].damage > 100 # round is complete when all ships have been identified # TODO: Currently requires you to identify all targets and all WEZs. Consider changing.
+        #print('Num identified ships: %s' % self.num_identified_ships)
+        #print('Num ships: %s' % self.num_ships)
+        #pygame.draw.rect(self.window,(255,0,0),(200,200,200,200))
+        if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
+            done = True
+            self.score += 20
+            self.score_button.update(self.score)
+            print('All targets identified, +20 score!')
             print('Done!')
+            if self.render_bool: pygame.time.wait(5000)
+
+        if self.agents[self.num_ships+1].damage > 100:
+            done = True
+            self.score = self.score - 30
+            print('Human aircraft destroyed, game over.')
+            if self.render_bool: pygame.time.wait(5000)
+
+        if self.display_time/1000 >= 120:
+            done = True
+            print('Out of time, game over.')
+            if self.render_bool: pygame.time.wait(5000)
 
         self.display_time = pygame.time.get_ticks()
         # Update score
@@ -214,6 +225,10 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
         pygame.draw.rect(self.window, (100, 100, 100), (game_width, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
+
+        # Draw the agents
+        for agent in self.agents:
+            agent.draw(self.window)
 
         # Draw Agent Gameplan sub-window
         pygame.draw.rect(self.window, (230,230,230), pygame.Rect(720, 10, 445, 430))  # Agent gameplan sub-window box
@@ -293,11 +308,12 @@ class MAISREnv(gym.Env):
 
         self.pause_button = Button("PAUSE", game_width*0.5 - 150/2, 790, 150, 50)
         self.pause_button.color = (220,150,40)
+        self.pause_button.is_latched = self.button_latch_dict['pause']
         self.pause_button.draw(self.window)
 
-        self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10,current_time=self.display_time)
-        self.time_window.update(self.display_time)
-        self.time_window.draw(self.window)
+        #self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10,current_time=self.display_time)
+        #self.time_window.update(self.display_time)
+        #self.time_window.draw(self.window)
 
         if self.paused: # TODO: Currently not rendering
             print('env render function paused detected')
@@ -308,13 +324,15 @@ class MAISREnv(gym.Env):
         #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
 
         # draw the agents
-        for agent in self.agents:
-            agent.draw(self.window)
+        #for agent in self.agents:
+         #   agent.draw(self.window)
+        self.time_window = TimeWindow(game_width * 0.5 + 10, game_width + 10, current_time=self.display_time)
+        self.time_window.update(self.display_time)
+        self.time_window.draw(self.window)
+
         # update the display
         pygame.display.update()
         self.clock.tick(60)
-        #print(pygame.time.get_ticks()*(1/60))
-
 
     # convert the environment into a state dictionary
     def get_state(self):
@@ -348,3 +366,24 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, color, (distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), width)
         pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, distance_from_edge), width)
         pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
+
+    def pause(self,unpause_key):
+        print('Game paused')
+        pause_start_time = int(pygame.time.get_ticks())
+        self.button_latch_dict['pause'] = True
+        print('paused at %s (env.display_time = %s' % (pause_start_time, self.display_time))
+        self.paused = True
+        while self.paused:
+            pygame.time.wait(200)
+            ev = pygame.event.get()
+            for event in ev:
+                #if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.type == unpause_key:
+                    mouse_position = pygame.mouse.get_pos()
+                    if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
+                        self.paused = False
+                        self.button_latch_dict['pause'] = False
+                        pause_time = int(pygame.time.get_ticks()) - pause_start_time
+                        print('Paused for %s' % pause_time)
+                        # env.display_time = env.display_time - pause_time
+                        print('env.display_time = %s' % self.display_time)

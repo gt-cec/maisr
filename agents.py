@@ -12,8 +12,12 @@ class Agent:
         self.env = env
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
-        self.x = random.randint(0, env.config["gameboard size"])
-        self.y = random.randint(0, env.config["gameboard size"])
+        #self.x = random.randint(0, env.config["gameboard size"])
+        #self.y = random.randint(0, env.config["gameboard size"])
+
+        self.x = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
+        self.y = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
+
         self.direction = 0
         self.initial_direction = initial_direction
         self.agent_class = agent_class
@@ -33,10 +37,15 @@ class Agent:
     def move(self):
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
-        elif self.path != []:
-            self.target_point = self.path[0]
         else:
-            return
+            self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
+        #elif self.direction > 0: self.target_point = (self.x,self.y-100)
+        #else: self.target_point = (self.x,self.y+100)
+
+        #elif self.path != []: # Original code
+        #    self.target_point = self.path[0]
+        #else:
+        #    return
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
         self.direction = math.atan2(dy, dx)
@@ -121,14 +130,19 @@ class Aircraft(Agent):
     # check the waypoints and flight path
     def move(self):
         # if the path is empty, generate using the flight pattern
-        if self.path == []:
-            if self.flight_pattern in self.env.FLIGHTPLANS:
-                for waypoint in self.env.FLIGHTPLANS[self.flight_pattern]:
-                    self.path.append(self.__flightplan_proportion_to_gameboard__(waypoint[0], waypoint[1]))
-            else:
-                raise ValueError(f"Flight pattern ({self.flight_pattern}) is not defined in env.py!")
+        #print(self.direction)
+        if self.path == []: # Loiter in a holding pattern (TODO: Doesn't work)
+            if self.direction >= 0:
+                self.path.append((self.x, self.y))
+            #elif math.pi < self.direction < 2*math.pi:
+          #  elif self.direction < 0:
+          #      self.path.append((self.x,self.y))
 
-        # Choose target point based on agent policy (TODO: In progress)
+            #if self.flight_pattern in self.env.FLIGHTPLANS:
+             #   for waypoint in self.env.FLIGHTPLANS[self.flight_pattern]:
+              #      self.path.append(self.__flightplan_proportion_to_gameboard__(waypoint[0], waypoint[1]))
+            #else:
+             #   raise ValueError(f"Flight pattern ({self.flight_pattern}) is not defined in env.py!")
 
         super().move()
 

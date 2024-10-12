@@ -1,32 +1,23 @@
 # TODO:
+#  Priority bugs to fix
+#    * Game clock doesn't stop when game is paused
+#    * WEZ damage is triggering if we're within WEZ ID range, not the ship's actual WEZ range.
 #  Agent policies
 #    * (Priority) Target ID should have WEZ avoidance
 #    * Add waypoint command
-#    * Hold policy should fly circles, not freeze
-#    * Move "full" button somewhere else (should probably just double check "target ID" to reset quadrants)
-#    * Autonomous policy: Very inefficient, shouldn't change quadrants until that quadrant is empty
+#    * Autonomous policy code is very inefficient, shouldn't change quadrants until that quadrant is empty.
+#    * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
 #  Comm log
 #    * Center text properly
 #    * Show more than one message
 #    * Add timestamp
 #    * Add text when human commands a gameplan too
-#  Game end logic
-#    * End game when human damage > 100 (failure)
-#    * All targets + WEZs ID'd (success)
-#    * Timer ran out (success if all targets ID'd, failure if not?)
 #  Point system
-#    * Add +20 points when all targets ID'd
 #    * Subtract points for damage
-#    * Add point tally on screen (# of targets IDd, # of WEZs, etc)
-#    * Need to think through game termination criteria. If all targets ID'd, should the game end and give player bonus points for time remaining? Or continue and let them ID WEZs too?
-
-# Current bugs:
-#  * WEZ damage is triggering if we're within WEZ ID range, not the ship's actual WEZ range.
-#  * Game clock doesn't stop when game is paused
-#  * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
-#  * Fix score counting (agents start with around ~40 score but should be 0)
-#  * Done condition doesn't trigger when all ships ID'd
-#  * Buttons don't change color when clicked
+#    * When game ends, show popup on screen with point tally (# of targets IDd, # of WEZs, etc)
+#  Other bugs:
+#    * Fix drawn orange circle around unknown WEZ for neutral targets (inside env.py:shipagent class:draw)
+#    * Fix score counting (agents start with around ~40 score but should be 0)
 
 # Possible optimizations
 #  * Don't re-render every GUI element every tick. Just the updates
@@ -173,22 +164,10 @@ if __name__ == "__main__":
                         print(env.comm_text)
 
                     elif env.pause_button.is_clicked(mouse_position):
-                        print('Game paused')
-                        pause_start_time = int(pygame.time.get_ticks())
-                        print('paused at %s (env.display_time = %s' % (pause_start_time,env.display_time))
-                        env.paused = True
-                        while env.paused:
-                            pygame.time.wait(200)
-                            ev = pygame.event.get()
-                            for event in ev:
-                                if event.type == pygame.MOUSEBUTTONDOWN:
-                                    mouse_position = pygame.mouse.get_pos()
-                                    if env.pause_button.is_clicked(mouse_position):
-                                        env.paused = False
-                                        pause_time = int(pygame.time.get_ticks()) - pause_start_time
-                                        print('Paused for %s' % pause_time)
-                                        #env.display_time = env.display_time - pause_time
-                                        print('env.display_time = %s' % env.display_time)
+                        env.pause(pygame.MOUSEBUTTONDOWN)
+                if event.type == pygame.KEYDOWN: # TODO: Doesn't work yet
+                    if event.key == pygame.K_SPACE:
+                        env.pause(pygame.K_SPACE)
 
             state, reward, done, _ = env.step(actions)  # step through the environment
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
