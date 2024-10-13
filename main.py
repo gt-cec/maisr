@@ -3,7 +3,8 @@
 #    * Game clock doesn't stop when game is paused
 #    * WEZ damage is triggering if we're within WEZ ID range, not the ship's actual WEZ range.
 #  Agent policies
-#    * (Priority) Add WEZ avoidance to target ID policy.
+#    * (Priority) Rewrite basic target ID policy using A* search to calculate path to each unknown target (avoiding WEZs),
+#      selecting the one with the shortest path.
 #    * Add waypoint command
 #    * Autonomous policy code is very inefficient, shouldn't change quadrants until that quadrant is empty.
 #    * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
