@@ -49,13 +49,19 @@ class MAISREnv(gym.Env):
         self.font = pygame.font.SysFont(None,24)
         self.ai_color = self.AIRCRAFT_COLORS[0]
         self.human_color = self.AIRCRAFT_COLORS[1]
-        #self.comm_text = ''
+
+        # Target tally
+        self.identified_targets = 0
+        self.identified_threat_types = 0
+
+        self.tally_font = pygame.font.SysFont(None,24)
 
         self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
+        self.pause_font = pygame.font.SysFont(None, 74)
 
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
@@ -96,6 +102,8 @@ class MAISREnv(gym.Env):
                 print(f"Note: 'targets iteration' had an invalid value ({config['targets iteration']}), defaulting to 10 ships.")
                 self.num_ships = 10
 
+        self.total_targets = self.num_ships
+
         # check default search pattern
         if "search pattern" not in config:
             print("Note: 'search pattern' is not in the env config, defaulting to 'square'.")
@@ -126,6 +134,8 @@ class MAISREnv(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.score = 0
+        self.identified_targets = 0
+        self.identified_threat_types = 0
         self.first_step = 0 # TODO testing
 
         # create the ships
@@ -159,6 +169,7 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
+                        self.identified_targets += 1 # Used for the tally box
                         self.score += 10
                         if self.config["verbose"]:
                             print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
@@ -167,6 +178,7 @@ class MAISREnv(gym.Env):
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist) or agent.threat == 0):
                         agent.observed_threat = True
                         self.num_identified_ships += 1
+                        self.identified_threat_types += 1 # Used for the tally box
                         self.score += 5
                         if self.config["verbose"]:
                             print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
@@ -198,7 +210,7 @@ class MAISREnv(gym.Env):
         if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
             done = True
             self.score += 20
-            self.score_button.update(self.score)
+            #self.score_button.update(self.score)
             print('All targets identified, +20 score!')
             print('Done!')
             if self.render_bool: pygame.time.wait(5000)
@@ -315,7 +327,7 @@ class MAISREnv(gym.Env):
         comm_text_surface = pygame.font.SysFont(None, 36).render('Comm Log', True, (0, 0, 0))
         self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 450 + 40 // 2)))
 
-        # Draw incoming comm log text (TODO testing)
+        # Draw incoming comm log text
         y_offset = 495
         for entry in self.comm_messages:
             message = entry[0]
@@ -324,8 +336,20 @@ class MAISREnv(gym.Env):
             message_surface = self.font.render(message, True, color)
             self.window.blit(message_surface, (730, y_offset))
             y_offset += 30  # Adjust this value to change spacing between messages
-        #incoming_comm_surface = pygame.font.SysFont(None, 36).render(self.comm_text,True,(0,0,0))
-        #self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 310 // 2, 480 + 360 // 2)))
+
+        # Draw point tally
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(720, 705, 445, 40))  # Target tally title box
+        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(720, 740, 445, 100))  # Target tally sub-window box
+        tally_title_surface = pygame.font.SysFont(None, 36).render('Target Tally', True, (0, 0, 0))
+        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(720 + 445 // 2, 705 + 40 // 2)))
+
+        id_tally_text = f"Identified Targets: {self.identified_targets} / {self.total_targets}"
+        id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
+        self.window.blit(id_tally_surface, (730, 750))
+
+        threat_tally_text = f"Observed Threat Types: {self.identified_threat_types} / {self.total_targets}"
+        threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
+        self.window.blit(threat_tally_surface, (730, 780))
 
         # Draw health boxes TODO: Add support for >2 aircraft
         agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
@@ -354,11 +378,17 @@ class MAISREnv(gym.Env):
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
 
-        """if self.paused: # TODO: Currently not rendering
-            print('env render function paused detected')
-            pygame.draw.rect(self.window, (220,150,4), pygame.Rect(350, 350, 200, 200))
-            paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
-            self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))"""
+        if self.paused: # TODO: Currently not rendering
+            pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+            pause_surface.set_alpha(128)  # 50% transparent
+            pause_surface.fill((100, 100, 100))  # Gray color
+            self.window.blit(pause_surface, (0, 0))
+
+            # Render "GAME PAUSED" text
+            pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
+            text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
+            self.window.blit(pause_text, text_rect)
+
 
         #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
 
@@ -407,6 +437,10 @@ class MAISREnv(gym.Env):
         self.paused = True
         while self.paused:
             pygame.time.wait(200)
+            #pygame.draw.rect(self.window, (220, 150, 4), pygame.Rect(350, 350, 200, 200))
+            #paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
+            #self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))
+            self.render()
             ev = pygame.event.get()
             for event in ev:
                 if event.type == unpause_key:

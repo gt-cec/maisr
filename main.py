@@ -1,11 +1,13 @@
 # TODO:
+#  Next: Rework the agent's policies. Maybe autonomous is the fast but high risk policy, and the A* policy (which needs to be
+#  integrated properly) is the slow, safe policy?
 #  Priority bugs to fix
 #    * Game time not resetting when time done condition hit, so only the first game runs.
 #  Agent policies
 #    * (Priority) Target_id_policy: Currently a working but slow and flawed A* search policy is implemented
 #       (safe_target_id_policy). Have partially updated code in this script to replace target_id_policy but need to clean up.
 #    * Add waypoint command
-#    * Autonomous policy code is very inefficient, shouldn't change quadrants until that quadrant is empty.
+#    * Autonomous policy code shouldn't change quadrants until that quadrant is empty.
 #    * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
 #  Point system
 #    * Subtract points for damage
