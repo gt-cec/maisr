@@ -3,12 +3,13 @@
 import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
+import heapq
 
 # TODO: Ryan changed target_point to self.target_point in all instances (so it can be accessed inside the draw() method. Change back if it causes problems.
 
 # generic agent class
 class Agent:
-    def __init__(self, env, initial_direction=0, color=(0,0,0), scale=1, speed=1, agent_class="agent"):
+    def __init__(self, env, initial_direction=0, color=(0,0,0), scale=1, speed=1, agent_class="agent",policy=None): # TODO policy kwarg is under test
         self.env = env
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
@@ -28,6 +29,7 @@ class Agent:
         self.path = []
         self.waypoint_override = None  # if an extra waypoint is specified, agent will prioritize it
         self.target_point = None
+        self.policy = policy if policy else target_id_policy
 
     # draws the agent
     def draw(self, window, color_override=None):
@@ -35,6 +37,9 @@ class Agent:
 
     # move the agent towards the next waypoint
     def move(self):
+        if self.policy: # TODO testing
+            self.waypoint_override, self.direction = self.policy(self.env,self.agent_idx)
+
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
@@ -158,7 +163,7 @@ class Ship(Agent):
         self.idx = -1  # ship index, can be the index of the agents array
         self.observed = False  # whether the ship has been observed
         self.observed_threat = False  # whether the threat level of the ship has been observed
-        self.neutral = False # TODO Added as a hack to fix potential threat ring drawing
+        self.neutral = False
         # set threat level of the ship
         if threat != -1:
             self.threat = threat
@@ -169,7 +174,7 @@ class Ship(Agent):
             self.color = self.env.AGENT_COLOR_THREAT
         else:
             self.color = self.env.AGENT_COLOR_OBSERVED
-            self.neutral = True # TODO Added as a hack to fix potential threat ring drawing
+            self.neutral = True
         # generate the ship's speed
         if self.speed != -1:
             print("Note: Ship speed was manually specified.")
@@ -219,7 +224,7 @@ class Ship(Agent):
         if self.neutral:  # TODO Added as a hack to fix potential threat ring drawing. Not working properly yet -  doesn't delete the ring around neutral targets once ID'd
             pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y),possible_threat_radius * self.scale, 2)
 
-        if self.observed_threat and self.threat > 0: # draw a red circle around the ship if it is a threat
+        if self.observed_threat and self.threat > 0 and not self.neutral: # draw a red circle around the ship if it is a threat (TODO: Added self.neutral check
             #pygame.draw.circle(window, (255,255,255), (self.x, self.y),possible_threat_radius * self.scale, 2)
             pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT, (self.x, self.y), threat_radius * self.scale, 2)
 
@@ -234,8 +239,7 @@ class Ship(Agent):
     def in_weapon_range(self, agent=None, distance=None):
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
-        return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS
-        #return math.hypot(agent.x - self.x, agent.y - self.y) <= self.env.AGENT_THREAT_RADIUS[self.threat]  #TODO Testing
+        return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
 
 def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
     """
@@ -346,8 +350,312 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
     target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
 
-
 def mouse_waypoint_policy(env,aircraft_id):
     # TODO Currently this is implemented in main.py. Might move it here.
     pass
     #return target_waypoint, target_direction
+
+
+# NOTE: policies below are under test and not currently working.
+def astar_policy(env, aircraft_id, target_waypoint):
+    aircraft = env.agents[aircraft_id]
+    start = (aircraft.x, aircraft.y)
+    goal = target_waypoint
+
+    def heuristic(a, b):
+        return math.hypot(b[0] - a[0], b[1] - a[1])
+
+    def get_neighbors(pos):
+        x, y = pos
+        neighbors = [
+            (x + 30, y), (x - 30, y), (x, y + 30), (x, y - 30),
+            (x + 21, y + 21), (x - 21, y + 21), (x + 21, y - 21), (x - 21, y - 21)
+        ]
+        return [(nx, ny) for nx, ny in neighbors if
+                0 <= nx < env.config["gameboard size"] and 0 <= ny < env.config["gameboard size"]]
+
+    def is_valid(pos):
+        x, y = pos
+        for ship in env.agents:
+            if ship.agent_class == "ship" and ship.threat > 0:
+                dist = math.hypot(ship.x - x, ship.y - y)
+                if dist <= ship.width * env.AGENT_THREAT_RADIUS[ship.threat]:
+                    return False
+        return True
+
+    open_set = []
+    heapq.heappush(open_set, (0, start))
+    came_from = {}
+    g_score = {start: 0}
+    f_score = {start: heuristic(start, goal)}
+
+    while open_set:
+        current = heapq.heappop(open_set)[1]
+
+        if current == goal:
+            path = []
+            while current in came_from:
+                path.append(current)
+                current = came_from[current]
+            path.append(start)
+            return path[::-1]
+
+        for neighbor in get_neighbors(current):
+            if not is_valid(neighbor):
+                continue
+
+            tentative_g_score = g_score[current] + heuristic(current, neighbor)
+
+            if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
+                came_from[neighbor] = current
+                g_score[neighbor] = tentative_g_score
+                f_score[neighbor] = g_score[neighbor] + heuristic(neighbor, goal)
+                heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+    return None  # No path found
+
+def astar_waypoint_policy(env, aircraft_id, quadrant='full', id_type='target'):
+    current_state = env.get_state()
+    aircraft = env.agents[aircraft_id]
+
+    # Use the existing target_id_policy to get the target waypoint
+    target_waypoint, _ = target_id_policy(env, aircraft_id, quadrant, id_type)
+
+    # Use A* to find a path to the target waypoint
+    path = astar_policy(env, aircraft_id, target_waypoint)
+
+    if path:
+        # Return the next waypoint in the path
+        next_waypoint = path[1] if len(path) > 1 else path[0]
+        target_direction = math.atan2(next_waypoint[1] - aircraft.y, next_waypoint[0] - aircraft.x)
+        return next_waypoint, target_direction
+    else:
+        # If no path is found, return the current position
+        return (aircraft.x, aircraft.y), aircraft.direction
+
+# TODO Testing
+# This code works but runs pretty slowly, and can still get stuck between threats
+def safe_target_id_policy(env, aircraft_id, quadrant='full', id_type='target'):
+    aircraft = env.agents[aircraft_id]
+    start = (aircraft.x, aircraft.y)
+
+    # Get all valid targets
+    valid_targets = get_valid_targets(env, aircraft_id, quadrant, id_type)
+
+    if not valid_targets:
+        return return_to_quadrant_center(env, quadrant), 0
+
+    # Sort targets by distance
+    sorted_targets = sorted(valid_targets, key=lambda t: math.hypot(t[0] - start[0], t[1] - start[1]))
+
+    for target in sorted_targets:
+        if is_path_safe(env, start, target):
+            return target, math.atan2(target[1] - aircraft.y, target[0] - aircraft.x)
+
+        safe_waypoint = find_safe_intermediate_waypoint(env, start, target)
+        if safe_waypoint:
+            return safe_waypoint, math.atan2(safe_waypoint[1] - aircraft.y, safe_waypoint[0] - aircraft.x)
+
+    # If we can't find a safe path to any target, move towards the closest one as far as safely possible
+    closest_target = sorted_targets[0]
+    safe_waypoint = move_towards_safely(env, start, closest_target)
+    return safe_waypoint, math.atan2(safe_waypoint[1] - aircraft.y, safe_waypoint[0] - aircraft.x)
+
+
+def get_valid_targets(env, aircraft_id, quadrant, id_type):
+    current_state = env.get_state()
+    valid_targets = []
+
+    for ship_id, ship in current_state['ships'].items():
+        if (id_type == 'target' and not ship['observed']) or (
+                id_type == 'wez' and (not ship['observed'] or not ship['observed threat'])):
+            ship_pos = ship['position']
+            if is_in_quadrant(ship_pos, quadrant, env.config['gameboard size']):
+                valid_targets.append(ship_pos)
+
+    return valid_targets
+
+
+def is_in_quadrant(pos, quadrant, board_size):
+    x, y = pos
+    half_size = board_size / 2
+    if quadrant == 'full':
+        return True
+    elif quadrant == 'NW':
+        return x < half_size and y < half_size
+    elif quadrant == 'NE':
+        return x >= half_size and y < half_size
+    elif quadrant == 'SW':
+        return x < half_size and y >= half_size
+    elif quadrant == 'SE':
+        return x >= half_size and y >= half_size
+    return False
+
+
+def return_to_quadrant_center(env, quadrant):
+    board_size = env.config['gameboard size']
+    if quadrant == 'full':
+        return (board_size / 2, board_size / 2)
+    elif quadrant == 'NW':
+        return (board_size / 4, board_size / 4)
+    elif quadrant == 'NE':
+        return (3 * board_size / 4, board_size / 4)
+    elif quadrant == 'SW':
+        return (board_size / 4, 3 * board_size / 4)
+    elif quadrant == 'SE':
+        return (3 * board_size / 4, 3 * board_size / 4)
+
+
+def is_path_safe(env, start, end):
+    steps = 10
+    for i in range(steps + 1):
+        t = i / steps
+        x = start[0] + t * (end[0] - start[0])
+        y = start[1] + t * (end[1] - start[1])
+        if not is_point_safe(env, (x, y)):
+            return False
+    return True
+
+
+def is_point_safe(env, point):
+    for agent in env.agents:
+        if agent.agent_class == "ship" and agent.threat > 0:
+            distance = math.hypot(point[0] - agent.x, point[1] - agent.y)
+            if distance <= agent.width * env.AGENT_THREAT_RADIUS[agent.threat]:
+                return False
+    return True
+
+
+def find_safe_intermediate_waypoint(env, start, end):
+    vector = (end[0] - start[0], end[1] - start[1])
+    perpendicular = (-vector[1], vector[0])
+    magnitude = math.hypot(*perpendicular)
+    if magnitude == 0:
+        return None
+    unit_perpendicular = (perpendicular[0] / magnitude, perpendicular[1] / magnitude)
+
+    for fraction in [0.25, 0.5, 0.75]:
+        for distance in [50, 100, 150, -50, -100, -150]:
+            intermediate = (
+                start[0] + vector[0] * fraction + unit_perpendicular[0] * distance,
+                start[1] + vector[1] * fraction + unit_perpendicular[1] * distance
+            )
+            if is_point_safe(env, intermediate) and is_path_safe(env, start, intermediate) and is_path_safe(env,
+                                                                                                            intermediate,
+                                                                                                            end):
+                return intermediate
+
+    return None
+
+
+def move_towards_safely(env, start, end):
+    vector = (end[0] - start[0], end[1] - start[1])
+    distance = math.hypot(*vector)
+    if distance == 0:
+        return start
+
+    unit_vector = (vector[0] / distance, vector[1] / distance)
+    step_size = 10  # pixels
+
+    for i in range(1, int(distance / step_size) + 1):
+        point = (start[0] + unit_vector[0] * i * step_size,
+                 start[1] + unit_vector[1] * i * step_size)
+        if not is_point_safe(env, point):
+            # Return the last safe point
+            return (start[0] + unit_vector[0] * (i - 1) * step_size,
+                    start[1] + unit_vector[1] * (i - 1) * step_size)
+
+    # If the entire path is safe, return the end point
+    return end
+
+# Code below works fast but tends to get stick on the edge of a target's threat ring
+"""def safe_target_id_policy(env, aircraft_id, quadrant='full', id_type='target'):
+    # Get the original waypoint from the existing target_id_policy
+    original_waypoint, original_direction = target_id_policy(env, aircraft_id, quadrant, id_type)
+
+    aircraft = env.agents[aircraft_id]
+    start = (aircraft.x, aircraft.y)
+
+    # If we're already at the waypoint, no need to adjust
+    if start == original_waypoint:
+        return original_waypoint, original_direction
+
+    # Check if the direct path to the waypoint is safe
+    if is_path_safe(env, start, original_waypoint):
+        return original_waypoint, original_direction
+
+    # If not safe, find a safe intermediate waypoint
+    safe_waypoint = find_safe_intermediate_waypoint(env, start, original_waypoint)
+
+    if safe_waypoint:
+        new_direction = math.atan2(safe_waypoint[1] - aircraft.y, safe_waypoint[0] - aircraft.x)
+        return safe_waypoint, new_direction
+
+    # If no safe waypoint found, move towards the original waypoint as far as safely possible
+    safe_waypoint = move_towards_safely(env, start, original_waypoint)
+    new_direction = math.atan2(safe_waypoint[1] - aircraft.y, safe_waypoint[0] - aircraft.x)
+    return safe_waypoint, new_direction
+
+
+def is_path_safe(env, start, end):
+    # Check points along the path
+    steps = 10
+    for i in range(steps + 1):
+        t = i / steps
+        x = start[0] + t * (end[0] - start[0])
+        y = start[1] + t * (end[1] - start[1])
+        if not is_point_safe(env, (x, y)):
+            return False
+    return True
+
+
+def is_point_safe(env, point):
+    for agent in env.agents:
+        if agent.agent_class == "ship" and agent.threat > 0:
+            distance = math.hypot(point[0] - agent.x, point[1] - agent.y)
+            if distance <= agent.width * env.AGENT_THREAT_RADIUS[agent.threat]:
+                return False
+    return True
+
+
+def find_safe_intermediate_waypoint(env, start, end):
+    vector = (end[0] - start[0], end[1] - start[1])
+    perpendicular = (-vector[1], vector[0])
+    magnitude = math.hypot(*perpendicular)
+    if magnitude == 0:
+        return None
+    unit_perpendicular = (perpendicular[0] / magnitude, perpendicular[1] / magnitude)
+
+    for fraction in [0.25, 0.5, 0.75]:  # Try different points along the path
+        for distance in [50, 100, 150, -50, -100, -150]:  # Try different perpendicular distances
+            intermediate = (
+                start[0] + vector[0] * fraction + unit_perpendicular[0] * distance,
+                start[1] + vector[1] * fraction + unit_perpendicular[1] * distance
+            )
+            if is_point_safe(env, intermediate) and is_path_safe(env, start, intermediate) and is_path_safe(env,
+                                                                                                            intermediate,
+                                                                                                            end):
+                return intermediate
+
+    return None
+
+
+def move_towards_safely(env, start, end):
+    vector = (end[0] - start[0], end[1] - start[1])
+    distance = math.hypot(*vector)
+    if distance == 0:
+        return start
+
+    unit_vector = (vector[0] / distance, vector[1] / distance)
+    step_size = 10  # pixels
+
+    for i in range(1, int(distance / step_size) + 1):
+        point = (start[0] + unit_vector[0] * i * step_size,
+                 start[1] + unit_vector[1] * i * step_size)
+        if not is_point_safe(env, point):
+            # Return the last safe point
+            return (start[0] + unit_vector[0] * (i - 1) * step_size,
+                    start[1] + unit_vector[1] * (i - 1) * step_size)
+
+    # If the entire path is safe, return the end point
+    return end"""

@@ -5,6 +5,7 @@ import pygame
 import random
 import agents
 from isr_gui import Button, ScoreWindow, HealthWindow, TimeWindow
+import datetime
 
 
 class MAISREnv(gym.Env):
@@ -31,17 +32,28 @@ class MAISREnv(gym.Env):
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
         self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
-        self.AIRCRAFT_COLORS = [(0, 200, 200), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
+        self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
         # Old agent0 color: (255, 165, 0)
         self.window_x = 1300
         self.window_y = 850
 
         self.score = 0
+        self.first_step = True  # TODO testing
         self.paused = False
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
-        self.comm_text = ''
-        self.display_time = pygame.time.get_ticks()  # Time that is used for the on-screen timer. Accounts for pausing.
+
+        # Comm log
+        self.comm_messages = []
+        self.max_messages = 7
+        self.font = pygame.font.SysFont(None,24)
+        self.ai_color = self.AIRCRAFT_COLORS[0]
+        self.human_color = self.AIRCRAFT_COLORS[1]
+        #self.comm_text = ''
+
+        self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
+        self.pause_start_time = 0
+        self.total_pause_time = 0
         self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
 
@@ -52,6 +64,7 @@ class MAISREnv(gym.Env):
         self.config = config
         self.window = window
         self.clock = clock
+
 
         # set the random seed
         if "seed" in config:
@@ -109,6 +122,11 @@ class MAISREnv(gym.Env):
         self.aircraft_ids = []  # indexes of the aircraft agents
         self.damage = 0  # total damage from all agents (TODO: Reset each aircraft's damage here too)
         self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
+        self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
+        self.pause_start_time = 0
+        self.total_pause_time = 0
+        self.score = 0
+        self.first_step = 0 # TODO testing
 
         # create the ships
         for i in range(self.num_ships):
@@ -191,12 +209,13 @@ class MAISREnv(gym.Env):
             print('Human aircraft destroyed, game over.')
             if self.render_bool: pygame.time.wait(5000)
 
+        # TODO need to update for new pause display_time implementation
         if self.display_time/1000 >= 120:
             done = True
             print('Out of time, game over.')
             if self.render_bool: pygame.time.wait(5000)
 
-        self.display_time = pygame.time.get_ticks()
+        #self.display_time = pygame.time.get_ticks()
         # Update score
 
         # TODO: Add self.score += 20 if all targets identified
@@ -207,6 +226,15 @@ class MAISREnv(gym.Env):
         # define a custom reward function here
         # Ryan TODO: Add points for IDing targets (+), IDing all targets (+), taking damage (-), or agent A/C dying (-)
         return -self.damage
+
+    def add_comm_message(self,message,is_ai=True):
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        sender = "AGENT" if is_ai else "HUMAN"
+        full_message = f"[{timestamp}] {sender}: {message}"
+        self.comm_messages.append((full_message, is_ai))
+        #self.comm_messages.append(message)
+        if len(self.comm_messages) > self.max_messages:
+            self.comm_messages.pop(0)
 
     def render(self, mode='human', close=False):
         # Set window dimensions. Used for placing buttons etc.
@@ -279,7 +307,6 @@ class MAISREnv(gym.Env):
         self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
-
         pygame.draw.line(self.window, (0, 0, 0), (720, 60+2*(80+10)+10 + 10+80), (720 + 445, 60+2*(80+10)+10+10+80),4)  # Separating line between quadrant select and hold/waypoint
 
         # Draw Comm Log
@@ -288,9 +315,17 @@ class MAISREnv(gym.Env):
         comm_text_surface = pygame.font.SysFont(None, 36).render('Comm Log', True, (0, 0, 0))
         self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(720 + 445 // 2, 450 + 40 // 2)))
 
-        # Draw incoming comm log text (TODO: Currently not dynamic)
-        incoming_comm_surface = pygame.font.SysFont(None, 36).render(self.comm_text,True,(0,0,0))
-        self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 310 // 2, 480 + 360 // 2)))
+        # Draw incoming comm log text (TODO testing)
+        y_offset = 495
+        for entry in self.comm_messages:
+            message = entry[0]
+            is_ai = entry[1]
+            color = self.ai_color if is_ai else self.human_color
+            message_surface = self.font.render(message, True, color)
+            self.window.blit(message_surface, (730, y_offset))
+            y_offset += 30  # Adjust this value to change spacing between messages
+        #incoming_comm_surface = pygame.font.SysFont(None, 36).render(self.comm_text,True,(0,0,0))
+        #self.window.blit(incoming_comm_surface,incoming_comm_surface.get_rect(center=(720 + 310 // 2, 480 + 360 // 2)))
 
         # Draw health boxes TODO: Add support for >2 aircraft
         agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
@@ -311,24 +346,21 @@ class MAISREnv(gym.Env):
         self.pause_button.is_latched = self.button_latch_dict['pause']
         self.pause_button.draw(self.window)
 
-        #self.time_window = TimeWindow(game_width*0.5 + 10, game_width + 10,current_time=self.display_time)
-        #self.time_window.update(self.display_time)
-        #self.time_window.draw(self.window)
+        current_time = pygame.time.get_ticks()
+        if not self.paused:
+            self.display_time = current_time - self.total_pause_time
 
-        if self.paused: # TODO: Currently not rendering
-            print('env render function paused detected')
-            pygame.draw.rect(self.window, (220,150,4), pygame.Rect(350, 350, 200, 200))
-            paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
-            self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))
-
-        #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
-
-        # draw the agents
-        #for agent in self.agents:
-         #   agent.draw(self.window)
         self.time_window = TimeWindow(game_width * 0.5 + 10, game_width + 10, current_time=self.display_time)
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
+
+        """if self.paused: # TODO: Currently not rendering
+            print('env render function paused detected')
+            pygame.draw.rect(self.window, (220,150,4), pygame.Rect(350, 350, 200, 200))
+            paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
+            self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))"""
+
+        #pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(game_width*0.5 - 150/2, game_width + 10, 150, 70))
 
         # update the display
         pygame.display.update()
@@ -369,21 +401,20 @@ class MAISREnv(gym.Env):
 
     def pause(self,unpause_key):
         print('Game paused')
-        pause_start_time = int(pygame.time.get_ticks())
+        self.pause_start_time = pygame.time.get_ticks()
         self.button_latch_dict['pause'] = True
-        print('paused at %s (env.display_time = %s' % (pause_start_time, self.display_time))
+        print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
         self.paused = True
         while self.paused:
             pygame.time.wait(200)
             ev = pygame.event.get()
             for event in ev:
-                #if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.type == unpause_key:
                     mouse_position = pygame.mouse.get_pos()
                     if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
                         self.paused = False
                         self.button_latch_dict['pause'] = False
-                        pause_time = int(pygame.time.get_ticks()) - pause_start_time
-                        print('Paused for %s' % pause_time)
-                        # env.display_time = env.display_time - pause_time
-                        print('env.display_time = %s' % self.display_time)
+                        pause_end_time = pygame.time.get_ticks()
+                        pause_duration = pause_end_time - self.pause_start_time
+                        self.total_pause_time += pause_duration
+                        print('Paused for %s' % pause_duration)

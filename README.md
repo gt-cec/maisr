@@ -40,20 +40,16 @@ The state space's reward function can be set in `env.py:get_reward()`.
 
 Using gym's observation and state space definitions is not integrated, however a starting point is given in `env.py:action_space` and `env.py:observation_space`.
 
-### Summary of Ryan's changes
-* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
-* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
-* Made gameboard green buffer configurable within env_config.
-
-### Summary of Ryan's changes
-* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
-* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
-* Made gameboard green buffer configurable within env_config.
-
-### Summary of Ryan's changes
+# Summary of Ryan's changes
 * Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
 * Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
 * Made gameboard green buffer configurable within env_config.
 * (More not listed)
 * Added damage system 
 * Agents get destroyed when damage > 100 (currently a little messy, various functions check for the aircraft.alive Bool)
+
+### 10/20/2024
+* Fixed bug where aircraft were taking damage when within ID range, not within ship threat range
+* Fixed time incrementing incorrectly while paused
+* Comm log complete
+* Basic but flawed A* search policy added to avoid WEZs

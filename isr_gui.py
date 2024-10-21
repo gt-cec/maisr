@@ -27,13 +27,7 @@ class Button:
         text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + self.rect.height // 2))
         win.blit(text_surface, text_rect)
 
-    #def latch(self):
-     #   self.is_latched = not self.is_latched
-      #  print('Button latched: %s' % self.is_latched)
-
     def is_clicked(self,pos):
-        #self.is_latched = not self.is_latched
-
         return self.rect.collidepoint(pos)
 
 # game_width*0.5 - 150/2, game_width + 10
