@@ -3,16 +3,20 @@
 #    * Populate agent_priorities (pull from autonomous policy)
 #    * Next: Rework the agent's policies. Maybe autonomous is the fast but high risk policy, and the A* policy (which needs to be integrated properly) is the slow, safe policy?
 #    * BUG: Game time not resetting when time done condition hit, so only the first game runs.
-#    * Finish env.done_screen()
+#  Simconnect integration
+#    * Read through msfs_integration.py
+#    *
 #  Agent policies
 #    * (Priority) Target_id_policy: Currently a working but slow and flawed A* search policy is implemented
 #       (safe_target_id_policy). Have partially updated code in this script to replace target_id_policy but need to clean up.
-#    * Add waypoint command
 #    * Autonomous policy code shouldn't change quadrants until that quadrant is empty.
+#  Lower priority
+#    * Finish env.done_screen()
 #    * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
+#    * Add waypoint command
 #  Code optimization/cleanup
 #    * Move a lot of the button handling code out of main.py and into isr_gui.py
-# Possible optimizations
+#  Possible optimizations
 #  * Don't re-render every GUI element every tick. Just the updates
 
 from agents import *
@@ -20,9 +24,11 @@ from env import MAISREnv
 from isr_gui import *
 import sys
 from data_logging import GameLogger
+from msfs_integration import MSFSConnector
 
 # environment configuration, use this for the gameplay parameters
 log_data = False  # Set to false if you don't want to save run data to a json file
+use_msfs = False
 
 env_config = {
     "gameboard size": 700, # NOTE: The rest of the GUI doesn't dynamically scale with different gameboard sizes. Stick to 700 for now
@@ -40,6 +46,11 @@ env_config = {
 if __name__ == "__main__":
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
+    if use_msfs:
+        msfs = MSFSConnector()
+        if not msfs.spawn_ai_aircraft():
+            print("Failed to initialize MSFS integration")
+            return
 
     if render:
         print("Starting in PyGame mode")
@@ -78,8 +89,26 @@ if __name__ == "__main__":
             agent0_action, _ = agent0_policy(env,env.aircraft_ids[0], **kwargs)
             actions.append((env.aircraft_ids[0], agent0_action))
 
+            # Update AI aircraft in MSFS # TODO this is new, still testing
+            if agent0_action is not None:
+                msfs.update_ai_aircraft(
+                    agent0_action[0],  # x coordinate
+                    agent0_action[1],  # y coordinate
+                    env.agents[agent0_id].direction * (180 / math.pi),  # convert radians to degrees
+                    env_config["gameboard size"])
+
+            # TODO this is new, still testing
+            player_x, player_y, player_heading = msfs.get_player_position(env_config["gameboard size"])
+            if player_x is not None and player_y is not None:
+                agent1_action = (player_x, player_y)
+                actions.append((env.aircraft_ids[1], agent1_action))
+
             ev = pygame.event.get()
             for event in ev:
+                if event.type == pygame.QUIT:
+                    msfs.cleanup() # TODO this is new, testing
+                    pygame.quit()
+
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
 
@@ -197,6 +226,8 @@ if __name__ == "__main__":
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
             if render:  # if in PyGame mode, render the environment
                 env.render()
+            clock.tick(60)  # TODO this is new for MSFS
+
         if done:
             waiting_for_key = True
             while waiting_for_key:
@@ -211,6 +242,7 @@ if __name__ == "__main__":
         print("Game complete:", game_count)
 
     if render:
+        msfs.cleanup()
         pygame.quit()
 
     print("DONE!")
