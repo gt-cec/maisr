@@ -53,3 +53,10 @@ Using gym's observation and state space definitions is not integrated, however a
 * Fixed time incrementing incorrectly while paused
 * Comm log complete
 * Basic but flawed A* search policy added to avoid WEZs
+
+### 10/21/2024
+* GUI rearranged
+* Agent status window added
+* Score system complete
+* Data logging system written
+* Made agent's waypoint line optional (for SA-based transparency study)

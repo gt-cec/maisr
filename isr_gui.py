@@ -9,19 +9,22 @@ class Button:
         self.width, self.height = width, height
         self.rect = pygame.Rect(x,y,width,height)
         self.color = (255, 120, 80)
+        self.default_color = (255, 120, 80)
+        self.border_color = (0,0,0)
+        self.border_width = 3
         self.font = pygame.font.SysFont(None, 36)
         self.is_latched = False
 
     def draw(self,win):
         if self.is_latched:
-            #self.color = (230,90,50)
             self.color = (self.color[0]*.7, self.color[1]*.7, self.color[2]*.7)
-            pygame.draw.line(win,(0,0,0),(self.x-3,self.y-3),(self.x+self.width + 3,self.y-3),4)  # Top border
-            pygame.draw.line(win, (0, 0, 0), (self.x-3, self.y + self.height + 1), (self.x + self.width + 3, self.y + self.height + 1), 4)  # Bottom border
-            pygame.draw.line(win, (0, 0, 0), (self.x - 3, self.y - 3), (self.x - 3, self.y + self.height + 1), 4)  # Left border
-            pygame.draw.line(win, (0, 0, 0), (self.x + self.width + 1, self.y - 3), (self.x + self.width + 1, self.y + self.height + 1), 4)  # Right border
-        #else:
-            #self.color = (255, 120, 80)
+            self.border_width = 4
+
+            pygame.draw.line(win, (0,0,0), (self.x - 3, self.y - 3), (self.x + self.width + 3, self.y - 3),self.border_width)  # Top border
+            pygame.draw.line(win, self.border_color, (self.x - 3, self.y + self.height + 1),(self.x + self.width + 3, self.y + self.height + 1), self.border_width)  # Bottom border
+            pygame.draw.line(win, self.border_color, (self.x - 3, self.y - 3), (self.x - 3, self.y + self.height + 1),self.border_width)  # Left border
+            pygame.draw.line(win, self.border_color, (self.x + self.width + 1, self.y - 3),(self.x + self.width + 1, self.y + self.height + 1), self.border_width)  # Right border
+
         pygame.draw.rect(win, self.color, self.rect)
         text_surface = self.font.render(self.text, True, (0,0,0))
         text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + self.rect.height // 2))
@@ -29,8 +32,6 @@ class Button:
 
     def is_clicked(self,pos):
         return self.rect.collidepoint(pos)
-
-# game_width*0.5 - 150/2, game_width + 10
 
 class ScoreWindow:
     def __init__(self, score, x, y):

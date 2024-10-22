@@ -82,6 +82,7 @@ class Aircraft(Agent):
         self.env.aircraft_ids.append(self.agent_idx)
         self.policy = policy
         self.alive = True
+        self.show_agent_waypoint = env.show_agent_waypoint
 
     def draw(self, window):
         if self.damage >= 100: # TODO: This only stops rendering the aircraft. Need to stop its movement too
@@ -114,7 +115,7 @@ class Aircraft(Agent):
         pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
         window.blit(shape_surf, target_rect)
 
-        if self.target_point is not None:
+        if self.target_point is not None and self.show_agent_waypoint:
             pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
             pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
             #pygame.draw.rect(window, (0,0,0),pygame.Rect(self.target_point[0] - 3, self.target_point[1] - 3, 6, 6)) # Draw inner box at waypoint location
@@ -163,7 +164,7 @@ class Ship(Agent):
         self.idx = -1  # ship index, can be the index of the agents array
         self.observed = False  # whether the ship has been observed
         self.observed_threat = False  # whether the threat level of the ship has been observed
-        self.neutral = False
+        #self.neutral = False
         # set threat level of the ship
         if threat != -1:
             self.threat = threat
@@ -174,7 +175,8 @@ class Ship(Agent):
             self.color = self.env.AGENT_COLOR_THREAT
         else:
             self.color = self.env.AGENT_COLOR_OBSERVED
-            self.neutral = True
+            #self.neutral = True
+
         # generate the ship's speed
         if self.speed != -1:
             print("Note: Ship speed was manually specified.")
@@ -214,11 +216,38 @@ class Ship(Agent):
         self.add_random_waypoint()
 
     def draw(self, window):
+        if not self.observed:
+            display_color = self.env.AGENT_COLOR_UNOBSERVED
+        else:
+            if self.threat > 0:
+                display_color = self.env.AGENT_COLOR_THREAT
+            else:
+                display_color = self.env.AGENT_COLOR_OBSERVED
+
         super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color) # TODO: The self.env here might be causing problems
 
         threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
         possible_threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[3]
-        if not self.observed_threat: # Draw orange circle around unknown targets, representing the worst possible threat radius
+
+        # Draw orange circle for any unidentified target (neutral or hostile)
+        if not self.observed_threat or (self.observed_threat and self.threat == 0):
+            pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED,
+                               (self.x, self.y),
+                               possible_threat_radius * self.scale,
+                               2)
+        if self.observed_threat and self.threat == 0:
+            pygame.draw.circle(window, (255,255,255),
+                               (self.x, self.y),
+                               possible_threat_radius * self.scale,
+                               2)
+        # If threat is observed and ship is hostile, show actual threat radius
+        elif self.observed_threat and self.threat > 0:
+            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT,
+                               (self.x, self.y),
+                               threat_radius * self.scale,
+                               2)
+
+        """if not self.observed_threat: # Draw orange circle around unknown targets, representing the worst possible threat radius
             pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y), possible_threat_radius * self.scale, 2)
 
         if self.neutral:  # TODO Added as a hack to fix potential threat ring drawing. Not working properly yet -  doesn't delete the ring around neutral targets once ID'd
@@ -226,7 +255,7 @@ class Ship(Agent):
 
         if self.observed_threat and self.threat > 0 and not self.neutral: # draw a red circle around the ship if it is a threat (TODO: Added self.neutral check
             #pygame.draw.circle(window, (255,255,255), (self.x, self.y),possible_threat_radius * self.scale, 2)
-            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT, (self.x, self.y), threat_radius * self.scale, 2)
+            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT, (self.x, self.y), threat_radius * self.scale, 2)"""
 
     def move(self):
         if self.path == []:
@@ -300,10 +329,10 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
 
     # Decide whether to ID targets or targets + WEZs
     if env.agents[aircraft_id].damage <= 50:
-        print('Autonomous policy prioritizing target+WEZ search')
+        #print('Autonomous policy prioritizing target+WEZ search')
         id_type = 'wez'
     else:
-        print('Autonomous policy prioritizing target search')
+        #print('Autonomous policy prioritizing target search')
         id_type = 'target'
 
     # Determine which quadrant has most unknown targets (TODO: Very inefficient, combine with other for loop below
@@ -323,7 +352,7 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
     if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[quadrant]:  # TODO: Bug: Spamming console because quadrant always re-initializes as 'full'. Need to fix.
         #densest_quadrant = new_densest_quadrant
         quadrant = new_densest_quadrant
-        print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
+        #print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
 
     for ship_id in current_state['ships']:
         # Loops through all ships in the environment, calculates distance from current aircraft position, finds the closest unknown ship (or unknown WEZ), and sets aircraft waypoint to that ship's location.
