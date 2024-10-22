@@ -115,10 +115,11 @@ class Aircraft(Agent):
         pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
         window.blit(shape_surf, target_rect)
 
-        if self.target_point is not None and self.show_agent_waypoint:
-            pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
-            pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
-            #pygame.draw.rect(window, (0,0,0),pygame.Rect(self.target_point[0] - 3, self.target_point[1] - 3, 6, 6)) # Draw inner box at waypoint location
+        if self.target_point is not None:
+            if self.show_agent_waypoint == 1:
+                pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
+                pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
+                #pygame.draw.rect(window, (0,0,0),pygame.Rect(self.target_point[0] - 3, self.target_point[1] - 3, 6, 6)) # Draw inner box at waypoint location
 
 
     # check if another agent is in the ISR range
@@ -242,20 +243,8 @@ class Ship(Agent):
                                2)
         # If threat is observed and ship is hostile, show actual threat radius
         elif self.observed_threat and self.threat > 0:
-            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT,
-                               (self.x, self.y),
-                               threat_radius * self.scale,
-                               2)
+            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT,(self.x, self.y),threat_radius * self.scale,2)
 
-        """if not self.observed_threat: # Draw orange circle around unknown targets, representing the worst possible threat radius
-            pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y), possible_threat_radius * self.scale, 2)
-
-        if self.neutral:  # TODO Added as a hack to fix potential threat ring drawing. Not working properly yet -  doesn't delete the ring around neutral targets once ID'd
-            pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED, (self.x, self.y),possible_threat_radius * self.scale, 2)
-
-        if self.observed_threat and self.threat > 0 and not self.neutral: # draw a red circle around the ship if it is a threat (TODO: Added self.neutral check
-            #pygame.draw.circle(window, (255,255,255), (self.x, self.y),possible_threat_radius * self.scale, 2)
-            pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT, (self.x, self.y), threat_radius * self.scale, 2)"""
 
     def move(self):
         if self.path == []:
@@ -270,6 +259,7 @@ class Ship(Agent):
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
 
+
 def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
     """
     Basic rule-based action policy for tactical HAI ISR project.
@@ -280,6 +270,7 @@ def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
         * id_type: 'target' (only ID unknown targets but not unknown WEZs of known hostiles) or 'wez' (ID unknown WEZs)
     Returns: Waypoint to the nearest unknown target
     """
+    waypoints_to_show = env.config['show agent waypoint']
     gameboard_size = env.config["gameboard size"] # TODO: Currently set to full game window, not just inside the green bounds (10% to 90% of gameboard size)
     quadrant_bounds = {'full':(0,gameboard_size,0,gameboard_size), 'NW':(0,gameboard_size*0.5,0,gameboard_size*0.5),'NE':(gameboard_size*0.5,gameboard_size,0,gameboard_size*0.5),'SW':(0,gameboard_size*0.5,gameboard_size*0.5,gameboard_size),'SE':(gameboard_size*0.5,gameboard_size,gameboard_size*0.5,gameboard_size)} # specifies (Min x, max x, min y, max y)
 
@@ -300,6 +291,8 @@ def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
         nearest_target_id = min(current_target_distances, key=current_target_distances.get)
         target_waypoint = tuple((env.agents[nearest_target_id].x, env.agents[nearest_target_id].y))
         #print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
+
+
     else: # If all targets ID'd, loiter in center of board or specified quadrant
         if quadrant == 'full': target_waypoint = (gameboard_size*0.5,gameboard_size*0.5) # If no more targets, return to center of game board TODO: Make this more robust
         elif quadrant == 'NW': target_waypoint = (gameboard_size*0.25,gameboard_size*0.25)
@@ -309,6 +302,15 @@ def target_id_policy(env,aircraft_id,quadrant='full', id_type='target'):
 
     target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
     return target_waypoint, target_direction
+
+    """if waypoints_to_show >= 2:
+        # draw line from target waypoint to next closest unknown target
+        second_nearest_target_id = sorted(current_target_distances, key=current_target_distances.get)[1]
+        second_waypoint = tuple((env.agents[second_nearest_target_id].x, env.agents[second_nearest_target_id].y))
+        pygame.draw.line(env.window, (0, 0, 0), (env.agents[nearest_target_id].x, env.agents[nearest_target_id].y), (env.agents[second_nearest_target_id].x, env.agents[second_nearest_target_id].y),2)  # Draw line from first to second target
+        # TODO testing"""
+
+    #if waypoints_to_show == 3:
 
 def hold_policy(env,aircraft_id,quadrant='full',id_type='target'):
     # Note: kwargs not currently used.

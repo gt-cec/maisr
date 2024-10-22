@@ -31,7 +31,7 @@ class MAISREnv(gym.Env):
         self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
         self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
         self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
-        self.AIRCRAFT_ENGAGEMENT_RADIUS = 50 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
+        self.AIRCRAFT_ENGAGEMENT_RADIUS = 40 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
         self.AIRCRAFT_ISR_RADIUS = 85 #170  # pixel width of aircraft scanner (to identify hostile vs benign)
 
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
@@ -67,7 +67,7 @@ class MAISREnv(gym.Env):
         # Comm log
         self.comm_messages = []
         self.max_messages = 7
-        self.font = pygame.font.SysFont(None,24)
+        self.message_font = pygame.font.SysFont(None,30)
         self.ai_color = self.AIRCRAFT_COLORS[0]
         self.human_color = self.AIRCRAFT_COLORS[1]
 
@@ -215,7 +215,7 @@ class MAISREnv(gym.Env):
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist) and agent.threat > 0:
                         if self.agents[aircraft_id].alive:
-                            self.agents[aircraft_id].damage += .1
+                            self.agents[aircraft_id].damage += .6
                             self.damage += .1
                         # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
                     # add some logic here if you want the no-go zones to damage the aircrafts
@@ -280,11 +280,10 @@ class MAISREnv(gym.Env):
         return -self.damage
 
     def add_comm_message(self,message,is_ai=True):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         sender = "AGENT" if is_ai else "HUMAN"
-        full_message = f"[{timestamp}] {sender}: {message}"
+        full_message = f"[{sender}]: {message}"
         self.comm_messages.append((full_message, is_ai))
-        #self.comm_messages.append(message)
         if len(self.comm_messages) > self.max_messages:
             self.comm_messages.pop(0)
 
@@ -388,7 +387,7 @@ class MAISREnv(gym.Env):
             message = entry[0]
             is_ai = entry[1]
             color = self.ai_color if is_ai else self.human_color
-            message_surface = self.font.render(message, True, color)
+            message_surface = self.message_font.render(message, True, color)
             self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
             y_offset += 30  # Adjust this value to change spacing between messages
 

@@ -1,17 +1,14 @@
 # TODO:
 #  Priority 1:
+#    * Show agent waypoint: 0 shows none, 1 shows next one, 2 shows next two, 3 shows next 3 (to be implemented inside agents.py
 #    * Populate agent_priorities (pull from autonomous policy)
-#    * Next: Rework the agent's policies. Maybe autonomous is the fast but high risk policy, and the A* policy (which needs to be integrated properly) is the slow, safe policy?
+#    * Massively clean up agent policies. Make one default policy that avoids WEZs well but prioritizes badly.
 #    * BUG: Game time not resetting when time done condition hit, so only the first game runs.
-#  Simconnect integration
-#    * Read through msfs_integration.py
-#    *
 #  Agent policies
 #    * (Priority) Target_id_policy: Currently a working but slow and flawed A* search policy is implemented
 #       (safe_target_id_policy). Have partially updated code in this script to replace target_id_policy but need to clean up.
 #    * Autonomous policy code shouldn't change quadrants until that quadrant is empty.
 #  Lower priority
-#    * Finish env.done_screen()
 #    * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
 #    * Add waypoint command
 #  Code optimization/cleanup
@@ -24,7 +21,7 @@ from env import MAISREnv
 from isr_gui import *
 import sys
 from data_logging import GameLogger
-from msfs_integration import MSFSConnector
+#from msfs_integration import MSFSConnector
 
 # environment configuration, use this for the gameplay parameters
 log_data = False  # Set to false if you don't want to save run data to a json file
@@ -35,22 +32,23 @@ env_config = {
     "num aircraft": 2,  # supports any number of aircraft, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
     "gameplay color": "white",
     "gameboard border margin": 35,
-    "targets iteration": "C",
+    "targets iteration": "D",
     "motion iteration": "F",
     "search pattern": "ladder",
     "verbose": False,
     "window size": (1800,850), # width,height
-    'show agent waypoint':True # For SA-based agent transparency study
+    'show agent waypoint':1, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
+    'show agent location':'persistent', # For SA-based agent transparency. 'persistent', 'spotty', 'none' TODO not implemented
+
 }
 
 if __name__ == "__main__":
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
-    if use_msfs:
-        msfs = MSFSConnector()
-        if not msfs.spawn_ai_aircraft():
-            print("Failed to initialize MSFS integration")
-            return
+    #if use_msfs:
+     #   msfs = MSFSConnector()
+      #  if not msfs.spawn_ai_aircraft():
+       #     print("Failed to initialize MSFS integration")
 
     if render:
         print("Starting in PyGame mode")
@@ -90,7 +88,7 @@ if __name__ == "__main__":
             actions.append((env.aircraft_ids[0], agent0_action))
 
             # Update AI aircraft in MSFS # TODO this is new, still testing
-            if agent0_action is not None:
+            """if agent0_action is not None:
                 msfs.update_ai_aircraft(
                     agent0_action[0],  # x coordinate
                     agent0_action[1],  # y coordinate
@@ -101,12 +99,12 @@ if __name__ == "__main__":
             player_x, player_y, player_heading = msfs.get_player_position(env_config["gameboard size"])
             if player_x is not None and player_y is not None:
                 agent1_action = (player_x, player_y)
-                actions.append((env.aircraft_ids[1], agent1_action))
+                actions.append((env.aircraft_ids[1], agent1_action))"""
 
             ev = pygame.event.get()
             for event in ev:
                 if event.type == pygame.QUIT:
-                    msfs.cleanup() # TODO this is new, testing
+                    #msfs.cleanup() # TODO this is new, testing
                     pygame.quit()
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
@@ -242,7 +240,7 @@ if __name__ == "__main__":
         print("Game complete:", game_count)
 
     if render:
-        msfs.cleanup()
+        #msfs.cleanup()
         pygame.quit()
 
     print("DONE!")
