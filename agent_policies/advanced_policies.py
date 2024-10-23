@@ -107,13 +107,10 @@ def target_id_policy(env, aircraft_id, quadrant='full', id_type='target'):
     if current_target_distances:
         nearest_target_id = min(current_target_distances, key=current_target_distances.get)
         target_waypoint = tuple((env.agents[nearest_target_id].x, env.agents[nearest_target_id].y))
-        # print('Nearest unknown target is %s. Setting waypoint to %s' % (nearest_target_id, target_waypoint))
-
 
     else:  # If all targets ID'd, loiter in center of board or specified quadrant
         if quadrant == 'full':
-            target_waypoint = (gameboard_size * 0.5,
-                               gameboard_size * 0.5)  # If no more targets, return to center of game board TODO: Make this more robust
+            target_waypoint = (gameboard_size * 0.5, gameboard_size * 0.5)  # If no more targets, return to center of game board TODO: Make this more robust
         elif quadrant == 'NW':
             target_waypoint = (gameboard_size * 0.25, gameboard_size * 0.25)
         elif quadrant == 'NE':
@@ -123,8 +120,7 @@ def target_id_policy(env, aircraft_id, quadrant='full', id_type='target'):
         elif quadrant == 'SE':
             target_waypoint = (gameboard_size * 0.75, gameboard_size * 0.75)
 
-    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,
-                                  target_waypoint[0] - env.agents[aircraft_id].x)
+    target_direction = math.atan2(target_waypoint[1] - env.agents[aircraft_id].y,target_waypoint[0] - env.agents[aircraft_id].x)
 
     """if waypoints_to_show >= 2:
         # draw line from target waypoint to next closest unknown target
@@ -132,8 +128,6 @@ def target_id_policy(env, aircraft_id, quadrant='full', id_type='target'):
         second_waypoint = tuple((env.agents[second_nearest_target_id].x, env.agents[second_nearest_target_id].y))
         pygame.draw.line(env.window, (0, 0, 0), (env.agents[nearest_target_id].x, env.agents[nearest_target_id].y), (env.agents[second_nearest_target_id].x, env.agents[second_nearest_target_id].y),2)  # Draw line from first to second target
         # TODO testing"""
-
-    # if waypoints_to_show == 3:
 
     env.agent_info = info
 
@@ -223,10 +217,9 @@ def autonomous_policy(env,aircraft_id,quadrant='full',id_type='target'):
     # else: quadrant = 'full'
     # info['decision']['constraints'].append('No significant target clustering found')
 
-    if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[quadrant]:  # TODO: Bug: Spamming console because quadrant always re-initializes as 'full'. Need to fix.
-        #densest_quadrant = new_densest_quadrant
+    if ship_quadrants[new_densest_quadrant] > 3 + ship_quadrants[quadrant]:
         quadrant = new_densest_quadrant
-        #print('Autonomous policy prioritizing quadrant %s' % (quadrant,))
+
 
     for ship_id in current_state['ships']:
         # Loops through all ships in the environment, calculates distance from current aircraft position, finds the closest unknown ship (or unknown WEZ), and sets aircraft waypoint to that ship's location.

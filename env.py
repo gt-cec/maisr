@@ -174,7 +174,7 @@ class MAISREnv(gym.Env):
 
         # create the aircraft
         for i in range(self.config["num aircraft"]):
-            agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1, flight_pattern=self.config["search pattern"])
+            agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
         return get_state()
 
     def step(self, actions:list):
@@ -475,7 +475,7 @@ class MAISREnv(gym.Env):
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
 
-        if any(self.config.get(k, False) for k in ['show_current_action',
+        """if any(self.config.get(k, False) for k in ['show_current_action',
                                                    'show_risk_info',
                                                    'show_decision_rationale']):
             self.agent_info_display.draw(self.window, {
@@ -485,7 +485,7 @@ class MAISREnv(gym.Env):
                 'action': getattr(self, 'agent_info', {}).get('action', {}),
                 'risk': getattr(self, 'agent_info', {}).get('risk', {}),
                 'decision': getattr(self, 'agent_info', {}).get('decision', {})
-            })
+            })"""
 
         if self.paused:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
