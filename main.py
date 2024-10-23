@@ -1,5 +1,6 @@
 # TODO:
 #  Priority 1:
+#    * Intermittent location reporting
 #    * Implement agent status window info in autonomous policy too
 #    * Show agent waypoint: 0 shows none, 1 shows next one, 2 shows next two, 3 shows next 3 (to be implemented inside agents.py
 #    * Populate agent_priorities (pull from autonomous policy)
