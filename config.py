@@ -2,9 +2,12 @@
 README:
 To set up experiment run, first enter a subject_id and modify env_config depending on the experiment configuration:
 show_agent_waypoint = 0,1,2, or 3
-show_current_action = True/False
-show_decision_rationale = True/False
-show_Risk_info = True/False
+
+Then modify agent_config:
+'show_low_level_goals' : True,
+'show_high_level_goals' : True,
+'show_high_level_rationale' : True,
+'show_tracked_factors' : True
 
 """
 

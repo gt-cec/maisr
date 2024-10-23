@@ -1,12 +1,11 @@
 # TODO
 ##  Priority 1: Overhaul the agent info feature.
     * Make collision avoidance better
-
-## Pri 2:
-    * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly
-
+    * Make game window size configurable so it fits on other monitors
+    * Balance the game. Fewer enemies maybe
 
 ##  Lower priority
+    * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly
     * BUG: Game time not resetting when time done condition hit, so only the first game runs.
     * Intermittent location reporting
     * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
