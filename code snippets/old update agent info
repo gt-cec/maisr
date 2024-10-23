@@ -50,10 +50,7 @@ class AutonomousPolicy:
         self.search_type_override = 'none'  # 'target' or 'wez' if human clicks buttons. Resets to auto if auto button clicked
         self.hold_commanded = False # If hold button is clicked, goes to true
 
-        self.show_low_level_goals = True
-        self.show_high_level_goals = True
-        self.show_high_level_rationale = True
-        self.show_tracked_factors = True
+        # self.agent_info TODO
 
 
     def act(self):  # Execute policy based on chosen gameplan
@@ -140,99 +137,100 @@ class AutonomousPolicy:
 
 
     def collision_avoidance(self):
-        """
-        Modifies waypoint to avoid detected collision threats.
-        Returns a new waypoint that routes around the closest threat.
-        """
-        aircraft = self.env.agents[self.aircraft_id]
+        def collision_avoidance(self):
+            """
+            Modifies waypoint to avoid detected collision threats.
+            Returns a new waypoint that routes around the closest threat.
+            """
+            aircraft = self.env.agents[self.aircraft_id]
 
-        # If no target point, can't calculate avoidance
-        if not self.target_point:
-            return (aircraft.x, aircraft.y)
+            # If no target point, can't calculate avoidance
+            if not self.target_point:
+                return (aircraft.x, aircraft.y)
 
-        # Calculate direction vector to target
-        dx = self.target_point[0] - aircraft.x
-        dy = self.target_point[1] - aircraft.y
-        path_length = math.sqrt(dx * dx + dy * dy)
+            # Calculate direction vector to target
+            dx = self.target_point[0] - aircraft.x
+            dy = self.target_point[1] - aircraft.y
+            path_length = math.sqrt(dx * dx + dy * dy)
 
-        if path_length == 0:
-            return (aircraft.x, aircraft.y)
+            if path_length == 0:
+                return (aircraft.x, aircraft.y)
 
-        # Normalize direction vector
-        dx = dx / path_length
-        dy = dy / path_length
+            # Normalize direction vector
+            dx = dx / path_length
+            dy = dy / path_length
 
-        # Find closest threatening ship along path
-        closest_ship = None
-        closest_distance = float('inf')
-        closest_projection = 0
+            # Find closest threatening ship along path
+            closest_ship = None
+            closest_distance = float('inf')
+            closest_projection = 0
 
-        current_state = self.env.get_state()
-        for ship_id in current_state['ships']:
-            ship = self.env.agents[ship_id]
+            current_state = self.env.get_state()
+            for ship_id in current_state['ships']:
+                ship = self.env.agents[ship_id]
 
-            # Only care about observed hostile ships
-            if not (ship.observed and ship.observed_threat and ship.threat > 0):
-                continue
+                # Only care about observed hostile ships
+                if not (ship.observed and ship.observed_threat and ship.threat > 0):
+                    continue
 
-            # Vector from aircraft to ship
-            to_ship_x = ship.x - aircraft.x
-            to_ship_y = ship.y - aircraft.y
+                # Vector from aircraft to ship
+                to_ship_x = ship.x - aircraft.x
+                to_ship_y = ship.y - aircraft.y
 
-            # Project ship position onto agent's path
-            dot_product = (to_ship_x * dx + to_ship_y * dy)
+                # Project ship position onto agent's path
+                dot_product = (to_ship_x * dx + to_ship_y * dy)
 
-            # If the projection is negative or beyond target, skip
-            if dot_product < 0 or dot_product > path_length:
-                continue
+                # If the projection is negative or beyond target, skip
+                if dot_product < 0 or dot_product > path_length:
+                    continue
 
-            # Find closest point on path to ship
-            closest_x = aircraft.x + dx * dot_product
-            closest_y = aircraft.y + dy * dot_product
+                # Find closest point on path to ship
+                closest_x = aircraft.x + dx * dot_product
+                closest_y = aircraft.y + dy * dot_product
 
-            # Calculate perpendicular distance from ship to path
-            distance = math.sqrt(
-                (ship.x - closest_x) ** 2 +
-                (ship.y - closest_y) ** 2
-            )
+                # Calculate perpendicular distance from ship to path
+                distance = math.sqrt(
+                    (ship.x - closest_x) ** 2 +
+                    (ship.y - closest_y) ** 2
+                )
 
-            # Update closest ship if this one is closer
-            if distance < closest_distance:
-                closest_ship = ship
-                closest_distance = distance
-                closest_projection = dot_product
+                # Update closest ship if this one is closer
+                if distance < closest_distance:
+                    closest_ship = ship
+                    closest_distance = distance
+                    closest_projection = dot_product
 
-        if closest_ship is None:
-            return self.target_point
+            if closest_ship is None:
+                return self.target_point
 
-        # Calculate deflection point
-        # Find perpendicular vector to path (rotate 90 degrees)
-        perp_dx = -dy
-        perp_dy = dx
+            # Calculate deflection point
+            # Find perpendicular vector to path (rotate 90 degrees)
+            perp_dx = -dy
+            perp_dy = dx
 
-        # Determine which side to deflect to
-        ship_side = (closest_ship.x - aircraft.x) * perp_dx + (closest_ship.y - aircraft.y) * perp_dy
+            # Determine which side to deflect to
+            ship_side = (closest_ship.x - aircraft.x) * perp_dx + (closest_ship.y - aircraft.y) * perp_dy
 
-        # Deflect in opposite direction of ship
-        deflection_distance = 100  # pixels to deflect
-        if ship_side > 0:
-            deflection_dx = -perp_dx * deflection_distance
-            deflection_dy = -perp_dy * deflection_distance
-        else:
-            deflection_dx = perp_dx * deflection_distance
-            deflection_dy = perp_dy * deflection_distance
+            # Deflect in opposite direction of ship
+            deflection_distance = 50  # pixels to deflect
+            if ship_side > 0:
+                deflection_dx = -perp_dx * deflection_distance
+                deflection_dy = -perp_dy * deflection_distance
+            else:
+                deflection_dx = perp_dx * deflection_distance
+                deflection_dy = perp_dy * deflection_distance
 
-        # Calculate deflection point at 70% of the distance to the closest ship
-        deflection_point_x = aircraft.x + dx * (closest_projection * 2) + deflection_dx
-        deflection_point_y = aircraft.y + dy * (closest_projection * 2) + deflection_dy
+            # Calculate deflection point at 70% of the distance to the closest ship
+            deflection_point_x = aircraft.x + dx * (closest_projection * 0.7) + deflection_dx
+            deflection_point_y = aircraft.y + dy * (closest_projection * 0.7) + deflection_dy
 
-        # Ensure deflection point stays within game boundaries
-        margin = self.env.config['gameboard border margin']
-        board_size = self.env.config['gameboard size']
-        deflection_point_x = max(margin, min(board_size - margin, deflection_point_x))
-        deflection_point_y = max(margin, min(board_size - margin, deflection_point_y))
+            # Ensure deflection point stays within game boundaries
+            margin = self.env.config['gameboard border margin']
+            board_size = self.env.config['gameboard size']
+            deflection_point_x = max(margin, min(board_size - margin, deflection_point_x))
+            deflection_point_y = max(margin, min(board_size - margin, deflection_point_y))
 
-        return (deflection_point_x, deflection_point_y)
+            return (deflection_point_x, deflection_point_y)
 
 
     def hold_policy(self):
@@ -254,32 +252,8 @@ class AutonomousPolicy:
         if self.nearby_threats:
             threats_text = ", ".join([f"Ship {t[0]} ({t[1]} units)" for t in self.nearby_threats])
 
-        # Build status text with conditional sections
-        self.status_lines = []
-
-        # Low level goals
-        if self.show_low_level_goals:
-            self.status_lines.append(f"CURRENT GOAL: {self.low_level_rationale}")
-
-        # High level goals
-        if self.show_high_level_goals:
-            if self.search_type:
-                self.status_lines.append(f"SEARCH TYPE: {self.search_type.upper()}")
-            if self.search_quadrant:
-                self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()}")
-
-        # High level rationale
-        if self.show_high_level_rationale:
-            self.status_lines.append(f"RATIONALE: {self.high_level_rationale}")
-            self.status_lines.append(f"AREA RATIONALE: {self.quadrant_rationale}")
-
-        # Tracked factors
-        if self.show_tracked_factors:
-            self.status_lines.append(f"RISK LEVEL: {self.risk_level}")
-            self.status_lines.append(f"NEARBY THREATS: {threats_text}")
-
         # Build status text
-        """self.status_lines = [
+        self.status_lines = [
             f"CURRENT GOAL: {self.low_level_rationale}",
             f"SEARCH TYPE: {self.search_type.upper() if self.search_type else 'None'}",
             f"TYPE RATIONALE: {'Following human command' if self.search_type_override != 'none' else self.high_level_rationale}",
@@ -287,7 +261,7 @@ class AutonomousPolicy:
             f"AREA RATIONALE: {self.quadrant_rationale}",
             f"RISK LEVEL: {self.risk_level}",
             f"NEARBY THREATS: {threats_text}"
-        ]"""
+        ]
 
         # Update the display
         self.env.agent_info_display.text = self.status_lines

@@ -3,46 +3,20 @@ from env import MAISREnv
 from isr_gui import *
 import sys
 from data_logging import GameLogger
-#from msfs_integration import MSFSConnector
+from config import env_config, agent_config, subject_id, log_data
 
 from agent_policies.advanced_policies import target_id_policy, autonomous_policy
 from agent_policies.basic_policies import hold_policy, mouse_waypoint_policy
 from agent_policies.autonomous_policy import AutonomousPolicy
 
-log_data = False  # Set to false if you don't want to save run data to a json file
 
-# environment configuration, use this for the gameplay parameters
-env_config = {
-    "gameboard size": 700, # NOTE: The rest of the GUI doesn't dynamically scale with different gameboard sizes. Stick to 700 for now
-    "num aircraft": 2,  # supports any number of aircraft, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
-    "gameplay color": "white",
-    "gameboard border margin": 35,
-    "targets iteration": "D",
-    "motion iteration": "F",
-    "search pattern": "ladder",
-    "verbose": False,
-    "window size": (1800,850), # width,height
-    'show agent waypoint':2, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
-    'show agent location':'persistent', # For SA-based agent transparency. 'persistent', 'spotty', 'none' TODO not implemented
-    'show_current_action': True, # for SA study, testing
-    'show_risk_info': True, # for SA study, testing
-    'show_decision_rationale': True, # for SA study, testing
-}
-
-# To update config for different experiment setups
-"""env_config.update({
-    'show_current_action': True,
-    'show_risk_info': True, 
-    'show_decision_rationale': True,
-    # Disable any of these for control conditions
-})"""
 
 
 if __name__ == "__main__":
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
 
-    if log_data: game_logger = GameLogger()
+    if log_data: game_logger = GameLogger(subject_id)
 
     if render:
         print("Starting in PyGame mode")
@@ -59,6 +33,10 @@ if __name__ == "__main__":
     game_count = 0
     agent0_id = env.num_ships # Hack to dynamically get agent IDs
     agent0_policy = AutonomousPolicy(env, agent0_id)
+    agent0_policy.show_low_level_goals = agent_config['show_low_level_goals']
+    agent0_policy.show_high_level_goals = agent_config['show_high_level_goals']
+    agent0_policy.show_high_level_rationale = agent_config['show_high_level_rationale']
+    agent0_policy.show_tracked_factors = agent_config['show_tracked_factors']
     agent1_id = env.num_ships + 1
 
     while True:
@@ -74,6 +52,7 @@ if __name__ == "__main__":
             # Agent 0: Act based on currently selected gameplan
             agent0_policy.act()
             actions.append((env.aircraft_ids[0], agent0_policy.target_point))
+            agent0_policy.update_agent_info()
 
             ev = pygame.event.get()
             for event in ev:
@@ -109,7 +88,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text)
 
                     elif env.hold_button.is_clicked(mouse_position):
-                        if agent0_policy.hold_commanded == False:
+                        if not agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = True
                             env.button_latch_dict['hold'] = True  # not env.button_latch_dict['hold']
                             env.button_latch_dict['autonomous'] = False
@@ -128,7 +107,7 @@ if __name__ == "__main__":
                         print(env.comm_text)
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        agent0_policy.search_type_override = 'NW'
+                        agent0_policy.search_quadrant_override = 'NW'
                         env.button_latch_dict['NW'] = True #not env.button_latch_dict['NW']
                         if env.button_latch_dict['NW']: env.button_latch_dict['NE'], env.button_latch_dict['SE'], env.button_latch_dict['SW'], env.button_latch_dict['full'],env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False, False, False, False, False, False  # mutually exclusive
                         env.comm_text = 'Beginning target ID search in NW'
@@ -136,7 +115,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.NE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        agent0_policy.search_type_override = 'NE'
+                        agent0_policy.search_quadrant_override = 'NE'
                         env.button_latch_dict['NE'] = True #not env.button_latch_dict['NE']
                         if env.button_latch_dict['NE']: env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['SW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False,False, False, False, False, False  # mutually exclusive
                         env.comm_text = 'Beginning target ID search in NE'
@@ -144,14 +123,14 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.SW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        agent0_policy.search_type_override = 'SW'
+                        agent0_policy.search_quadrant_override = 'SW'
                         env.button_latch_dict['SW'] = True #not env.button_latch_dict['SW']
                         if env.button_latch_dict['SW']: env.button_latch_dict['NE'], env.button_latch_dict['SE'], env.button_latch_dict['NW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False, False, False, False, False,False  # mutually exclusive
                         env.comm_text = 'Beginning target ID search in SW'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
                     elif env.SE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        agent0_policy.search_type_override = 'SE'
+                        agent0_policy.search_quadrant_override = 'SE'
                         env.button_latch_dict['SE'] = True #not env.button_latch_dict['SE']
                         if env.button_latch_dict['SE']: env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False,False, False, False, False, False  # mutually exclusive
                         env.comm_text = 'Beginning target ID search in SE'
@@ -174,6 +153,30 @@ if __name__ == "__main__":
                         env.comm_text = 'Beginning autonomous search'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
+
+                    elif env.risk_low_button.is_clicked(mouse_position):
+                        agent0_policy.risk_tolerance = 'low'
+                        env.button_latch_dict['risk_low'] = True
+                        env.button_latch_dict['risk_medium'] = False
+                        env.button_latch_dict['risk_high'] = False
+                        env.comm_text = 'Setting risk tolerance to LOW'
+                        env.add_comm_message(env.comm_text, is_ai=True)
+
+                    elif env.risk_medium_button.is_clicked(mouse_position):
+                        agent0_policy.risk_tolerance = 'medium'
+                        env.button_latch_dict['risk_low'] = False
+                        env.button_latch_dict['risk_medium'] = True
+                        env.button_latch_dict['risk_high'] = False
+                        env.comm_text = 'Setting risk tolerance to MEDIUM'
+                        env.add_comm_message(env.comm_text, is_ai=True)
+
+                    elif env.risk_high_button.is_clicked(mouse_position):
+                        agent0_policy.risk_tolerance = 'high'
+                        env.button_latch_dict['risk_low'] = False
+                        env.button_latch_dict['risk_medium'] = False
+                        env.button_latch_dict['risk_high'] = True
+                        env.comm_text = 'Setting risk tolerance to HIGH'
+                        env.add_comm_message(env.comm_text, is_ai=True)
 
                     elif env.pause_button.is_clicked(mouse_position):
                         env.pause(pygame.MOUSEBUTTONDOWN)

@@ -5,13 +5,13 @@ import pathlib
 
 
 class GameLogger:
-    def __init__(self):
+    def __init__(self,subject_id):
         # Create experiment_data directory if it doesn't exist
         pathlib.Path('./experiment_data').mkdir(parents=True, exist_ok=True)
 
         # Create unique filename with timestamp
         timestamp = datetime.now().strftime('%Y_%m_%d_%H%M%S')
-        self.filename = f'./experiment_data/ISR_log_{timestamp}.jsonl'
+        self.filename = f'./experiment_data/ISR_log_subject_{subject_id}_{timestamp}.jsonl'
 
         # Initialize last log time
         self.last_state_log_time = 0

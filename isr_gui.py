@@ -106,131 +106,88 @@ class TimeWindow:
 
 
 class AgentInfoDisplay:
-    def __init__(self, x, y, width, height):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = 340  # Fixed height to accommodate two threat lines
+    def __init__(self, x, y, width=445, height=250):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.title_rect = pygame.Rect(x, y, width, 40)
+        self.content_rect = pygame.Rect(x, y + 40, width, height - 40)
+        self.color = (230, 230, 230)
+        self.title_color = (200, 200, 200)
         self.title_font = pygame.font.SysFont(None, 36)
-        self.header_font = pygame.font.SysFont(None, 28)
-        self.text_font = pygame.font.SysFont(None, 24)
+        self.content_font = pygame.font.SysFont(None, 24)
+        self.text = []
+        self.line_height = 30
+        self.text_margin = 10
 
-        # Colors matching existing UI
-        self.title_bg = (200, 200, 200)
-        self.content_bg = (230, 230, 230)
-        self.text_color = (0, 0, 0)
-        self.warning_color = (255, 0, 0)
-        self.highlight_color = (0, 0, 255)
-
-        # Risk level colors and text colors
+        # Risk level colors
         self.risk_colors = {
-            'LOW': {'bg': (0, 190, 0), 'text': (0, 0, 0)},
-            'MEDIUM': {'bg': (255, 165, 0), 'text': (0, 0, 0)},
-            'HIGH': {'bg': (255, 0, 0), 'text': (0, 0, 0)},
-            'EXTREME': {'bg': (0, 0, 0), 'text': (255, 255, 255)}
+            'LOW': ((50, 255, 50), (0, 0, 0)),  # (Green bg, black text)
+            'MEDIUM': ((255, 165, 0), (0, 0, 0)),  # (Orange bg, black text)
+            'HIGH': ((255, 50, 50), (0, 0, 0)),  # (Red bg, black text)
+            'EXTREME': ((0, 0, 0), (255, 255, 255))  # (Black bg, white text)
         }
 
-    def draw(self, window, agent_info):
-        # Draw main container
-        pygame.draw.rect(window, self.content_bg,
-                         pygame.Rect(self.x, self.y, self.width, self.height))
-
-        # Draw title bar
-        title_height = 40
-        pygame.draw.rect(window, self.title_bg,
-                         pygame.Rect(self.x, self.y, self.width, title_height))
+    def draw(self, window):
+        # Draw background rectangles
+        pygame.draw.rect(window, self.title_color, self.title_rect)
+        pygame.draw.rect(window, self.color, self.content_rect)
 
         # Draw title
-        title_surface = self.title_font.render('AGENT STATUS', True, self.text_color)
-        window.blit(title_surface, title_surface.get_rect(
-            center=(self.x + self.width // 2, self.y + title_height // 2)))
+        title_surface = self.title_font.render('AGENT STATUS', True, (0, 0, 0))
+        title_rect = title_surface.get_rect(center=(self.title_rect.centerx, self.title_rect.centery))
+        window.blit(title_surface, title_rect)
 
-        current_y = self.y + title_height + 15
+        # Draw content
+        y_offset = self.content_rect.y + self.text_margin
+        for line in self.text:
+            if "RISK LEVEL:" in line:
+                # Split the line into label and value
+                label, risk_level = line.split(": ")
+                risk_level = risk_level.strip()
 
-        # Current Search Mode
-        if agent_info.get('show_current_action', False):
-            strategy = agent_info.get('decision', {}).get('strategy')
-            if strategy:
-                mode_text = "Search Mode: "
-                if strategy == 'defensive_search':
-                    mode_text += "Defensive (Target ID Only)"
-                elif strategy == 'aggressive_search':
-                    mode_text += "Aggressive (Target + WEZ ID)"
-                mode_surface = self.text_font.render(mode_text, True, self.highlight_color)
-                window.blit(mode_surface, (self.x + 15, current_y))
-                current_y += 30
+                # Render the label part
+                label_surface = self.content_font.render(label + ": ", True, (0, 0, 0))
+                window.blit(label_surface, (self.content_rect.x + self.text_margin, y_offset))
 
-            # Current Action
-            action_details = agent_info.get('action', {}).get('details', 'N/A')
-            text_surface = self.text_font.render(action_details, True, self.text_color)
-            window.blit(text_surface, (self.x + 15, current_y))
-            current_y += 35
+                if risk_level in self.risk_colors:
+                    bg_color, text_color = self.risk_colors[risk_level]
 
-        if agent_info.get('show_risk_info', False):
-            # Risk Level Label
-            label_text = "Risk Level: "
-            label_surface = self.header_font.render(label_text, True, self.text_color)
-            window.blit(label_surface, (self.x + 15, current_y))
+                    # Render the risk level to get its width
+                    risk_surface = self.content_font.render(risk_level, True, text_color)
+                    risk_width = risk_surface.get_width()
 
-            # Get risk level and colors
-            risk_level = agent_info.get('risk', {}).get('level', 'LOW')
-            risk_colors = self.risk_colors.get(risk_level, self.risk_colors['LOW'])
+                    # Draw background rectangle just for the risk level text
+                    risk_rect = pygame.Rect(
+                        self.content_rect.x + self.text_margin + label_surface.get_width(),
+                        y_offset-3,
+                        risk_width+6,
+                        self.line_height - 10
+                    )
+                    pygame.draw.rect(window, bg_color, risk_rect)
 
-            # Calculate positions and sizes for risk level display
-            label_width = label_surface.get_width()
-            level_text = risk_level
-            level_surface = self.header_font.render(level_text, True, risk_colors['text'])
-            level_width = level_surface.get_width() + 20
-            level_height = level_surface.get_height() + 6
-
-            # Draw colored background rectangle
-            pygame.draw.rect(window, risk_colors['bg'],
-                             pygame.Rect(self.x + 15 + label_width,
-                                         current_y - 3,
-                                         level_width,
-                                         level_height))
-
-            # Draw risk level text
-            window.blit(level_surface, (self.x + 15 + label_width + 10,
-                                        current_y))
-
-            current_y += 35
-
-        # Decision Rationale section
-        if agent_info.get('show_decision_rationale', False):
-            current_y += 10
-            constraints = agent_info.get('decision', {}).get('constraints', [])
-            for constraint in constraints:
-                if "density" in constraint.lower():
-                    text_surface = self.text_font.render(constraint, True, self.highlight_color)
+                    # Draw the risk level text
+                    window.blit(risk_surface, (risk_rect.x, y_offset))
                 else:
-                    text_surface = self.text_font.render(constraint, True, self.text_color)
-                window.blit(text_surface, (self.x + 15, current_y))
-                current_y += 25
+                    # Fallback if risk level not recognized
+                    risk_surface = self.content_font.render(risk_level, True, (0, 0, 0))
+                    window.blit(risk_surface,
+                                (self.content_rect.x + self.text_margin + label_surface.get_width(), y_offset))
+            else:
+                # Draw regular lines
+                text_surface = self.content_font.render(line, True, (0, 0, 0))
+                window.blit(text_surface, (self.content_rect.x + self.text_margin, y_offset))
 
-        # Add separator line above threat callouts
-        current_y = self.y + self.height - 85  # Fixed position from bottom
-        pygame.draw.line(window, (180, 180, 180),
-                         (self.x + 10, current_y),
-                         (self.x + self.width - 10, current_y), 2)
-        current_y += 15
+            y_offset += self.line_height
 
-        # Threat Callouts section (limited to two threats)
-        if agent_info.get('show_risk_info', False):
-            threats = agent_info.get('risk', {}).get('threats', [])
-            if threats:
-                # Add "Detected Threats:" header
-                header_surface = self.header_font.render("Detected Threats:", True, self.text_color)
-                window.blit(header_surface, (self.x + 15, current_y))
-                current_y += 30
+        # Draw borders
+        border_width = 4
+        pygame.draw.line(window, (0, 0, 0), (self.rect.x, self.rect.y),
+                         (self.rect.x + self.rect.width, self.rect.y), border_width)
+        pygame.draw.line(window, (0, 0, 0), (self.rect.x, self.rect.y),
+                         (self.rect.x, self.rect.y + self.rect.height), border_width)
+        pygame.draw.line(window, (0, 0, 0), (self.rect.x + self.rect.width, self.rect.y),
+                         (self.rect.x + self.rect.width, self.rect.y + self.rect.height), border_width)
+        pygame.draw.line(window, (0, 0, 0), (self.rect.x, self.rect.y + self.rect.height),
+                         (self.rect.x + self.rect.width, self.rect.y + self.rect.height), border_width)
 
-                # List up to two threats
-                for threat in threats[:2]:  # Limit to first two threats
-                    threat_text = f"Threat at {threat['bearing']:.0f}°, {threat['distance']:.0f} units"
-                    text_surface = self.text_font.render(threat_text, True, self.warning_color)
-                    window.blit(text_surface, (self.x + 15, current_y))
-                    current_y += 25
-
-        # Draw border
-        pygame.draw.rect(window, (0, 0, 0),
-                         pygame.Rect(self.x, self.y, self.width, self.height), 2)
+    def update_text(self, new_text):
+        self.text = new_text

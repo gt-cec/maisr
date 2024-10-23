@@ -63,7 +63,6 @@ class MAISREnv(gym.Env):
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
         self.risk_level = 'LOW'
-        self.agent_info = []
 
         # Comm log
         self.comm_messages = []
@@ -80,7 +79,7 @@ class MAISREnv(gym.Env):
         self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
         self.total_pause_time = 0
-        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
         self.pause_font = pygame.font.SysFont(None, 74)
         self.done = False # TODO was using this to render a game complete screen. Not currently working.
@@ -89,13 +88,13 @@ class MAISREnv(gym.Env):
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
 
-        self.agent_info_display = AgentInfoDisplay(
-            x=self.comm_pane_edge,  # Same x position as comm log
-            y=10,  # Top of the screen
-            width=445,  # Same width as comm log
-            height=340  # Adjust height as needed
-        )
-
+        self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 470, 260)
+       # self.agent_info_display = AgentInfoDisplay(
+        #    x=self.comm_pane_edge,  # Same x position as comm log
+         #   y=10,  # Top of the screen
+          #  width=445,  # Same width as comm log
+           # height=340  # Adjust height as needed
+        #)
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
                              "ladder": [(1, 1),(1, .66),(0, .66),(0, .33),(1, .33),(1, 0),(0, 0)],
@@ -317,6 +316,36 @@ class MAISREnv(gym.Env):
         for agent in self.agents:
             agent.draw(self.window)
 
+        # Draw lines between upcoming targets if they exist
+        if hasattr(self.agents[self.num_ships].policy, 'three_upcoming_targets') and self.agents[
+            self.num_ships].policy.three_upcoming_targets:
+            targets = self.agents[self.num_ships].policy.three_upcoming_targets
+            if len(targets) >= 2:
+                for i in range(len(targets) - 1):
+                    ship1 = self.agents[targets[i]]
+                    ship2 = self.agents[targets[i + 1]]
+                    # Draw dashed lines between targets
+                    dash_length = 10
+                    total_distance = math.hypot(ship2.x - ship1.x, ship2.y - ship1.y)
+                    dx = (ship2.x - ship1.x) / total_distance * dash_length
+                    dy = (ship2.y - ship1.y) / total_distance * dash_length
+
+                    num_dashes = int(total_distance / (2 * dash_length))
+                    for j in range(num_dashes):
+                        start_x = ship1.x + 2 * j * dx
+                        start_y = ship1.y + 2 * j * dy
+                        end_x = start_x + dx
+                        end_y = start_y + dy
+                        pygame.draw.line(self.window, (100, 100, 100),
+                                         (start_x, start_y),
+                                         (end_x, end_y), 2)
+
+                # Draw small circles at each target point for visibility
+                for target_id in targets:
+                    ship = self.agents[target_id]
+                    pygame.draw.circle(self.window, (100, 100, 100),
+                                       (int(ship.x), int(ship.y)), 8, 2)
+
         # Draw Agent Gameplan sub-window
         self.quadrant_button_height = 120
         self.gameplan_button_width = 180
@@ -413,6 +442,7 @@ class MAISREnv(gym.Env):
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
         self.window.blit(threat_tally_surface, (self.comm_pane_edge+10, 780-280+150+50))
 
+
         # Draw agent status window
         status_window_width = 445
         status_window_height = 150
@@ -448,6 +478,7 @@ class MAISREnv(gym.Env):
         self.window.blit(risk_label_surface, (status_window_x + 10, status_window_y + 85))
         self.window.blit(risk_text_surface, (square_x + square_size + 135, square_y+5))
 
+
         # Draw health boxes TODO: Add support for >2 aircraft
         agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
         agent0_health_window.update(self.agents[self.num_ships].damage)
@@ -475,17 +506,47 @@ class MAISREnv(gym.Env):
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
 
-        """if any(self.config.get(k, False) for k in ['show_current_action',
-                                                   'show_risk_info',
-                                                   'show_decision_rationale']):
-            self.agent_info_display.draw(self.window, {
-                'show_current_action': self.config.get('show_current_action', False),
-                'show_risk_info': self.config.get('show_risk_info', False),
-                'show_decision_rationale': self.config.get('show_decision_rationale', False),
-                'action': getattr(self, 'agent_info', {}).get('action', {}),
-                'risk': getattr(self, 'agent_info', {}).get('risk', {}),
-                'decision': getattr(self, 'agent_info', {}).get('decision', {})
-            })"""
+        # Draw agent status window
+        self.agent_info_display.draw(self.window)
+
+        # After the hold/waypoint buttons but before the pause button, add:
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
+                         (self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
+
+        # Draw risk tolerance section box
+        pygame.draw.rect(self.window, (230, 230, 230),
+                         pygame.Rect(self.right_pane_edge, 465 + 120, 405, 140))  # +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
+                         (self.right_pane_edge + 405, 465 + 120), 4)  # Top border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
+                         (self.right_pane_edge, 465 + 260), 4)  # Left border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 465 + 120),
+                         (self.right_pane_edge + 405, 465 + 260), 4)  # Right border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 260),
+                         (self.right_pane_edge + 405, 465 + 260), 4)  # Bottom border +30
+
+        # Add Risk Tolerance title
+        risk_tolerance_text_surface = pygame.font.SysFont(None, 26).render('RISK TOLERANCE', True, (0, 0, 0))
+        self.window.blit(risk_tolerance_text_surface, risk_tolerance_text_surface.get_rect(
+            center=(self.right_pane_edge + 425 // 2, 465 + 140)))  # +30
+
+        # Create risk tolerance buttons
+        self.risk_low_button = Button("LOW", self.right_pane_edge + 15, 465 + 150, 120, 60)  # +30
+        self.risk_low_button.color = (100, 255, 100) if self.button_latch_dict['risk_low'] else (255, 120, 80)
+        self.risk_low_button.is_latched = self.button_latch_dict['risk_low']
+        self.risk_low_button.draw(self.window)
+
+        self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, 465 + 150, 120, 60)  # +30
+        self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (
+        255, 120, 80)
+        self.risk_medium_button.is_latched = self.button_latch_dict['risk_medium']
+        self.risk_medium_button.draw(self.window)
+
+        self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, 465 + 150, 120, 60)  # +30
+        self.risk_high_button.color = (255, 50, 50) if self.button_latch_dict['risk_high'] else (255, 120, 80)
+        self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
+        self.risk_high_button.draw(self.window)
+
 
         if self.paused:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
