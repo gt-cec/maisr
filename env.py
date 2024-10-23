@@ -4,7 +4,7 @@ from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
-from isr_gui import Button, ScoreWindow, HealthWindow, TimeWindow
+from isr_gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
 
@@ -63,6 +63,7 @@ class MAISREnv(gym.Env):
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
         self.risk_level = 'LOW'
+        self.agent_info = []
 
         # Comm log
         self.comm_messages = []
@@ -87,6 +88,13 @@ class MAISREnv(gym.Env):
         # Situational-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
+
+        self.agent_info_display = AgentInfoDisplay(
+            x=self.comm_pane_edge,  # Same x position as comm log
+            y=10,  # Top of the screen
+            width=445,  # Same width as comm log
+            height=340  # Adjust height as needed
+        )
 
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
@@ -376,13 +384,13 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
         # Draw Comm Log
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, 450-280, 445, 40))  # Comm log title box
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, 485-280, 445, 210))  # Comm Log sub-window box
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, 450-130+50, 445, 40))  # Comm log title box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, 485-130+50, 445, 210))  # Comm Log sub-window box
         comm_text_surface = pygame.font.SysFont(None, 36).render('COMM LOG', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, 450-280 + 40 // 2)))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, 450-280+150+50 + 40 // 2)))
 
         # Draw incoming comm log text
-        y_offset = 495-280
+        y_offset = 495-280+150+50
         for entry in self.comm_messages:
             message = entry[0]
             is_ai = entry[1]
@@ -392,18 +400,18 @@ class MAISREnv(gym.Env):
             y_offset += 30  # Adjust this value to change spacing between messages
 
         # Draw point tally
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, 705-280, 445, 40))  # Target tally title box
-        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.comm_pane_edge, 740-280, 445, 100))  # Target tally sub-window box
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, 705-280+150+50, 445, 40))  # Target tally title box
+        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.comm_pane_edge, 740-280+150+50, 445, 100))  # Target tally sub-window box
         tally_title_surface = pygame.font.SysFont(None, 36).render('TARGET STATUS', True, (0, 0, 0))
-        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, 705-280 + 40 // 2)))
+        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, 705-280+150+50 + 40 // 2)))
 
         id_tally_text = f"Identified Targets: {self.identified_targets} / {self.total_targets}"
         id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
-        self.window.blit(id_tally_surface, (self.comm_pane_edge+10, 750-280))
+        self.window.blit(id_tally_surface, (self.comm_pane_edge+10, 750-280+150+50))
 
         threat_tally_text = f"Observed Threat Types: {self.identified_threat_types} / {self.total_targets}"
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
-        self.window.blit(threat_tally_surface, (self.comm_pane_edge+10, 780-280))
+        self.window.blit(threat_tally_surface, (self.comm_pane_edge+10, 780-280+150+50))
 
         # Draw agent status window
         status_window_width = 445
@@ -466,6 +474,18 @@ class MAISREnv(gym.Env):
         self.time_window = TimeWindow(game_width * 0.5 + 10, game_width + 10, current_time=self.display_time)
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
+
+        if any(self.config.get(k, False) for k in ['show_current_action',
+                                                   'show_risk_info',
+                                                   'show_decision_rationale']):
+            self.agent_info_display.draw(self.window, {
+                'show_current_action': self.config.get('show_current_action', False),
+                'show_risk_info': self.config.get('show_risk_info', False),
+                'show_decision_rationale': self.config.get('show_decision_rationale', False),
+                'action': getattr(self, 'agent_info', {}).get('action', {}),
+                'risk': getattr(self, 'agent_info', {}).get('risk', {}),
+                'decision': getattr(self, 'agent_info', {}).get('decision', {})
+            })
 
         if self.paused:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))

@@ -1,5 +1,6 @@
 # TODO:
 #  Priority 1:
+#    * Implement agent status window info in autonomous policy too
 #    * Show agent waypoint: 0 shows none, 1 shows next one, 2 shows next two, 3 shows next 3 (to be implemented inside agents.py
 #    * Populate agent_priorities (pull from autonomous policy)
 #    * Massively clean up agent policies. Make one default policy that avoids WEZs well but prioritizes badly.
@@ -24,6 +25,9 @@ import sys
 from data_logging import GameLogger
 #from msfs_integration import MSFSConnector
 
+from agent_policies.advanced_policies import target_id_policy, autonomous_policy
+from agent_policies.basic_policies import hold_policy, mouse_waypoint_policy
+
 # environment configuration, use this for the gameplay parameters
 log_data = False  # Set to false if you don't want to save run data to a json file
 use_msfs = False
@@ -38,10 +42,21 @@ env_config = {
     "search pattern": "ladder",
     "verbose": False,
     "window size": (1800,850), # width,height
-    'show agent waypoint':1, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
+    'show agent waypoint':2, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
     'show agent location':'persistent', # For SA-based agent transparency. 'persistent', 'spotty', 'none' TODO not implemented
-
+    'show_current_action': True, # for SA study, testing
+    'show_risk_info': True, # for SA study, testing
+    'show_decision_rationale': True, # for SA study, testing
 }
+
+# To update config for different experiment setups
+"""env_config.update({
+    'show_current_action': True,
+    'show_risk_info': True, 
+    'show_decision_rationale': True,
+    # Disable any of these for control conditions
+})"""
+
 
 if __name__ == "__main__":
     print("Starting MAISR environment")
@@ -70,6 +85,7 @@ if __name__ == "__main__":
     # Set agent0's default policy (game will cycle back to this after ending a holding pattern etc
     default_agent0_policy, kwargs = target_id_policy, {'quadrant':'full','id_type':'target'} # Initialize agent 0's policy (will change when gameplan buttons are clicked
     #default_agent0_policy, kwargs = safe_target_id_policy, {'quadrant': 'full','id_type': 'target'}  # Initialize agent 0's policy (will change when gameplan buttons are clicked
+
     agent0_policy = default_agent0_policy
 
     if log_data: game_logger = GameLogger()

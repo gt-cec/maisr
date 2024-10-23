@@ -1,0 +1,197 @@
+# Code Cleanup Recommendations
+
+## 1. Architectural Improvements
+
+### Create Clear Module Structure
+```
+maisr/
+├── __init__.py
+├── config/
+│   ├── __init__.py
+│   ├── default_config.py      # Move config from main.py
+│   └── constants.py           # Move constants from env.py
+├── core/
+│   ├── __init__.py
+│   ├── environment.py         # Refactored from env.py
+│   ├── agent.py              # Base agent class
+│   └── game_state.py         # New class to handle game state
+├── agents/
+│   ├── __init__.py
+│   ├── aircraft.py           # Split from agents.py
+│   └── ship.py              # Split from agents.py
+├── policies/
+│   ├── __init__.py
+│   ├── base_policy.py       # Abstract base class
+│   ├── basic_policies.py    # Simple policies
+│   └── advanced_policies.py # Complex policies
+├── ui/
+│   ├── __init__.py
+│   ├── components.py        # From isr_gui.py
+│   ├── windows.py          # Score, health, time windows
+│   └── renderer.py         # Separate rendering logic
+└── utils/
+    ├── __init__.py
+    ├── geometry.py         # Geometry calculations
+    ├── logging.py         # From data_logging.py
+    └── safety.py          # Threat avoidance logic
+```
+
+## 2. Major Code Improvements
+
+### Environment Class
+- Split MAISREnv into smaller, focused classes
+- Move rendering logic to separate Renderer class
+- Create GameState class to manage game state
+- Use dependency injection for components
+
+### Agent System
+- Create proper inheritance hierarchy
+- Use composition over inheritance for behaviors
+- Implement Strategy pattern for policies
+- Add proper type hints
+```python
+class Agent(ABC):
+    @abstractmethod
+    def update(self, dt: float) -> None:
+        pass
+
+    @abstractmethod
+    def render(self, surface: pygame.Surface) -> None:
+        pass
+```
+
+### Policy System
+- Create PolicyManager to handle policy switching
+- Use Strategy pattern for policies
+- Add proper interfaces
+```python
+class Policy(ABC):
+    @abstractmethod
+    def compute_action(self, state: GameState) -> Action:
+        pass
+```
+
+### UI Components
+- Create proper UI component hierarchy
+- Use event system for UI updates
+- Implement proper state management
+```python
+class UIComponent(ABC):
+    def __init__(self, rect: pygame.Rect):
+        self.rect = rect
+        self.dirty = True
+
+    @abstractmethod
+    def update(self, state: GameState) -> None:
+        pass
+
+    @abstractmethod
+    def render(self, surface: pygame.Surface) -> None:
+        pass
+```
+
+## 3. Specific Improvements
+
+### Code Style
+- Add proper type hints throughout
+- Add comprehensive docstrings
+- Use consistent naming conventions
+- Remove commented out code
+- Fix TODO comments
+
+### Performance
+- Cache frequently accessed values
+- Use object pooling for projectiles/effects
+- Optimize collision detection
+- Only redraw dirty UI components
+- Use spatial partitioning for threat detection
+
+### Safety & Error Handling
+- Add proper error handling
+- Add input validation
+- Add logging
+- Add unit tests
+- Add state validation
+
+### Configuration
+- Move all magic numbers to config
+- Use proper config validation
+- Add runtime config validation
+- Support hot reloading
+
+## 4. Implementation Priority
+
+1. Core Architecture
+   - Set up new module structure
+   - Create base classes
+   - Implement core interfaces
+
+2. Agent Refactoring
+   - Split agent classes
+   - Implement proper inheritance
+   - Add policy system
+
+3. UI Improvements
+   - Create component hierarchy
+   - Implement event system
+   - Add state management
+
+4. Safety & Testing
+   - Add error handling
+   - Add logging
+   - Create test suite
+
+5. Documentation
+   - Add type hints
+   - Write docstrings
+   - Create usage examples
+
+## 5. Code Examples
+
+### Example Policy Interface
+```python
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Tuple
+
+@dataclass
+class Action:
+    waypoint: Tuple[float, float]
+    direction: float
+
+class Policy(ABC):
+    @abstractmethod
+    def compute_action(self, state: GameState) -> Action:
+        """Compute next action based on current state."""
+        pass
+
+    @abstractmethod
+    def reset(self) -> None:
+        """Reset policy internal state."""
+        pass
+```
+
+### Example Agent Interface
+```python
+from abc import ABC, abstractmethod
+from typing import Optional
+
+class Agent(ABC):
+    def __init__(self, position: Vector2, policy: Optional[Policy] = None):
+        self.position = position
+        self.policy = policy
+        self.velocity = Vector2(0, 0)
+        self.health = 100
+        self.is_active = True
+
+    @abstractmethod
+    def update(self, dt: float) -> None:
+        """Update agent state."""
+        pass
+
+    @property
+    @abstractmethod
+    def bounds(self) -> Rectangle:
+        """Get agent bounds for collision detection."""
+        pass
+```
