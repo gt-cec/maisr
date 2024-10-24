@@ -82,7 +82,8 @@ class MAISREnv(gym.Env):
         self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
         self.pause_font = pygame.font.SysFont(None, 74)
-        self.done = False # TODO was using this to render a game complete screen. Not currently working.
+        self.done = False
+        self.time_limit = self.config['time limit']
 
         # Situational-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
@@ -165,7 +166,7 @@ class MAISREnv(gym.Env):
         self.identified_targets = 0
         self.identified_threat_types = 0
         self.first_step = 0 # TODO testing
-        self.done = False # TODO was using this to render a game complete screen. Not currently working.
+        self.done = False
 
         # create the ships
         for i in range(self.num_ships):
@@ -248,25 +249,23 @@ class MAISREnv(gym.Env):
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids) or self.agents[self.num_ships+1].damage > 100 # round is complete when all ships have been identified # TODO: Currently requires you to identify all targets and all WEZs. Consider changing.
+        done = (self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)) or (self.agents[self.num_ships+1].damage > 100 and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) # round is complete when all ships have been identified # TODO: Currently requires you to identify all targets and all WEZs. Consider changing.
 
-        if (self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)) or (self.agents[self.num_ships+1].damage > 100) or (self.display_time/1000 >= 120):
-            done = True
+        if done:
             self.done = True
             print('Done!')
 
             if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
                 self.score += self.all_targets_points
                 self.score += (self.display_time/1000)*self.time_points
-                #self.score += (self.agent_damage_points)*self.agents[self.num_ships].damage
-                #self.score += (self.human_damage_points)*self.agents[self.num_ships+1].damage # TODO Currently not subtracting points for damage. Decide whether to include.
 
 
             elif self.agents[self.num_ships+1].damage > 100:
                 self.score += self.human_dead_points
                 print('Human aircraft destroyed, game over.')
-            elif self.display_time/1000 >= 120:
+            elif self.display_time/1000 >= self.time_limit:
                 print('Out of time, game over.')
+
 
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
@@ -276,7 +275,8 @@ class MAISREnv(gym.Env):
             # TODO add printout for -30 points if agent destroyed
             print(f'Time remaining: {round(self.display_time/1000,1)} seconds')
             print(f'\nFinal score = {self.score}')
-            if self.render_bool: pygame.time.wait(5000)
+
+            if self.render_bool: pygame.time.wait(50)
 
         return state, reward, done, {}
 

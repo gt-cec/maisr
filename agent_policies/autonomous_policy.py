@@ -43,6 +43,7 @@ class AutonomousPolicy:
         self.search_quadrant = '' # Auto-selected by policy unless search_quadrant_override is not 'none'
         self.search_type = '' # Auto-selected by policy unless search_type_override is not 'none'
         self.collision_ok = False  # If False, collision avoidance executes normally.
+        self.use_thread_the_needle = False
 
         # Human overrides for agent priorities
         self.risk_tolerance = 'medium'  # Override to low/high based on button clicks
@@ -60,6 +61,7 @@ class AutonomousPolicy:
         #print('act running')
         self.aircraft = self.env.agents[self.aircraft_id]
         self.calculate_risk_level()
+
         if self.hold_commanded:
             self.target_point = self.hold_policy()
             self.low_level_rationale = 'Holding position'
@@ -69,6 +71,13 @@ class AutonomousPolicy:
             self.target_point = self.collision_avoidance()
             self.low_level_rationale = 'Evade threat'
             self.high_level_rationale = 'Preserve health'
+
+        elif self.use_thread_the_needle:
+            self.calculate_priorities()
+            scores = self.thread_the_needle()
+            if scores:
+                self.target_point = max(scores.items(), key=lambda x: x[1])[0]
+
         else:
             self.calculate_priorities()
             self.target_point, closest_target_distance = self.basic_search()
@@ -437,3 +446,123 @@ class AutonomousPolicy:
 
         ship_quadrants = sorted(ship_quadrants.items(), key=lambda x: x[1], reverse=True)
         return ship_quadrants
+
+    def thread_the_needle(self):
+        """
+        Analyzes gameboard to find points that maximize target identification potential
+        while staying outside threat rings and ensuring clear paths.
+        Returns dictionary of points and their utility scores.
+        """
+        aircraft = self.env.agents[self.aircraft_id]
+        current_state = self.env.get_state()
+        scores = {}
+
+        # Get game board dimensions
+        board_size = self.env.config["gameboard size"]
+        margin = self.env.config["gameboard border margin"]
+        increment = 25  # Pixel increment for scanning
+
+        # Get list of all threat rings to avoid
+        threat_rings = []  # List of (x, y, radius) tuples
+        for ship_id in current_state['ships']:
+            ship = self.env.agents[ship_id]
+            if ship.observed and ship.observed_threat and ship.threat > 0:
+                # Calculate threat radius based on ship's threat level
+                threat_radius = ship.width * self.env.AGENT_THREAT_RADIUS[ship.threat]
+                threat_rings.append((ship.x, ship.y, threat_radius))
+
+        def path_intersects_threat(start_x, start_y, end_x, end_y, threat_rings):
+            """Check if line segment from start to end intersects any threat rings"""
+            for tx, ty, tradius in threat_rings:
+                # Get vector from start to end
+                path_dx = end_x - start_x
+                path_dy = end_y - start_y
+                path_length = math.hypot(path_dx, path_dy)
+
+                if path_length == 0:
+                    return False
+
+                # Normalize direction vector
+                path_dx = path_dx / path_length
+                path_dy = path_dy / path_length
+
+                # Vector from start to threat center
+                to_threat_x = tx - start_x
+                to_threat_y = ty - start_y
+
+                # Project threat center onto path
+                dot_product = to_threat_x * path_dx + to_threat_y * path_dy
+
+                # Find closest point on path to threat center
+                if dot_product < 0:  # Threat is behind start
+                    closest_x = start_x
+                    closest_y = start_y
+                elif dot_product > path_length:  # Threat is beyond end
+                    closest_x = end_x
+                    closest_y = end_y
+                else:  # Threat is alongside path
+                    closest_x = start_x + path_dx * dot_product
+                    closest_y = start_y + path_dy * dot_product
+
+                # Check if closest point is within threat radius
+                threat_dist = math.hypot(tx - closest_x, ty - closest_y)
+                if threat_dist <= tradius:
+                    return True
+
+            return False
+
+        # Scan board in grid pattern
+        for x in range(margin, board_size - margin, increment):
+            for y in range(margin, board_size - margin, increment):
+
+                # Skip if point is inside any threat ring
+                inside_threat = False
+                for tx, ty, tradius in threat_rings:
+                    if math.hypot(x - tx, y - ty) <= tradius:
+                        inside_threat = True
+                        break
+
+                if inside_threat:
+                    continue
+
+                # Skip if path to point intersects any threat rings
+                if path_intersects_threat(aircraft.x, aircraft.y, x, y, threat_rings):
+                    continue
+
+                # Count unknown targets within ISR range of this point
+                unknown_targets_in_range = 0
+                for ship_id in current_state['ships']:
+                    ship = self.env.agents[ship_id]
+                    if not ship.observed:  # If target not yet identified
+                        # Check if within ISR range of this point
+                        if math.hypot(x - ship.x, y - ship.y) <= self.env.AIRCRAFT_ISR_RADIUS:
+                            unknown_targets_in_range += 1
+
+                # Calculate distance from aircraft to this point
+                dist_to_point = math.hypot(x - aircraft.x, y - aircraft.y)
+
+                # Skip if distance is zero to avoid division by zero
+                if dist_to_point == 0:
+                    continue
+
+                # Calculate utility score: targets/distance ratio
+                utility = unknown_targets_in_range / (dist_to_point + 0.1)
+
+                if unknown_targets_in_range > 0:  # Only store points that can see unknown targets
+                    scores[(x, y)] = utility
+
+        return scores
+
+    def find_best_path_point(self):
+        """
+        Uses thread_the_needle to find the best next waypoint.
+        Returns the point with highest utility score.
+        """
+        scores = self.thread_the_needle()
+
+        if not scores:  # If no valid points found
+            return None
+
+        # Find point with maximum utility
+        best_point = max(scores.items(), key=lambda x: x[1])[0]
+        return best_point

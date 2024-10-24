@@ -87,7 +87,7 @@ class Aircraft(Agent):
         self.show_agent_waypoint = env.show_agent_waypoint
 
     def draw(self, window):
-        if self.damage >= 100: # TODO: This only stops rendering the aircraft. Need to stop its movement too
+        if self.damage >= 100 and self.env.config['infinite health'] == False: # TODO: This only stops rendering the aircraft. Need to stop its movement too
             if self.alive == True:
                 self.alive = False
                 print('Aircraft %s destroyed' % self.agent_idx)

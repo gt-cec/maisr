@@ -38,6 +38,7 @@ if __name__ == "__main__":
     agent0_policy.show_high_level_rationale = agent_config['show_high_level_rationale']
     agent0_policy.show_tracked_factors = agent_config['show_tracked_factors']
     agent0_policy.collision_ok = True
+    agent0_policy.use_thread_the_needle = False # Currently debugging thread_the_needle, disabled for now
     agent1_id = env.num_ships + 1
 
     while True:
