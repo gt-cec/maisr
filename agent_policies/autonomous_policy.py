@@ -84,8 +84,11 @@ class AutonomousPolicy:
 
             # Populate agent info
             self.current_target_distance = closest_target_distance
-            self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
-            if self.search_type == 'target': self.high_level_rationale = 'Preserve health'
+            if closest_target_distance: self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
+            else: self.low_level_rationale = f'Scanning for targets'
+            if self.search_type_override != 'none':
+                self.high_level_rationale = 'Following human command'
+            elif self.search_type == 'target': self.high_level_rationale = 'Preserve health'
             else: self.high_level_rationale = 'Prioritize mission'
             #print('Target point set to %s' % (self.target_point,))
 
