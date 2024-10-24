@@ -63,6 +63,7 @@ class MAISREnv(gym.Env):
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
         self.risk_level = 'LOW'
+        self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
 
         # Comm log
         self.comm_messages = []
@@ -90,12 +91,7 @@ class MAISREnv(gym.Env):
         self.agent_priorities = 'placeholder'
 
         self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 470, 260)
-       # self.agent_info_display = AgentInfoDisplay(
-        #    x=self.comm_pane_edge,  # Same x position as comm log
-         #   y=10,  # Top of the screen
-          #  width=445,  # Same width as comm log
-           # height=340  # Adjust height as needed
-        #)
+
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
                              "ladder": [(1, 1),(1, .66),(0, .66),(0, .33),(1, .33),(1, 0),(0, 0)],
@@ -173,8 +169,12 @@ class MAISREnv(gym.Env):
             agents.Ship(self)  # create the agent, will add itself to the env
 
         # create the aircraft
-        for i in range(self.config["num aircraft"]):
-            agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,color=self.AIRCRAFT_COLORS[0],speed=.7, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,color=self.AIRCRAFT_COLORS[1],speed=1.4, flight_pattern=self.config["search pattern"])
+
+        #for i in range(self.config["num aircraft"]):
+        #    agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
+
         return get_state()
 
     def step(self, actions:list):
@@ -403,7 +403,7 @@ class MAISREnv(gym.Env):
         self.full_quad_button.draw(self.window)
 
         self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
-        #self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
+        self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
         self.waypoint_button.draw(self.window)
 
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)

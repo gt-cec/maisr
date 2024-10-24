@@ -50,6 +50,7 @@ class AutonomousPolicy:
         self.search_quadrant_override = 'none'  # 'none' by default, NW/SW/NE/SE/full if human clicks a quadrant. Resets back to auto if autonomous button clicked
         self.search_type_override = 'none'  # 'target' or 'wez' if human clicks buttons. Resets to auto if auto button clicked
         self.hold_commanded = False # If hold button is clicked, goes to true
+        self.waypoint_override = False
 
         self.show_low_level_goals = True
         self.show_high_level_goals = True
@@ -66,6 +67,12 @@ class AutonomousPolicy:
             self.target_point = self.hold_policy()
             self.low_level_rationale = 'Holding position'
             self.high_level_rationale = 'Following human command'
+
+        elif self.waypoint_override != False:
+            # Execute the waypoint
+            self.target_point = self.human_waypoint(self.waypoint_override)
+
+
         elif self.upcoming_collision() and not self.collision_ok:
             print('collison detected')
             self.target_point = self.collision_avoidance()
@@ -252,6 +259,16 @@ class AutonomousPolicy:
         target_waypoint = self.aircraft.x, self.aircraft.y
         print(target_waypoint)
         target_direction = math.atan2(target_waypoint[1] - self.aircraft.y, target_waypoint[0] - self.aircraft.x)
+        return target_waypoint
+
+    def human_waypoint(self,waypoint_position):
+        # Set the waypoint to waypoint_position and maintain until complete
+        waypoint_threshold = 5
+        target_waypoint = self.waypoint_override
+
+        dist_to_waypoint = math.sqrt((target_waypoint[0] - self.aircraft.x) ** 2 +(target_waypoint[1] - self.aircraft.y) ** 2)
+        if dist_to_waypoint <= waypoint_threshold:
+            self.waypoint_override = False
         return target_waypoint
 
 

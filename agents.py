@@ -173,7 +173,8 @@ class Ship(Agent):
         if threat != -1:
             self.threat = threat
         else:
-            self.threat = random.randint(0, len(env.AGENT_THREAT_RADIUS) - 1)
+            #self.threat = random.randint(0, len(env.AGENT_THREAT_RADIUS) - 1)
+            self.threat = random.choices([0, 1, 2, 3], weights=[0.60, 0.13, 0.13, 0.14])[0] # 60% chance of neutral, 40% chance of hostile
 
         if self.threat > 0:  # set color by threat level
             self.color = self.env.AGENT_COLOR_THREAT

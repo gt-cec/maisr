@@ -68,9 +68,17 @@ if __name__ == "__main__":
 
                     # Agent 1: Mouse click waypoint control
                     if env.config['gameboard border margin'] < mouse_position[0] < env.config['gameboard size']-env.config['gameboard border margin'] and env.config['gameboard border margin'] < mouse_position[1] < env.config['gameboard size']-env.config['gameboard border margin']:
-                        print('Waypoint set to %s' % (mouse_position,))
-                        agent1_action = mouse_position
-                        actions.append((env.aircraft_ids[1], agent1_action))
+                        if env.agent_waypoint_clicked:
+                            print('Agent waypoint set to %s' % (mouse_position,))
+                            agent0_action = mouse_position
+                            agent0_policy.waypoint_override = mouse_position
+                            actions.append((env.aircraft_ids[0], agent0_action))
+                            env.agent_waypoint_clicked = False
+                            env.button_latch_dict['waypoint'] = False
+                        else:
+                            print('Waypoint set to %s' % (mouse_position,))
+                            agent1_action = mouse_position
+                            actions.append((env.aircraft_ids[1], agent1_action))
 
                     # Agent 0 gameplan buttons TODO: Comm text not accurate, make dynamic to say target or target+WEZ
                     elif env.target_id_button.is_clicked(mouse_position):
@@ -105,8 +113,11 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.waypoint_button.is_clicked(mouse_position): # TODO: In progress
-                        env.comm_text = 'Waypoint gameplan not implemented'
-                        print(env.comm_text)
+                        env.comm_text = 'Moving to waypoint'
+                        env.button_latch_dict['waypoint'] = True
+                        env.agent_waypoint_clicked = True
+
+                        #print(env.comm_text)
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
                         agent0_policy.search_quadrant_override = 'NW'

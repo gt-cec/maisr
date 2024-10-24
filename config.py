@@ -20,7 +20,7 @@ env_config = {
     "num aircraft": 2,  # supports any number of aircraft, colors are set in env.py:AIRCRAFT_COLORS (NOTE: Many aspects of the game currently only support 2 aircraft
     "gameplay color": "white",
     "gameboard border margin": 35,
-    "targets iteration": "D",
+    "targets iteration": "C",
     "motion iteration": "F",
     "search pattern": "ladder",
     "verbose": False,
