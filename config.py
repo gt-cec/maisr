@@ -25,7 +25,7 @@ env_config = {
     "search pattern": "ladder",
     "verbose": False,
     "window size": (1800,850), # width,height
-    'show agent waypoint':1, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
+    'show agent waypoint':0, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
     'show agent location':'persistent', # For SA-based agent transparency. 'persistent', 'spotty', 'none' TODO not implemented
 }
 
