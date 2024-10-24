@@ -1,15 +1,18 @@
 # TODO
 ##  Priority 1: Overhaul the agent info feature.
-    * Make collision avoidance better
+    * Append Type rationale and area rationale to the same line as type/area in parantheses, e.g. Search type: WEZ (Prioritize mission)
+    * Brainstorm how to make agent status rationale useful
     * Make game window size configurable so it fits on other monitors
-    * Balance the game. Fewer enemies maybe
+    * Fix time at game end (not resetting correctly) 
+    * make it launch a qualtrics online survey
+
+After priority 1: Type up description and send to lab
 
 ##  Lower priority
     * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly
     * BUG: Game time not resetting when time done condition hit, so only the first game runs.
     * Intermittent location reporting
     * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
-    * Add waypoint command
 
 ##  Code optimization/cleanup
     * Move a lot of the button handling code out of main.py and into isr_gui.py

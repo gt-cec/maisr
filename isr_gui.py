@@ -76,7 +76,8 @@ class HealthWindow:
         elif self.damage >= 40: self.damage_text_color = (210,160,0)
 
 
-        health_num_text_surface = self.font.render(str(round(self.damage,1)), True, self.damage_text_color) # TODO: Update with agent health
+        #health_num_text_surface = self.font.render(str(round(self.damage,1)), True, self.damage_text_color) # TODO: Update with agent health
+        health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/4', True,self.damage_text_color)  # TODO: Update with agent health
         health_num_text_rect = health_num_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
         win.blit(health_num_text_surface, health_num_text_rect)
 

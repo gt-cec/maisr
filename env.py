@@ -86,6 +86,12 @@ class MAISREnv(gym.Env):
         self.done = False
         self.time_limit = self.config['time limit']
 
+        # For visual damage flash
+        self.damage_flash_duration = 500  # Duration of flash in milliseconds
+        self.damage_flash_start = 0  # When the last damage was taken
+        self.damage_flash_alpha = 0  # Current opacity of flash effect
+        self.last_health_points = {0: 4, 1: 4}  # Track health points to detect changes
+
         # Situational-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
@@ -169,8 +175,8 @@ class MAISREnv(gym.Env):
             agents.Ship(self)  # create the agent, will add itself to the env
 
         # create the aircraft
-        agents.Aircraft(self, 0,color=self.AIRCRAFT_COLORS[0],speed=.7, flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,color=self.AIRCRAFT_COLORS[1],speed=1.4, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.005,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=.7, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.02,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=1.4, flight_pattern=self.config["search pattern"])
 
         #for i in range(self.config["num aircraft"]):
         #    agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
@@ -223,10 +229,21 @@ class MAISREnv(gym.Env):
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist) and agent.threat > 0:
                         if self.agents[aircraft_id].alive:
-                            self.agents[aircraft_id].damage += .6
-                            self.damage += .1
-                        # TODO: If agent 0 (AI), subtract 0.1 points per damage. If agent 1 (player), subtract 0.2 points per damage.
-                    # add some logic here if you want the no-go zones to damage the aircrafts
+                            if random.random() < self.agents[aircraft_id].prob_detect:
+                                self.agents[aircraft_id].health_points -= 1
+                                print(f'Agent {aircraft_id} -1 HP')
+                                self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
+                                self.damage_flash_start = pygame.time.get_ticks()
+                                self.damage_flash_alpha = 255  # Start fully opaque
+
+                                if self.agents[aircraft_id].health_points <= 0:
+                                    self.agents[aircraft_id].damage = 100
+                                    if self.config['infinite health'] == False:
+                                        self.agents[aircraft_id].alive = False
+                                        print(f'Aircraft {aircraft_id} destroyed')
+
+                        #    self.agents[aircraft_id].damage += .6
+                         #   self.damage += .1
 
         agent0 = self.agents[self.aircraft_ids[0]]
         hostile_targets_nearby = sum(1 for agent in self.agents
@@ -311,6 +328,38 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
+
+        # TODO TESTING
+        current_time = pygame.time.get_ticks()
+        if current_time - self.damage_flash_start < self.damage_flash_duration:
+            # Calculate alpha based on time elapsed
+            progress = (current_time - self.damage_flash_start) / self.damage_flash_duration
+            alpha = int(255 * (1 - progress))
+
+            # Create a surface for the red border
+            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),
+                                            pygame.SRCALPHA)
+
+            # Draw four red rectangles for each border
+            border_width = 20
+            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+
+            # Top border
+            pygame.draw.rect(border_surface, border_color, (0, 0, self.config["gameboard size"], border_width))
+            # Bottom border
+            pygame.draw.rect(border_surface, border_color, (
+            0, self.config["gameboard size"] - border_width, self.config["gameboard size"], border_width))
+            # Left border
+            pygame.draw.rect(border_surface, border_color, (0, 0, border_width, self.config["gameboard size"]))
+            # Right border
+            pygame.draw.rect(border_surface, border_color, (
+            self.config["gameboard size"] - border_width, 0, border_width, self.config["gameboard size"]))
+
+            # Blit the border surface onto the main window
+            self.window.blit(border_surface, (0, 0))
+
+
+
 
         # Draw the agents
         for agent in self.agents:
@@ -481,11 +530,13 @@ class MAISREnv(gym.Env):
 
         # Draw health boxes TODO: Add support for >2 aircraft
         agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
-        agent0_health_window.update(self.agents[self.num_ships].damage)
+        agent0_health_window.update(self.agents[self.num_ships].health_points)
+        #agent0_health_window.update(self.agents[self.num_ships].damage)
         agent0_health_window.draw(self.window)
 
         agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10, 'HUMAN',self.AIRCRAFT_COLORS[1])
-        agent1_health_window.update(self.agents[self.num_ships+1].damage)
+        #agent1_health_window.update(self.agents[self.num_ships+1].damage)
+        agent1_health_window.update(self.agents[self.num_ships+1].health_points)
         agent1_health_window.draw(self.window)
 
         # Draw score box and update with new score value every tick
