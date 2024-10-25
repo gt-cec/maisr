@@ -1,15 +1,8 @@
 # TODO
 ##  Priority 1: Overhaul the agent info feature.
-    * Append Type rationale and area rationale to the same line as type/area in parentheses
-        * Search type: WEZ (Prioritize mission)
-        * Search type: Target (Preserve health)
-        * Search area: Full
-        * Search area: NW (Grouping detected)
-
-    * Brainstorm how to make agent status rationale useful (Maybe the above is good enough)
+    * Delete collision avoidance. Rename autonomus button to "Manual priorities" and move autonomous down below
     * Make game window size configurable so it fits on other monitors
-    * Fix time at game end (not resetting correctly) 
-    * make it launch a qualtrics online survey
+    * Fix time at game end (not resetting correctly)
 
 After priority 1: Type up description and send to lab
 

@@ -19,6 +19,20 @@ class MAISREnv(gym.Env):
         self.window = window
         self.clock = clock
 
+        # Get scaling ratio from config or default to 1.0
+        self.scaling_ratio = self.config.get("scaling_ratio", 1.0)
+
+        # Base sizes that will be scaled
+        self.BASE_GAMEBOARD_SIZE = 700
+        self.BASE_WINDOW_WIDTH = 1800
+        self.BASE_WINDOW_HEIGHT = 850
+
+        self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
+        self.config["window size"] = (
+            int(self.BASE_WINDOW_WIDTH * self.scaling_ratio),
+            int(self.BASE_WINDOW_HEIGHT * self.scaling_ratio)
+        )
+
         # constants
         self.AGENT_BASE_DRAW_WIDTH = 10  # an agent scale unit of 1 draws this many pixels wide
         self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
@@ -33,6 +47,7 @@ class MAISREnv(gym.Env):
         self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
         self.AIRCRAFT_ENGAGEMENT_RADIUS = 40 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
         self.AIRCRAFT_ISR_RADIUS = 85 #170  # pixel width of aircraft scanner (to identify hostile vs benign)
+
 
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
         self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
@@ -417,11 +432,11 @@ class MAISREnv(gym.Env):
         type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
         self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
 
-        self.target_id_button = Button("TARGET ID", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
+        self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
         self.target_id_button.is_latched = self.button_latch_dict['target_id']
         self.target_id_button.draw(self.window)
 
-        self.wez_id_button = Button("TARGET + WEZ", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
+        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
         self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
         self.wez_id_button.draw(self.window)
 

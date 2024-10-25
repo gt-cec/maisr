@@ -12,7 +12,7 @@ class Button:
         self.default_color = (255, 120, 80)
         self.border_color = (0,0,0)
         self.border_width = 3
-        self.font = pygame.font.SysFont(None, 36)
+        self.font = pygame.font.SysFont(None, 32)
         self.is_latched = False
 
     def draw(self,win):

@@ -23,7 +23,11 @@ if __name__ == "__main__":
         pygame.init()  # init pygame
         clock = pygame.time.Clock()
         window_width, window_height = env_config['window size'][0], env_config['window size'][1]
-        window = pygame.display.set_mode((window_width, window_height))
+
+        infoObject = pygame.display.Info()
+        window = pygame.display.set_mode((infoObject.current_w-100, infoObject.current_h-100))
+
+        #window = pygame.display.set_mode((window_width, window_height))
         env = MAISREnv(env_config, window, clock=clock, render=True)
 
     else:

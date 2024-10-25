@@ -42,8 +42,7 @@ class AutonomousPolicy:
         # Agent priorities to follow during search (can be overridden by human)
         self.search_quadrant = '' # Auto-selected by policy unless search_quadrant_override is not 'none'
         self.search_type = '' # Auto-selected by policy unless search_type_override is not 'none'
-        self.collision_ok = False  # If False, collision avoidance executes normally.
-        self.use_thread_the_needle = False
+        self.collision_ok = True  # If False, collision avoidance executes normally.
 
         # Human overrides for agent priorities
         self.risk_tolerance = 'medium'  # Override to low/high based on button clicks
@@ -79,11 +78,6 @@ class AutonomousPolicy:
             self.low_level_rationale = 'Evade threat'
             self.high_level_rationale = 'Preserve health'
 
-        elif self.use_thread_the_needle:
-            self.calculate_priorities()
-            scores = self.thread_the_needle()
-            if scores:
-                self.target_point = max(scores.items(), key=lambda x: x[1])[0]
 
         else:
             self.calculate_priorities()
@@ -94,9 +88,8 @@ class AutonomousPolicy:
             if closest_target_distance: self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
             else: self.low_level_rationale = f'Scanning for targets'
             if self.search_type_override != 'none':
-                self.high_level_rationale = 'Following human command'
-            elif self.search_type == 'target': self.high_level_rationale = 'Preserve health'
-            else: self.high_level_rationale = 'Prioritize mission'
+                self.high_level_rationale = '(Human command)'
+            #elif self.search_type == 'target': self.high_level_rationale = 'Preserve health'
             #print('Target point set to %s' % (self.target_point,))
 
         self.update_agent_info()
@@ -293,14 +286,16 @@ class AutonomousPolicy:
         # High level goals
         if self.show_high_level_goals:
             if self.search_type:
-                self.status_lines.append(f"SEARCH TYPE: {self.search_type.upper()}")
+                if self.show_high_level_rationale: self.status_lines.append(f"SEARCH TYPE: {self.search_type.upper()} {self.high_level_rationale}")
+                else: self.status_lines.append(f"SEARCH TYPE: {self.search_type.upper()}")
             if self.search_quadrant:
-                self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()}")
+                if self.show_high_level_rationale: self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()} {self.quadrant_rationale}")
+                else: self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()}")
 
         # High level rationale
-        if self.show_high_level_rationale:
-            self.status_lines.append(f"RATIONALE: {self.high_level_rationale}")
-            self.status_lines.append(f"AREA RATIONALE: {self.quadrant_rationale}")
+        #if self.show_high_level_rationale:
+         #   self.status_lines.append(f"TYPE RATIONALE: {self.high_level_rationale}")
+          #  self.status_lines.append(f"AREA RATIONALE: {self.quadrant_rationale}")
 
         # Tracked factors
         if self.show_tracked_factors:
@@ -407,27 +402,46 @@ class AutonomousPolicy:
         # Set search_type
         if self.search_type_override != 'none': # If player has set a specific search type, use that
             self.search_type = self.search_type_override
+            self.high_level_rationale = '(Human command)'
+
         else: # Choose according to selected risk tolerance
-            if self.risk_tolerance == 'low': self.search_type = 'target'
+            if self.risk_tolerance == 'low':
+                self.search_type = 'target'
+                self.high_level_rationale = '(Low health)'
+
 
             elif self.risk_tolerance == 'medium':
-                if self.aircraft.damage <= 50: self.search_type = 'wez'
-                else: self.search_type = 'target'
+                if self.env.time_limit - self.env.display_time/1000 <= 10:
+                    self.search_type = 'wez'
+                    self.high_level_rationale = '(Critical time remaining)'
+                elif self.aircraft.damage <= 50:
+                    self.search_type = 'wez'
+                    self.high_level_rationale = ''
+                else:
+                    self.search_type = 'target'
+                    self.high_level_rationale = '(Low health)'
 
-            elif self.risk_tolerance == 'high': self.search_type = 'wez'
+            elif self.risk_tolerance == 'high':
+                if self.env.time_limit - self.env.display_time <= 25:
+                    self.search_type = 'wez'
+                    self.high_level_rationale = '(Critical time remaining)'
+                else:
+                    self.search_type = 'wez'
+                    self.high_level_rationale = ''
 
         # Set quadrant to search in
         # If the densest quadrant is substantially denser than the second most dense, prioritize that quadrant. Otherwise do not prioritize a quadrant.
         quadrants = self.calculate_quadrant_densities()
+        print('Quadrants: %s' % (quadrants,))
         if self.search_quadrant_override != 'none':
             self.search_quadrant = self.search_quadrant_override
-            self.quadrant_rationale = 'Following human command'
+            self.quadrant_rationale = '(Human command)'
         elif quadrants[0][1] >= quadrants[1][1] + 7:
             self.search_quadrant = quadrants[0][0]
-            self.quadrant_rationale = f'Significant target grouping in {self.search_quadrant}'
+            self.quadrant_rationale = f'(Significant target grouping in {self.search_quadrant})'
         else:
             self.search_quadrant = 'full'
-            self.quadrant_rationale = 'No significant groupings detected'
+            self.quadrant_rationale = ''
 
         # Set if collisions okay
         if self.risk_tolerance == 'low': self.collision_okay = False
