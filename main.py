@@ -3,10 +3,10 @@ import sys
 import ctypes
 
 from env import MAISREnv
-from isr_gui import *
+from gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import subject_id, log_data, config_filename
-from agent_policies.autonomous_policy import AutonomousPolicy
+from autonomous_policy import AutonomousPolicy
 
 
 if __name__ == "__main__":

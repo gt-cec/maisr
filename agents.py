@@ -3,15 +3,12 @@
 import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
-from agent_policies.advanced_policies import target_id_policy, autonomous_policy
-from agent_policies.basic_policies import hold_policy, mouse_waypoint_policy
-import heapq
+from autonomous_policy import AutonomousPolicy
 
-# TODO: Ryan changed target_point to self.target_point in all instances (so it can be accessed inside the draw() method. Change back if it causes problems.
 
 # generic agent class
 class Agent:
-    def __init__(self, env, initial_direction=0, color=(0,0,0), scale=1, speed=1, agent_class="agent",policy=None): # TODO policy kwarg is under test
+    def __init__(self, env, initial_direction=0, color=(0,0,0), scale=1, speed=1, agent_class="agent",policy=None):
         self.env = env
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
@@ -31,7 +28,7 @@ class Agent:
         self.path = []
         self.waypoint_override = None  # if an extra waypoint is specified, agent will prioritize it
         self.target_point = None
-        self.policy = policy if policy else target_id_policy
+        #self.policy = policy if policy else AutonomousPolicy
 
     # draws the agent
     def draw(self, window, color_override=None):
@@ -39,20 +36,13 @@ class Agent:
 
     # move the agent towards the next waypoint
     def move(self):
-        if self.policy: # TODO testing
-            self.waypoint_override, self.direction = self.policy(self.env,self.agent_idx)
+        #if self.policy: # TODO testing
+            #self.waypoint_override, self.direction = self.policy(self.env,self.agent_idx)
 
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
             self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
-        #elif self.direction > 0: self.target_point = (self.x,self.y-100)
-        #else: self.target_point = (self.x,self.y+100)
-
-        #elif self.path != []: # Original code
-        #    self.target_point = self.path[0]
-        #else:
-        #    return
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
         self.direction = math.atan2(dy, dx)
