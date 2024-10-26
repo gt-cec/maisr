@@ -24,11 +24,12 @@ env_config = {
     "motion iteration": "F",
     "search pattern": "ladder",
     "verbose": False,
-    "window size": (1800,850), # width,height
-    'show agent waypoint':1, # For SA-based agent transparency study TODO change to 0, 1, 2, 3
-    'show agent location':'persistent', # For SA-based agent transparency. 'persistent', 'spotty', 'none' TODO not implemented
+    "window size": (1600,850), # width,height
+    'show agent waypoint':1, # Number of next waypoints to show (currently only 1 is supported). For SA-based agent transparency study.
+    'show agent location':'persistent', # 'persistent', 'spotty', 'none' TODO not implemented
     'time limit':120,
     'infinite health':True,
+    'game speed':2, # Sets aircraft speed. Does not directly affect time limit, but recommend
 }
 
 # Configure what information the agent shows the human (for SA-based transparency study

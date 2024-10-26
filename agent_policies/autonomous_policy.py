@@ -432,7 +432,6 @@ class AutonomousPolicy:
         # Set quadrant to search in
         # If the densest quadrant is substantially denser than the second most dense, prioritize that quadrant. Otherwise do not prioritize a quadrant.
         quadrants = self.calculate_quadrant_densities()
-        print('Quadrants: %s' % (quadrants,))
         if self.search_quadrant_override != 'none':
             self.search_quadrant = self.search_quadrant_override
             self.quadrant_rationale = '(Human command)'

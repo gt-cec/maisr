@@ -8,8 +8,7 @@ from config import env_config, agent_config, subject_id, log_data
 from agent_policies.advanced_policies import target_id_policy, autonomous_policy
 from agent_policies.basic_policies import hold_policy, mouse_waypoint_policy
 from agent_policies.autonomous_policy import AutonomousPolicy
-
-
+import ctypes
 
 
 if __name__ == "__main__":
@@ -18,34 +17,35 @@ if __name__ == "__main__":
 
     if log_data: game_logger = GameLogger(subject_id)
 
-    if render:
-        print("Starting in PyGame mode")
-        pygame.init()  # init pygame
-        clock = pygame.time.Clock()
-        window_width, window_height = env_config['window size'][0], env_config['window size'][1]
-
-        infoObject = pygame.display.Info()
-        window = pygame.display.set_mode((infoObject.current_w-100, infoObject.current_h-100))
-
-        #window = pygame.display.set_mode((window_width, window_height))
-        env = MAISREnv(env_config, window, clock=clock, render=True)
-
-    else:
-        print("Starting in headless mode")
-        env = MAISREnv(env_config, None, render=False)
-
     game_count = 0
-    agent0_id = env.num_ships # Hack to dynamically get agent IDs
-    agent0_policy = AutonomousPolicy(env, agent0_id)
-    agent0_policy.show_low_level_goals = agent_config['show_low_level_goals']
-    agent0_policy.show_high_level_goals = agent_config['show_high_level_goals']
-    agent0_policy.show_high_level_rationale = agent_config['show_high_level_rationale']
-    agent0_policy.show_tracked_factors = agent_config['show_tracked_factors']
-    agent0_policy.collision_ok = True
-    agent0_policy.use_thread_the_needle = False # Currently debugging thread_the_needle, disabled for now
-    agent1_id = env.num_ships + 1
+    total_games = 20 # Number of games to run automatically
 
-    while True:
+    while game_count < total_games:
+        if render:
+            print("Starting in PyGame mode")
+            pygame.init()  # init pygame
+            clock = pygame.time.Clock()
+
+            ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
+
+            window_width, window_height = env_config['window size'][0], env_config['window size'][1]
+            window = pygame.display.set_mode((window_width, window_height))
+            env = MAISREnv(env_config, window, clock=clock, render=True)
+
+        else:
+            print("Starting in headless mode")
+            env = MAISREnv(env_config, None, render=False)
+
+        agent0_id = env.num_ships  # Hack to dynamically get agent IDs
+        agent0_policy = AutonomousPolicy(env, agent0_id)
+        agent0_policy.show_low_level_goals = agent_config['show_low_level_goals']
+        agent0_policy.show_high_level_goals = agent_config['show_high_level_goals']
+        agent0_policy.show_high_level_rationale = agent_config['show_high_level_rationale']
+        agent0_policy.show_tracked_factors = agent_config['show_tracked_factors']
+        agent0_policy.collision_ok = True
+        agent0_policy.use_thread_the_needle = False  # Currently debugging thread_the_needle, disabled for now
+        agent1_id = env.num_ships + 1
+
         game_count += 1
         state = env.reset()  # reset the environment
         done = False  # flag for when the run is complete
@@ -54,6 +54,8 @@ if __name__ == "__main__":
             if log_data:
                 game_logger.log_state(env, pygame.time.get_ticks())
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], None will use the default search behaviors
+            time_sec = float(env.display_time)/1000
+            print('DISPLAY TIME = %s' % time_sec)
 
             # Agent 0: Act based on currently selected gameplan
             agent0_policy.act()
@@ -219,8 +221,10 @@ if __name__ == "__main__":
                         pygame.quit()
                         sys.exit()
         print("Game complete:", game_count)
+        if render:
+            pygame.quit()
 
-    if render:
-        pygame.quit()
+    # if render:
+    #     pygame.quit()
 
     print("DONE!")

@@ -85,11 +85,12 @@ class HealthWindow:
         self.damage = damage # Note: The truth source for score is env.score. This gets updated from that.
 
 class TimeWindow:
-    def __init__(self, x, y,current_time=0): # Takes current game time in raw form (milliseconds).
+    def __init__(self, x, y,current_time=0,time_limit=120): # Takes current game time in raw form (milliseconds).
         self.rect = pygame.Rect(x,y,150,70)
         self.color = (200,200,200)
         self.font = pygame.font.SysFont(None, 36)
         self.current_time = current_time
+        self.time_limit = time_limit
 
     def draw(self,win):
         black = (0,0,0)
@@ -98,7 +99,7 @@ class TimeWindow:
         timer_title_surface = self.font.render('TIME LEFT', True, black)
         win.blit(timer_title_surface, timer_title_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 0.5 * self.rect.height // 2)))
 
-        time_text_surface = self.font.render(str(round(120 - self.current_time/1000,0)), True, black)
+        time_text_surface = self.font.render(str(round(self.time_limit - self.current_time/1000,0)), True, black)
         time_text_rect = time_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
         win.blit(time_text_surface, time_text_rect)
 
