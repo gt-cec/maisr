@@ -93,7 +93,7 @@ class MAISREnv(gym.Env):
         self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
         self.total_pause_time = 0
-        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':False,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
         self.pause_font = pygame.font.SysFont(None, 74)
         self.done = False
@@ -109,7 +109,14 @@ class MAISREnv(gym.Env):
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
 
-        self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 210)
+        # Calculate required height of agent status info
+        self.agent_info_height_req = 0
+        if self.config['show_low_level_goals']: self.agent_info_height_req += 1
+        if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
+        if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
+
+        if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
+            self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
 
         # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
         self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
@@ -118,33 +125,34 @@ class MAISREnv(gym.Env):
 
         # set the random seed
         if "seed" in config:
-            random.seed(config["seed"])
+             random.seed(config["seed"])
         else:
-            print("Note: 'seed' is not in the env config, defaulting to 0.")
-            random.seed(0)
+             print("Note: 'seed' is not in the env config, defaulting to 0.")
+             random.seed(0)
 
         # check gameplay color config value
         if "gameplay color" not in self.config:
             print("Note: 'gameplay color' is not in the env config, defaulting to 'white'.")
 
         # determine the number of ships
-        if "targets iteration" not in config:
-            print("Note: 'targets iteration' is not in the env config, defaulting to 10 ships.")
-            self.num_ships = 10
-        else:
-            if config["targets iteration"] == "A":
-                self.num_ships = 10
-            elif config["targets iteration"] == "B":
-                self.num_ships = 20
-            elif config["targets iteration"] == "C":
-                self.num_ships = 30
-            elif config["targets iteration"] == "D":
-                self.num_ships = 50
-            elif config["targets iteration"] == "E":
-                self.num_ships = 100
-            else:
-                print(f"Note: 'targets iteration' had an invalid value ({config['targets iteration']}), defaulting to 10 ships.")
-                self.num_ships = 10
+        self.num_ships = self.config['num ships']
+        # if "targets iteration" not in config:
+        #     print("Note: 'targets iteration' is not in the env config, defaulting to 10 ships.")
+        #     self.num_ships = 10
+        # else:
+        #     if config["targets iteration"] == "A":
+        #         self.num_ships = 10
+        #     elif config["targets iteration"] == "B":
+        #         self.num_ships = 20
+        #     elif config["targets iteration"] == "C":
+        #         self.num_ships = 30
+        #     elif config["targets iteration"] == "D":
+        #         self.num_ships = 50
+        #     elif config["targets iteration"] == "E":
+        #         self.num_ships = 100
+        #     else:
+        #         print(f"Note: 'targets iteration' had an invalid value ({config['targets iteration']}), defaulting to 10 ships.")
+        #         self.num_ships = 10
 
         self.total_targets = self.num_ships
 
@@ -188,8 +196,13 @@ class MAISREnv(gym.Env):
             agents.Ship(self)  # create the agent, will add itself to the env
 
         # create the aircraft
+        agent0_initial_location = 200,600
+        agent1_initial_location = 250, 600
+
         agents.Aircraft(self, 0,prob_detect=0.005,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*.7, flight_pattern=self.config["search pattern"])
         agents.Aircraft(self, 0,prob_detect=0.02,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*1.4, flight_pattern=self.config["search pattern"])
+        self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
+        self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
         #for i in range(self.config["num aircraft"]):
         #    agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
@@ -421,10 +434,11 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 565), 4)
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+555), (self.right_pane_edge + 405, 10+555),4)  # Top edge of gameplan panel
 
-        self.autonomous_button = Button("Autonomous", self.right_pane_edge+15, 20, self.gameplan_button_width*2 + 15, 65)
-        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
-        self.autonomous_button.color = (50, 180, 180)
-        self.autonomous_button.draw(self.window)
+        self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+        self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
+        self.manual_priorities_button.color = (50, 180, 180)
+
+        self.manual_priorities_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
 
@@ -476,7 +490,9 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
         # Draw Comm Log
-        self.comm_pane_height = 450-130-80
+        if self.agent_info_height_req > 0:
+            self.comm_pane_height = 220+self.agent_info_height_req
+        else: self.comm_pane_height = 10
         pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height, 445, 40))  # Comm log title box
         pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35, 445, 220))  # Comm Log sub-window box
         comm_text_surface = pygame.font.SysFont(None, 36).render('COMM LOG', True, (0, 0, 0))
@@ -494,7 +510,11 @@ class MAISREnv(gym.Env):
 
         # Draw point tally
         self.target_status_x = self.config['gameboard size'] + 40 + 405
-        self.target_status_y = 705-280+100
+        if self.agent_info_height_req > 0:
+            self.target_status_y = 500 + self.agent_info_height_req
+        else:
+            self.target_status_y = 280
+
 
         pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.comm_pane_edge, self.target_status_y, 445, 100))  # Target tally sub-window box
         pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.comm_pane_edge, self.target_status_y, 445,40))  # Target tally title box
@@ -510,43 +530,7 @@ class MAISREnv(gym.Env):
         self.window.blit(threat_tally_surface, (self.comm_pane_edge+10, self.target_status_y+75))
 
 
-        # Draw agent status window
-        #status_window_width = 445
-        #status_window_height = 150
-        #status_window_x = self.comm_pane_edge
-        #status_window_y = 10  # Adjust this value to position the window properly
-        #pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(status_window_x, status_window_y, status_window_width, status_window_height))
-
-        #pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(status_window_x, status_window_y, status_window_width, 40))
-        #status_title_surface = pygame.font.SysFont(None, 36).render('AGENT STATUS', True, (0, 0, 0))
-        #self.window.blit(status_title_surface, status_title_surface.get_rect(center=(status_window_x + status_window_width // 2, status_window_y + 20)))
-
-        # Show agent autonomous policy priorities
-        # TODO make dynamic
-        #priorities_font = pygame.font.SysFont(None, 36)
-        #priorities_text = f"PRIORITIES: {self.agent_priorities}"
-        #priorities_surface = priorities_font.render(priorities_text, True, (0, 0, 0))
-        #self.window.blit(priorities_surface, (status_window_x + 10, status_window_y + 50))
-
-        """risk_font = pygame.font.SysFont(None, 36)
-        risk_colors = {"LOW": (0, 190, 0), "MEDIUM": (255, 165, 0),"HIGH": (255, 0, 0),"EXTREME": (0, 0, 0)} # Green, Orange, Red, Black
-        risk_text_dict = {"LOW": "LOW","MEDIUM": "MEDIUM","HIGH": "HIGH","EXTREME": "EXTREME"}
-        risk_text_color = {"LOW": (0,0,0),"MEDIUM": (0,0,0),"HIGH": (0,0,0),"EXTREME": (255,255,255)}
-        risk_square_length = {"LOW": 45*1.5,"MEDIUM": 70*1.5,"HIGH": 50*1.5,"EXTREME": 90*1.5}
-        square_size = 30
-        square_x = status_window_x + 10
-        square_y = status_window_y + 80
-        pygame.draw.rect(self.window, risk_colors.get(self.risk_level),(square_x+160, square_y-3+5, risk_square_length.get(self.risk_level), square_size))
-
-        risk_label = f"RISK LEVEL:"
-        risk_label_surface = risk_font.render(risk_label, True, (0, 0, 0))
-        risk_text = risk_text_dict.get(self.risk_level)
-        risk_text_surface = risk_font.render(risk_text, True,risk_text_color.get(self.risk_level))
-        self.window.blit(risk_label_surface, (status_window_x + 10, status_window_y + 85))
-        self.window.blit(risk_text_surface, (square_x + square_size + 135, square_y+5))"""
-
-
-        # Draw health boxes TODO: Add support for >2 aircraft
+        # Draw health boxes
         agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
         agent0_health_window.update(self.agents[self.num_ships].health_points)
         #agent0_health_window.update(self.agents[self.num_ships].damage)
@@ -576,42 +560,47 @@ class MAISREnv(gym.Env):
         self.time_window.draw(self.window)
 
         # Draw agent status window
-        self.agent_info_display.draw(self.window)
+        if self.agent_info_height_req > 0:
+            self.agent_info_display.draw(self.window)
 
-        # After the hold/waypoint buttons but before the pause button, add:
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
                          (self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
 
+
         # Draw risk tolerance section box
-        pygame.draw.rect(self.window, (230, 230, 230),
-                         pygame.Rect(self.right_pane_edge, 465 + 120, 405, 140))  # +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
-                         (self.right_pane_edge + 405, 465 + 120), 4)  # Top border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
-                         (self.right_pane_edge, 465 + 260), 4)  # Left border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 465 + 120),
-                         (self.right_pane_edge + 405, 465 + 260), 4)  # Right border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 260),
-                         (self.right_pane_edge + 405, 465 + 260), 4)  # Bottom border +30
+        risk_tolerance_y = 665
+        risk_tolerance_height = 110
+        autonomous_button_y = 590
+        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, autonomous_button_y-10, 405, 195))  # +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, autonomous_button_y-10),(self.right_pane_edge + 405, autonomous_button_y-10), 4)  # Top border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, autonomous_button_y-10),(self.right_pane_edge + 405, autonomous_button_y-10+195), 4)  # Right border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
+
+        self.autonomous_button = Button("Autonomous", self.right_pane_edge + 15, autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
+        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
+        self.autonomous_button.color = (50, 180, 180)
+        self.autonomous_button.draw(self.window)
+
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y),(self.right_pane_edge + 405, risk_tolerance_y), 4)  # Top border +30
 
         # Add Risk Tolerance title
         risk_tolerance_text_surface = pygame.font.SysFont(None, 26).render('RISK TOLERANCE', True, (0, 0, 0))
         self.window.blit(risk_tolerance_text_surface, risk_tolerance_text_surface.get_rect(
-            center=(self.right_pane_edge + 425 // 2, 465 + 140)))  # +30
+            center=(self.right_pane_edge + 425 // 2, risk_tolerance_y+15)))  # +30
 
         # Create risk tolerance buttons
-        self.risk_low_button = Button("LOW", self.right_pane_edge + 15, 465 + 150, 120, 60)  # +30
+        self.risk_low_button = Button("LOW", self.right_pane_edge + 15, risk_tolerance_y+30, 120, 60)  # +30
         self.risk_low_button.color = (100, 255, 100) if self.button_latch_dict['risk_low'] else (255, 120, 80)
         self.risk_low_button.is_latched = self.button_latch_dict['risk_low']
         self.risk_low_button.draw(self.window)
 
-        self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, 465 + 150, 120, 60)  # +30
-        self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (
-        255, 120, 80)
+        self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, risk_tolerance_y+30, 120, 60)  # +30
+        self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (255, 120, 80)
         self.risk_medium_button.is_latched = self.button_latch_dict['risk_medium']
         self.risk_medium_button.draw(self.window)
 
-        self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, 465 + 150, 120, 60)  # +30
+        self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, risk_tolerance_y+30, 120, 60)  # +30
         self.risk_high_button.color = (255, 50, 50) if self.button_latch_dict['risk_high'] else (255, 120, 80)
         self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
         self.risk_high_button.draw(self.window)
@@ -623,21 +612,18 @@ class MAISREnv(gym.Env):
             pause_surface.fill((100, 100, 100))  # Gray color
             self.window.blit(pause_surface, (0, 0))
 
-            # Render "GAME PAUSED" text
             pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
             text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
             self.window.blit(pause_text, text_rect)
 
-        if self.done: # TODO not currently working
+        if self.done:
             self._render_game_complete()
 
-        # update the display
         pygame.display.update()
         self.clock.tick(60)
 
     # convert the environment into a state dictionary
     def get_state(self):
-        # Ryan TODO: Can define points here maybe
         state = {
             "aircrafts": {},
             "ships": {},

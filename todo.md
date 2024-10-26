@@ -1,10 +1,5 @@
 # TODO
-##  Priority 1: Overhaul the agent info feature.
-    * Delete collision avoidance. Rename autonomus button to "Manual priorities" and move autonomous down below
-    * Make game window size configurable so it fits on other monitors
-    * Fix time at game end (not resetting correctly)
-
-After priority 1: Type up description and send to lab
+## Priority
 
 ##  Lower priority
     * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly

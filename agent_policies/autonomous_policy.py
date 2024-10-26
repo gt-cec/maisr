@@ -65,7 +65,7 @@ class AutonomousPolicy:
         if self.hold_commanded:
             self.target_point = self.hold_policy()
             self.low_level_rationale = 'Holding position'
-            self.high_level_rationale = 'Following human command'
+            self.high_level_rationale = '(Human command)'
 
         elif self.waypoint_override != False:
             # Execute the waypoint
@@ -121,6 +121,7 @@ class AutonomousPolicy:
 
         for ship_id in current_state['ships']: # Loop through all ships in environment, calculate distance, find closest unknown ship (or unknown WEZ), and set waypoint to that location
             if self.search_type == 'target':  # If set to target, only consider unknown targets
+                dist = 999 # TODO testing
                 if current_state['ships'][ship_id]['observed'] == False and (
                         quadrant_bounds[self.search_quadrant][0] <=  current_state['ships'][ship_id]['position'][0] <=
                         quadrant_bounds[self.search_quadrant][1]) and (quadrant_bounds[self.search_quadrant][2] <=  current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
@@ -248,10 +249,7 @@ class AutonomousPolicy:
 
 
     def hold_policy(self):
-        print('Commanding hold')
         target_waypoint = self.aircraft.x, self.aircraft.y
-        print(target_waypoint)
-        target_direction = math.atan2(target_waypoint[1] - self.aircraft.y, target_waypoint[0] - self.aircraft.x)
         return target_waypoint
 
     def human_waypoint(self,waypoint_position):
@@ -264,7 +262,6 @@ class AutonomousPolicy:
             self.waypoint_override = False
         return target_waypoint
 
-
     # Push various types of information about the agent's decision-making to the AGENT STATUS window, if set.
     def update_agent_info(self):
         """Update the agent info display with current status"""
@@ -274,7 +271,7 @@ class AutonomousPolicy:
         # Format nearby threats text
         threats_text = "None detected"
         if self.nearby_threats:
-            threats_text = ", ".join([f"Ship {t[0]} ({t[1]} units)" for t in self.nearby_threats])
+            threats_text = ", ".join([f"{t[1]} units" for t in self.nearby_threats])
 
         # Build status text with conditional sections
         self.status_lines = []
@@ -292,26 +289,10 @@ class AutonomousPolicy:
                 if self.show_high_level_rationale: self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()} {self.quadrant_rationale}")
                 else: self.status_lines.append(f"SEARCH AREA: {self.search_quadrant.upper()}")
 
-        # High level rationale
-        #if self.show_high_level_rationale:
-         #   self.status_lines.append(f"TYPE RATIONALE: {self.high_level_rationale}")
-          #  self.status_lines.append(f"AREA RATIONALE: {self.quadrant_rationale}")
-
         # Tracked factors
         if self.show_tracked_factors:
             self.status_lines.append(f"RISK LEVEL: {self.risk_level}")
             self.status_lines.append(f"NEARBY THREATS: {threats_text}")
-
-        # Build status text
-        """self.status_lines = [
-            f"CURRENT GOAL: {self.low_level_rationale}",
-            f"SEARCH TYPE: {self.search_type.upper() if self.search_type else 'None'}",
-            f"TYPE RATIONALE: {'Following human command' if self.search_type_override != 'none' else self.high_level_rationale}",
-            f"SEARCH AREA: {self.search_quadrant.upper() if self.search_quadrant else 'None'}",
-            f"AREA RATIONALE: {self.quadrant_rationale}",
-            f"RISK LEVEL: {self.risk_level}",
-            f"NEARBY THREATS: {threats_text}"
-        ]"""
 
         # Update the display
         self.env.agent_info_display.text = self.status_lines
@@ -407,11 +388,13 @@ class AutonomousPolicy:
         else: # Choose according to selected risk tolerance
             if self.risk_tolerance == 'low':
                 self.search_type = 'target'
-                self.high_level_rationale = '(Low health)'
+                self.high_level_rationale = '(Avoiding risk)'
+                if self.aircraft.damage >= 50:
+                    self.high_level_rationale = '(Low health)'
 
 
             elif self.risk_tolerance == 'medium':
-                if self.env.time_limit - self.env.display_time/1000 <= 10:
+                if abs(self.env.time_limit - self.env.display_time/1000) <= 25:
                     self.search_type = 'wez'
                     self.high_level_rationale = '(Critical time remaining)'
                 elif self.aircraft.damage <= 50:
@@ -419,10 +402,12 @@ class AutonomousPolicy:
                     self.high_level_rationale = ''
                 else:
                     self.search_type = 'target'
-                    self.high_level_rationale = '(Low health)'
+                    if self.aircraft.damage > 50:
+                        self.high_level_rationale = '(Low health)'
+                    else: self.high_level_rationale = ''
 
             elif self.risk_tolerance == 'high':
-                if self.env.time_limit - self.env.display_time <= 25:
+                if abs(self.env.time_limit - self.env.display_time/1000) <= 25:
                     self.search_type = 'wez'
                     self.high_level_rationale = '(Critical time remaining)'
                 else:
