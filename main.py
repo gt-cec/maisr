@@ -4,11 +4,9 @@ import ctypes
 
 from env import MAISREnv
 from isr_gui import *
-from data_logging import GameLogger, load_env_config
+from utility.data_logging import GameLogger, load_env_config
 from config import subject_id, log_data, config_filename
 from agent_policies.autonomous_policy import AutonomousPolicy
-#from agent_policies.advanced_policies import target_id_policy, autonomous_policy
-#from agent_policies.basic_policies import hold_policy, mouse_waypoint_policy
 
 
 if __name__ == "__main__":
@@ -239,7 +237,6 @@ if __name__ == "__main__":
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
             if render:  # if in PyGame mode, render the environment
                 env.render()
-            #clock.tick(60)  # TODO this is new for MSFS
 
         if done:
             waiting_for_key = True

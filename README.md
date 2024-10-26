@@ -16,6 +16,8 @@ Note that the PyGame visualization is only a visualization of the state space, s
 
 ### Configuration
 
+The majority of the game's configurable parameters are stored in json files inside the ./config_files/ folder. ./config.py is used to set the subject ID (for experiments) and the config filename to load.
+
 There are several areas of configuration:
 
 `main.py` has a game configuration dictionary similar to the ONR-ISR domain:
@@ -30,6 +32,9 @@ There are several areas of configuration:
 
 `env.py` has environment parameters such as agent scale and drawing parameters, agent colors, aircraft scanner and visual radii, and the search pattern flight plans.
 
+### Data logging
+If log_data is set to True in ./config.py, the game will automatically create a .jsonl file that logs the game state every 5 seconds. subject_id (set in config.py) is automatically included in the log filename for easy identification later.
+
 ### Integrating Reinforcement Learning
 
 Virtually all of the basic environment setup is complete. `main.py` and `env.py` follow typical reinforcement learning environment formats and naming conventions.
@@ -39,24 +44,3 @@ See `main.py` for comments indicating where you can integrate a custom policy. T
 The state space's reward function can be set in `env.py:get_reward()`.
 
 Using gym's observation and state space definitions is not integrated, however a starting point is given in `env.py:action_space` and `env.py:observation_space`.
-
-# Summary of Ryan's changes
-* Added "target_id_policy" agent policy that sets the agent's waypoint to the nearest unknown target (incomplete)
-* Added "mouse_waypoint_policy" that sets agent's waypoint to mouse click location (incomplete)
-* Made gameboard green buffer configurable within env_config.
-* (More not listed)
-* Added damage system 
-* Agents get destroyed when damage > 100 (currently a little messy, various functions check for the aircraft.alive Bool)
-
-### 10/20/2024
-* Fixed bug where aircraft were taking damage when within ID range, not within ship threat range
-* Fixed time incrementing incorrectly while paused
-* Comm log complete
-* Basic but flawed A* search policy added to avoid WEZs
-
-### 10/21/2024
-* GUI rearranged
-* Agent status window added
-* Score system complete
-* Data logging system written
-* Made agent's waypoint line optional (for SA-based transparency study)

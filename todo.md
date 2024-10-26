@@ -1,5 +1,6 @@
 # TODO
 ## Priority
+    * Modify logging to store final score and time remaining when game ends
 
 ##  Lower priority
     * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly

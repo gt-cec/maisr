@@ -8,7 +8,7 @@ from pathlib import Path
 class GameLogger:
     def __init__(self,subject_id,config_name):
         # Create experiment_data directory if it doesn't exist
-        pathlib.Path('./experiment_data').mkdir(parents=True, exist_ok=True)
+        pathlib.Path('../experiment_data').mkdir(parents=True, exist_ok=True)
 
         # Create unique filename with timestamp
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
