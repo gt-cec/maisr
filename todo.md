@@ -8,7 +8,7 @@
     * Implement holding patterns for hold policy and human when no waypoint set (currently just freezes in place)
 
 ##  Code optimization/cleanup
-    * Move a lot of the button handling code out of main.py and into isr_gui.py
+    * Move button handling code out of main.py and into isr_gui.py
 
 #  Possible optimizations
   * Don't re-render every GUI element every tick. Just the updates

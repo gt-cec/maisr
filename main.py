@@ -13,8 +13,8 @@ from agent_policies.autonomous_policy import AutonomousPolicy
 
 if __name__ == "__main__":
 
-    json_path = './config_files/' + config_filename
-    env_config = load_env_config(json_path)
+    config_file_path = './config_files/' + config_filename
+    env_config = load_env_config(config_file_path)
 
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
