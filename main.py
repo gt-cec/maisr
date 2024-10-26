@@ -7,6 +7,7 @@ from gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import subject_id, log_data, config_filename
 from autonomous_policy import AutonomousPolicy
+from rl_policy import RLPolicy
 
 
 if __name__ == "__main__":
@@ -38,10 +39,14 @@ if __name__ == "__main__":
 
         else:
             print("Starting in headless mode")
+            pygame.init()  # init pygame
+            clock = pygame.time.Clock()
+            pygame.font.init()
             env = MAISREnv(env_config, None, render=False)
 
         agent0_id = env.num_ships  # Hack to dynamically get agent IDs
         agent0_policy = AutonomousPolicy(env, agent0_id)
+        #agent0_policy = RLPolicy(env, agent0_id)
         agent0_policy.show_low_level_goals = env.config['show_low_level_goals']
         agent0_policy.show_high_level_goals = env.config['show_high_level_goals']
         agent0_policy.show_high_level_rationale = env.config['show_high_level_rationale']
