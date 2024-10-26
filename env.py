@@ -326,9 +326,43 @@ class MAISREnv(gym.Env):
 
 
     def get_reward(self):
-        # define a custom reward function here
-        # Ryan TODO: Add points for IDing targets (+), IDing all targets (+), taking damage (-), or agent A/C dying (-)
-        return -self.damage
+        """
+            Calculate reward based on:
+            1. Target identification (+reward)
+            2. WEZ identification (+reward)
+            3. Exposure to threat radii (-reward)
+            4. Aircraft damage (-reward)
+            """
+        reward = 0
+
+        # Get current aircraft
+        aircraft = self.agents[self.num_ships]
+
+        # Check each ship
+        for agent in self.agents:
+            if agent.agent_class == "ship":
+                dist = aircraft.distance(agent)
+
+                # Rewards for identification
+                if not agent.observed and aircraft.in_isr_range(distance=dist):  # Reward for identifying a new target
+                    reward += 10
+
+                if not agent.observed_threat and aircraft.in_engagement_range(distance=dist):  # Additional reward for identifying threat level
+                    reward += 5
+
+                # Penalties for being in threat radius
+                if agent.threat > 0 and agent.in_weapon_range(distance=dist):  # Scale penalty based on threat level and time spent in radius
+                    threat_penalty = -5 * agent.threat
+                    reward += threat_penalty
+
+        # Penalty for taking damage
+        if self.agents[self.num_ships].damage > 0:
+            damage_penalty = -0.5 * self.agents[self.num_ships].damage
+            reward += damage_penalty
+
+        # Small step penalty to encourage efficient paths
+        reward -= 0.1
+        return reward
 
     def add_comm_message(self,message,is_ai=True):
         #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
