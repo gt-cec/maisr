@@ -228,6 +228,9 @@ if __name__ == "__main__":
                     elif env.pause_button.is_clicked(mouse_position):
                         env.pause(pygame.MOUSEBUTTONDOWN)
 
+                    elif env.quit_button.is_clicked(mouse_position):
+                        pygame.quit()
+
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         env.pause(pygame.K_SPACE)

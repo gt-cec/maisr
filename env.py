@@ -566,6 +566,9 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
                          (self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
 
+        self.quit_button = Button("QUIT", game_width*0.5 - 150/2+1150, 680, 150, 150)
+        self.quit_button.color = (220, 40, 40)
+        self.quit_button.draw(self.window)
 
         # Draw risk tolerance section box
         risk_tolerance_y = 665
