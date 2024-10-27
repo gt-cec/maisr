@@ -14,6 +14,11 @@ To run the environment in headless mode:
 
 Note that the PyGame visualization is only a visualization of the state space, so the `headless` mode allows for (very fast) simulations for policy training.
 
+### How to play
+The dark blue aircraft is the "human", controlled by clicking on the map to command waypoints.
+
+The light blue aircraft is the agent, which follows a simple rule-based policy (fly towards the nearest eligible unknown target based on gameplan constraints) and follows search constraints set by the human using the buttons to the right of the gameboard.
+
 ### Configuration
 
 The majority of the game's configurable parameters are stored in json files inside the ./config_files/ folder. ./config.py is used to set the subject ID (for experiments) and the config filename to load.

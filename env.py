@@ -78,6 +78,7 @@ class MAISREnv(gym.Env):
         self.risk_level = 'LOW'
         self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
 
+
         # Comm log
         self.comm_messages = []
         self.max_messages = 7
@@ -268,8 +269,6 @@ class MAISREnv(gym.Env):
                                         self.agents[aircraft_id].alive = False
                                         print(f'Aircraft {aircraft_id} destroyed')
 
-                        #    self.agents[aircraft_id].damage += .6
-                         #   self.damage += .1
 
         agent0 = self.agents[self.aircraft_ids[0]]
         hostile_targets_nearby = sum(1 for agent in self.agents
@@ -289,6 +288,7 @@ class MAISREnv(gym.Env):
         # progress update
         if self.config["verbose"]:
             print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
+
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
@@ -335,33 +335,33 @@ class MAISREnv(gym.Env):
             """
         reward = 0
 
-        # Get current aircraft
-        aircraft = self.agents[self.num_ships]
-
-        # Check each ship
-        for agent in self.agents:
-            if agent.agent_class == "ship":
-                dist = aircraft.distance(agent)
-
-                # Rewards for identification
-                if not agent.observed and aircraft.in_isr_range(distance=dist):  # Reward for identifying a new target
-                    reward += 10
-
-                if not agent.observed_threat and aircraft.in_engagement_range(distance=dist):  # Additional reward for identifying threat level
-                    reward += 5
-
-                # Penalties for being in threat radius
-                if agent.threat > 0 and agent.in_weapon_range(distance=dist):  # Scale penalty based on threat level and time spent in radius
-                    threat_penalty = -5 * agent.threat
-                    reward += threat_penalty
-
-        # Penalty for taking damage
-        if self.agents[self.num_ships].damage > 0:
-            damage_penalty = -0.5 * self.agents[self.num_ships].damage
-            reward += damage_penalty
-
-        # Small step penalty to encourage efficient paths
-        reward -= 0.1
+        # # Get current aircraft
+        # aircraft = self.agents[self.num_ships]
+        #
+        # # Check each ship
+        # for agent in self.agents:
+        #     if agent.agent_class == "ship":
+        #         dist = aircraft.distance(agent)
+        #
+        #         # Rewards for identification
+        #         if not agent.observed and aircraft.in_isr_range(distance=dist):  # Reward for identifying a new target
+        #             reward += 10
+        #
+        #         if not agent.observed_threat and aircraft.in_engagement_range(distance=dist):  # Additional reward for identifying threat level
+        #             reward += 5
+        #
+        #         # Penalties for being in threat radius
+        #         if agent.threat > 0 and agent.in_weapon_range(distance=dist):  # Scale penalty based on threat level and time spent in radius
+        #             threat_penalty = -5 * agent.threat
+        #             reward += threat_penalty
+        #
+        # # Penalty for taking damage
+        # if self.agents[self.num_ships].damage > 0:
+        #     damage_penalty = -0.5 * self.agents[self.num_ships].damage
+        #     reward += damage_penalty
+        #
+        # # Small step penalty to encourage efficient paths
+        # reward -= 0.1
         return reward
 
     def add_comm_message(self,message,is_ai=True):
@@ -390,7 +390,6 @@ class MAISREnv(gym.Env):
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
-        # TODO TESTING
         current_time = pygame.time.get_ticks()
         if current_time - self.damage_flash_start < self.damage_flash_duration:
             # Calculate alpha based on time elapsed
@@ -398,66 +397,56 @@ class MAISREnv(gym.Env):
             alpha = int(255 * (1 - progress))
 
             # Create a surface for the red border
-            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),
-                                            pygame.SRCALPHA)
-
+            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
             # Draw four red rectangles for each border
             border_width = 20
             border_color = (255, 0, 0, alpha)  # Red with calculated alpha
 
-            # Top border
-            pygame.draw.rect(border_surface, border_color, (0, 0, self.config["gameboard size"], border_width))
-            # Bottom border
-            pygame.draw.rect(border_surface, border_color, (
-            0, self.config["gameboard size"] - border_width, self.config["gameboard size"], border_width))
-            # Left border
-            pygame.draw.rect(border_surface, border_color, (0, 0, border_width, self.config["gameboard size"]))
-            # Right border
-            pygame.draw.rect(border_surface, border_color, (
-            self.config["gameboard size"] - border_width, 0, border_width, self.config["gameboard size"]))
-
-            # Blit the border surface onto the main window
-            self.window.blit(border_surface, (0, 0))
+            pygame.draw.rect(border_surface, border_color, (0, 0, self.config["gameboard size"], border_width)) # Top border
+            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"], border_width)) # Bottom border
+            pygame.draw.rect(border_surface, border_color, (0, 0, border_width, self.config["gameboard size"])) # Left border
+            pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width, self.config["gameboard size"])) # Right border
+            self.window.blit(border_surface, (0, 0)) # Blit the border surface onto the main window
 
         # Draw the agents
         for agent in self.agents:
             agent.draw(self.window)
 
-        # Draw lines between upcoming targets if they exist
-        if hasattr(self.agents[self.num_ships].policy, 'three_upcoming_targets') and self.agents[
-            self.num_ships].policy.three_upcoming_targets:
-            targets = self.agents[self.num_ships].policy.three_upcoming_targets
-            if len(targets) >= 2:
-                for i in range(len(targets) - 1):
-                    ship1 = self.agents[targets[i]]
-                    ship2 = self.agents[targets[i + 1]]
-                    # Draw dashed lines between targets
-                    dash_length = 10
-                    total_distance = math.hypot(ship2.x - ship1.x, ship2.y - ship1.y)
-                    dx = (ship2.x - ship1.x) / total_distance * dash_length
-                    dy = (ship2.y - ship1.y) / total_distance * dash_length
-
-                    num_dashes = int(total_distance / (2 * dash_length))
-                    for j in range(num_dashes):
-                        start_x = ship1.x + 2 * j * dx
-                        start_y = ship1.y + 2 * j * dy
-                        end_x = start_x + dx
-                        end_y = start_y + dy
-                        pygame.draw.line(self.window, (100, 100, 100),
-                                         (start_x, start_y),
-                                         (end_x, end_y), 2)
-
-                # Draw small circles at each target point for visibility
-                for target_id in targets:
-                    ship = self.agents[target_id]
-                    pygame.draw.circle(self.window, (100, 100, 100),
-                                       (int(ship.x), int(ship.y)), 8, 2)
+        # # Draw lines between upcoming targets if they exist
+        # if hasattr(self.agents[self.num_ships].policy, 'three_upcoming_targets') and self.agents[
+        #     self.num_ships].policy.three_upcoming_targets:
+        #     targets = self.agents[self.num_ships].policy.three_upcoming_targets
+        #     if len(targets) >= 2:
+        #         for i in range(len(targets) - 1):
+        #             ship1 = self.agents[targets[i]]
+        #             ship2 = self.agents[targets[i + 1]]
+        #             # Draw dashed lines between targets
+        #             dash_length = 10
+        #             total_distance = math.hypot(ship2.x - ship1.x, ship2.y - ship1.y)
+        #             dx = (ship2.x - ship1.x) / total_distance * dash_length
+        #             dy = (ship2.y - ship1.y) / total_distance * dash_length
+        #
+        #             num_dashes = int(total_distance / (2 * dash_length))
+        #             for j in range(num_dashes):
+        #                 start_x = ship1.x + 2 * j * dx
+        #                 start_y = ship1.y + 2 * j * dy
+        #                 end_x = start_x + dx
+        #                 end_y = start_y + dy
+        #                 pygame.draw.line(self.window, (100, 100, 100),
+        #                                  (start_x, start_y),
+        #                                  (end_x, end_y), 2)
+        #
+        #         # Draw small circles at each target point for visibility
+        #         for target_id in targets:
+        #             ship = self.agents[target_id]
+        #             pygame.draw.circle(self.window, (100, 100, 100),
+        #                                (int(ship.x), int(ship.y)), 8, 2)
 
         # Draw Agent Gameplan sub-window
         self.quadrant_button_height = 120
         self.gameplan_button_width = 180
+
         pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 555))  # Agent gameplan sub-window box
-        #pygame.draw.rect(self.window, (200,200,200), pygame.Rect(self.right_pane_edge, 10, 445, 40))  # Agent gameplan title box
         gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
         self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
@@ -468,7 +457,6 @@ class MAISREnv(gym.Env):
         self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
         self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
         self.manual_priorities_button.color = (50, 180, 180)
-
         self.manual_priorities_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
