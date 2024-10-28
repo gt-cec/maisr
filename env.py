@@ -201,7 +201,7 @@ class MAISREnv(gym.Env):
         agent1_initial_location = 250, 600
 
         agents.Aircraft(self, 0,prob_detect=0.005,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['agent speed'], flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.02,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.01,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 

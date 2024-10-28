@@ -7,7 +7,7 @@ subject_id = '001'
 config_filename = 'default_config.json'
 
 # 3. Set whether you want to save run data to a json file in ./experiment_data:
-log_data = True
+log_data = False
 
 """
 Config filenames (all are in ./config_files/):
