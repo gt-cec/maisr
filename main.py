@@ -28,13 +28,12 @@ if __name__ == "__main__":
     while game_count < total_games:
         if render:
             print("Starting in PyGame mode")
-            pygame.init()  # init pygame
+            pygame.init()
             clock = pygame.time.Clock()
-
             ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
-
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             window = pygame.display.set_mode((window_width, window_height))
+
             env = MAISREnv(env_config, window, clock=clock, render=True)
 
         else:

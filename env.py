@@ -53,23 +53,50 @@ class MAISREnv(gym.Env):
         self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
         # Old agent0 color: (255, 165, 0)
 
+        # Set GUI locations
         self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
         self.window_x = self.config["window size"][0]
         self.window_y = self.config["window size"][1]
         self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
         self.comm_pane_edge = self.config['gameboard size'] + 40 + 405
         # self.right_pane_edge = self.gameboard_offset + 20 + self.config['gameboard size']  # Left edge of gameplan button windows
+        self.gameplan_button_width = 180
+        self.quadrant_button_height = 120
+
+        # Initialize buttons
+        self.gameplan_button_color = (255, 120, 80)
+        self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,
+                                               self.gameplan_button_width * 2 + 15, 65)
+        self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,
+                                       60)  # (255, 120, 80))
+        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,
+                                    self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
+        self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,
+                                     self.gameplan_button_width, self.quadrant_button_height)
+        self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,
+                                     60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
+        self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,
+                                     self.gameplan_button_width, self.quadrant_button_height)
+        self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,
+                                     50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,
+                                     self.quadrant_button_height)
+        self.full_quad_button = Button("Full", self.right_pane_edge + 200 - 35 - 10,
+                                       60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
+        self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,
+                                      3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+        self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,
+                                  self.gameplan_button_width, 80)
 
         # Set point quantities for each event
         self.score = 0
-        self.all_targets_points = 20  # All targets ID'd
+        self.all_targets_points = 200  # All targets ID'd
         self.target_points = 10  # Each target ID'd
         self.threat_points = 5  # Each threat ID'd
-        self.time_points = 2  # Points given per second remaining
-        self.agent_damage_points = -0.1  # Point subtracted per damage point taken TODO currently excluded, need to decide
-        self.human_damage_points = -0.2  # Point subtracted per damage point taken TODO currently excluded, need to decide
-        self.wingman_dead_points = -30  # Points subtracted for agent wingman dying
-        self.human_dead_points = -40  # Points subtracted for human dying
+        self.time_points = 10  # Points given per second remaining
+        #self.agent_damage_points = -0.1  # Point subtracted per damage point taken TODO currently excluded, need to decide
+        #self.human_damage_points = -0.2  # Point subtracted per damage point taken TODO currently excluded, need to decide
+        self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
+        self.human_dead_points = -400  # Points subtracted for human dying
 
         self.first_step = True  # TODO testing
         self.paused = False
@@ -77,7 +104,6 @@ class MAISREnv(gym.Env):
         self.agent1_dead = False
         self.risk_level = 'LOW'
         self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
-
 
         # Comm log
         self.comm_messages = []
@@ -200,8 +226,8 @@ class MAISREnv(gym.Env):
         agent0_initial_location = 200,600
         agent1_initial_location = 250, 600
 
-        agents.Aircraft(self, 0,prob_detect=0.005,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['agent speed'], flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.01,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.0005,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['agent speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.001,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -443,8 +469,8 @@ class MAISREnv(gym.Env):
         #                                (int(ship.x), int(ship.y)), 8, 2)
 
         # Draw Agent Gameplan sub-window
-        self.quadrant_button_height = 120
-        self.gameplan_button_width = 180
+        #self.quadrant_button_height = 120
+        #self.gameplan_button_width = 180
 
         pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 555))  # Agent gameplan sub-window box
         gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
@@ -454,7 +480,7 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 565), 4)
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+555), (self.right_pane_edge + 405, 10+555),4)  # Top edge of gameplan panel
 
-        self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+        #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
         self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
         self.manual_priorities_button.color = (50, 180, 180)
         self.manual_priorities_button.draw(self.window)
@@ -464,12 +490,14 @@ class MAISREnv(gym.Env):
         type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
         self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
 
-        self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
+        #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
         self.target_id_button.is_latched = self.button_latch_dict['target_id']
+        self.target_id_button.color = self.gameplan_button_color
         self.target_id_button.draw(self.window)
 
-        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
+        #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
         self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
+        self.wez_id_button.color = self.gameplan_button_color
         self.wez_id_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
@@ -477,33 +505,39 @@ class MAISREnv(gym.Env):
         search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
         self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
 
-        self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
+        #self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
         self.NW_quad_button.is_latched = self.button_latch_dict['NW']
+        self.NW_quad_button.color = self.gameplan_button_color
         self.NW_quad_button.draw(self.window)
 
-        self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
+        #self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
         self.NE_quad_button.is_latched = self.button_latch_dict['NE']
+        self.NE_quad_button.color = self.gameplan_button_color
         self.NE_quad_button.draw(self.window)
 
-        self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
+        #self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
         self.SW_quad_button.is_latched = self.button_latch_dict['SW']
+        self.SW_quad_button.color = self.gameplan_button_color
         self.SW_quad_button.draw(self.window)
 
-        self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
+        #self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
         self.SE_quad_button.is_latched = self.button_latch_dict['SE']
+        self.SE_quad_button.color = self.gameplan_button_color
         self.SE_quad_button.draw(self.window)
 
-        self.full_quad_button = Button("Full", self.right_pane_edge+200-35-10, 60+2*(80+10)+20-35+5+50, 100, 100)
+        #self.full_quad_button = Button("Full", self.right_pane_edge+200-35-10, 60+2*(80+10)+20-35+5+50, 100, 100)
         self.full_quad_button.color = (50,180,180)
         self.full_quad_button.is_latched = self.button_latch_dict['full']
         self.full_quad_button.draw(self.window)
 
-        self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+        #self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
+        self.waypoint_button.color = self.gameplan_button_color
         self.waypoint_button.draw(self.window)
 
-        self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+        #self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.hold_button.is_latched = self.button_latch_dict['hold']
+        self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
@@ -565,7 +599,7 @@ class MAISREnv(gym.Env):
         score_button.update(self.score)
         score_button.draw(self.window)
 
-        self.pause_button = Button("PAUSE", game_width*0.5 - 150/2, 790, 150, 50)
+        self.pause_button = Button("PAUSE", game_width * 0.5 - 150 / 2 + 1050, 630, 150, 150)
         self.pause_button.color = (220,150,40)
         self.pause_button.is_latched = self.button_latch_dict['pause']
         self.pause_button.draw(self.window)
@@ -585,7 +619,7 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
                          (self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
 
-        self.quit_button = Button("QUIT", game_width*0.5 - 150/2+1150, 680, 150, 150)
+        self.quit_button = Button("QUIT", game_width*0.5 - 150/2+1300, 630, 150, 150)
         self.quit_button.color = (220, 40, 40)
         self.quit_button.draw(self.window)
 
