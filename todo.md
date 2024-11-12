@@ -2,6 +2,11 @@
 ## Priority
     * Modify logging to store final score and time remaining when game ends
     * Add word "HP" to health panels
+    * Update agent policy prioritized based on what's in the model card:
+    If risk level is < 30, it is reported as LOW and the agent will prioritize WEZ search. If If 30 < 
+    risk level < X, it is reported as MEDIUM and the agent will prioritize TARGET search unless there are 
+    less than 25 seconds remaining on the timer. If risk level > X, it is reported as HIGH and the agent will 
+    prioritize TARGET search.
 
 ## For later studies:
     * More intelligent rule based agent (e.g. maybe it will prioritize a single target far away if the human has the closer targets handled)
