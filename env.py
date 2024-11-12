@@ -7,6 +7,7 @@ import agents
 from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
+import webbrowser
 
 
 class MAISREnv(gym.Env):
@@ -135,6 +136,9 @@ class MAISREnv(gym.Env):
         # Situational-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
+
+        # SAGAT survey flags
+        self.survey1_launched, self.survey2_launched, self.survey3_launched = False, False, False
 
         # Calculate required height of agent status info
         self.agent_info_height_req = 0
@@ -736,6 +740,17 @@ class MAISREnv(gym.Env):
                         pause_duration = pause_end_time - self.pause_start_time
                         self.total_pause_time += pause_duration
                         print('Paused for %s' % pause_duration)
+
+    def SAGAT_survey(self,survey_index):
+        if survey_index == 1:
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
+        elif survey_index == 2:
+            print('Other surveys not added yet')
+
+        elif survey_index == 3:
+            print('Other surveys not added yet')
+
+        self.pause(pygame.MOUSEBUTTONDOWN)
 
     def _render_game_complete(self): # TODO was using this to render a game complete screen. Not currently working.
         """Render the game complete screen with final statistics"""

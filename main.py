@@ -45,7 +45,6 @@ if __name__ == "__main__":
 
         agent0_id = env.num_ships  # Hack to dynamically get agent IDs
         agent0_policy = AutonomousPolicy(env, agent0_id)
-        #agent0_policy = RLPolicy(env, agent0_id)
         agent0_policy.show_low_level_goals = env.config['show_low_level_goals']
         agent0_policy.show_high_level_goals = env.config['show_high_level_goals']
         agent0_policy.show_high_level_rationale = env.config['show_high_level_rationale']
@@ -64,10 +63,24 @@ if __name__ == "__main__":
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], None will use the default search behaviors
             time_sec = float(env.display_time)/1000
 
+
             # Agent 0: Act based on currently selected gameplan
             agent0_policy.act()
             actions.append((env.aircraft_ids[0], agent0_policy.target_point))
             agent0_policy.update_agent_info()
+
+            # Handle SAGAT surveys
+            if 59.95 < time_sec < 60.05 and not env.survey1_launched:
+                env.survey1_launched = True
+                env.SAGAT_survey(1)
+
+            if 119.95 < time_sec < 120.05 and not env.survey2_launched:
+                env.survey2_launched = True
+                env.SAGAT_survey(2)
+
+            if 179.95 < time_sec < 180.05 and not env.survey3_launched:
+                env.survey3_launched = True
+                env.SAGAT_survey(3)
 
             ev = pygame.event.get()
             for event in ev:
