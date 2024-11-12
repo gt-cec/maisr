@@ -1,6 +1,10 @@
 # TODO
 ## Priority
     * Modify logging to store final score and time remaining when game ends
+    * Add word "HP" to health panels
+
+## For later studies:
+    * More intelligent rule based agent (e.g. maybe it will prioritize a single target far away if the human has the closer targets handled)
 
 ##  Lower priority
     * Implement code to draw next N target waypoints (started in autonomous policy class) (Code partially written in render but not updating properly

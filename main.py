@@ -18,14 +18,15 @@ if __name__ == "__main__":
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
 
-    if log_data:
-        game_logger = GameLogger(subject_id,config_filename)
-        game_logger.initial_log()
-
     game_count = 0
     total_games = 20 # Number of games to run
 
     while game_count < total_games:
+
+        if log_data:
+            game_logger = GameLogger(subject_id, config_filename)
+            game_logger.initial_log()
+
         if render:
             print("Starting in PyGame mode")
             pygame.init()
