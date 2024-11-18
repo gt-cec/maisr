@@ -12,7 +12,7 @@
 	"infinite health": false,
 	"time limit": 240,
 	"game speed": 0.15,
-	"agent speed": 0.7,
+	"agent speed": 0.9,
 	"human speed": 1.4,
 	"agent start location": [200,600],
 	"human start location": [250,600],

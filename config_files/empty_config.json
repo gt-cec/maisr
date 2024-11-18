@@ -12,7 +12,7 @@
 	"infinite health": false,
 	"time limit": 120,
 	"game speed": 0.2,
-	"agent speed": 0.7,
+	"agent speed": 0.9,
 	"human speed": 1.4,
 	"show agent waypoint": 0,
 	"show_low_level_goals": true,
