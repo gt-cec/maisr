@@ -229,8 +229,8 @@ class MAISREnv(gym.Env):
         # create the aircraft
         agent0_initial_location = self.config['agent start location']
         agent1_initial_location = self.config['human start location']
-
-        agents.Aircraft(self, 0,prob_detect=0.0002,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['agent speed'], flight_pattern=self.config["search pattern"])
+        # Agent speed was originally set by self.config['agent speed'] but currently overriden with static value
+        agents.Aircraft(self, 0,prob_detect=0.0001,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*1.2, flight_pattern=self.config["search pattern"])
         agents.Aircraft(self, 0,prob_detect=0.001,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
@@ -745,10 +745,10 @@ class MAISREnv(gym.Env):
         if survey_index == 1:
             webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
         elif survey_index == 2:
-            print('Other surveys not added yet')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
 
         elif survey_index == 3:
-            print('Other surveys not added yet')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
 
         self.pause(pygame.MOUSEBUTTONDOWN)
 

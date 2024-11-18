@@ -70,15 +70,15 @@ if __name__ == "__main__":
             agent0_policy.update_agent_info()
 
             # Handle SAGAT surveys
-            if 59.95 < time_sec < 60.05 and not env.survey1_launched:
+            if 59.00 < time_sec < 60.00 and not env.survey1_launched:
                 env.survey1_launched = True
                 env.SAGAT_survey(1)
 
-            if 119.95 < time_sec < 120.05 and not env.survey2_launched:
+            if 119.00 < time_sec < 120.00 and not env.survey2_launched:
                 env.survey2_launched = True
                 env.SAGAT_survey(2)
 
-            if 179.95 < time_sec < 180.05 and not env.survey3_launched:
+            if 179.0 < time_sec < 180.0 and not env.survey3_launched:
                 env.survey3_launched = True
                 env.SAGAT_survey(3)
 
