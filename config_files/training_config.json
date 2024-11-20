@@ -1,6 +1,6 @@
 {
 	"gameboard size": 1000,
-	"window size": [1920,1080],
+	"window size": [1450,1080],
 	"num aircraft": 1,
 	"gameboard border margin": 35,
 	"gameplay color": "white",
@@ -14,11 +14,11 @@
 	"game speed": 0.15,
 	"agent speed": 0.0,
 	"human speed": 2,
-	"agent start location": [200,600],
+	"agent start location": [2000,600],
 	"human start location": [250,600],
 	"show agent waypoint": 1,
-	"show_low_level_goals": true,
-	"show_high_level_goals": true,
-	"show_high_level_rationale": true,
-	"show_tracked_factors": true
+	"show_low_level_goals": false,
+	"show_high_level_goals": false,
+	"show_high_level_rationale": false,
+	"show_tracked_factors": false
 }
