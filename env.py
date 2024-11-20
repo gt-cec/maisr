@@ -758,7 +758,7 @@ class MAISREnv(gym.Env):
 
         self.pause(pygame.MOUSEBUTTONDOWN)
 
-    def _render_game_complete(self): # TODO was using this to render a game complete screen. Not currently working.
+    def _render_game_complete(self):
         """Render the game complete screen with final statistics"""
         # Create semi-transparent overlay
         overlay = pygame.Surface((self.window_x, self.window_y))
