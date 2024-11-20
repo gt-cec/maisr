@@ -99,6 +99,9 @@ if __name__ == "__main__":
                             agent0_action = mouse_position
                             agent0_policy.waypoint_override = mouse_position
                             actions.append((env.aircraft_ids[0], agent0_action))
+                            if agent0_policy.hold_commanded:
+                                agent0_policy.hold_commanded = False
+                                env.button_latch_dict['hold'] = False
                             env.agent_waypoint_clicked = False
                             env.button_latch_dict['waypoint'] = False
                         else:
@@ -113,6 +116,11 @@ if __name__ == "__main__":
                         if env.button_latch_dict['target_id']:
                             env.button_latch_dict['wez_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold'] = False, False, False # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
+
                         env.comm_text = 'Beginning target ID'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text)
@@ -123,6 +131,11 @@ if __name__ == "__main__":
                         if env.button_latch_dict['wez_id']:
                             env.button_latch_dict['target_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
+
                         env.comm_text = 'Beginning target+WEZ ID'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text)
@@ -145,6 +158,7 @@ if __name__ == "__main__":
                         env.comm_text = 'Moving to waypoint'
                         env.button_latch_dict['waypoint'] = True
                         env.agent_waypoint_clicked = True
+
                         env.add_comm_message(env.comm_text, is_ai=True)
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
@@ -153,6 +167,9 @@ if __name__ == "__main__":
                         if env.button_latch_dict['NW']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SE'], env.button_latch_dict['SW'], env.button_latch_dict['full'],env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False, False, False, False, False, False  # mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning target ID search in NW'
                         print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
@@ -163,6 +180,9 @@ if __name__ == "__main__":
                         if env.button_latch_dict['NE']:
                             env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['SW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False,False, False, False, False, False  # mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning target ID search in NE'
                         print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
@@ -173,6 +193,9 @@ if __name__ == "__main__":
                         if env.button_latch_dict['SW']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SE'], env.button_latch_dict['NW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False, False, False, False, False,False  # mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning target ID search in SW'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
@@ -183,6 +206,9 @@ if __name__ == "__main__":
                         if env.button_latch_dict['SE']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['full'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False,False, False, False, False, False  # mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning target ID search in SE'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
@@ -192,6 +218,9 @@ if __name__ == "__main__":
                         if env.button_latch_dict['full']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['autonomous'],env.button_latch_dict['hold'] = False, False, False, False, False,False  # mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning full map search'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
@@ -202,6 +231,9 @@ if __name__ == "__main__":
                         agent0_policy.search_type_override = 'none'
                         env.button_latch_dict['manual_priorities'] = True #not env.button_latch_dict['autonomous']
                         if env.button_latch_dict['manual_priorities']: env.button_latch_dict['autonomous'] = False
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         #env.comm_text = 'Beginning autonomous search'
                         #print(env.comm_text)
                         #env.add_comm_message(env.comm_text,is_ai=True)
@@ -212,43 +244,43 @@ if __name__ == "__main__":
                         env.button_latch_dict['autonomous'] = True #not env.button_latch_dict['autonomous']
                         if env.button_latch_dict['autonomous']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['full'], env.button_latch_dict['hold'],env.button_latch_dict['target_id'],env.button_latch_dict['wez_id'],env.button_latch_dict['hold'],env.button_latch_dict['manual_priorities'] = False, False, False, False, False, False, False,False,False,False  # mutually exclusive
+                        if agent0_policy.hold_commanded:
+                            agent0_policy.hold_commanded = False
+                            env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning autonomous search'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
-                    elif env.risk_low_button.is_clicked(mouse_position):
-                        agent0_policy.risk_tolerance = 'low'
-                        env.button_latch_dict['risk_low'] = True
-                        env.button_latch_dict['risk_medium'] = False
-                        env.button_latch_dict['risk_high'] = False
-                        env.comm_text = 'Setting risk tolerance to LOW'
-                        env.add_comm_message(env.comm_text, is_ai=True)
-
-                    elif env.risk_medium_button.is_clicked(mouse_position):
-                        agent0_policy.risk_tolerance = 'medium'
-                        env.button_latch_dict['risk_low'] = False
-                        env.button_latch_dict['risk_medium'] = True
-                        env.button_latch_dict['risk_high'] = False
-                        env.comm_text = 'Setting risk tolerance to MEDIUM'
-                        env.add_comm_message(env.comm_text, is_ai=True)
-
-                    elif env.risk_high_button.is_clicked(mouse_position):
-                        agent0_policy.risk_tolerance = 'high'
-                        env.button_latch_dict['risk_low'] = False
-                        env.button_latch_dict['risk_medium'] = False
-                        env.button_latch_dict['risk_high'] = True
-                        env.comm_text = 'Setting risk tolerance to HIGH'
-                        env.add_comm_message(env.comm_text, is_ai=True)
+                    # elif env.risk_low_button.is_clicked(mouse_position):
+                    #     agent0_policy.risk_tolerance = 'low'
+                    #     env.button_latch_dict['risk_low'] = True
+                    #     env.button_latch_dict['risk_medium'] = False
+                    #     env.button_latch_dict['risk_high'] = False
+                    #     env.comm_text = 'Setting risk tolerance to LOW'
+                    #     env.add_comm_message(env.comm_text, is_ai=True)
+                    #
+                    # elif env.risk_medium_button.is_clicked(mouse_position):
+                    #     agent0_policy.risk_tolerance = 'medium'
+                    #     env.button_latch_dict['risk_low'] = False
+                    #     env.button_latch_dict['risk_medium'] = True
+                    #     env.button_latch_dict['risk_high'] = False
+                    #     env.comm_text = 'Setting risk tolerance to MEDIUM'
+                    #     env.add_comm_message(env.comm_text, is_ai=True)
+                    #
+                    # elif env.risk_high_button.is_clicked(mouse_position):
+                    #     agent0_policy.risk_tolerance = 'high'
+                    #     env.button_latch_dict['risk_low'] = False
+                    #     env.button_latch_dict['risk_medium'] = False
+                    #     env.button_latch_dict['risk_high'] = True
+                    #     env.comm_text = 'Setting risk tolerance to HIGH'
+                    #     env.add_comm_message(env.comm_text, is_ai=True)
 
                     elif env.pause_button.is_clicked(mouse_position):
                         env.pause(pygame.MOUSEBUTTONDOWN)
 
-                    elif env.quit_button.is_clicked(mouse_position):
-                        pygame.quit()
+                    # elif env.quit_button.is_clicked(mouse_position):
+                    #     pygame.quit()
 
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE:
-                        env.pause(pygame.K_SPACE)
 
             state, reward, done, _ = env.step(actions)  # step through the environment
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format

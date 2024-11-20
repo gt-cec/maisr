@@ -63,6 +63,7 @@ class MAISREnv(gym.Env):
         # self.right_pane_edge = self.gameboard_offset + 20 + self.config['gameboard size']  # Left edge of gameplan button windows
         self.gameplan_button_width = 180
         self.quadrant_button_height = 120
+        self.autonomous_button_y = 590
 
         # Initialize buttons
         self.gameplan_button_color = (255, 120, 80)
@@ -113,6 +114,8 @@ class MAISREnv(gym.Env):
         self.ai_color = self.AIRCRAFT_COLORS[0]
         self.human_color = self.AIRCRAFT_COLORS[1]
 
+
+
         # Target tally
         self.identified_targets = 0
         self.identified_threat_types = 0
@@ -124,6 +127,7 @@ class MAISREnv(gym.Env):
         self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
         self.pause_font = pygame.font.SysFont(None, 74)
+        self.pause_subtitle_font = pygame.font.SysFont(None, 40)
         self.done = False
         self.time_limit = self.config['time limit']
 
@@ -149,10 +153,8 @@ class MAISREnv(gym.Env):
         if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
             self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
 
-        # labeled ISR flight plans (Note: (1.0 * margin, 1.0 * margin) is top left, and all paths and scaled to within the region within the FLIGHTPLAN_EDGE_MARGIN)
-        self.FLIGHTPLANS = { "square": [(0, 1),(0, 0), (1, 0),(1, 1)],
-                             "ladder": [(1, 1),(1, .66),(0, .66),(0, .33),(1, .33),(1, 0),(0, 0)],
-                             "hold":[(.4, .4),(.4, .6),(.6, .6),(.6, .4)]}
+        self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
+
 
         # set the random seed
         if "seed" in config:
@@ -229,9 +231,10 @@ class MAISREnv(gym.Env):
         # create the aircraft
         agent0_initial_location = self.config['agent start location']
         agent1_initial_location = self.config['human start location']
-        # Agent speed was originally set by self.config['agent speed'] but currently overriden with static value
+
+        # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
         agents.Aircraft(self, 0,prob_detect=0.0001,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*1.2, flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.001,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.002,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -549,24 +552,24 @@ class MAISREnv(gym.Env):
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
-        # Draw Comm Log
-        if self.agent_info_height_req > 0:
-            self.comm_pane_height = 220+self.agent_info_height_req
-        else: self.comm_pane_height = 10
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height, 445, 40))  # Comm log title box
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35, 445, 220))  # Comm Log sub-window box
-        comm_text_surface = pygame.font.SysFont(None, 36).render('COMM LOG', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.comm_pane_height + 40 // 2)))
-
-        # Draw incoming comm log text
-        y_offset = self.comm_pane_height+50
-        for entry in self.comm_messages:
-            message = entry[0]
-            is_ai = entry[1]
-            color = self.ai_color if is_ai else self.human_color
-            message_surface = self.message_font.render(message, True, color)
-            self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
-            y_offset += 30  # Adjust this value to change spacing between messages
+        # # Draw Comm Log
+        # if self.agent_info_height_req > 0:
+        #     self.comm_pane_height = 220+self.agent_info_height_req
+        # else: self.comm_pane_height = 10
+        # pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height, 445, 40))  # Comm log title box
+        # pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35, 445, 220))  # Comm Log sub-window box
+        # comm_text_surface = pygame.font.SysFont(None, 36).render('COMM LOG', True, (0, 0, 0))
+        # self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.comm_pane_height + 40 // 2)))
+        #
+        # # Draw incoming comm log text
+        # y_offset = self.comm_pane_height+50
+        # for entry in self.comm_messages:
+        #     message = entry[0]
+        #     is_ai = entry[1]
+        #     color = self.ai_color if is_ai else self.human_color
+        #     message_surface = self.message_font.render(message, True, color)
+        #     self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
+        #     y_offset += 30  # Adjust this value to change spacing between messages
 
         # Draw point tally
         self.target_status_x = self.config['gameboard size'] + 40 + 405
@@ -576,27 +579,27 @@ class MAISREnv(gym.Env):
             self.target_status_y = 280
 
 
-        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.comm_pane_edge, self.target_status_y, 445, 100))  # Target tally sub-window box
-        pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.comm_pane_edge, self.target_status_y, 445,40))  # Target tally title box
-        tally_title_surface = pygame.font.SysFont(None, 36).render('TARGET STATUS', True, (0, 0, 0))
-        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.target_status_y + 40 // 2)))
+        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400, 100))  # Target tally sub-window box
+        pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400,40))  # Target tally title box
+        tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE:', True, (0, 0, 0))
+        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 375 // 2, self.autonomous_button_y+240 // 2)))
 
         id_tally_text = f"Identified Targets: {self.identified_targets} / {self.total_targets}"
         id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
-        self.window.blit(id_tally_surface, (self.comm_pane_edge+10, self.target_status_y+50))
+        self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
 
         threat_tally_text = f"Observed Threat Types: {self.identified_threat_types} / {self.total_targets}"
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
-        self.window.blit(threat_tally_surface, (self.comm_pane_edge+10, self.target_status_y+75))
+        self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
 
 
         # Draw health boxes
-        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT',self.AIRCRAFT_COLORS[0])
+        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT HP',self.AIRCRAFT_COLORS[0])
         agent0_health_window.update(self.agents[self.num_ships].health_points)
         #agent0_health_window.update(self.agents[self.num_ships].damage)
         agent0_health_window.draw(self.window)
 
-        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10, 'HUMAN',self.AIRCRAFT_COLORS[1])
+        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
         #agent1_health_window.update(self.agents[self.num_ships+1].damage)
         agent1_health_window.update(self.agents[self.num_ships+1].health_points)
         agent1_health_window.draw(self.window)
@@ -606,7 +609,7 @@ class MAISREnv(gym.Env):
         score_button.update(self.score)
         score_button.draw(self.window)
 
-        self.pause_button = Button("PAUSE", game_width * 0.5 - 150 / 2 + 1050, 630, 150, 150)
+        self.pause_button = Button("PAUSE", self.right_pane_edge, self.autonomous_button_y+225, 400, 150)
         self.pause_button.color = (220,150,40)
         self.pause_button.is_latched = self.button_latch_dict['pause']
         self.pause_button.draw(self.window)
@@ -615,7 +618,7 @@ class MAISREnv(gym.Env):
         if not self.paused:
             self.display_time = current_time - self.total_pause_time
 
-        self.time_window = TimeWindow(game_width * 0.5 + 10, game_width + 10, current_time=self.display_time,time_limit=self.time_limit)
+        #self.time_window = TimeWindow(game_width * 0.5, game_width+10, current_time=self.display_time,time_limit=self.time_limit)
         self.time_window.update(self.display_time)
         self.time_window.draw(self.window)
 
@@ -626,58 +629,63 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),
                          (self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
 
-        self.quit_button = Button("QUIT", game_width*0.5 - 150/2+1300, 630, 150, 150)
-        self.quit_button.color = (220, 40, 40)
-        self.quit_button.draw(self.window)
+        # self.quit_button = Button("QUIT", game_width*0.5 - 150/2+1300, 630, 150, 150)
+        # self.quit_button.color = (220, 40, 40)
+        # self.quit_button.draw(self.window)
 
-        # Draw risk tolerance section box
+
         risk_tolerance_y = 665
-        risk_tolerance_height = 110
-        autonomous_button_y = 590
-        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, autonomous_button_y-10, 405, 195))  # +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, autonomous_button_y-10),(self.right_pane_edge + 405, autonomous_button_y-10), 4)  # Top border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, autonomous_button_y-10),(self.right_pane_edge + 405, autonomous_button_y-10+195), 4)  # Right border +30
+        risk_tolerance_height = 110-100
+
+        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, self.autonomous_button_y-10, 405, 95))  # +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, self.autonomous_button_y-10),(self.right_pane_edge + 405, self.autonomous_button_y-10), 4)  # Top border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, self.autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, self.autonomous_button_y-10),(self.right_pane_edge + 405, self.autonomous_button_y-10+95), 4)  # Right border +30
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
 
-        self.autonomous_button = Button("Autonomous", self.right_pane_edge + 15, autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
+        self.autonomous_button = Button("Autonomous", self.right_pane_edge + 15, self.autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
         self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y),(self.right_pane_edge + 405, risk_tolerance_y), 4)  # Top border +30
+        # Draw risk tolerance section box (CURRENTLY REMOVED)
 
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y),(self.right_pane_edge + 405, risk_tolerance_y), 4)  # Top border +30
         # Add Risk Tolerance title
-        risk_tolerance_text_surface = pygame.font.SysFont(None, 26).render('RISK TOLERANCE', True, (0, 0, 0))
-        self.window.blit(risk_tolerance_text_surface, risk_tolerance_text_surface.get_rect(
-            center=(self.right_pane_edge + 425 // 2, risk_tolerance_y+15)))  # +30
-
-        # Create risk tolerance buttons
-        self.risk_low_button = Button("LOW", self.right_pane_edge + 15, risk_tolerance_y+30, 120, 60)  # +30
-        self.risk_low_button.color = (100, 255, 100) if self.button_latch_dict['risk_low'] else (255, 120, 80)
-        self.risk_low_button.is_latched = self.button_latch_dict['risk_low']
-        self.risk_low_button.draw(self.window)
-
-        self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, risk_tolerance_y+30, 120, 60)  # +30
-        self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (255, 120, 80)
-        self.risk_medium_button.is_latched = self.button_latch_dict['risk_medium']
-        self.risk_medium_button.draw(self.window)
-
-        self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, risk_tolerance_y+30, 120, 60)  # +30
-        self.risk_high_button.color = (255, 50, 50) if self.button_latch_dict['risk_high'] else (255, 120, 80)
-        self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
-        self.risk_high_button.draw(self.window)
+        # risk_tolerance_text_surface = pygame.font.SysFont(None, 26).render('RISK TOLERANCE', True, (0, 0, 0))
+        # self.window.blit(risk_tolerance_text_surface, risk_tolerance_text_surface.get_rect(
+        #     center=(self.right_pane_edge + 425 // 2, risk_tolerance_y+15)))  # +30
+        #
+        # # Create risk tolerance buttons
+        # self.risk_low_button = Button("LOW", self.right_pane_edge + 15, risk_tolerance_y+30, 120, 60)  # +30
+        # self.risk_low_button.color = (100, 255, 100) if self.button_latch_dict['risk_low'] else (255, 120, 80)
+        # self.risk_low_button.is_latched = self.button_latch_dict['risk_low']
+        # self.risk_low_button.draw(self.window)
+        #
+        # self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, risk_tolerance_y+30, 120, 60)  # +30
+        # self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (255, 120, 80)
+        # self.risk_medium_button.is_latched = self.button_latch_dict['risk_medium']
+        # self.risk_medium_button.draw(self.window)
+        #
+        # self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, risk_tolerance_y+30, 120, 60)  # +30
+        # self.risk_high_button.color = (255, 50, 50) if self.button_latch_dict['risk_high'] else (255, 120, 80)
+        # self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
+        # self.risk_high_button.draw(self.window)
 
 
         if self.paused:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-            pause_surface.set_alpha(128)  # 50% transparent
+            pause_surface.set_alpha(128*2)  # 50% transparent
             pause_surface.fill((100, 100, 100))  # Gray color
             self.window.blit(pause_surface, (0, 0))
 
             pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
+            pause_subtext = self.pause_subtitle_font.render('[CLICK ANYWHERE TO UNPAUSE]', True, (255, 255, 255))
             text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
+            pause_sub_rect = pause_subtext.get_rect(center=(self.window.get_width() // 2, (self.window.get_height() // 2) + 45))
+
             self.window.blit(pause_text, text_rect)
+            self.window.blit(pause_subtext, pause_sub_rect)
 
         if self.done:
             self._render_game_complete()
@@ -725,21 +733,19 @@ class MAISREnv(gym.Env):
         self.paused = True
         while self.paused:
             pygame.time.wait(200)
-            #pygame.draw.rect(self.window, (220, 150, 4), pygame.Rect(350, 350, 200, 200))
-            #paused_surface = pygame.font.SysFont(None, 36).render('GAME PAUSED', True, (0, 0, 0))
-            #self.window.blit(paused_surface, paused_surface.get_rect(center=(350 + 200 // 2, 350 + 200 // 2)))
+
             self.render()
             ev = pygame.event.get()
             for event in ev:
                 if event.type == unpause_key:
-                    mouse_position = pygame.mouse.get_pos()
-                    if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
-                        self.paused = False
-                        self.button_latch_dict['pause'] = False
-                        pause_end_time = pygame.time.get_ticks()
-                        pause_duration = pause_end_time - self.pause_start_time
-                        self.total_pause_time += pause_duration
-                        print('Paused for %s' % pause_duration)
+                    #mouse_position = pygame.mouse.get_pos()
+                    #if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
+                    self.paused = False
+                    self.button_latch_dict['pause'] = False
+                    pause_end_time = pygame.time.get_ticks()
+                    pause_duration = pause_end_time - self.pause_start_time
+                    self.total_pause_time += pause_duration
+                    print('Paused for %s' % pause_duration)
 
     def SAGAT_survey(self,survey_index):
         if survey_index == 1:
