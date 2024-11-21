@@ -153,7 +153,11 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text)
 
                     elif env.regroup_button.is_clicked(mouse_position):
-                        env.regroup_clicked = not env.regroup_clicked
+                        if not env.regroup_clicked:
+                            gameplan_command_history.append([time_sec, 'regroup'])  # For data logging
+                            env.regroup_clicked = True
+                        else: env.regroup_clicked = False
+
 
                     elif env.hold_button.is_clicked(mouse_position):
                         if not agent0_policy.hold_commanded:
