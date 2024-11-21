@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
             if env.regroup_clicked:
                 agent_human_distance = math.hypot(env.agents[env.num_ships].x - env.agents[env.num_ships + 1].x,env.agents[env.num_ships].y - env.agents[env.num_ships + 1].y)
-                if agent_human_distance <= 75: env.regroup_clicked = False
+                if agent_human_distance <= 50: env.regroup_clicked = False
 
             # Agent 0: Act based on currently selected gameplan
             if env.regroup_clicked:
@@ -158,6 +158,29 @@ if __name__ == "__main__":
                             env.regroup_clicked = True
                         else: env.regroup_clicked = False
 
+                    elif env.tag_team_button.is_clicked(mouse_position):
+                        if not env.tag_team_commanded:
+                            env.tag_team_commanded = True
+                            agent0_policy.search_type_override = 'tag team'
+                            env.button_latch_dict['tag_team'] = True
+                            env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
+                        else:
+                            agent0_policy.search_type_override = 'none'
+                            env.tag_team_commanded = False
+                            env.button_latch_dict['tag_team'] = False
+                            env.button_latch_dict['autonomous'] = True
+
+                    elif env.fan_out_button.is_clicked(mouse_position):
+                        if not env.fan_out_commanded:
+                            env.fan_out_commanded = True
+                            agent0_policy.search_type_override = 'fan out'
+                            env.button_latch_dict['fan_out'] = True
+                            env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
+                        else:
+                            agent0_policy.search_type_override = 'none'
+                            env.fan_out_commanded = False
+                            env.button_latch_dict['fan_out'] = False
+                            env.button_latch_dict['autonomous'] = True
 
                     elif env.hold_button.is_clicked(mouse_position):
                         if not agent0_policy.hold_commanded:

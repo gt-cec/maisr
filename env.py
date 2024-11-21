@@ -64,7 +64,7 @@ class MAISREnv(gym.Env):
         self.gameplan_button_color = (255, 120, 80)
         self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
         self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)  # (255, 120, 80))
-        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
+        self.wez_id_button = Button("WEZ", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
         self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
         self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
         self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
@@ -72,7 +72,11 @@ class MAISREnv(gym.Env):
         self.full_quad_button = Button("Full", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
         self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
-        self.regroup_button = Button("REGROUP", 1050, 980,self.gameplan_button_width, 50)
+
+        # Advanced gameplans
+        self.regroup_button = Button("REGROUP", 1020, 980,self.gameplan_button_width, 50)
+        self.tag_team_button = Button("TAG TEAM", 1230, 980,self.gameplan_button_width, 50)
+        self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
 
         # Set point quantities for each event
         self.score = 0
@@ -89,6 +93,10 @@ class MAISREnv(gym.Env):
         self.risk_level = 'LOW'
         self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
         self.regroup_clicked = False
+        self.tag_team_commanded = False
+        self.fan_out_commanded = False
+
+        self.human_quadrant = None
 
         # Comm log
         self.comm_messages = []
@@ -105,7 +113,7 @@ class MAISREnv(gym.Env):
         self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
         self.total_pause_time = 0
-        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
         self.render_bool = render
         self.pause_font = pygame.font.SysFont(None, 74)
         self.pause_subtitle_font = pygame.font.SysFont(None, 40)
@@ -195,8 +203,8 @@ class MAISREnv(gym.Env):
         agent1_initial_location = self.config['human start location']
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*1.2, flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.02,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.03,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -289,8 +297,17 @@ class MAISREnv(gym.Env):
             print(f'{self.wingman_dead_points} points for agent wingman destruction')
 
         # progress update
-        if self.config["verbose"]:
-            print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
+        if self.config["verbose"]: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
+
+        # Update human's quadrant
+        if self.agents[self.num_ships + 1].x < (self.config['gameboard size'] / 2):
+            if self.agents[self.num_ships + 1].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NW'
+            else: self.human_quadrant = 'SW'
+        else:
+            if self.agents[self.num_ships + 1].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NE'
+            else: self.human_quadrant = 'SE'
+
+
 
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
@@ -481,7 +498,19 @@ class MAISREnv(gym.Env):
         self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
 
+        self.regroup_button.is_latched = self.regroup_clicked
+        self.regroup_button.color = self.gameplan_button_color
         self.regroup_button.draw(self.window)
+
+        self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
+        self.tag_team_button.color = self.gameplan_button_color
+        self.tag_team_button.draw(self.window)
+
+        self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
+        self.fan_out_button.color = self.gameplan_button_color
+        self.fan_out_button.draw(self.window)
+
+
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
