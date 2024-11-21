@@ -79,6 +79,8 @@ class Aircraft(Agent):
         self.alive = True
         self.is_visible = is_visible
         self.show_agent_waypoint = env.show_agent_waypoint
+        self.regroup_clicked = False
+        self.base_speed = speed
 
     def draw(self, window):
         if self.is_visible:
@@ -104,13 +106,14 @@ class Aircraft(Agent):
             pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
             pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
             # draw the engagement radius
-            pygame.draw.circle(window, self.color, (self.x, self.y), self.env.AIRCRAFT_ENGAGEMENT_RADIUS, 2)
+            if not self.regroup_clicked: pygame.draw.circle(window, self.color, (self.x, self.y), self.env.AIRCRAFT_ENGAGEMENT_RADIUS, 2)
             # draw the ISR radius
-            target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
-            shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
-            semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
-            pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
-            window.blit(shape_surf, target_rect)
+            if not self.regroup_clicked:
+                target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
+                shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
+                semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
+                pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
+                window.blit(shape_surf, target_rect)
 
 
             if self.target_point is not None:
@@ -124,18 +127,19 @@ class Aircraft(Agent):
     def in_isr_range(self, agent=None, distance=None) -> bool:
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
-        return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ISR_RADIUS
+        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ISR_RADIUS)
 
     # check if another agent is in the engagement range
     def in_engagement_range(self, agent=None, distance=None) -> bool:
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
-        return (math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS
+        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS)
 
     # check the waypoints and flight path
     def move(self):
-        # if the path is empty, generate using the flight pattern
-        #print(self.direction)
+        if self.regroup_clicked: self.speed = self.base_speed * 2.5
+        else: self.speed = self.base_speed
+
         if self.path == []: # Loiter in a holding pattern (TODO: Doesn't work)
             if self.direction >= 0:
                 self.path.append((self.x, self.y))
