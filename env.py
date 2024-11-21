@@ -13,12 +13,16 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render=False):
+    def __init__(self, config={}, window=None, clock=None, render=False,subject_id='99',user_group='99',scenario_number='99'):
         super().__init__()
 
         self.config = config
         self.window = window
         self.clock = clock
+
+        self.subject_id = subject_id
+        self.scenario_number = scenario_number
+        self.user_group = user_group
 
         # Get scaling ratio from config or default to 1.0
         #self.scaling_ratio = self.config.get("scaling_ratio", 1.0)
@@ -119,7 +123,7 @@ class MAISREnv(gym.Env):
         # Target tally
         self.identified_targets = 0
         self.identified_threat_types = 0
-        self.tally_font = pygame.font.SysFont(None,24)
+        self.tally_font = pygame.font.SysFont(None,28)
 
         self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
@@ -233,8 +237,8 @@ class MAISREnv(gym.Env):
         agent1_initial_location = self.config['human start location']
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0001,max_health=4,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*1.2, flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.002,max_health=4,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*1.2, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.02,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -581,14 +585,14 @@ class MAISREnv(gym.Env):
 
         pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400, 100))  # Target tally sub-window box
         pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400,40))  # Target tally title box
-        tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE:', True, (0, 0, 0))
-        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 375 // 2, self.autonomous_button_y+240 // 2)))
+        tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
+        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
 
-        id_tally_text = f"Identified Targets: {self.identified_targets} / {self.total_targets}"
+        id_tally_text = f"Targets ID\'d (+10 pts):                          {self.identified_targets} / {self.total_targets}"
         id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
         self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
 
-        threat_tally_text = f"Observed Threat Types: {self.identified_threat_types} / {self.total_targets}"
+        threat_tally_text = f"WEZs ID\'d (+5 pts):                               {self.identified_threat_types} / {self.total_targets}"
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
         self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
 
@@ -605,9 +609,9 @@ class MAISREnv(gym.Env):
         agent1_health_window.draw(self.window)
 
         # Draw score box and update with new score value every tick
-        score_button = ScoreWindow(self.score,game_width*0.5 - 320/2, game_width + 10)
-        score_button.update(self.score)
-        score_button.draw(self.window)
+        #score_button = ScoreWindow(self.score,game_width*0.5 - 320/2, game_width + 10)
+        #score_button.update(self.score)
+        #score_button.draw(self.window)
 
         self.pause_button = Button("PAUSE", self.right_pane_edge, self.autonomous_button_y+225, 400, 150)
         self.pause_button.color = (220,150,40)
@@ -749,12 +753,11 @@ class MAISREnv(gym.Env):
 
     def SAGAT_survey(self,survey_index):
         if survey_index == 1:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=1')
         elif survey_index == 2:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
-
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=2')
         elif survey_index == 3:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=3')
 
         self.pause(pygame.MOUSEBUTTONDOWN)
 

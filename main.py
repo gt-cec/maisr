@@ -5,25 +5,30 @@ import ctypes
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import subject_id, log_data, config_filename
+from config import subject_id, user_group, log_data, config_1, config_2, config_3, config_4, config_5
 from autonomous_policy import AutonomousPolicy
 
 
 if __name__ == "__main__":
 
-    config_file_path = './config_files/' + config_filename
-    env_config = load_env_config(config_file_path)
+    #config_file_path = './config_files/' + config_filename
+    config_list = ['./config_files/'+config_1, './config_files/'+config_2, './config_files/'+config_3, './config_files/'+config_4, './config_files/'+config_5]
+    #env_config = load_env_config(config_file_path)
 
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
 
     game_count = 0
-    total_games = 20 # Number of games to run
+    total_games = 5 # Number of games to run
 
-    while game_count < total_games:
+    #while game_count < total_games:
+    scenario_number = 1
+    for config in config_list:
+
+        env_config = load_env_config(config)
 
         if log_data:
-            game_logger = GameLogger(subject_id, config_filename)
+            game_logger = GameLogger(subject_id, config)
             game_logger.initial_log()
 
         if render:
@@ -34,7 +39,7 @@ if __name__ == "__main__":
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             window = pygame.display.set_mode((window_width, window_height))
 
-            env = MAISREnv(env_config, window, clock=clock, render=True)
+            env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,scenario_number=scenario_number)
 
         else:
             print("Starting in headless mode")
@@ -63,22 +68,21 @@ if __name__ == "__main__":
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], None will use the default search behaviors
             time_sec = float(env.display_time)/1000
 
-
             # Agent 0: Act based on currently selected gameplan
             agent0_policy.act()
             actions.append((env.aircraft_ids[0], agent0_policy.target_point))
             agent0_policy.update_agent_info()
 
             # Handle SAGAT surveys
-            if 59.00 < time_sec < 60.00 and not env.survey1_launched:
+            if 1.00 < time_sec < 60.00 and not env.survey1_launched and env.config['surveys_enabled']:
                 env.survey1_launched = True
                 env.SAGAT_survey(1)
 
-            if 119.00 < time_sec < 120.00 and not env.survey2_launched:
+            if 119.00 < time_sec < 120.00 and not env.survey2_launched and env.config['surveys_enabled']:
                 env.survey2_launched = True
                 env.SAGAT_survey(2)
 
-            if 179.0 < time_sec < 180.0 and not env.survey3_launched:
+            if 179.0 < time_sec < 180.0 and not env.survey3_launched and env.config['surveys_enabled']:
                 env.survey3_launched = True
                 env.SAGAT_survey(3)
 
@@ -299,6 +303,7 @@ if __name__ == "__main__":
                         pygame.quit()
                         sys.exit()
 
+        scenario_number += 1
         print("Game complete:", game_count)
         if render:
             pygame.quit()

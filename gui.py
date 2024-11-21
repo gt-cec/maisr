@@ -50,7 +50,7 @@ class ScoreWindow:
 
         score_text_surface = self.font.render(str(self.score), True, black)
         #score_text_rect = score_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
-        score_text_rect = score_text_surface.get_rect(center=(1020 + 505 // 2, 590+240 // 2))
+        score_text_rect = score_text_surface.get_rect(center=(1020 + 700 // 2, 590+240 // 2))
         win.blit(score_text_surface, score_text_rect)
 
     def update(self,score):
@@ -60,7 +60,7 @@ class HealthWindow:
     def __init__(self, agent_id, x, y, text, title_color):
         self.rect = pygame.Rect(x,y,150,70)
         self.color = (200,200,200)
-        self.font = pygame.font.SysFont(None, 36)
+        self.font = pygame.font.SysFont(None, 42)
         self.agent_id = agent_id
         self.damage = 0
         self.text = text
@@ -79,7 +79,7 @@ class HealthWindow:
 
 
         #health_num_text_surface = self.font.render(str(round(self.damage,1)), True, self.damage_text_color) # TODO: Update with agent health
-        health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/4', True,self.damage_text_color)  # TODO: Update with agent health
+        health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/10', True,self.damage_text_color)  # TODO: Update with agent health
         health_num_text_rect = health_num_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
         win.blit(health_num_text_surface, health_num_text_rect)
 
