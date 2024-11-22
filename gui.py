@@ -33,6 +33,7 @@ class Button:
     def is_clicked(self,pos):
         return self.rect.collidepoint(pos)
 
+
 # TODO: Clean this up
 class ScoreWindow:
     def __init__(self, score, x, y):

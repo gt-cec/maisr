@@ -83,12 +83,11 @@ class Aircraft(Agent):
         self.base_speed = speed
 
     def draw(self, window):
+        if not self.alive:
+            return
+
         if self.is_visible:
-            if self.damage >= 100 and self.env.config['infinite health'] == False: # TODO: This only stops rendering the aircraft. Need to stop its movement too
-                if self.alive == True:
-                    self.alive = False
-                    print('Aircraft %s destroyed' % self.agent_idx)
-                return
+
 
             # draw the aircraft
             nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
@@ -137,23 +136,28 @@ class Aircraft(Agent):
 
     # check the waypoints and flight path
     def move(self):
+        if not self.alive:
+            return
+
+        if self.damage >= 100 and self.env.config['infinite health'] == False:
+            self.destroy()
+            return
+
         if self.regroup_clicked: self.speed = self.base_speed * 2.5
         else: self.speed = self.base_speed
 
         if self.path == []: # Loiter in a holding pattern (TODO: Doesn't work)
             if self.direction >= 0:
                 self.path.append((self.x, self.y))
-            #elif math.pi < self.direction < 2*math.pi:
-          #  elif self.direction < 0:
-          #      self.path.append((self.x,self.y))
-
-            #if self.flight_pattern in self.env.FLIGHTPLANS:
-             #   for waypoint in self.env.FLIGHTPLANS[self.flight_pattern]:
-              #      self.path.append(self.__flightplan_proportion_to_gameboard__(waypoint[0], waypoint[1]))
-            #else:
-             #   raise ValueError(f"Flight pattern ({self.flight_pattern}) is not defined in env.py!")
 
         super().move()
+
+    def destroy(self):
+        if self.alive:
+            print('Aircraft %s destroyed' % self.agent_idx)
+            self.alive = False
+            if self.agent_idx in self.env.aircraft_ids:
+                self.env.aircraft_ids.remove(self.agent_idx)
 
     # utility function for convert x/y proportions to gameboard proportions
     def __flightplan_proportion_to_gameboard__(self, x, y):
@@ -261,3 +265,93 @@ class Ship(Agent):
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
+
+class Missile(Agent):
+    def __init__(self, env, direction, color, speed=1, scale=1,max_health=4, flight_pattern="none", policy=None,is_visible=True, target_aircraft_id=None,prob_detect=0):
+        super().__init__(env, direction, color, scale, speed, agent_class="missile")
+        self.damage = 0  # damage taken by the aircraft
+        self.max_health = max_health
+        self.health_points = max_health
+        self.flight_pattern = flight_pattern
+        self.env.aircraft_ids.append(self.agent_idx)
+        self.policy = policy # Not implemented right now
+        self.alive = True
+        self.is_visible = is_visible
+        self.show_agent_waypoint = env.show_agent_waypoint
+        self.regroup_clicked = False
+        self.base_speed = speed
+        self.target_aircraft_id = target_aircraft_id
+        self.prob_detect = prob_detect
+        self.spawn_time = env.display_time
+        self.lifespan = 20000
+
+
+    def draw(self, window):
+        nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
+        tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,
+                      self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
+        if not self.alive: return
+        if self.is_visible:
+            if self.damage >= 100 and self.env.config['infinite health'] == False:
+                self.destroy()
+                pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
+                return
+
+            # draw the aircraft
+            #left_wingtip_point = (self.x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH, self.y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            #right_wingtip_point = (self.x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH, self.y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
+            pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
+
+            #pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            #pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            #pygame.draw.line(window, self.color, left_wingtip_point, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH)
+            #pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            #pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+
+            # draw the ISR radius
+            # if not self.regroup_clicked:
+            #     target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
+            #     shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
+            #     semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
+            #     pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
+            #     window.blit(shape_surf, target_rect)
+
+            if self.target_point is not None:
+                if self.show_agent_waypoint >= 1:
+                    pygame.draw.line(window, (200, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
+                    pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
+
+    # check if another agent is in the ISR range
+    def in_isr_range(self, agent=None, distance=None) -> bool:
+        if distance is None and agent is None:
+            raise ValueError("Either distance or agent must be provided")
+        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ISR_RADIUS)
+
+    # check if another agent is in the engagement range
+    def in_engagement_range(self, agent=None, distance=None) -> bool:
+        if distance is None and agent is None:
+            raise ValueError("Either distance or agent must be provided")
+        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS)
+
+    # check the waypoints and flight path
+    def move(self):
+        if not self.alive:
+            return
+
+        if (self.env.display_time - self.spawn_time) > self.lifespan:
+            self.destroy()
+            return
+
+        super().move()
+
+    def destroy(self):
+        if self.alive:
+            print('Missile %s destroyed' % self.agent_idx)
+            self.alive = False
+
+            if self.agent_idx in self.env.aircraft_ids:
+                self.env.aircraft_ids.remove(self.agent_idx)

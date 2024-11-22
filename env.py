@@ -60,6 +60,8 @@ class MAISREnv(gym.Env):
         self.quadrant_button_height = 120
         self.autonomous_button_y = 590
 
+        self.missiles_enabled = self.config['missiles_enabled']
+
         # Initialize buttons
         self.gameplan_button_color = (255, 120, 80)
         self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
@@ -204,7 +206,7 @@ class MAISREnv(gym.Env):
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
         agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.03,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.03,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -218,6 +220,7 @@ class MAISREnv(gym.Env):
 
     def step(self, actions:list):
         # if an action was specified, handle that agent's waypoint
+
         if self.regroup_clicked:
             self.agents[self.num_ships].regroup_clicked = True
 
@@ -235,6 +238,11 @@ class MAISREnv(gym.Env):
             if agent.agent_class == "aircraft":
                 if agent.alive:
                     agent.move()
+
+            if agent.agent_class == 'missile':
+                agent.target_point = (self.agents[agent.target_aircraft_id].x, self.agents[agent.target_aircraft_id].y)
+                agent.waypoint_override = (self.agents[agent.target_aircraft_id].x, self.agents[agent.target_aircraft_id].y)
+                agent.move()
 
             # handle ships
             if agent.agent_class == "ship":
@@ -268,11 +276,19 @@ class MAISREnv(gym.Env):
                     if agent.in_weapon_range(distance=dist) and agent.threat > 0:
                         if self.agents[aircraft_id].alive:
                             if random.random() < self.agents[aircraft_id].prob_detect:
-                                self.agents[aircraft_id].health_points -= 1
-                                print(f'Agent {aircraft_id} -1 HP')
-                                self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
-                                self.damage_flash_start = pygame.time.get_ticks()
-                                self.damage_flash_alpha = 255  # Start fully opaque
+
+                                # TODO testing missiles
+                                if self.missiles_enabled:
+                                    agents.Missile(self, 0, max_health=10, color=(200, 0, 0),speed=self.config['game speed'] * self.config['human speed']*0.9,flight_pattern=self.config["search pattern"], target_aircraft_id=aircraft_id)
+                                    self.agents[-1].x, self.agents[-1].y = agent.x, agent.y
+                                    self.agents[-1].waypoint_override = (self.agents[aircraft_id].x, self.agents[aircraft_id].y)
+
+                                else:
+                                    self.agents[aircraft_id].health_points -= 1
+                                    print(f'Agent {aircraft_id} -1 HP')
+                                    self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
+                                    self.damage_flash_start = pygame.time.get_ticks()
+                                    self.damage_flash_alpha = 255  # Start fully opaque
 
                                 if self.agents[aircraft_id].health_points <= 0:
                                     self.agents[aircraft_id].damage = 100
@@ -308,11 +324,10 @@ class MAISREnv(gym.Env):
             else: self.human_quadrant = 'SE'
 
 
-
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = (self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)) or (self.agents[self.num_ships+1].damage > 100 and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) # round is complete when all ships have been identified # TODO: Currently requires you to identify all targets and all WEZs. Consider changing.
+        done = (self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)) or (self.agents[self.num_ships+1].damage > 100 and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) or (not self.agents[self.num_ships+1].alive)
 
         if done:
             self.done = True
@@ -322,14 +337,14 @@ class MAISREnv(gym.Env):
                 self.score += self.all_targets_points
                 self.score += (self.display_time/1000)*self.time_points
 
-
-            elif self.agents[self.num_ships+1].damage > 100:
+            #elif self.agents[self.num_ships+1].damage > 100:
+            elif not self.agents[self.num_ships+1].alive:
                 self.score += self.human_dead_points
                 print('Human aircraft destroyed, game over.')
+
             elif self.display_time/1000 >= self.time_limit:
                 print('Out of time, game over.')
                 self.display_time = 0
-
 
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
