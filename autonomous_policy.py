@@ -109,9 +109,9 @@ class AutonomousPolicy:
                     if closest_distance is None or dist < closest_distance:
                         closest_distance = dist
 
-            elif self.search_type == 'tag team': # Only search unknown targets and WEZs within 200 pixels of the human ship (TODO testing)
+            elif self.search_type == 'tag team': # Only search unknown targets and WEZs within 300 pixels of the human ship (TODO testing)
                 ship_to_human = math.hypot(self.env.agents[self.env.num_ships + 1].x - self.env.agents[ship_id].x, self.env.agents[self.env.num_ships + 1].y - self.env.agents[ship_id].y)
-                if (current_state['ships'][ship_id]['observed'] == False or current_state['ships'][ship_id]['observed threat'] == False) and (ship_to_human < 200):
+                if (current_state['ships'][ship_id]['observed'] == True and current_state['ships'][ship_id]['observed threat'] == False) and (ship_to_human < 300):
                     #dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     dist = ship_to_human
                     current_target_distances[ship_id] = dist
