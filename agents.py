@@ -267,7 +267,7 @@ class Ship(Agent):
         return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
 
 class Missile(Agent):
-    def __init__(self, env, direction, color, speed=1, scale=1,max_health=4, flight_pattern="none", policy=None,is_visible=True, target_aircraft_id=None,prob_detect=0):
+    def __init__(self, env, direction, color, speed=1, scale=0.5,max_health=4, flight_pattern="none", policy=None,is_visible=True, target_aircraft_id=None,prob_detect=0):
         super().__init__(env, direction, color, scale, speed, agent_class="missile")
         self.damage = 0  # damage taken by the aircraft
         self.max_health = max_health
@@ -323,7 +323,7 @@ class Missile(Agent):
             if self.target_point is not None:
                 if self.show_agent_waypoint >= 1:
                     pygame.draw.line(window, (200, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
-                    pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
+                    #pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
 
     # check if another agent is in the ISR range
     def in_isr_range(self, agent=None, distance=None) -> bool:

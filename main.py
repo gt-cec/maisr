@@ -56,8 +56,8 @@ if __name__ == "__main__":
         done = False  # flag for when the run is complete
 
         while not done:  # game loop
-            if log_data:
-                game_logger.log_state(env, pygame.time.get_ticks())
+            if log_data: game_logger.log_state(env, pygame.time.get_ticks())
+
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], 'None' will use the default search behaviors
             time_sec = float(env.display_time)/1000
 
@@ -84,12 +84,10 @@ if __name__ == "__main__":
                 env.survey3_launched = True
                 env.SAGAT_survey(3)
 
-
             # Handle mouse clicks
             ev = pygame.event.get()
             for event in ev:
-                if event.type == pygame.QUIT:
-                    pygame.quit()
+                if event.type == pygame.QUIT: pygame.quit()
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
