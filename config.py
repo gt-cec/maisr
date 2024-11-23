@@ -6,7 +6,7 @@ user_group = 'test' # 'test', 'control' 'card' 'video'
 
 # 2. Modify config_filename:
 
-config_1 = 'model_card_configs/modelcard_scenario1_config.json'#'training_config.json'
+config_1 = 'training_config.json'
 config_2 = 'model_card_configs/modelcard_scenario1_config.json'
 config_3 = 'model_card_configs/modelcard_scenario2_config.json'
 config_4 = 'model_card_configs/modelcard_scenario3_config.json'

@@ -327,13 +327,13 @@ class MAISREnv(gym.Env):
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = (self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids)) or (self.agents[self.num_ships+1].damage > 100 and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) or (not self.agents[self.num_ships+1].alive)
+        done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.num_ships+1].alive and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) or (not self.agents[self.num_ships+1].alive)
 
         if done:
             self.done = True
             print('Done!')
 
-            if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
+            if self.num_identified_ships >= self.num_ships:
                 self.score += self.all_targets_points
                 self.score += (self.display_time/1000)*self.time_points
 
@@ -413,8 +413,8 @@ class MAISREnv(gym.Env):
         ui_width = window_width - game_width
 
         # gameboard background
-        self.window.fill((255, 255, 255))  # white background
 
+        self.window.fill((255, 255, 255))  # white background
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
         self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
@@ -524,8 +524,6 @@ class MAISREnv(gym.Env):
         self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
         self.fan_out_button.color = self.gameplan_button_color
         self.fan_out_button.draw(self.window)
-
-
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 

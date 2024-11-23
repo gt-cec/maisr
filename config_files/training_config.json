@@ -21,5 +21,6 @@
 	"show_high_level_goals": false,
 	"show_high_level_rationale": false,
 	"show_tracked_factors": false,
-	"surveys_enabled": false
+	"surveys_enabled": false,
+	"missiles_enabled": true
 }
