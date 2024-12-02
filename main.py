@@ -1,11 +1,12 @@
 from agents import *
 import sys
+import os
 import ctypes
 
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import subject_id, user_group, log_data, config_1, config_2, config_3, config_4, config_5
+from config import subject_id, user_group, log_data, config_1, config_2, config_3, config_4, config_5, x, y
 from autonomous_policy import AutonomousPolicy
 
 
@@ -34,7 +35,8 @@ if __name__ == "__main__":
             clock = pygame.time.Clock()
             ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
-            window = pygame.display.set_mode((window_width, window_height))
+            os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
+            window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
 
             env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,scenario_number=scenario_number)
 
@@ -88,6 +90,8 @@ if __name__ == "__main__":
             ev = pygame.event.get()
             for event in ev:
                 if event.type == pygame.QUIT: pygame.quit()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_BACKSLASH: pygame.quit()
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
