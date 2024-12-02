@@ -22,5 +22,5 @@
 	"show_high_level_rationale": false,
 	"show_tracked_factors": false,
 	"surveys_enabled": true,
-	"missiles_enabled": true
+	"missiles_enabled": false
 }

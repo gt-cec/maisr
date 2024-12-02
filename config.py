@@ -14,4 +14,4 @@ config_5 = 'model_card_configs/modelcard_scenario4_config.json'
 
 
 # 3. Set whether you want to save run data to a json file in ./experiment_data:
-log_data = False
+log_data = True
