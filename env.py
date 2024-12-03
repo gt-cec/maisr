@@ -76,9 +76,9 @@ class MAISREnv(gym.Env):
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
         # Advanced gameplans
-        self.regroup_button = Button("REGROUP", 1020, 980,self.gameplan_button_width, 50)
-        self.tag_team_button = Button("TAG TEAM", 1230, 980,self.gameplan_button_width, 50)
-        self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
+        #self.regroup_button = Button("REGROUP", 1020, 980,self.gameplan_button_width, 50)
+        #self.tag_team_button = Button("TAG TEAM", 1230, 980,self.gameplan_button_width, 50)
+        #self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
 
         # Set point quantities for each event
         self.score = 0
@@ -206,7 +206,7 @@ class MAISREnv(gym.Env):
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
         agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.03,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
@@ -513,17 +513,17 @@ class MAISREnv(gym.Env):
         self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
 
-        self.regroup_button.is_latched = self.regroup_clicked
-        self.regroup_button.color = self.gameplan_button_color
-        self.regroup_button.draw(self.window)
+        # self.regroup_button.is_latched = self.regroup_clicked
+        # self.regroup_button.color = self.gameplan_button_color
+        # self.regroup_button.draw(self.window)
 
-        self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
-        self.tag_team_button.color = self.gameplan_button_color
-        self.tag_team_button.draw(self.window)
+        # self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
+        # self.tag_team_button.color = self.gameplan_button_color
+        # self.tag_team_button.draw(self.window)
 
-        self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
-        self.fan_out_button.color = self.gameplan_button_color
-        self.fan_out_button.draw(self.window)
+        # self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
+        # self.fan_out_button.color = self.gameplan_button_color
+        # self.fan_out_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
@@ -556,21 +556,22 @@ class MAISREnv(gym.Env):
         tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
         self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
 
-        id_tally_text = f"Targets ID\'d (+10 pts):                          {self.identified_targets} / {self.total_targets}"
+        id_tally_text = f"Targets ID\'d (+10 pts):                       {self.identified_targets} / {self.total_targets}"
         id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
         self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
 
-        threat_tally_text = f"WEZs ID\'d (+5 pts):                               {self.identified_threat_types} / {self.total_targets}"
+        threat_tally_text = f"WEZs ID\'d (+5 pts):                            {self.identified_threat_types} / {self.total_targets}"
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
         self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
 
 
         # Draw health boxes
-        agent0_health_window = HealthWindow(self.num_ships,10,game_width+10, 'AGENT HP',self.AIRCRAFT_COLORS[0])
-        agent0_health_window.update(self.agents[self.num_ships].health_points)
-        agent0_health_window.draw(self.window)
+        if self.config['num aircraft'] > 1:
+            agent0_health_window = HealthWindow(self.num_ships,10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
+            agent0_health_window.update(self.agents[self.num_ships].health_points)
+            agent0_health_window.draw(self.window)
 
-        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 10, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
+        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
         agent1_health_window.update(self.agents[self.num_ships+1].health_points)
         agent1_health_window.draw(self.window)
 

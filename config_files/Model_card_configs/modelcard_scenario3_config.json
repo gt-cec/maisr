@@ -11,9 +11,9 @@
 	"verbose": false,
 	"infinite health": false,
 	"time limit": 240,
-	"game speed": 0.15,
+	"game speed": 0.07,
 	"agent speed": 0.9,
-	"human speed": 1.4,
+	"human speed": 2.8,
 	"agent start location": [280,900],
 	"human start location": [100,900],
 	"show agent waypoint": 1,
@@ -22,5 +22,5 @@
 	"show_high_level_rationale": false,
 	"show_tracked_factors": false,
 	"surveys_enabled": true,
-	"missiles_enabled": False
+	"missiles_enabled": false
 }

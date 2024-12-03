@@ -35,11 +35,11 @@ class GameLogger:
         """Log the current game state if 10 seconds have elapsed"""
         if self.last_state_log_time == 0 or (current_time - self.last_state_log_time >= self.log_interval):
             state_data = {
-                'timestamp': current_time,
+                'timestamp': round(current_time/1000,0),
                 'type': 'state',
                 'game_state': {
                     'score': env.score,
-                    'time': env.display_time,
+                    'time': round(env.display_time/1000,0),
                     'identified_targets': env.identified_targets,
                     'identified_threat_types': env.identified_threat_types,
                     'agent0_damage': env.agents[env.num_ships].damage,
@@ -67,7 +67,7 @@ class GameLogger:
     def log_mouse_event(self, event_pos, event_type, timestamp):
         """Log mouse click events (these are still logged immediately)"""
         event_data = {
-            'timestamp': timestamp,
+            'timestamp': round(timestamp/1000,0),
             'type': 'mouse_event',
             'event_type': event_type,
             'position': event_pos
