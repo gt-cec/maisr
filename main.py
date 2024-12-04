@@ -335,37 +335,11 @@ if __name__ == "__main__":
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
-                    # elif env.risk_low_button.is_clicked(mouse_position):
-                    #     agent0_policy.risk_tolerance = 'low'
-                    #     env.button_latch_dict['risk_low'] = True
-                    #     env.button_latch_dict['risk_medium'] = False
-                    #     env.button_latch_dict['risk_high'] = False
-                    #     env.comm_text = 'Setting risk tolerance to LOW'
-                    #     env.add_comm_message(env.comm_text, is_ai=True)
-                    #
-                    # elif env.risk_medium_button.is_clicked(mouse_position):
-                    #     agent0_policy.risk_tolerance = 'medium'
-                    #     env.button_latch_dict['risk_low'] = False
-                    #     env.button_latch_dict['risk_medium'] = True
-                    #     env.button_latch_dict['risk_high'] = False
-                    #     env.comm_text = 'Setting risk tolerance to MEDIUM'
-                    #     env.add_comm_message(env.comm_text, is_ai=True)
-                    #
-                    # elif env.risk_high_button.is_clicked(mouse_position):
-                    #     agent0_policy.risk_tolerance = 'high'
-                    #     env.button_latch_dict['risk_low'] = False
-                    #     env.button_latch_dict['risk_medium'] = False
-                    #     env.button_latch_dict['risk_high'] = True
-                    #     env.comm_text = 'Setting risk tolerance to HIGH'
-                    #     env.add_comm_message(env.comm_text, is_ai=True)
 
+            if env.init or pygame.time.get_ticks() > env.start_countdown_time:
+                state, reward, done, _ = env.step(actions)  # step through the environment
+            if env.init: env.init = False
 
-
-                    # elif env.quit_button.is_clicked(mouse_position):
-                    #     pygame.quit()
-
-
-            state, reward, done, _ = env.step(actions)  # step through the environment
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
             if render:  # if in PyGame mode, render the environment
                 env.render()

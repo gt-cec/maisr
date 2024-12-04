@@ -20,6 +20,7 @@ class MAISREnv(gym.Env):
         self.window = window
         self.clock = clock
         self.init = True # Used to render static windows the first time
+        self.start_countdown_time = 5000 # How long in milliseconds to count down at the beginning of the game before it starts
 
         self.subject_id = subject_id
         self.scenario_number = scenario_number
@@ -197,6 +198,7 @@ class MAISREnv(gym.Env):
         self.identified_targets = 0
         self.identified_threat_types = 0
         self.done = False
+        self.init = True
 
         # create the ships
         for i in range(self.num_ships):
@@ -212,11 +214,11 @@ class MAISREnv(gym.Env):
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
 
-        if self.config['num aircraft'] == 1:
-            self.agents[self.num_ships].is_visible = False
+        if self.config['num aircraft'] == 1: self.agents[self.num_ships].is_visible = False # Do not draw the agent during solo training runs
 
-        #for i in range(self.config["num aircraft"]):
-        #    agents.Aircraft(self, 0, color=self.AIRCRAFT_COLORS[i] if i < len(self.AIRCRAFT_COLORS) else self.AIRCRAFT_COLORS[-1], speed=1.5, flight_pattern=self.config["search pattern"])
+
+
+        #    self.total_pause_time = pygame.time.get_ticks() - countdown_start
 
         return get_state()
 
@@ -426,22 +428,39 @@ class MAISREnv(gym.Env):
 
         current_time = pygame.time.get_ticks()
 
-        # Handle damage flashes
-        if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
-            progress = (current_time - self.damage_flash_start) / self.damage_flash_duration # Calculate alpha based on time elapsed
-            alpha = int(255 * (1 - progress))
-            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
-            border_width = 50
-            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
-            pygame.draw.rect(border_surface, border_color, (0, 0, self.config["gameboard size"], border_width)) # Top border
-            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"], border_width)) # Bottom border
-            pygame.draw.rect(border_surface, border_color, (0, 0, border_width, self.config["gameboard size"])) # Left border
-            pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width, self.config["gameboard size"])) # Right border
-            self.window.blit(border_surface, (0, 0)) # Blit the border surface onto the main window
+
+
 
         # Draw the agents
         for agent in self.agents:
             agent.draw(self.window)
+
+        # Handle damage flashes
+        if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
+            progress = (current_time - self.damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+            alpha = int(255 * (1 - progress))
+            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
+            border_width = 50
+            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+            pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard size"], border_width))  # Top border
+            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"],border_width))  # Bottom border
+            pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard size"]))  # Left border
+            pygame.draw.rect(border_surface, border_color, (
+            self.config["gameboard size"] - border_width, 0, border_width,
+            self.config["gameboard size"]))  # Right border
+            self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+
+        elif self.agents[self.num_ships + 1].health_points <= 3:
+            alpha = int(155)
+            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
+            border_width = 35
+            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+            pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard size"], border_width))  # Top border
+            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"],border_width))  # Bottom border
+            pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard size"]))  # Left border
+            pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width,self.config["gameboard size"]))  # Right border
+            self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+
 
         # Draw Agent Gameplan sub-window
         self.quadrant_button_height = 120
@@ -566,7 +585,6 @@ class MAISREnv(gym.Env):
         threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
         self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
 
-
         # Draw health boxes
         if self.config['num aircraft'] > 1:
             agent0_health_window = HealthWindow(self.num_ships,10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
@@ -612,29 +630,39 @@ class MAISREnv(gym.Env):
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
-        # Draw risk tolerance section box (CURRENTLY REMOVED)
 
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y),(self.right_pane_edge + 405, risk_tolerance_y), 4)  # Top border +30
-        # Add Risk Tolerance title
-        # risk_tolerance_text_surface = pygame.font.SysFont(None, 26).render('RISK TOLERANCE', True, (0, 0, 0))
-        # self.window.blit(risk_tolerance_text_surface, risk_tolerance_text_surface.get_rect(
-        #     center=(self.right_pane_edge + 425 // 2, risk_tolerance_y+15)))  # +30
-        #
-        # # Create risk tolerance buttons
-        # self.risk_low_button = Button("LOW", self.right_pane_edge + 15, risk_tolerance_y+30, 120, 60)  # +30
-        # self.risk_low_button.color = (100, 255, 100) if self.button_latch_dict['risk_low'] else (255, 120, 80)
-        # self.risk_low_button.is_latched = self.button_latch_dict['risk_low']
-        # self.risk_low_button.draw(self.window)
-        #
-        # self.risk_medium_button = Button("MEDIUM", self.right_pane_edge + 145, risk_tolerance_y+30, 120, 60)  # +30
-        # self.risk_medium_button.color = (255, 165, 0) if self.button_latch_dict['risk_medium'] else (255, 120, 80)
-        # self.risk_medium_button.is_latched = self.button_latch_dict['risk_medium']
-        # self.risk_medium_button.draw(self.window)
-        #
-        # self.risk_high_button = Button("HIGH", self.right_pane_edge + 275, risk_tolerance_y+30, 120, 60)  # +30
-        # self.risk_high_button.color = (255, 50, 50) if self.button_latch_dict['risk_high'] else (255, 120, 80)
-        # self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
-        # self.risk_high_button.draw(self.window)
+        # Countdown from 5 seconds at start of game
+        if current_time <= self.start_countdown_time:
+            countdown_font = pygame.font.SysFont(None, 120)
+            message_font = pygame.font.SysFont(None, 60)
+            countdown_start = 0
+            countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+            countdown_surface.set_alpha(128)  # 50% transparent
+
+            time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
+
+            # Draw semi-transparent overlay
+            countdown_surface.fill((100, 100, 100))
+            self.window.blit(countdown_surface, (0, 0))
+
+            # Draw "Get Ready!" message
+            ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
+            ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
+            self.window.blit(ready_text, ready_rect)
+
+            # Draw countdown number
+            countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+            text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
+            self.window.blit(countdown_text, text_rect)
+
+            pygame.time.wait(50)  # Control update rate
+
+            # Handle any quit events during countdown
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+
 
         if self.paused and not self.unpause_countdown:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
