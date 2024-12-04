@@ -90,6 +90,8 @@ class MAISREnv(gym.Env):
         self.human_dead_points = -400  # Points subtracted for human dying
 
         self.paused = False
+        self.unpause_countdown = False
+
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
         self.risk_level = 'LOW'
@@ -634,7 +636,7 @@ class MAISREnv(gym.Env):
         # self.risk_high_button.is_latched = self.button_latch_dict['risk_high']
         # self.risk_high_button.draw(self.window)
 
-        if self.paused:
+        if self.paused and not self.unpause_countdown:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
             pause_surface.set_alpha(128*2)  # 50% transparent
             pause_surface.fill((100, 100, 100))  # Gray color
@@ -687,27 +689,87 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
 
-    def pause(self,unpause_key):
+    # def pause(self,unpause_key):
+    #     print('Game paused')
+    #     self.pause_start_time = pygame.time.get_ticks()
+    #     self.button_latch_dict['pause'] = True
+    #     print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
+    #     self.paused = True
+    #     while self.paused:
+    #         pygame.time.wait(200)
+    #
+    #         self.render()
+    #         ev = pygame.event.get()
+    #         for event in ev:
+    #             if event.type == unpause_key:
+    #                 #mouse_position = pygame.mouse.get_pos()
+    #                 #if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
+    #                 self.paused = False
+    #                 self.button_latch_dict['pause'] = False
+    #                 pause_end_time = pygame.time.get_ticks()
+    #                 pause_duration = pause_end_time - self.pause_start_time
+    #                 self.total_pause_time += pause_duration
+    #                 print('Paused for %s' % pause_duration)
+
+    def pause(self, unpause_key):
         print('Game paused')
         self.pause_start_time = pygame.time.get_ticks()
         self.button_latch_dict['pause'] = True
         print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
         self.paused = True
-        while self.paused:
-            pygame.time.wait(200)
 
+        countdown_font = pygame.font.SysFont(None, 120)
+        countdown_duration = 3  # seconds
+
+        while self.paused:
+            pygame.time.wait(50)  # Reduced wait time for smoother rendering
             self.render()
+
             ev = pygame.event.get()
             for event in ev:
                 if event.type == unpause_key:
-                    #mouse_position = pygame.mouse.get_pos()
-                    #if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
+                    # Start countdown
+                    countdown_start = pygame.time.get_ticks()
+                    countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                    countdown_surface.set_alpha(128)  # 50% transparent
+
+                    while (pygame.time.get_ticks() - countdown_start) < countdown_duration * 1000:
+                        self.unpause_countdown = True
+                        current_time = pygame.time.get_ticks()
+                        time_left = countdown_duration - (current_time - countdown_start) / 1000
+
+                        # Regular render
+                        self.render()
+
+                        # Draw countdown
+                        countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+                        text_rect = countdown_text.get_rect(
+                            center=(self.window.get_width() // 2, self.window.get_height() // 2))
+
+                        # Draw semi-transparent overlay
+                        countdown_surface.fill((100, 100, 100))
+                        self.window.blit(countdown_surface, (0, 0))
+
+                        # Draw countdown number
+                        self.window.blit(countdown_text, text_rect)
+
+                        pygame.display.update()
+                        pygame.time.wait(50)  # Control update rate
+
+                        # Handle any quit events during countdown
+                        for evt in pygame.event.get():
+                            if evt.type == pygame.QUIT:
+                                pygame.quit()
+                                return
+
                     self.paused = False
+                    self.unpause_countdown = False
                     self.button_latch_dict['pause'] = False
                     pause_end_time = pygame.time.get_ticks()
                     pause_duration = pause_end_time - self.pause_start_time
                     self.total_pause_time += pause_duration
                     print('Paused for %s' % pause_duration)
+                    return  # Exit the pause function
 
     def SAGAT_survey(self,survey_index):
         if survey_index == 1:

@@ -107,6 +107,8 @@ if __name__ == "__main__":
                         if env.agent_waypoint_clicked:
                             if log_data: game_logger.log_mouse_event(mouse_position,"agent waypoint",pygame.time.get_ticks())
                             print('Agent waypoint set to %s' % (mouse_position,))
+                            env.comm_text = 'Moving to waypoint'
+                            env.add_comm_message(env.comm_text, is_ai=True)
                             agent0_action = mouse_position
                             agent0_policy.waypoint_override = mouse_position
                             actions.append((env.aircraft_ids[0], agent0_action))
@@ -211,11 +213,11 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.waypoint_button.is_clicked(mouse_position):
-                        env.comm_text = 'Moving to waypoint'
+
                         env.button_latch_dict['waypoint'] = True
                         env.agent_waypoint_clicked = True
                         gameplan_command_history.append([time_sec, 'waypoint'])
-                        env.add_comm_message(env.comm_text, is_ai=True)
+
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",pygame.time.get_ticks())
