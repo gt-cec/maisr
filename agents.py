@@ -134,6 +134,12 @@ class Aircraft(Agent):
             raise ValueError("Either distance or agent must be provided")
         return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS)
 
+    def draw_damage(self):
+        target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
+        shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
+        semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90 + 10, 10)]
+        pygame.draw.polygon(shape_surf, (255,0,0), semicircle_points)
+
     # check the waypoints and flight path
     def move(self):
         if not self.alive:

@@ -105,7 +105,7 @@ class MAISREnv(gym.Env):
 
         # Comm log
         self.comm_messages = []
-        self.max_messages = 5
+        self.max_messages = 4
         self.message_font = pygame.font.SysFont(None,30)
         self.ai_color = self.AIRCRAFT_COLORS[0]
         self.human_color = self.AIRCRAFT_COLORS[1]
@@ -129,6 +129,8 @@ class MAISREnv(gym.Env):
         self.damage_flash_duration = 500  # Duration of flash in milliseconds
         self.damage_flash_start = 0  # When the last damage was taken
         self.damage_flash_alpha = 0  # Current opacity of flash effect
+        self.agent_damage_flash_start = 0
+        self.agent_damage_flash_alpha = 0
         self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
 
         # Situational-awareness based agent transparency config
@@ -286,9 +288,17 @@ class MAISREnv(gym.Env):
                                     self.agents[-1].x, self.agents[-1].y = agent.x, agent.y
                                     self.agents[-1].waypoint_override = (self.agents[aircraft_id].x, self.agents[aircraft_id].y)
 
-                                else:
+                                elif aircraft_id == self.num_ships: # agent damaged
                                     self.agents[aircraft_id].health_points -= 1
+                                    self.agents[aircraft_id].draw_damage()
                                     print(f'Agent {aircraft_id} -1 HP')
+                                    self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
+                                    #self.agent_damage_flash_start = pygame.time.get_ticks()
+                                    #self.agent_damage_flash_alpha = 255  # Start fully opaque
+
+                                else: # Human damaged
+                                    self.agents[aircraft_id].health_points -= 1
+                                    print(f'Human -1 HP')
                                     self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
                                     self.damage_flash_start = pygame.time.get_ticks()
                                     self.damage_flash_alpha = 255  # Start fully opaque
@@ -405,7 +415,7 @@ class MAISREnv(gym.Env):
 
     def add_comm_message(self,message,is_ai=True):
         #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        sender = "AGNT" if is_ai else "HUMAN"
+        sender = "AGENT" if is_ai else "HUMAN"
         full_message = f"{sender}: {message}"
         self.comm_messages.append((full_message, is_ai))
         if len(self.comm_messages) > self.max_messages:
@@ -435,9 +445,24 @@ class MAISREnv(gym.Env):
         for agent in self.agents:
             agent.draw(self.window)
 
-        # Handle damage flashes
+        # Handle damage flashes when human is damaged
         if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
             progress = (current_time - self.damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+            alpha = int(255 * (1 - progress))
+            border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
+            border_width = 50
+            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+            pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard size"], border_width))  # Top border
+            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"],border_width))  # Bottom border
+            pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard size"]))  # Left border
+            pygame.draw.rect(border_surface, border_color, (
+            self.config["gameboard size"] - border_width, 0, border_width,
+            self.config["gameboard size"]))  # Right border
+            self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+
+        # Handle flash when agent is damaged (TODO: Make this a different graphic)
+        if current_time > 1000 and (current_time - self.agent_damage_flash_start < self.damage_flash_duration):
+            progress = (current_time - self.agent_damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
             alpha = int(255 * (1 - progress))
             border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
             border_width = 50
@@ -555,7 +580,7 @@ class MAISREnv(gym.Env):
         pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+800, 400, 40))  # Comm log title box
         pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+800, 400, 150))  # Comm Log sub-window box
         comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.comm_pane_height + 40+1555 // 2)))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1555 // 2)))
 
         # Draw incoming comm log text
         y_offset = self.comm_pane_height+50+800

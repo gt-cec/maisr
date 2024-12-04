@@ -232,7 +232,7 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning target ID search in NW'
+                        env.comm_text = 'Prioritizing NW quadrant'
                         print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
 
@@ -249,7 +249,7 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning target ID search in NE'
+                        env.comm_text = 'Prioritizing NE quadrant'
                         print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
 
@@ -266,7 +266,7 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning target ID search in SW'
+                        env.comm_text = 'Prioritizing SW quadrant'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
@@ -283,7 +283,7 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning target ID search in SE'
+                        env.comm_text = 'Prioritizing SE quadrant'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning full map search'
+                        env.comm_text = 'Prioritizing full map'
                         print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 

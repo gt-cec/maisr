@@ -4,14 +4,13 @@ import torch.optim as optim
 from torch.distributions import Normal
 import numpy as np
 import math
-from collections import deque
 import time
 import json
 import pygame
 from datetime import datetime
 
 from env import MAISREnv
-from rl_policy import PolicyNetwork
+from reinforcement_learning.rl_policy import PolicyNetwork
 
 """Draft training framework implementation. Not tested. """
 
@@ -342,7 +341,7 @@ class PPOTrainer:
 
 if __name__ == "__main__":
     # Load environment config
-    with open('config_files/default_config.json', 'r') as f:
+    with open('../config_files/default_config.json', 'r') as f:
         env_config = json.load(f)
 
     # Initialize trainer
