@@ -93,7 +93,9 @@ if __name__ == "__main__":
             for event in ev:
                 if event.type == pygame.QUIT: pygame.quit()
 
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_F1: pygame.quit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F1: pygame.quit()
+                    if event.key == pygame.K_SPACE: env.pause(pygame.MOUSEBUTTONDOWN)
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
@@ -355,8 +357,7 @@ if __name__ == "__main__":
                     #     env.comm_text = 'Setting risk tolerance to HIGH'
                     #     env.add_comm_message(env.comm_text, is_ai=True)
 
-                    elif env.pause_button.is_clicked(mouse_position):
-                        env.pause(pygame.MOUSEBUTTONDOWN)
+
 
                     # elif env.quit_button.is_clicked(mouse_position):
                     #     pygame.quit()
@@ -389,4 +390,4 @@ if __name__ == "__main__":
             pygame.quit()
 
     print("DONE!")
-    webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_3ITZnNRRBqioKR8')
+    webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_3ITZnNRRBqioKR8?subject_id='+str(subject_id)+'&user_group='+str(user_group))

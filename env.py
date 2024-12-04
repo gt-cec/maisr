@@ -55,7 +55,7 @@ class MAISREnv(gym.Env):
         self.window_x = self.config["window size"][0]
         self.window_y = self.config["window size"][1]
         self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
-        self.comm_pane_edge = self.config['gameboard size'] + 40 + 405
+        self.comm_pane_edge = self.right_pane_edge
         self.gameplan_button_width = 180
         self.quadrant_button_height = 120
         self.autonomous_button_y = 590
@@ -102,7 +102,7 @@ class MAISREnv(gym.Env):
 
         # Comm log
         self.comm_messages = []
-        self.max_messages = 7
+        self.max_messages = 5
         self.message_font = pygame.font.SysFont(None,30)
         self.ai_color = self.AIRCRAFT_COLORS[0]
         self.human_color = self.AIRCRAFT_COLORS[1]
@@ -126,7 +126,7 @@ class MAISREnv(gym.Env):
         self.damage_flash_duration = 500  # Duration of flash in milliseconds
         self.damage_flash_start = 0  # When the last damage was taken
         self.damage_flash_alpha = 0  # Current opacity of flash effect
-        self.last_health_points = {0: 4, 1: 4}  # Track health points to detect changes
+        self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
 
         # Situational-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
@@ -277,7 +277,6 @@ class MAISREnv(gym.Env):
                         if self.agents[aircraft_id].alive:
                             if random.random() < self.agents[aircraft_id].prob_detect:
 
-                                # TODO testing missiles
                                 if self.missiles_enabled:
                                     agents.Missile(self, 0, max_health=10, color=(200, 0, 0),speed=self.config['game speed'] * self.config['human speed']*0.9,flight_pattern=self.config["search pattern"], target_aircraft_id=aircraft_id)
                                     self.agents[-1].x, self.agents[-1].y = agent.x, agent.y
@@ -303,7 +302,8 @@ class MAISREnv(gym.Env):
                                      and agent.threat > 0
                                      and agent.observed_threat
                                      and math.hypot(agent.x - agent0.x, agent.y - agent0.y) <= 30)
-        risk_level_function = 10*hostile_targets_nearby + self.agents[self.num_ships].damage # TODO tune this
+        risk_level_function = 10*hostile_targets_nearby + (100 - 10*self.agents[self.num_ships].health_points) # TODO tune this
+
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
         # Check if any aircraft are recently deceased (RIP)
@@ -401,8 +401,8 @@ class MAISREnv(gym.Env):
 
     def add_comm_message(self,message,is_ai=True):
         #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        sender = "AGENT" if is_ai else "HUMAN"
-        full_message = f"[{sender}]: {message}"
+        sender = "AGNT" if is_ai else "HUMAN"
+        full_message = f"{sender}: {message}"
         self.comm_messages.append((full_message, is_ai))
         if len(self.comm_messages) > self.max_messages:
             self.comm_messages.pop(0)
@@ -425,7 +425,7 @@ class MAISREnv(gym.Env):
         current_time = pygame.time.get_ticks()
 
         # Handle damage flashes
-        if current_time - self.damage_flash_start < self.damage_flash_duration:
+        if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
             progress = (current_time - self.damage_flash_start) / self.damage_flash_duration # Calculate alpha based on time elapsed
             alpha = int(255 * (1 - progress))
             border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
@@ -527,24 +527,24 @@ class MAISREnv(gym.Env):
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
-        # # Draw Comm Log
-        # if self.agent_info_height_req > 0:
-        #     self.comm_pane_height = 220+self.agent_info_height_req
-        # else: self.comm_pane_height = 10
-        # pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height, 445, 40))  # Comm log title box
-        # pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35, 445, 220))  # Comm Log sub-window box
-        # comm_text_surface = pygame.font.SysFont(None, 36).render('COMM LOG', True, (0, 0, 0))
-        # self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.comm_pane_height + 40 // 2)))
-        #
-        # # Draw incoming comm log text
-        # y_offset = self.comm_pane_height+50
-        # for entry in self.comm_messages:
-        #     message = entry[0]
-        #     is_ai = entry[1]
-        #     color = self.ai_color if is_ai else self.human_color
-        #     message_surface = self.message_font.render(message, True, color)
-        #     self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
-        #     y_offset += 30  # Adjust this value to change spacing between messages
+        # Draw Comm Log
+        if self.agent_info_height_req > 0:
+            self.comm_pane_height = 220+self.agent_info_height_req
+        else: self.comm_pane_height = 10
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+800, 400, 40))  # Comm log title box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+800, 400, 150))  # Comm Log sub-window box
+        comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 445 // 2, self.comm_pane_height + 40+1555 // 2)))
+
+        # Draw incoming comm log text
+        y_offset = self.comm_pane_height+50+800
+        for entry in self.comm_messages:
+            message = entry[0]
+            is_ai = entry[1]
+            color = self.ai_color if is_ai else self.human_color
+            message_surface = self.message_font.render(message, True, color)
+            self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
+            y_offset += 30  # Adjust this value to change spacing between messages
 
         # Draw point tally
         self.target_status_x = self.config['gameboard size'] + 40 + 405
@@ -580,10 +580,10 @@ class MAISREnv(gym.Env):
         #score_button.update(self.score)
         #score_button.draw(self.window)
 
-        self.pause_button = Button("PAUSE", self.right_pane_edge, self.autonomous_button_y+225, 400, 150)
-        self.pause_button.color = (220,150,40)
-        self.pause_button.is_latched = self.button_latch_dict['pause']
-        self.pause_button.draw(self.window)
+        # self.pause_button = Button("PAUSE", self.right_pane_edge, self.autonomous_button_y+225, 400, 150)
+        # self.pause_button.color = (220,150,40)
+        # self.pause_button.is_latched = self.button_latch_dict['pause']
+        # self.pause_button.draw(self.window)
 
         current_time = pygame.time.get_ticks()
         if not self.paused:
@@ -675,7 +675,7 @@ class MAISREnv(gym.Env):
                 state["aircrafts"][agent.agent_idx] = {
                     "position": (agent.x, agent.y),
                     "direction": agent.direction,
-                    "damage": agent.damage
+                    "damage": agent.health_points
                 }
         return state
 
@@ -744,26 +744,44 @@ class MAISREnv(gym.Env):
         stats_font = pygame.font.SysFont(None, 36)
 
         # Render title
-        title_surface = title_font.render('GAME COMPLETE', True, (0, 0, 0))
-        self.window.blit(title_surface, title_surface.get_rect(
-            center=(window_x + window_width // 2, window_y + 30)))
+        if not self.agents[self.num_ships+1].alive:
+            title_surface = title_font.render('GAME OVER', True, (0, 0, 0))
+        elif self.display_time/1000 >= self.time_limit:
+            title_surface = title_font.render('GAME COMPLETE: TIME UP', True, (0, 0, 0))
+        else:
+            title_surface = title_font.render('GAME COMPLETE', True, (0, 0, 0))
+
+        self.window.blit(title_surface, title_surface.get_rect(center=(window_x + window_width // 2, window_y + 30)))
 
         # Calculate statistics
-        agent_status = "ALIVE" if self.agents[self.num_ships].damage <= 100 else "DESTROYED"
+        agent_status = "ALIVE" if self.agents[self.num_ships].alive else "DESTROYED"
         agent_status_color = (0, 255, 0) if agent_status == "ALIVE" else (255, 0, 0)
+        human_status = 'ALIVE' if self.agents[self.num_ships + 1].alive else "DESTROYED"
+        human_status_color = (0, 255, 0) if human_status == "ALIVE" else (255, 0, 0)
 
         # Create stats text surfaces
         stats_items = [
             f"Final Score: {self.score}",
             f"Targets Identified: {self.identified_targets} / {self.total_targets}",
             f"Threat Levels Observed: {self.identified_threat_types} / {self.total_targets}",
-            f"Agent Status: {agent_status}"
-        ]
+            f"Human Status: {human_status}",
+            f"Agent Status: {agent_status}"]
 
         # Render stats
         y_offset = window_y + 100
         for i, text in enumerate(stats_items):
-            if i == len(stats_items) - 1:  # Agent Status line
+            if i == len(stats_items) - 2:  # Human Status line
+                text_surface = stats_font.render(text.split(': ')[0] + ': ', True, (0, 0, 0))
+                status_surface = stats_font.render(human_status, True, human_status_color)
+
+                # Center align the text
+                total_width = text_surface.get_width() + status_surface.get_width()
+                start_x = window_x + (window_width - total_width) // 2
+
+                self.window.blit(text_surface, (start_x, y_offset))
+                self.window.blit(status_surface, (start_x + text_surface.get_width(), y_offset))
+
+            elif i == len(stats_items) - 1:  # Agent Status line
                 text_surface = stats_font.render(text.split(': ')[0] + ': ', True, (0, 0, 0))
                 status_surface = stats_font.render(agent_status, True, agent_status_color)
 
@@ -777,7 +795,7 @@ class MAISREnv(gym.Env):
                 text_surface = stats_font.render(text, True, (0, 0, 0))
                 self.window.blit(text_surface, text_surface.get_rect(
                     center=(window_x + window_width // 2, y_offset)))
-            y_offset += 60
+            y_offset += 50
 
         # Add decorative elements
         border_width = 4

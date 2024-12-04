@@ -57,35 +57,94 @@ class ScoreWindow:
     def update(self,score):
         self.score = score # Note: The truth source for score is env.score. This gets updated from that.
 
+# class HealthWindow:
+#     def __init__(self, agent_id, x, y, text, title_color):
+#         self.rect = pygame.Rect(x,y,150,70)
+#         self.color = (200,200,200)
+#         self.font = pygame.font.SysFont(None, 42)
+#         self.agent_id = agent_id
+#         self.damage = 0
+#         self.text = text
+#         self.damage_text_color = (0,0,0)
+#         self.title_color = title_color
+#
+#     def draw(self,win):
+#         pygame.draw.rect(win, self.color, self.rect)
+#         text_surface = self.font.render(self.text, True, self.title_color)
+#         text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 0.5*self.rect.height // 2))
+#         win.blit(text_surface, text_rect)
+#
+#         if self.damage >= 70: self.damage_text_color = (255,0,0)
+#         elif self.damage >= 40: self.damage_text_color = (210,160,0)
+#
+#         health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/10', True,self.damage_text_color)  # TODO: Update with agent health
+#         health_num_text_rect = health_num_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
+#         win.blit(health_num_text_surface, health_num_text_rect)
+#
+#     def update(self,damage):
+#         self.damage = damage # Note: The truth source for score is env.score. This gets updated from that.
+
+
 class HealthWindow:
     def __init__(self, agent_id, x, y, text, title_color):
-        self.rect = pygame.Rect(x,y,150,70)
-        self.color = (200,200,200)
+        self.rect = pygame.Rect(x, y, 150, 70)
+        self.color = (200, 200, 200)
         self.font = pygame.font.SysFont(None, 42)
         self.agent_id = agent_id
-        self.damage = 0
+        self.health_points = 10  # Max health
         self.text = text
-        self.damage_text_color = (0,0,0)
         self.title_color = title_color
 
-    def draw(self,win):
+        # Health bar specific properties
+        self.bar_width = 130
+        self.bar_height = 25
+        self.bar_x = x + 10
+        self.bar_y = y + 35
+        self.segment_width = self.bar_width / 10  # Width of each health segment
+
+    def get_health_color(self, health):
+        """Return a color ranging from green to red based on health percentage"""
+        if health >= 7:
+            return (0, 255, 0)  # Green
+        elif health >= 4:
+            return (255, 165, 0)  # Orange
+        else:
+            return (255, 0, 0)  # Red
+
+    def draw(self, win):
+        # Draw the background box
         pygame.draw.rect(win, self.color, self.rect)
-        #health_text = 'AGENT ' + str(self.agent_id)
+
+        # Draw the title
         text_surface = self.font.render(self.text, True, self.title_color)
-        text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 0.5*self.rect.height // 2))
+        text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 20))
         win.blit(text_surface, text_rect)
 
-        if self.damage >= 70: self.damage_text_color = (255,0,0)
-        elif self.damage >= 40: self.damage_text_color = (210,160,0)
+        # Draw the empty health bar background
+        pygame.draw.rect(win, (100, 100, 100), (self.bar_x, self.bar_y, self.bar_width, self.bar_height))
 
+        # Draw the filled portion of the health bar
+        if self.health_points > 0:
+            health_width = (self.health_points / 10) * self.bar_width
+            health_color = self.get_health_color(self.health_points)
+            pygame.draw.rect(win, health_color, (self.bar_x, self.bar_y, health_width, self.bar_height))
 
-        #health_num_text_surface = self.font.render(str(round(self.damage,1)), True, self.damage_text_color) # TODO: Update with agent health
-        health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/10', True,self.damage_text_color)  # TODO: Update with agent health
-        health_num_text_rect = health_num_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
-        win.blit(health_num_text_surface, health_num_text_rect)
+        # Draw segment lines
+        for i in range(1, 10):
+            line_x = self.bar_x + (i * self.segment_width)
+            pygame.draw.line(win, (0, 0, 0),
+                             (line_x, self.bar_y),
+                             (line_x, self.bar_y + self.bar_height),
+                             2)
 
-    def update(self,damage):
-        self.damage = damage # Note: The truth source for score is env.score. This gets updated from that.
+        # Draw border around the health bar
+        pygame.draw.rect(win, (0, 0, 0),
+                         (self.bar_x, self.bar_y, self.bar_width, self.bar_height),
+                         2)
+
+    def update(self, health_points):
+        """Update the health value (expects value from 0-10)"""
+        self.health_points = health_points
 
 class TimeWindow:
     def __init__(self, x, y, current_time=0, time_limit=240):  # Takes current game time in raw form (milliseconds)
