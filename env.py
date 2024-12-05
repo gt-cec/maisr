@@ -77,8 +77,8 @@ class MAISREnv(gym.Env):
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
         # Advanced gameplans
-        #self.regroup_button = Button("REGROUP", 1020, 980,self.gameplan_button_width, 50)
-        #self.tag_team_button = Button("TAG TEAM", 1230, 980,self.gameplan_button_width, 50)
+        self.regroup_button = Button("REGROUP", self.right_pane_edge, 590+100,self.gameplan_button_width, 60)
+        self.tag_team_button = Button("TAG TEAM", self.right_pane_edge+220, 590+100,self.gameplan_button_width, 60)
         #self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
 
         # Set point quantities for each event
@@ -559,13 +559,13 @@ class MAISREnv(gym.Env):
         self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
 
-        # self.regroup_button.is_latched = self.regroup_clicked
-        # self.regroup_button.color = self.gameplan_button_color
-        # self.regroup_button.draw(self.window)
+        self.regroup_button.is_latched = self.regroup_clicked
+        self.regroup_button.color = self.gameplan_button_color
+        self.regroup_button.draw(self.window)
 
-        # self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
-        # self.tag_team_button.color = self.gameplan_button_color
-        # self.tag_team_button.draw(self.window)
+        self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
+        self.tag_team_button.color = self.gameplan_button_color
+        self.tag_team_button.draw(self.window)
 
         # self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
         # self.fan_out_button.color = self.gameplan_button_color
@@ -592,23 +592,23 @@ class MAISREnv(gym.Env):
             self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
             y_offset += 30  # Adjust this value to change spacing between messages
 
-        # Draw point tally
-        self.target_status_x = self.config['gameboard size'] + 40 + 405
-        if self.agent_info_height_req > 0: self.target_status_y = 500 + self.agent_info_height_req
-        else: self.target_status_y = 280
+        # # Draw point tally
+        # self.target_status_x = self.config['gameboard size'] + 40 + 405
+        # if self.agent_info_height_req > 0: self.target_status_y = 500 + self.agent_info_height_req
+        # else: self.target_status_y = 280
 
-        pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400, 100))  # Target tally sub-window box
-        pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200-100, 400,40))  # Target tally title box
-        tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
-        self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
+        # pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400, 100))  # Target tally sub-window box
+        # pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400,40))  # Target tally title box
+        # tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
+        # self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
 
-        id_tally_text = f"Targets ID\'d (+10 pts):                       {self.identified_targets} / {self.total_targets}"
-        id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
-        self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
+        # id_tally_text = f"Targets ID\'d (+10 pts):                       {self.identified_targets} / {self.total_targets}"
+        # id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
+        # self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
 
-        threat_tally_text = f"WEZs ID\'d (+5 pts):                            {self.identified_threat_types} / {self.total_targets}"
-        threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
-        self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
+        # threat_tally_text = f"WEZs ID\'d (+5 pts):                            {self.identified_threat_types} / {self.total_targets}"
+        # threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
+        # self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
 
         # Draw health boxes
         if self.config['num aircraft'] > 1:
@@ -650,7 +650,7 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, self.autonomous_button_y-10),(self.right_pane_edge + 405, self.autonomous_button_y-10+95), 4)  # Right border +30
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
 
-        self.autonomous_button = Button("Autonomous", self.right_pane_edge + 15, self.autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
+        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, self.autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
         self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
@@ -696,7 +696,7 @@ class MAISREnv(gym.Env):
             self.window.blit(pause_surface, (0, 0))
 
             pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
-            pause_subtext = self.pause_subtitle_font.render('[CLICK ANYWHERE TO UNPAUSE]', True, (255, 255, 255))
+            pause_subtext = self.pause_subtitle_font.render('[RIGHT CLICK TO UNPAUSE]', True, (255, 255, 255))
             text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
             pause_sub_rect = pause_subtext.get_rect(center=(self.window.get_width() // 2, (self.window.get_height() // 2) + 45))
 
@@ -768,7 +768,7 @@ class MAISREnv(gym.Env):
         print('Game paused')
         self.pause_start_time = pygame.time.get_ticks()
         self.button_latch_dict['pause'] = True
-        print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
+        #print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
         self.paused = True
 
         countdown_font = pygame.font.SysFont(None, 120)
@@ -780,49 +780,51 @@ class MAISREnv(gym.Env):
 
             ev = pygame.event.get()
             for event in ev:
-                if event.type == unpause_key:
-                    # Start countdown
-                    countdown_start = pygame.time.get_ticks()
-                    countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-                    countdown_surface.set_alpha(128)  # 50% transparent
+                #if event.type == unpause_key:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 3:
+                        # Start countdown
+                        countdown_start = pygame.time.get_ticks()
+                        countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                        countdown_surface.set_alpha(128)  # 50% transparent
 
-                    while (pygame.time.get_ticks() - countdown_start) < countdown_duration * 1000:
-                        self.unpause_countdown = True
-                        current_time = pygame.time.get_ticks()
-                        time_left = countdown_duration - (current_time - countdown_start) / 1000
+                        while (pygame.time.get_ticks() - countdown_start) < countdown_duration * 1000:
+                            self.unpause_countdown = True
+                            current_time = pygame.time.get_ticks()
+                            time_left = countdown_duration - (current_time - countdown_start) / 1000
 
-                        # Regular render
-                        self.render()
+                            # Regular render
+                            self.render()
 
-                        # Draw countdown
-                        countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
-                        text_rect = countdown_text.get_rect(
-                            center=(self.window.get_width() // 2, self.window.get_height() // 2))
+                            # Draw countdown
+                            countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+                            text_rect = countdown_text.get_rect(
+                                center=(self.window.get_width() // 2, self.window.get_height() // 2))
 
-                        # Draw semi-transparent overlay
-                        countdown_surface.fill((100, 100, 100))
-                        self.window.blit(countdown_surface, (0, 0))
+                            # Draw semi-transparent overlay
+                            countdown_surface.fill((100, 100, 100))
+                            self.window.blit(countdown_surface, (0, 0))
 
-                        # Draw countdown number
-                        self.window.blit(countdown_text, text_rect)
+                            # Draw countdown number
+                            self.window.blit(countdown_text, text_rect)
 
-                        pygame.display.update()
-                        pygame.time.wait(50)  # Control update rate
+                            pygame.display.update()
+                            pygame.time.wait(50)  # Control update rate
 
-                        # Handle any quit events during countdown
-                        for evt in pygame.event.get():
-                            if evt.type == pygame.QUIT:
-                                pygame.quit()
-                                return
+                            # Handle any quit events during countdown
+                            for evt in pygame.event.get():
+                                if evt.type == pygame.QUIT:
+                                    pygame.quit()
+                                    return
 
-                    self.paused = False
-                    self.unpause_countdown = False
-                    self.button_latch_dict['pause'] = False
-                    pause_end_time = pygame.time.get_ticks()
-                    pause_duration = pause_end_time - self.pause_start_time
-                    self.total_pause_time += pause_duration
-                    print('Paused for %s' % pause_duration)
-                    return  # Exit the pause function
+                        self.paused = False
+                        self.unpause_countdown = False
+                        self.button_latch_dict['pause'] = False
+                        pause_end_time = pygame.time.get_ticks()
+                        pause_duration = pause_end_time - self.pause_start_time
+                        self.total_pause_time += pause_duration
+                        print('Paused for %s' % pause_duration)
+                        return  # Exit the pause function
 
     def SAGAT_survey(self,survey_index):
         if survey_index == 1:

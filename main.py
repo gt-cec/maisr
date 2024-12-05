@@ -106,7 +106,7 @@ if __name__ == "__main__":
                     if env.config['gameboard border margin'] < mouse_position[0] < env.config['gameboard size']-env.config['gameboard border margin'] and env.config['gameboard border margin'] < mouse_position[1] < env.config['gameboard size']-env.config['gameboard border margin']:
                         if env.agent_waypoint_clicked:
                             if log_data: game_logger.log_mouse_event(mouse_position,"agent waypoint",pygame.time.get_ticks())
-                            print('Agent waypoint set to %s' % (mouse_position,))
+                            #print('Agent waypoint set to %s' % (mouse_position,))
                             env.comm_text = 'Moving to waypoint'
                             env.add_comm_message(env.comm_text, is_ai=True)
                             agent0_action = mouse_position
@@ -119,7 +119,7 @@ if __name__ == "__main__":
                             env.button_latch_dict['waypoint'] = False
                         else:
                             if log_data: game_logger.log_mouse_event(mouse_position,"human waypoint",pygame.time.get_ticks())
-                            print('Human waypoint set to %s' % (mouse_position,))
+                            #print('Human waypoint set to %s' % (mouse_position,))
                             agent1_action = mouse_position
                             actions.append((env.aircraft_ids[1], agent1_action))
 
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                             env.button_latch_dict['hold'] = False
 
                         env.comm_text = 'Beginning target ID'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text)
 
                     elif env.wez_id_button.is_clicked(mouse_position):
@@ -159,28 +159,28 @@ if __name__ == "__main__":
                             env.button_latch_dict['hold'] = False
 
                         env.comm_text = 'Beginning target+WEZ ID'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text)
 
-                    # elif env.regroup_button.is_clicked(mouse_position):
-                    #     if not env.regroup_clicked:
-                    #         gameplan_command_history.append([time_sec, 'regroup'])  # For data logging
-                    #         agent0_policy.waypoint_override = False
-                    #         env.regroup_clicked = True
-                    #     else: env.regroup_clicked = False
+                    elif env.regroup_button.is_clicked(mouse_position):
+                        if not env.regroup_clicked:
+                            gameplan_command_history.append([time_sec, 'regroup'])  # For data logging
+                            agent0_policy.waypoint_override = False
+                            env.regroup_clicked = True
+                        else: env.regroup_clicked = False
 
-                    # elif env.tag_team_button.is_clicked(mouse_position):
-                    #     if not env.tag_team_commanded:
-                    #         env.tag_team_commanded = True
-                    #         agent0_policy.search_type_override = 'tag team'
-                    #         agent0_policy.waypoint_override = False
-                    #         env.button_latch_dict['tag_team'] = True
-                    #         env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
-                    #     else:
-                    #         agent0_policy.search_type_override = 'none'
-                    #         env.tag_team_commanded = False
-                    #         env.button_latch_dict['tag_team'] = False
-                    #         env.button_latch_dict['autonomous'] = True
+                    elif env.tag_team_button.is_clicked(mouse_position):
+                        if not env.tag_team_commanded:
+                            env.tag_team_commanded = True
+                            agent0_policy.search_type_override = 'tag team'
+                            agent0_policy.waypoint_override = False
+                            env.button_latch_dict['tag_team'] = True
+                            env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
+                        else:
+                            agent0_policy.search_type_override = 'none'
+                            env.tag_team_commanded = False
+                            env.button_latch_dict['tag_team'] = False
+                            env.button_latch_dict['autonomous'] = True
 
                     # elif env.fan_out_button.is_clicked(mouse_position):
                     #     if not env.fan_out_commanded:
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing NW quadrant'
-                        print(env.comm_text + '(Gameplan:')
+                        #print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.NE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
@@ -250,7 +250,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing NE quadrant'
-                        print(env.comm_text + '(Gameplan:')
+                        #print(env.comm_text + '(Gameplan:')
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.SW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
@@ -267,7 +267,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing SW quadrant'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.SE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
@@ -284,7 +284,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing SE quadrant'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.full_quad_button.is_clicked(mouse_position):
@@ -300,7 +300,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing full map'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
 
@@ -332,7 +332,7 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning autonomous search'
-                        print(env.comm_text)
+                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
 
@@ -365,5 +365,5 @@ if __name__ == "__main__":
         if render:
             pygame.quit()
 
-    print("DONE!")
+    print("ALL GAMES COMPLETE")
     webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_3ITZnNRRBqioKR8?subject_id='+str(subject_id)+'&user_group='+str(user_group))
