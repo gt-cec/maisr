@@ -24,12 +24,11 @@ class GameLogger:
         log_header = 'game configuration:' + str(self.config_name)
         self._write_log_entry(log_header)
 
-    def final_log(self,gameplan_command_history):
+    def final_log(self,gameplan_command_history,env):
         #line1 = 'gameplan_command_history:' + str(gameplan_command_history)
         #line2 = 'total_gameplan_commands:' + str(len(gameplan_command_history))
-        final_data = {'gameplan_command_history': gameplan_command_history,'total_gameplan_commands': len(gameplan_command_history)}
+        final_data = {'final score': env.score, 'gameplan_command_history': gameplan_command_history,'total_gameplan_commands': len(gameplan_command_history)}
         self._write_log_entry(final_data)
-        #self._write_log_entry(line2)
 
     def log_state(self, env, current_time):
         """Log the current game state if 10 seconds have elapsed"""

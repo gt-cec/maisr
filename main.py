@@ -347,7 +347,7 @@ if __name__ == "__main__":
         if done:
             if log_data:
                 game_logger.log_state(env, pygame.time.get_ticks())
-                game_logger.final_log(gameplan_command_history)
+                game_logger.final_log(gameplan_command_history, env)
 
             waiting_for_key = True
             while waiting_for_key:
