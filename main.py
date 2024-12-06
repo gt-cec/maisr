@@ -6,7 +6,7 @@ import ctypes
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import subject_id, user_group, log_data, x, y, config_dict
+from config import subject_id, user_group, log_data, x, y, config_dict #, run_order
 from autonomous_policy import AutonomousPolicy
 import webbrowser
 
@@ -16,7 +16,9 @@ if __name__ == "__main__":
     render = "headless" not in sys.argv
 
     config_list = config_dict[user_group]
-
+    # pairs = list(zip(run_order, unsorted_config_list))
+    # sorted_pairs = sorted(pairs, key=lambda x: x[0])
+    # config_list = [item for _, item in sorted_pairs]
 
     game_count = 0
     total_games = 5 # Number of games to run
@@ -25,6 +27,7 @@ if __name__ == "__main__":
 
     scenario_number = 1
     for config in config_list:
+        print(config)
         env_config = load_env_config(config)
 
         if log_data:
@@ -60,6 +63,7 @@ if __name__ == "__main__":
         done = False  # flag for when the run is complete
 
         while not done:  # game loop
+            #print(env.display_time)
             if log_data: game_logger.log_state(env, pygame.time.get_ticks())
 
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], 'None' will use the default search behaviors

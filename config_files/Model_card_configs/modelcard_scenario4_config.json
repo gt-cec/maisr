@@ -6,7 +6,7 @@
 	"gameplay color": "white",
 	"motion iteration": "F",
 	"search pattern": "ladder",
-	"seed":515,
+	"seed":615,
 	"num ships":60,
 	"verbose": false,
 	"infinite health": false,

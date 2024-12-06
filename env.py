@@ -72,7 +72,7 @@ class MAISREnv(gym.Env):
         self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
         self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
         self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
-        self.full_quad_button = Button("Full", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
+        self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
         self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
@@ -213,7 +213,7 @@ class MAISREnv(gym.Env):
         agent1_initial_location = self.config['human start location']
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0004,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.002,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
         agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"])
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
@@ -544,7 +544,7 @@ class MAISREnv(gym.Env):
         self.SE_quad_button.draw(self.window)
 
         #self.full_quad_button = Button("Full", self.right_pane_edge+200-35-10, 60+2*(80+10)+20-35+5+50, 100, 100)
-        self.full_quad_button.color = (50,180,180)
+        self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
         self.full_quad_button.is_latched = self.button_latch_dict['full']
         self.full_quad_button.draw(self.window)
 

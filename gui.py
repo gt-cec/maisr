@@ -11,7 +11,9 @@ class Button:
         self.color = (255, 120, 80)
         self.default_color = (255, 120, 80)
         self.border_color = (0,0,0)
+        self.unlatched_border_color = (40,40,40)
         self.border_width = 3
+        self.unlatched_border_width = 2
         self.font = pygame.font.SysFont(None, 32)
         self.is_latched = False
 
@@ -24,6 +26,12 @@ class Button:
             pygame.draw.line(win, self.border_color, (self.x - 3, self.y + self.height + 1),(self.x + self.width + 3, self.y + self.height + 1), self.border_width)  # Bottom border
             pygame.draw.line(win, self.border_color, (self.x - 3, self.y - 3), (self.x - 3, self.y + self.height + 1),self.border_width)  # Left border
             pygame.draw.line(win, self.border_color, (self.x + self.width + 1, self.y - 3),(self.x + self.width + 1, self.y + self.height + 1), self.border_width)  # Right border
+
+        else: #if self.text == "FULL":
+            pygame.draw.line(win, self.unlatched_border_color, (self.x - 3+1, self.y - 3+1), (self.x + self.width + 0, self.y - 3+1),self.unlatched_border_width)  # Top border
+            pygame.draw.line(win, self.unlatched_border_color, (self.x - 3+1, self.y + self.height),(self.x + self.width, self.y + self.height), self.unlatched_border_width)  # Bottom border
+            pygame.draw.line(win, self.unlatched_border_color, (self.x - 3+1, self.y - 3+1), (self.x - 3+1, self.y + self.height + 1),self.unlatched_border_width)  # Left border
+            pygame.draw.line(win, self.unlatched_border_color, (self.x + self.width, self.y - 3+1),(self.x + self.width, self.y + self.height + 1), self.unlatched_border_width)  # Right border
 
         pygame.draw.rect(win, self.color, self.rect)
         text_surface = self.font.render(self.text, True, (0,0,0))
