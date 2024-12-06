@@ -69,41 +69,47 @@ class AutonomousPolicy:
 
 
     def basic_search(self):
-        # TODO: Doesn't seem to route to the closest unknown target in the specified quadrant
         current_state = self.env.get_state()
         current_target_distances = {}  # Will be {agent_idx:distance}
-        closest_distance = None
+        #closest_distance = None
 
         gameboard_size = self.env.config["gameboard size"]
         quadrant_bounds = {'full': (0, gameboard_size, 0, gameboard_size),'NW': (0, gameboard_size * 0.5, 0, gameboard_size * 0.5),'NE': (gameboard_size * 0.5, gameboard_size, 0, gameboard_size * 0.5),'SW': (0, gameboard_size * 0.5, gameboard_size * 0.5, gameboard_size), 'SE': (gameboard_size * 0.5, gameboard_size, gameboard_size * 0.5,gameboard_size)}  # specifies (Min x, max x, min y, max y)
 
         # Find nearby threats for status display
-        self.nearby_threats = []
-        threat_distances = {}
-        for ship_id in current_state['ships']:
-            ship = current_state['ships'][ship_id]
-            if ship['observed'] and ship['observed threat'] and ship['threat'] > 0:
-                dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
-                threat_distances[ship_id] = dist
+        # self.nearby_threats = []
+        # threat_distances = {}
+        # for ship_id in current_state['ships']:
+        #     ship = current_state['ships'][ship_id]
+        #     if ship['observed'] and ship['observed threat'] and ship['threat'] > 0:
+        #         dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
+        #         threat_distances[ship_id] = dist
 
         # Get 2 closest threats
-        sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
-        for threat_id, dist in sorted_threats[:2]:
-            self.nearby_threats.append((threat_id, int(dist)))
+        # sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
+        # for threat_id, dist in sorted_threats[:2]:
+        #     self.nearby_threats.append((threat_id, int(dist)))
 
         for ship_id in current_state['ships']: # Loop through all ships in environment, calculate distance, find closest unknown ship (or unknown WEZ), and set waypoint to that location
+            closest_distance = None
             if self.search_type == 'target':  # If set to target, only consider unknown targets
-                dist = 999 # TODO testing
+                
+
                 if current_state['ships'][ship_id]['observed'] == False and (
-                        quadrant_bounds[self.search_quadrant][0] <=  current_state['ships'][ship_id]['position'][0] <=
-                        quadrant_bounds[self.search_quadrant][1]) and (quadrant_bounds[self.search_quadrant][2] <=  current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
-                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].x)
+                        quadrant_bounds[self.search_quadrant][0] <=  current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[self.search_quadrant][1]) and (
+                            quadrant_bounds[self.search_quadrant][2] <=  current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
+                    
+                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
                 if closest_distance is None or dist < closest_distance:
                     closest_distance = dist
 
             elif self.search_type == 'wez':  # If set to wez, consider unknown targets AND known hostiles with unknown threat rings
-                if (current_state['ships'][ship_id]['observed'] == False or current_state['ships'][ship_id]['observed threat'] == False) and (quadrant_bounds[self.search_quadrant][0] <= current_state['ships'][ship_id]['position'][0] <=quadrant_bounds[self.search_quadrant][1]) and (quadrant_bounds[self.search_quadrant][2] <= current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
+                closest_distance = None
+                if (current_state['ships'][ship_id]['observed'] == False or current_state['ships'][ship_id]['observed threat'] == False) and (
+                    quadrant_bounds[self.search_quadrant][0] <= current_state['ships'][ship_id]['position'][0] <=quadrant_bounds[self.search_quadrant][1]) and (
+                        quadrant_bounds[self.search_quadrant][2] <= current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
+                    
                     dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
                     if closest_distance is None or dist < closest_distance:
@@ -119,9 +125,9 @@ class AutonomousPolicy:
                         closest_distance = dist
 
         if current_target_distances: # If there are targets nearby, set waypoint to the nearest one
-            self.three_upcoming_targets = [item[0] for item in sorted(current_target_distances.items(), key=lambda x: x[1], reverse=True)[:3]] # Store the three closest target IDs for displaying later
             nearest_target_id = min(current_target_distances, key=current_target_distances.get)
             target_waypoint = tuple((self.env.agents[nearest_target_id].x, self.env.agents[nearest_target_id].y))
+            print('Nearest target is ',nearest_target_id, '. Dist = ',current_target_distances[nearest_target_id])
 
         elif self.search_type == 'tag team':
             target_waypoint = (self.env.agents[self.env.num_ships + 1].x,self.env.agents[self.env.num_ships + 1].y)
@@ -130,7 +136,6 @@ class AutonomousPolicy:
             quadrant_centers = {'full': (gameboard_size * 0.5,gameboard_size * 0.5), 'NW': (gameboard_size * 0.25, gameboard_size * 0.25), 'NE':(gameboard_size * 0.75, gameboard_size * 0.25), 'SW':(gameboard_size * 0.25, gameboard_size * 0.75),'SE':(gameboard_size * 0.75, gameboard_size * 0.75)}
             target_waypoint =  quadrant_centers[self.search_quadrant]
 
-        target_direction = math.atan2(target_waypoint[1] - self.aircraft.y,target_waypoint[0] - self.aircraft.x)
         return target_waypoint, closest_distance
 
 
