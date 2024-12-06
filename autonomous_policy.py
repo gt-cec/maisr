@@ -72,6 +72,7 @@ class AutonomousPolicy:
         current_state = self.env.get_state()
         current_target_distances = {}  # Will be {agent_idx:distance}
         #closest_distance = None
+        dist = None
 
         gameboard_size = self.env.config["gameboard size"]
         quadrant_bounds = {'full': (0, gameboard_size, 0, gameboard_size),'NW': (0, gameboard_size * 0.5, 0, gameboard_size * 0.5),'NE': (gameboard_size * 0.5, gameboard_size, 0, gameboard_size * 0.5),'SW': (0, gameboard_size * 0.5, gameboard_size * 0.5, gameboard_size), 'SE': (gameboard_size * 0.5, gameboard_size, gameboard_size * 0.5,gameboard_size)}  # specifies (Min x, max x, min y, max y)
@@ -101,8 +102,10 @@ class AutonomousPolicy:
                     
                     dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
-                if closest_distance is None or dist < closest_distance:
-                    closest_distance = dist
+
+                if dist is not None:
+                    if closest_distance is None or dist < closest_distance:
+                        closest_distance = dist
 
             elif self.search_type == 'wez':  # If set to wez, consider unknown targets AND known hostiles with unknown threat rings
                 closest_distance = None
@@ -112,8 +115,9 @@ class AutonomousPolicy:
                     
                     dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
-                    if closest_distance is None or dist < closest_distance:
-                        closest_distance = dist
+                    if dist is not None:
+                        if closest_distance is None or dist < closest_distance:
+                            closest_distance = dist
 
             elif self.search_type == 'tag team': # Only search unknown targets and WEZs within 300 pixels of the human ship (TODO testing)
                 ship_to_human = math.hypot(self.env.agents[self.env.num_ships + 1].x - self.env.agents[ship_id].x, self.env.agents[self.env.num_ships + 1].y - self.env.agents[ship_id].y)
@@ -127,7 +131,6 @@ class AutonomousPolicy:
         if current_target_distances: # If there are targets nearby, set waypoint to the nearest one
             nearest_target_id = min(current_target_distances, key=current_target_distances.get)
             target_waypoint = tuple((self.env.agents[nearest_target_id].x, self.env.agents[nearest_target_id].y))
-            print('Nearest target is ',nearest_target_id, '. Dist = ',current_target_distances[nearest_target_id])
 
         elif self.search_type == 'tag team':
             target_waypoint = (self.env.agents[self.env.num_ships + 1].x,self.env.agents[self.env.num_ships + 1].y)

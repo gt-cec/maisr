@@ -6,7 +6,7 @@ user_group = 'test' # 'test', 'control' 'card' 'in situ'
 # run_order = [1,2,3,4] # TODO Implement this
 
 # 2. Make sure log_data = True in order to save run data to a json file in ./experiment_data
-log_data = True
+log_data = False
 
 
 # 3. Setup render window parameters if needed

@@ -345,6 +345,7 @@ if __name__ == "__main__":
                 env.render()
 
         if done:
+            done_time = pygame.time.get_ticks()
             if log_data:
                 game_logger.log_state(env, pygame.time.get_ticks())
                 game_logger.final_log(gameplan_command_history, env)
@@ -354,8 +355,9 @@ if __name__ == "__main__":
                 env.render()  # Keep rendering while waiting
                 for event in pygame.event.get():
                     if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                        waiting_for_key = False
-                        break
+                        if (pygame.time.get_ticks()-done_time)/1000 > 1.5: # Cooldown to prevent accidentally clicking continue
+                            waiting_for_key = False
+                            break
                     elif event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()

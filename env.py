@@ -77,8 +77,10 @@ class MAISREnv(gym.Env):
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
         # Advanced gameplans
-        self.regroup_button = Button("REGROUP", self.right_pane_edge, 590+100,self.gameplan_button_width, 60)
-        self.tag_team_button = Button("TAG TEAM", self.right_pane_edge+220, 590+100,self.gameplan_button_width, 60)
+        #self.regroup_button = Button("REGROUP", self.right_pane_edge, 590+100,self.gameplan_button_width, 80)
+        self.regroup_button = Button("REGROUP", self.right_pane_edge+15, self.autonomous_button_y-10,self.gameplan_button_width, 80)
+        #self.tag_team_button = Button("TAG TEAM", self.right_pane_edge+220, 590+100,self.gameplan_button_width, 80)
+        self.tag_team_button = Button("TAG TEAM", self.right_pane_edge + 30 + self.gameplan_button_width, self.autonomous_button_y-10,self.gameplan_button_width, 80)
         #self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
 
         # Set point quantities for each event
@@ -349,7 +351,7 @@ class MAISREnv(gym.Env):
 
             if self.num_identified_ships >= self.num_ships:
                 self.score += self.all_targets_points
-                self.score += (self.display_time/1000)*self.time_points
+                self.score += (self.time_limit - self.display_time/1000)*self.time_points
 
             #elif self.agents[self.num_ships+1].damage > 100:
             elif not self.agents[self.num_ships+1].alive:
@@ -438,9 +440,6 @@ class MAISREnv(gym.Env):
 
         current_time = pygame.time.get_ticks()
 
-
-
-
         # Draw the agents
         for agent in self.agents:
             agent.draw(self.window)
@@ -491,13 +490,13 @@ class MAISREnv(gym.Env):
         self.quadrant_button_height = 120
         self.gameplan_button_width = 180
 
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 555))  # Agent gameplan sub-window box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
         gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
         self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 565), 4)
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 565), 4)
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+555), (self.right_pane_edge + 405, 10+555),4)  # Top edge of gameplan panel
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
 
         #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
         self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
@@ -549,6 +548,8 @@ class MAISREnv(gym.Env):
         self.full_quad_button.is_latched = self.button_latch_dict['full']
         self.full_quad_button.draw(self.window)
 
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
+
         #self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
         self.waypoint_button.color = self.gameplan_button_color
@@ -558,6 +559,8 @@ class MAISREnv(gym.Env):
         self.hold_button.is_latched = self.button_latch_dict['hold']
         self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
+
+        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
 
         self.regroup_button.is_latched = self.regroup_clicked
         self.regroup_button.color = self.gameplan_button_color
@@ -571,7 +574,7 @@ class MAISREnv(gym.Env):
         # self.fan_out_button.color = self.gameplan_button_color
         # self.fan_out_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
+        
 
         # Draw Comm Log
         if self.agent_info_height_req > 0:
@@ -640,17 +643,18 @@ class MAISREnv(gym.Env):
         # Draw agent status window
         if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),(self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),(self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
 
         risk_tolerance_y = 665
         risk_tolerance_height = 110-100
-        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, self.autonomous_button_y-10, 405, 95))  # +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, self.autonomous_button_y-10),(self.right_pane_edge + 405, self.autonomous_button_y-10), 4)  # Top border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, self.autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, self.autonomous_button_y-10),(self.right_pane_edge + 405, self.autonomous_button_y-10+95), 4)  # Right border +30
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
+        new_autonomous_button_y = 590+100+10
+        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, new_autonomous_button_y-10, 405, 85))  # +30
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10), 4)  # Top border +30
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10+95), 4)  # Right border +30
+        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
 
-        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, self.autonomous_button_y,self.gameplan_button_width * 2 + 15, 65)
+        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 590+100+10,self.gameplan_button_width * 2 + 15, 65)
         self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
