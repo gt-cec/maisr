@@ -67,7 +67,7 @@ class MAISREnv(gym.Env):
         self.gameplan_button_color = (255, 120, 80)
         self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
         self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)  # (255, 120, 80))
-        self.wez_id_button = Button("WEZ", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
+        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
         self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
         self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
         self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
@@ -429,12 +429,10 @@ class MAISREnv(gym.Env):
         ui_width = window_width - game_width
 
         # gameboard background
-
         self.window.fill((255, 255, 255))  # white background
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
-        self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
-        pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
-        pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
+        #pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
+        #pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
@@ -443,6 +441,17 @@ class MAISREnv(gym.Env):
         # Draw the agents
         for agent in self.agents:
             agent.draw(self.window)
+
+        # Draw green lines and black crossbars
+        self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
+        pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0),(self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
+        pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2),(self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
+
+        # Draw white rectangles around outside edge
+        pygame.draw.rect(self.window, (255,255,255),(0,0,game_width,35)) # Top
+        pygame.draw.rect(self.window, (255,255,255), (0, game_width-33, game_width, 33)) # bottom
+        pygame.draw.rect(self.window, (255,255,255), (0, 0, 35, game_width))  # Left
+        pygame.draw.rect(self.window, (255,255,255), (1000-33, 0, 35, game_width-2))  # Right
 
         # Handle damage flashes when human is damaged
         if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
