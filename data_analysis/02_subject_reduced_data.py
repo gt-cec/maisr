@@ -38,7 +38,7 @@
 def sagat_grader():
     pass
 
-def round_average():
+def team_performance_average():
     pass
 
 def round_details():
