@@ -25,13 +25,13 @@ if __name__ == "__main__":
 
     gameplan_command_history = [] # For data logging
 
-    scenario_number = 1
+    round_number = 1
     for config in config_list:
         print(config)
         env_config = load_env_config(config)
 
         if log_data:
-            game_logger = GameLogger(subject_id, config)
+            game_logger = GameLogger(subject_id, config,user_group,round_number)
             game_logger.initial_log()
 
         if render:
@@ -43,7 +43,7 @@ if __name__ == "__main__":
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
 
-            env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,scenario_number=scenario_number)
+            env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         else:
             print("Starting in headless mode")
@@ -64,7 +64,7 @@ if __name__ == "__main__":
 
         while not done:  # game loop
             #print(env.display_time)
-            if log_data: game_logger.log_state(env, pygame.time.get_ticks())
+            if log_data: game_logger.log_state(env, env.display_time)
 
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], 'None' will use the default search behaviors
             time_sec = float(env.display_time)/1000
@@ -109,7 +109,7 @@ if __name__ == "__main__":
                     # Agent 1: Mouse click waypoint control
                     if env.config['gameboard border margin'] < mouse_position[0] < env.config['gameboard size']-env.config['gameboard border margin'] and env.config['gameboard border margin'] < mouse_position[1] < env.config['gameboard size']-env.config['gameboard border margin']:
                         if env.agent_waypoint_clicked:
-                            if log_data: game_logger.log_mouse_event(mouse_position,"agent waypoint",pygame.time.get_ticks())
+                            if log_data: game_logger.log_mouse_event(mouse_position,"agent waypoint",env.display_time)
                             #print('Agent waypoint set to %s' % (mouse_position,))
                             env.comm_text = 'Moving to waypoint'
                             env.add_comm_message(env.comm_text, is_ai=True)
@@ -122,14 +122,14 @@ if __name__ == "__main__":
                             env.agent_waypoint_clicked = False
                             env.button_latch_dict['waypoint'] = False
                         else:
-                            if log_data: game_logger.log_mouse_event(mouse_position,"human waypoint",pygame.time.get_ticks())
+                            if log_data: game_logger.log_mouse_event(mouse_position,"human waypoint",env.display_time)
                             #print('Human waypoint set to %s' % (mouse_position,))
                             agent1_action = mouse_position
                             actions.append((env.aircraft_ids[1], agent1_action))
 
                     # Agent 0 gameplan buttons
                     elif env.target_id_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"target id",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"target id",env.display_time)
                         agent0_policy.search_type_override = 'target'
                         agent0_policy.waypoint_override = False
                         if env.button_latch_dict['target_id'] == False: gameplan_command_history.append([time_sec, 'target_id'])
@@ -148,7 +148,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text)
 
                     elif env.wez_id_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"wez id",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"wez id",env.display_time)
                         agent0_policy.search_type_override = 'wez'
                         agent0_policy.waypoint_override = False
                         if env.button_latch_dict['wez_id'] == False: gameplan_command_history.append([time_sec, 'wez_id'])
@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
                     elif env.hold_button.is_clicked(mouse_position):
                         if not agent0_policy.hold_commanded:
-                            if log_data: game_logger.log_mouse_event(mouse_position,"hold",pygame.time.get_ticks())
+                            if log_data: game_logger.log_mouse_event(mouse_position,"hold",env.display_time)
                             agent0_policy.hold_commanded = True
                             agent0_policy.waypoint_override = False
                             gameplan_command_history.append([time_sec, 'hold'])
@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",env.display_time)
                         agent0_policy.search_quadrant_override = 'NW'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['NW']: gameplan_command_history.append([time_sec, 'NW']) # For data logging
@@ -241,7 +241,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.NE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NE",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NE",env.display_time)
                         agent0_policy.search_quadrant_override = 'NE'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['NE']: gameplan_command_history.append([time_sec, 'NE'])  # For data logging
@@ -258,7 +258,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.SW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SW",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SW",env.display_time)
                         agent0_policy.search_quadrant_override = 'SW'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['SW']: gameplan_command_history.append([time_sec, 'SW'])  # For data logging
@@ -275,7 +275,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.SE_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SE",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SE",env.display_time)
                         agent0_policy.search_quadrant_override = 'SE'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['SE']: gameplan_command_history.append([time_sec, 'SE'])  # For data logging
@@ -292,7 +292,7 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.full_quad_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - full",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - full",env.display_time)
                         agent0_policy.search_quadrant_override = 'full'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['full']: gameplan_command_history.append([time_sec, 'full'])  # For data logging
@@ -309,7 +309,7 @@ if __name__ == "__main__":
 
 
                     elif env.manual_priorities_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"manual priorities",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"manual priorities",env.display_time)
                         agent0_policy.search_quadrant_override = 'none'
                         agent0_policy.waypoint_override = False
                         if not env.button_latch_dict['manual_priorities']: gameplan_command_history.append([time_sec, 'manual_priorities']) # For data logging
@@ -324,7 +324,7 @@ if __name__ == "__main__":
                         #env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.autonomous_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"autonomous",pygame.time.get_ticks())
+                        if log_data: game_logger.log_mouse_event(mouse_position,"autonomous",env.display_time)
                         agent0_policy.search_quadrant_override = 'none'
                         agent0_policy.search_type_override = 'none'
                         agent0_policy.waypoint_override = False
@@ -351,7 +351,7 @@ if __name__ == "__main__":
         if done:
             done_time = pygame.time.get_ticks()
             if log_data:
-                game_logger.log_state(env, pygame.time.get_ticks())
+                game_logger.log_state(env, env.display_time)
                 game_logger.final_log(gameplan_command_history, env)
 
             waiting_for_key = True
@@ -366,7 +366,7 @@ if __name__ == "__main__":
                         pygame.quit()
                         sys.exit()
 
-        scenario_number += 1
+        round_number += 1
         print("Game complete:", game_count)
         if render:
             pygame.quit()

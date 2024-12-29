@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 class GameLogger:
-    def __init__(self,subject_id,config_name):
+    def __init__(self,subject_id,config_name,user_group,round_number):
         # Create experiment_data directory if it doesn't exist
         pathlib.Path('../experiment_data').mkdir(parents=True, exist_ok=True)
 
@@ -15,14 +15,19 @@ class GameLogger:
         self.filename = f'./experiment_data/MAISR_Subj_{subject_id}_{timestamp}.jsonl'
 
         self.config_name = config_name
+        self.subject_id = subject_id
+        self.user_group = user_group
+        self.round_number = round_number
 
         # Initialize last log time
         self.last_state_log_time = 0
         self.log_interval = 5000  # 5 seconds in milliseconds
 
     def initial_log(self):
-        log_header = 'game configuration:' + str(self.config_name)
-        self._write_log_entry(log_header)
+        self._write_log_entry('game configuration:' + str(self.config_name))
+        self._write_log_entry('subject_id:' + str(self.subject_id))
+        self._write_log_entry('user_group:' + str(self.user_group))
+        self._write_log_entry('round:' + str(self.round_number))
 
     def final_log(self,gameplan_command_history,env):
         #line1 = 'gameplan_command_history:' + str(gameplan_command_history)

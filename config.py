@@ -5,14 +5,14 @@ subject_id = '999'
 user_group = 'test' # 'test', 'control' 'card' 'in situ'
 run_order = 1 # 1,2,3, or 4
 
+
 # 2. Make sure log_data = True (run data will be saved to a json file in ./experiment_data)
 log_data = False
+
 
 # 3. Setup render window parameters if needed
 x = 0#1680+235    # Pixel location of right edge of the pygame window. Default = 235 (renders in center of a 1920x1080 screen if gameboard is configured to 1450px)
 y = -3          # Pixel location of top edge of the pygame window
-
-
 
 
 

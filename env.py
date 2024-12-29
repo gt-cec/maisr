@@ -13,7 +13,7 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render=False,subject_id='99',user_group='99',scenario_number='99'):
+    def __init__(self, config={}, window=None, clock=None, render=False,subject_id='99',user_group='99',round_number='99'):
         super().__init__()
 
         self.config = config
@@ -23,7 +23,7 @@ class MAISREnv(gym.Env):
         self.start_countdown_time = 5000 # How long in milliseconds to count down at the beginning of the game before it starts
 
         self.subject_id = subject_id
-        self.scenario_number = scenario_number
+        self.round_number = round_number
         self.user_group = user_group
 
         #self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
@@ -673,6 +673,7 @@ class MAISREnv(gym.Env):
         if current_time <= self.start_countdown_time:
             countdown_font = pygame.font.SysFont(None, 120)
             message_font = pygame.font.SysFont(None, 60)
+            round_font = pygame.font.SysFont(None, 72)
             countdown_start = 0
             countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
             countdown_surface.set_alpha(128)  # 50% transparent
@@ -682,6 +683,15 @@ class MAISREnv(gym.Env):
             # Draw semi-transparent overlay
             countdown_surface.fill((100, 100, 100))
             self.window.blit(countdown_surface, (0, 0))
+
+            # Draw round name
+            if self.user_group == 'test': round_text = f"ROUND {self.round_number}/4"
+            else:
+                if self.round_number == 1: round_text = "TRAINING ROUND"
+                else: round_text = f"ROUND {self.round_number-1}/4"
+            round_text_surface = round_font.render(round_text, True, (255, 255, 255))
+            round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
+            self.window.blit(round_text_surface, round_rect)
 
             # Draw "Get Ready!" message
             ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
@@ -841,11 +851,11 @@ class MAISREnv(gym.Env):
 
     def SAGAT_survey(self,survey_index):
         if survey_index == 1:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=1')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=1')
         elif survey_index == 2:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=2')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=2')
         elif survey_index == 3:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.scenario_number)+'&user_group='+str(self.user_group)+'&survey_number=3')
+            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=3')
 
         self.pause(pygame.MOUSEBUTTONDOWN)
 
