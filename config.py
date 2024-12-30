@@ -1,13 +1,13 @@
 """To set up experiment run:"""
 
 # 1. Enter a subject_id:
-subject_id = '999'
+subject_id = '998'
 user_group = 'test' # 'test', 'control' 'card' 'in situ'
 run_order = 1 # 1,2,3, or 4
 
 
 # 2. Make sure log_data = True (run data will be saved to a json file in ./experiment_data)
-log_data = False
+log_data = True
 
 
 # 3. Setup render window parameters if needed

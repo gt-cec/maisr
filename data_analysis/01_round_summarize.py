@@ -33,9 +33,9 @@ def extract_metadata(filename):
         lines = f.readlines()
         for i, line in enumerate(lines[:4]):  # Check first 4 lines for metadata
             if 'subject_id:' in line:
-                metadata['subject_id'] = line.split(':')[1].strip()
+                metadata['subject_id'] = line.split(':')[1].strip()[0:-1]
             elif 'user_group:' in line:
-                metadata['user_group'] = line.split(':')[1].strip()
+                metadata['user_group'] = line.split(':')[1].strip()[0:-1]
             elif '"game configuration:' in line:
                 # Extract scenario number from config path
                 config_path = line.split(':')[1].strip().strip('"')
@@ -89,12 +89,12 @@ def analyze_game_log(filename, save_plot = False):
     plt.plot(times, scores, 'b-', label='Score', linewidth=2)
 
     # Create legend text with metadata
-    legend_text = [
-        f'Score',
-        f'Subject ID: {metadata.get("subject_id", "unknown")}',
-        f'User Group: {metadata.get("user_group", "unknown")}',
-        f'Round: {metadata.get("scenario", "unknown")}'
-    ]
+    # legend_text = [
+    #     f'Score',
+    #     f'Subject ID: {metadata.get("subject_id", "unknown")}',
+    #     f'User Group: {metadata.get("user_group", "unknown")}',
+    #     f'Round: {metadata.get("scenario", "unknown")}'
+    # ]
 
     if scores and gameplan_history:
         # Create interpolation function for scores
@@ -121,10 +121,11 @@ def analyze_game_log(filename, save_plot = False):
     plt.xlabel('Time (seconds)')
     plt.ylabel('Score')
     plt.title('Team Score Over Time with Game Commands')
+    plt.title(f'Subject {metadata.get('subject_id', '000')} ({metadata.get("user_group", "unknown")} group) - Round {metadata.get('scenario', '0')}')
     plt.grid(True)
 
     # Add legend with metadata
-    plt.legend(legend_text, loc='center left', bbox_to_anchor=(1, 0.5))
+    #plt.legend(legend_text, loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.margins(y=0.15)
     plt.tight_layout()  # Adjust layout to make room for legend
@@ -161,4 +162,4 @@ def analyze_game_log(filename, save_plot = False):
 
 # Example usage
 if __name__ == "__main__":
-    summary = analyze_game_log("MAISR_sample_data_2.jsonl",save_plot = False)
+    summary = analyze_game_log("sample_data_3.jsonl",save_plot = False)
