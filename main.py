@@ -6,7 +6,7 @@ import ctypes
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import subject_id, user_group, log_data, x, y, config_dict #, run_order
+from config import subject_id, user_group, log_data, x, y, config_dict, run_order
 from autonomous_policy import AutonomousPolicy
 import webbrowser
 
@@ -31,7 +31,7 @@ if __name__ == "__main__":
         env_config = load_env_config(config)
 
         if log_data:
-            game_logger = GameLogger(subject_id, config,user_group,round_number)
+            game_logger = GameLogger(subject_id, config,user_group,round_number,run_order)
             game_logger.initial_log()
 
         if render:

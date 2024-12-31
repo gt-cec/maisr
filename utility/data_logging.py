@@ -6,18 +6,19 @@ from pathlib import Path
 
 
 class GameLogger:
-    def __init__(self,subject_id,config_name,user_group,round_number):
+    def __init__(self,subject_id,config_name,user_group,round_number,run_order):
         # Create experiment_data directory if it doesn't exist
         pathlib.Path('../experiment_data').mkdir(parents=True, exist_ok=True)
 
         # Create unique filename with timestamp
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        self.filename = f'./experiment_data/MAISR_Subj_{subject_id}_{timestamp}.jsonl'
+        self.filename = f'./experiment_data/maisr_subject{subject_id}_round{round_number}_{timestamp}.jsonl'
 
         self.config_name = config_name
         self.subject_id = subject_id
         self.user_group = user_group
         self.round_number = round_number
+        self.run_order = run_order
 
         # Initialize last log time
         self.last_state_log_time = 0
@@ -28,6 +29,7 @@ class GameLogger:
         self._write_log_entry('subject_id:' + str(self.subject_id))
         self._write_log_entry('user_group:' + str(self.user_group))
         self._write_log_entry('round:' + str(self.round_number))
+        self._write_log_entry('run_order:' + str(self.run_order))
 
     def final_log(self,gameplan_command_history,env):
         #line1 = 'gameplan_command_history:' + str(gameplan_command_history)
@@ -48,7 +50,8 @@ class GameLogger:
                     'identified_threat_types': env.identified_threat_types,
                     'agent0_damage': env.agents[env.num_ships].damage,
                     'agent1_damage': env.agents[env.num_ships + 1].damage,
-                    'ships': []
+                    'ships': [],
+                    'aircraft': []
                 }
             }
 
@@ -63,6 +66,13 @@ class GameLogger:
                         'observed_threat': agent.observed_threat
                     }
                     state_data['game_state']['ships'].append(ship_data)
+                elif agent.agent_class == 'aircraft':
+                    aircraft_data = {
+                        'id': 'agent' if agent.agent_idx == env.num_ships else 'human',
+                        'position': [round(agent.x,0), round(agent.y,0)],
+                    }
+
+                    state_data['game_state']['aircraft'].append(aircraft_data)
 
             self._write_log_entry(state_data)
             print('Game state logged')
