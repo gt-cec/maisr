@@ -1,8 +1,11 @@
 import pandas as pd
 import json
+import os
+import re
+from collections import defaultdict
 
 """
-NEW. Takes a subject's four ISR round .jsonl files and outputs a line in a tidy-friendly excel sheet for that subject
+NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (one row per subject) for later processing in R
 """
 
 def extract_metadata(filename):
@@ -110,6 +113,63 @@ def process_all_rounds(round_files):
     return new_row
 
 
+def get_subject_files(data_folder):
+    """Group files by subject ID and ensure each subject has all 4 rounds."""
+    subject_files = defaultdict(list)
+    pattern = re.compile(r'maisr_subject(\d{3})_round(\d).*\.jsonl')
+
+    for filename in os.listdir(data_folder):
+        match = pattern.match(filename)
+        if match:
+            subject_id = match.group(1)
+            round_num = int(match.group(2))
+            subject_files[subject_id].append((round_num, os.path.join(data_folder, filename)))
+
+    # Filter out subjects without all 4 rounds and sort files by round number
+    complete_subjects = {}
+    for subject_id, files in subject_files.items():
+        if len(files) == 4:
+            complete_subjects[subject_id] = [f[1] for f in sorted(files)]
+        else:
+            print(f"Warning: Subject {subject_id} has {len(files)} rounds instead of 4. Skipping.")
+
+    return complete_subjects
+
+
+def process_folder(data_folder, excel_file):
+    """Process all subject data in a folder and write to Excel file."""
+    # Initialize DataFrame with correct columns
+    columns = ['subject_id', 'user_group', 'run_order']
+    for i in range(1, 5):
+        round_cols = [
+            f'score_round{i}', f'targets_round{i}', f'weapons_round{i}',
+            f'humanhp_round{i}', f'agenthp_round{i}', f'timeremaining_round{i}', f'humanwaypoints_round{i}',
+            f'totalcommands_round{i}', f'searchtypecommands_round{i}',
+            f'searchareacommands_round{i}', f'holdcommands_round{i}',
+            f'waypointoverridecommands_round{i}'
+        ]
+        columns.extend(round_cols)
+
+    try:
+        df = pd.read_excel(excel_file)
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=columns)
+
+    # Get all subject files grouped by subject ID
+    subject_files = get_subject_files(data_folder)
+
+    # Process each subject's data
+    for subject_id, files in subject_files.items():
+        print(f"\nProcessing subject {subject_id}...")
+        new_row = process_all_rounds(files)
+        df.loc[len(df)] = new_row
+        print(f"Completed processing for subject {subject_id}")
+
+    # Save the updated Excel file
+    df.to_excel(excel_file, index=False)
+    print(f'\nProcessed {len(subject_files)} subjects. Data written to: {excel_file}')
+
+
 def update_excel(log_files, excel_file):
     """Update Excel file with metrics from all log files by appending a new row."""
     try:
@@ -140,14 +200,6 @@ def update_excel(log_files, excel_file):
 
 
 if __name__ == "__main__":
-    # List of log files to process (one per round)
-    log_files = [
-        "MAISR_Subj_997_round1.jsonl",
-        "MAISR_Subj_997_round2.jsonl",
-        "MAISR_Subj_997_round3.jsonl",
-        "MAISR_Subj_997_round4.jsonl",
-    ]
-
-    excel_file = "test4_isr_data_header_example.xlsx"
-    update_excel(log_files, excel_file)
-    print('\nWrote user data to file:', excel_file)
+    data_folder = "group_sample"  # Folder containing all JSONL files
+    excel_file = "test5_isr_data_header_example.xlsx"
+    process_folder(data_folder, excel_file)
