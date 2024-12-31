@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     gameplan_command_history = [] # For data logging
 
-    round_number = 1
+    round_number = 0
     for config in config_list:
         print(config)
         env_config = load_env_config(config)

@@ -10,7 +10,7 @@
 	"num ships":60,
 	"verbose": false,
 	"infinite health": false,
-	"time limit": 245,
+	"time limit": 130,
 	"game speed": 0.07,
 	"agent speed": 2.8,
 	"human speed": 2.8,
