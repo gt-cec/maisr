@@ -1,8 +1,8 @@
 """To set up experiment run:"""
 
 # 1. Enter a subject_id:
-subject_id = '991'
-user_group = 'test' # 'test', 'control' 'card' 'in situ'
+subject_id = '905'
+user_group = 'control' # 'test', 'control' 'card' 'in situ'
 run_order = 1 # 1,2,3, or 4
 
 

@@ -32,27 +32,31 @@ class GameLogger:
         self._write_log_entry('run_order:' + str(self.run_order))
 
     def final_log(self,gameplan_command_history,env):
-        #line1 = 'gameplan_command_history:' + str(gameplan_command_history)
-        #line2 = 'total_gameplan_commands:' + str(len(gameplan_command_history))
-        final_data = {'final score': env.score, 'gameplan_command_history': gameplan_command_history,'total_gameplan_commands': len(gameplan_command_history)}
+        final_data = {'final score': round(env.score,1),
+                      'identified_targets':env.identified_targets,
+                      'time': round(env.display_time / 1000 - 5, 0),
+                      'identified_threat_types': env.identified_threat_types,
+                      'agent_health': env.agents[env.num_ships].health_points,
+                      'human_health': env.agents[env.human_idx].health_points,
+                      'gameplan_command_history': gameplan_command_history,
+                      'total_gameplan_commands': len(gameplan_command_history)}
         self._write_log_entry(final_data)
 
     def log_state(self, env, current_time):
         """Log the current game state if 10 seconds have elapsed"""
         if self.last_state_log_time == 0 or (current_time - self.last_state_log_time >= self.log_interval):
             state_data = {
-                'timestamp': round(current_time/1000,0),
+                'timestamp': round(current_time/1000 - 5,1),
                 'type': 'state',
                 'game_state': {
                     'score': env.score,
                     'time': round(env.display_time/1000,0),
                     'identified_targets': env.identified_targets,
                     'identified_threat_types': env.identified_threat_types,
-                    'agent0_damage': env.agents[env.num_ships].damage,
-                    'agent1_damage': env.agents[env.num_ships + 1].damage,
+                    'agent_health': env.agents[env.num_ships].health_points,
+                    'human_health': env.agents[env.human_idx].health_points,
                     'ships': [],
-                    'aircraft': []
-                }
+                    'aircraft': []}
             }
 
             # Log each ship's state
@@ -63,14 +67,12 @@ class GameLogger:
                         'position': [agent.x, agent.y],
                         'threat': agent.threat,
                         'observed': agent.observed,
-                        'observed_threat': agent.observed_threat
-                    }
+                        'observed_threat': agent.observed_threat}
                     state_data['game_state']['ships'].append(ship_data)
                 elif agent.agent_class == 'aircraft':
                     aircraft_data = {
                         'id': 'agent' if agent.agent_idx == env.num_ships else 'human',
-                        'position': [round(agent.x,0), round(agent.y,0)],
-                    }
+                        'position': [round(agent.x,0), round(agent.y,0)],}
 
                     state_data['game_state']['aircraft'].append(aircraft_data)
 
@@ -81,7 +83,7 @@ class GameLogger:
     def log_mouse_event(self, event_pos, event_type, timestamp):
         """Log mouse click events (these are still logged immediately)"""
         event_data = {
-            'timestamp': round(timestamp/1000,0),
+            'timestamp': round(timestamp/1000 - 5,1),
             'type': 'mouse_event',
             'event_type': event_type,
             'position': event_pos

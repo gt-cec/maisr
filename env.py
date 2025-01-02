@@ -25,6 +25,7 @@ class MAISREnv(gym.Env):
         self.subject_id = subject_id
         self.round_number = round_number
         self.user_group = user_group
+        self.training = True if (round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4
 
         #self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
         #self.config["window size"] = (int(self.BASE_WINDOW_WIDTH * self.scaling_ratio),
@@ -44,7 +45,6 @@ class MAISREnv(gym.Env):
         self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
         self.AIRCRAFT_ENGAGEMENT_RADIUS = 40 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
         self.AIRCRAFT_ISR_RADIUS = 85 #170  # pixel width of aircraft scanner (to identify hostile vs benign)
-
 
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
         self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
@@ -77,10 +77,8 @@ class MAISREnv(gym.Env):
         self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
         # Advanced gameplans
-        #self.regroup_button = Button("REGROUP", self.right_pane_edge, 590+100,self.gameplan_button_width, 80)
-        self.regroup_button = Button("REGROUP", self.right_pane_edge+15, self.autonomous_button_y-10,self.gameplan_button_width, 80)
-        #self.tag_team_button = Button("TAG TEAM", self.right_pane_edge+220, 590+100,self.gameplan_button_width, 80)
-        self.tag_team_button = Button("TAG TEAM", self.right_pane_edge + 30 + self.gameplan_button_width, self.autonomous_button_y-10,self.gameplan_button_width, 80)
+        #self.regroup_button = Button("REGROUP", self.right_pane_edge+15, self.autonomous_button_y-10,self.gameplan_button_width, 80)
+        #self.tag_team_button = Button("TAG TEAM", self.right_pane_edge + 30 + self.gameplan_button_width, self.autonomous_button_y-10,self.gameplan_button_width, 80)
         #self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
 
         # Set point quantities for each event
@@ -169,6 +167,8 @@ class MAISREnv(gym.Env):
         self.num_ships = self.config['num ships']
         self.total_targets = self.num_ships
 
+        self.human_idx = self.num_ships + 1 # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
+
         # check default search pattern
         if "search pattern" not in config:
             print("Note: 'search pattern' is not in the env config, defaulting to 'square'.")
@@ -213,10 +213,10 @@ class MAISREnv(gym.Env):
         agent1_initial_location = self.config['human start location']
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
-        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"])
+        agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
+        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"]) # Human
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
-        self.agents[self.num_ships+1].x, self.agents[self.num_ships+1].y = agent1_initial_location
+        self.agents[self.human_idx].x, self.agents[self.human_idx].y = agent1_initial_location
 
         if self.config['num aircraft'] == 1: self.agents[self.num_ships].is_visible = False # Do not draw the agent during solo training runs
 
@@ -310,6 +310,9 @@ class MAISREnv(gym.Env):
                                     if self.config['infinite health'] == False:
                                         self.agents[aircraft_id].alive = False
                                         print(f'Aircraft {aircraft_id} destroyed')
+                                        if self.training: # Respawn in training round
+                                            agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed'] * self.config['human speed'] * 1.1,flight_pattern=self.config["search pattern"])  # Human
+                                            self.human_idx += 1
 
 
         agent0 = self.agents[self.aircraft_ids[0]]
@@ -332,18 +335,18 @@ class MAISREnv(gym.Env):
         if self.config["verbose"]: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
 
         # Update human's quadrant
-        if self.agents[self.num_ships + 1].x < (self.config['gameboard size'] / 2):
-            if self.agents[self.num_ships + 1].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NW'
+        if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
+            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NW'
             else: self.human_quadrant = 'SW'
         else:
-            if self.agents[self.num_ships + 1].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NE'
+            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NE'
             else: self.human_quadrant = 'SE'
 
 
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.num_ships+1].alive and self.config['infinite health']==False) or (self.display_time/1000 >= self.time_limit) or (not self.agents[self.num_ships+1].alive)
+        done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and self.config['infinite health']==False and not self.training) or (self.display_time/1000 >= self.time_limit)
 
         if done:
             self.done = True
@@ -354,22 +357,22 @@ class MAISREnv(gym.Env):
                 self.score += (self.time_limit - self.display_time/1000)*self.time_points
 
             #elif self.agents[self.num_ships+1].damage > 100:
-            elif not self.agents[self.num_ships+1].alive:
+            elif not self.agents[self.human_idx].alive:
                 self.score += self.human_dead_points
                 print('Human aircraft destroyed, game over.')
 
             elif self.display_time/1000 >= self.time_limit:
                 print('Out of time, game over.')
-                self.display_time = 0
+                #self.display_time = 0
 
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
             if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
                 print(f'All targets identified (+{self.all_targets_points} points)')
-                print(f'{(round(self.display_time,1) / 1000)}*{self.time_points} = {(round(self.display_time / 1000,1)) * self.time_points} points added for time remaining')
+                print(f'{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining')
             # TODO add printout for -30 points if agent destroyed
-            print(f'Time remaining: {round(self.display_time/1000,1)} seconds')
-            print(f'\nFinal score = {self.score}')
+            print(f'Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds')
+            print(f'\nFinal score = {round(self.score,0)}')
 
             if self.render_bool: pygame.time.wait(50)
 
@@ -483,7 +486,7 @@ class MAISREnv(gym.Env):
             self.config["gameboard size"]))  # Right border
             self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-        elif self.agents[self.num_ships + 1].health_points <= 3:
+        elif self.agents[self.human_idx].health_points <= 3:
             alpha = int(155)
             border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
             border_width = 35
@@ -571,19 +574,18 @@ class MAISREnv(gym.Env):
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
 
-        self.regroup_button.is_latched = self.regroup_clicked
-        self.regroup_button.color = self.gameplan_button_color
-        self.regroup_button.draw(self.window)
+        # Advanced gameplans currently removed
+        # self.regroup_button.is_latched = self.regroup_clicked
+        # self.regroup_button.color = self.gameplan_button_color
+        # self.regroup_button.draw(self.window)
 
-        self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
-        self.tag_team_button.color = self.gameplan_button_color
-        self.tag_team_button.draw(self.window)
+        # self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
+        # self.tag_team_button.color = self.gameplan_button_color
+        # self.tag_team_button.draw(self.window)
 
         # self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
         # self.fan_out_button.color = self.gameplan_button_color
         # self.fan_out_button.draw(self.window)
-
-        
 
         # Draw Comm Log
         if self.agent_info_height_req > 0:
@@ -628,8 +630,8 @@ class MAISREnv(gym.Env):
             agent0_health_window.update(self.agents[self.num_ships].health_points)
             agent0_health_window.draw(self.window)
 
-        agent1_health_window = HealthWindow(self.num_ships+1, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
-        agent1_health_window.update(self.agents[self.num_ships+1].health_points)
+        agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
+        agent1_health_window.update(self.agents[self.human_idx].health_points)
         agent1_health_window.draw(self.window)
 
         # Draw score box and update with new score value every tick
@@ -646,8 +648,9 @@ class MAISREnv(gym.Env):
         if not self.paused:
             self.display_time = current_time - self.total_pause_time
 
-        self.time_window.update(self.display_time)
-        self.time_window.draw(self.window)
+        if current_time > self.start_countdown_time:
+            self.time_window.update(self.display_time)
+            self.time_window.draw(self.window)
 
         # Draw agent status window
         if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
@@ -668,6 +671,13 @@ class MAISREnv(gym.Env):
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
+        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+        corner_round_font = pygame.font.SysFont(None, 36)
+        corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
+        corner_round_rect = corner_round_text_surface.get_rect(
+            center=(675, 1030))
+        self.window.blit(corner_round_text_surface, corner_round_rect)
+
 
         # Countdown from 5 seconds at start of game
         if current_time <= self.start_countdown_time:
@@ -685,10 +695,11 @@ class MAISREnv(gym.Env):
             self.window.blit(countdown_surface, (0, 0))
 
             # Draw round name
-            if self.user_group == 'test': round_text = f"ROUND {self.round_number}/4"
+            if self.user_group == 'test':
+                round_text = f"ROUND {self.round_number+1}/4"
             else:
-                if self.round_number == 1: round_text = "TRAINING ROUND"
-                else: round_text = f"ROUND {self.round_number-1}/4"
+                if self.round_number == 0: round_text = "TRAINING ROUND"
+                else: round_text = f"ROUND {self.round_number}/4"
             round_text_surface = round_font.render(round_text, True, (255, 255, 255))
             round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
             self.window.blit(round_text_surface, round_rect)
@@ -884,7 +895,7 @@ class MAISREnv(gym.Env):
         stats_font = pygame.font.SysFont(None, 36)
 
         # Render title
-        if not self.agents[self.num_ships+1].alive:
+        if not self.agents[self.human_idx].alive:
             title_surface = title_font.render('GAME OVER', True, (0, 0, 0))
         elif self.display_time/1000 >= self.time_limit:
             title_surface = title_font.render('GAME COMPLETE: TIME UP', True, (0, 0, 0))
@@ -896,12 +907,12 @@ class MAISREnv(gym.Env):
         # Calculate statistics
         agent_status = "ALIVE" if self.agents[self.num_ships].alive else "DESTROYED"
         agent_status_color = (0, 255, 0) if agent_status == "ALIVE" else (255, 0, 0)
-        human_status = 'ALIVE' if self.agents[self.num_ships + 1].alive else "DESTROYED"
+        human_status = 'ALIVE' if self.agents[self.human_idx].alive else "DESTROYED"
         human_status_color = (0, 255, 0) if human_status == "ALIVE" else (255, 0, 0)
 
         # Create stats text surfaces
         stats_items = [
-            f"Final Score: {self.score}",
+            f"Final Score: {round(self.score,0)}",
             f"Targets Identified: {self.identified_targets} / {self.total_targets}",
             f"Threat Levels Observed: {self.identified_threat_types} / {self.total_targets}",
             f"Human Status: {human_status}",

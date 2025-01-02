@@ -32,7 +32,7 @@ def process_log_file(filename):
         # Read all lines and get the last line which contains final stats
         lines = f.readlines()
         final_line = json.loads(lines[-1])
-        final_time = json.loads(lines[-2])["timestamp"]
+        final_time = json.loads(lines[-1])["time"]
 
         # Process all lines to count waypoints
         waypoint_count = 0
@@ -52,10 +52,11 @@ def process_log_file(filename):
         search_type_commands = sum(1 for cmd in gameplan_history if cmd[1] in ["target_id", "wez_id"])
         search_area_commands = sum(1 for cmd in gameplan_history if cmd[1] in ["full", "NW", "NE", "SW", "SE"])
         hold_commands = sum(1 for cmd in gameplan_history if cmd[1] == "hold")
-        waypoint_override_commands = sum(1 for cmd in gameplan_history if cmd[1] == "waypoint")
+        waypoint_override_commands = sum(1 for cmd in gameplan_history if cmd[1] == "waypoint override")
+        time_remaining = 240 - final_time if final_line["identified_targets"] == 60 else 0
 
         # Get final game state from second to last line
-        final_state = None
+        #final_state = None
         for line in reversed(lines):
             try:
                 data = json.loads(line)
@@ -66,13 +67,14 @@ def process_log_file(filename):
                 continue
         output = {
             'score': round(final_line["final score"],1),
-            'time remaining': 241 - final_time,
-            'targets': final_state["identified_targets"],
-            'weapons': final_state["identified_threat_types"],
-            'human_hp': 4 - final_state["agent1_damage"]/25,  # Convert damage to health
-            'agent_hp': 4 - final_state["agent0_damage"]/25,
+            'round duration': final_time,
+            'time remaining': time_remaining,
+            'targets': final_line["identified_targets"],
+            'weapons': final_line["identified_threat_types"],
+            'human_hp': final_line["human_health"],
+            'agent_hp': final_line["agent_health"],
             'human_waypoints': waypoint_count,
-            'total_commands': total_commands,
+            'total_commands': final_line['total_gameplan_commands'],
             'search_type_commands': search_type_commands,
             'search_area_commands': search_area_commands,
             'hold_commands': hold_commands,
@@ -97,18 +99,33 @@ def process_all_rounds(round_files):
         metrics = process_log_file(filename)
 
         # Add metrics to new row with round number in column names
-        new_row[f'score_round{round_num}'] = metrics['score']
-        new_row[f'targets_round{round_num}'] = metrics['targets']
-        new_row[f'timeremaining_round{round_num}'] = metrics['time remaining']
-        new_row[f'weapons_round{round_num}'] = metrics['weapons']
-        new_row[f'humanhp_round{round_num}'] = metrics['human_hp']
-        new_row[f'agenthp_round{round_num}'] = metrics['agent_hp']
-        new_row[f'humanwaypoints_round{round_num}'] = metrics['human_waypoints']
-        new_row[f'totalcommands_round{round_num}'] = metrics['total_commands']
-        new_row[f'searchtypecommands_round{round_num}'] = metrics['search_type_commands']
-        new_row[f'searchareacommands_round{round_num}'] = metrics['search_area_commands']
-        new_row[f'holdcommands_round{round_num}'] = metrics['hold_commands']
-        new_row[f'waypointoverridecommands_round{round_num}'] = metrics['waypoint_override_commands']
+        # new_row[f'score_round{round_num-1}'] = metrics['score']
+        # new_row[f'duration_round{round_num}'] = metrics['round duration']
+        # new_row[f'targets_round{round_num}'] = metrics['targets']
+        # new_row[f'timeremaining_round{round_num}'] = metrics['time remaining']
+        # new_row[f'weapons_round{round_num}'] = metrics['weapons']
+        # new_row[f'humanhp_round{round_num}'] = metrics['human_hp']
+        # new_row[f'agenthp_round{round_num}'] = metrics['agent_hp']
+        # new_row[f'humanwaypoints_round{round_num}'] = metrics['human_waypoints']
+        # new_row[f'totalcommands_round{round_num}'] = metrics['total_commands']
+        # new_row[f'searchtypecommands_round{round_num}'] = metrics['search_type_commands']
+        # new_row[f'searchareacommands_round{round_num}'] = metrics['search_area_commands']
+        # new_row[f'holdcommands_round{round_num}'] = metrics['hold_commands']
+        # new_row[f'waypointoverridecommands_round{round_num}'] = metrics['waypoint_override_commands']
+
+        new_row[f'score_round{round_num - 1}'] = metrics['score']
+        new_row[f'duration_round{round_num - 1}'] = metrics['round duration']
+        new_row[f'targets_round{round_num - 1}'] = metrics['targets']
+        new_row[f'timeremaining_round{round_num - 1}'] = metrics['time remaining']
+        new_row[f'weapons_round{round_num - 1}'] = metrics['weapons']
+        new_row[f'humanhp_round{round_num - 1}'] = metrics['human_hp']
+        new_row[f'agenthp_round{round_num - 1}'] = metrics['agent_hp']
+        new_row[f'humanwaypoints_round{round_num - 1}'] = metrics['human_waypoints']
+        new_row[f'totalcommands_round{round_num - 1}'] = metrics['total_commands']
+        new_row[f'searchtypecommands_round{round_num - 1}'] = metrics['search_type_commands']
+        new_row[f'searchareacommands_round{round_num - 1}'] = metrics['search_area_commands']
+        new_row[f'holdcommands_round{round_num - 1}'] = metrics['hold_commands']
+        new_row[f'waypointoverridecommands_round{round_num - 1}'] = metrics['waypoint_override_commands']
 
     return new_row
 
@@ -128,7 +145,7 @@ def get_subject_files(data_folder):
     # Filter out subjects without all 4 rounds and sort files by round number
     complete_subjects = {}
     for subject_id, files in subject_files.items():
-        if len(files) == 4:
+        if len(files) == 5:
             complete_subjects[subject_id] = [f[1] for f in sorted(files)]
         else:
             print(f"Warning: Subject {subject_id} has {len(files)} rounds instead of 4. Skipping.")
@@ -142,8 +159,8 @@ def process_folder(data_folder, excel_file):
     columns = ['subject_id', 'user_group', 'run_order']
     for i in range(1, 5):
         round_cols = [
-            f'score_round{i}', f'targets_round{i}', f'weapons_round{i}',
-            f'humanhp_round{i}', f'agenthp_round{i}', f'timeremaining_round{i}', f'humanwaypoints_round{i}',
+            f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'weapons_round{i}', f'timeremaining_round{i}',
+            f'humanhp_round{i}', f'agenthp_round{i}', f'humanwaypoints_round{i}',
             f'totalcommands_round{i}', f'searchtypecommands_round{i}',
             f'searchareacommands_round{i}', f'holdcommands_round{i}',
             f'waypointoverridecommands_round{i}'
@@ -200,6 +217,6 @@ def update_excel(log_files, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "group_sample"  # Folder containing all JSONL files
-    excel_file = "test5_isr_data_header_example.xlsx"
+    data_folder = "testjan"  # Folder containing all JSONL files
+    excel_file = "dummyjan_isr_data_header_example.xlsx"
     process_folder(data_folder, excel_file)
