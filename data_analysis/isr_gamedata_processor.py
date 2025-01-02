@@ -217,6 +217,6 @@ def update_excel(log_files, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "testjan"  # Folder containing all JSONL files
-    excel_file = "dummyjan_isr_data_header_example.xlsx"
+    data_folder = "pilot_test"  # Folder containing all JSONL files
+    excel_file = "pilot_test_isr_data_header_example.xlsx"
     process_folder(data_folder, excel_file)
