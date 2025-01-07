@@ -374,11 +374,11 @@ class MAISREnv(gym.Env):
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
             if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
-                print(f"All targets identified (+{self.all_targets_points} points)")
-                print(f"{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining")
+                print(f'All targets identified (+{self.all_targets_points} points)')
+                print(f'{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining')
             # TODO add printout for -30 points if agent destroyed
-            print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
-            print(f"\nFinal score = {round(self.score,0)}")
+            print(f'Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds')
+            print(f'\nFinal score = {round(self.score,0)}')
 
             if self.render_bool: pygame.time.wait(50)
 
@@ -677,7 +677,7 @@ class MAISREnv(gym.Env):
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
-        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' or self.user_group == 'in situ' else f"ROUND {self.round_number}/4"
         # TODO CHANGE
         corner_round_font = pygame.font.SysFont(None, 36)
         corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
@@ -702,7 +702,7 @@ class MAISREnv(gym.Env):
             self.window.blit(countdown_surface, (0, 0))
 
             # Draw round name
-            if self.user_group == 'test':
+            if self.user_group == 'test' or self.user_group == 'in situ':
                 round_text = f"ROUND {self.round_number+1}/4"
             else:
                 if self.round_number == 0: round_text = "TRAINING ROUND"

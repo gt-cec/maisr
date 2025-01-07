@@ -2,7 +2,6 @@ from agents import *
 import sys
 import os
 import ctypes
-import sys
 
 from env import MAISREnv
 from gui import *
@@ -16,34 +15,19 @@ if __name__ == "__main__":
     print("Starting MAISR environment")
     render = "headless" not in sys.argv
 
-    if len(sys.argv) < 4:
-        print("Missing args, run as: python main.py subject_id user_group starting_round_number")
-        sys.exit()
-
-    subject_id = sys.argv[1]
-    if not subject_id.isdigit():
-        print("Invalid subject ID: >" + subject_id + "<")
-        sys.exit()
-
-    user_group = sys.argv[2]
-    if user_group not in ["test", "card", "control", "in situ"]:
-        print("Invalid user group: >" + user_group + "<")
-        sys.exit()
-
-    round_number = sys.argv[3]
-    if round_number not in ["0", "1", "2", "3", "4"] or not round_number.isdigit():
-        print("Invalid round number: " + ">" + round_number + "<")
-        sys.exit()
-    round_number = int(round_number)
-
     config_list = config_dict[user_group]
+    # pairs = list(zip(run_order, unsorted_config_list))
+    # sorted_pairs = sorted(pairs, key=lambda x: x[0])
+    # config_list = [item for _, item in sorted_pairs]
 
     game_count = 0
     total_games = 5 # Number of games to run
 
     gameplan_command_history = [] # For data logging
-    while round_number < total_games:
-        config = config_list[round_number]
+
+    round_number = 0
+    for config in config_list:
+        print(config)
         env_config = load_env_config(config)
 
         if log_data:

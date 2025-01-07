@@ -1,8 +1,9 @@
 """To set up experiment run:"""
 
 # 1. Enter a subject_id:
-subject_id = '908'
-user_group = 'test' # 'test', 'control' 'card' 'in situ'
+subject_id = '201'
+user_group = 'in situ' # 'test', 'control' 'card' 'in situ'
+# TODO Add training back in for in situ (need ot modify two places in env.py too)
 run_order = 1 # 1,2,3, or 4
 
 
@@ -42,7 +43,7 @@ def get_ordered_configs(user_group, run_order):
     }
 
     # Reorder scenario configs based on run_order
-    if user_group == 'test':
+    if user_group == 'test' or user_group == 'in situ': # TODO Change this
         # Test group only gets scenario configs, no training
         ordered_scenarios = [scenario_configs[i] for i in order_mappings[run_order]]
         return ordered_scenarios
