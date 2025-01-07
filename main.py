@@ -7,17 +7,15 @@ import sys
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import subject_id, user_group, log_data, x, y, config_dict, run_order
+#from config import subject_id, user_group, log_data, x, y, config_dict, run_order
+from config import x, y, config_dict, run_order
 from autonomous_policy import AutonomousPolicy
 import webbrowser
 
 
 if __name__ == "__main__":
-    print("Starting MAISR environment")
-    render = "headless" not in sys.argv
-
-    if len(sys.argv) < 4:
-        print("Missing args, run as: python main.py subject_id user_group starting_round_number")
+    if len(sys.argv) < 5:
+        print("Missing args, run as: python main.py subject_id user_group starting_round_number log_data")
         sys.exit()
 
     subject_id = sys.argv[1]
@@ -36,8 +34,19 @@ if __name__ == "__main__":
         sys.exit()
     round_number = int(round_number)
 
-    config_list = config_dict[user_group]
+    log_data = sys.argv[4]
+    if log_data == 'y':
+        log_data = True
+    elif log_data == 'n':
+        log_data = False
+    else:
+        print("Invalid input for log data")
+        sys.exit()
 
+    print("Starting MAISR environment")
+    render = "headless" not in sys.argv
+
+    config_list = config_dict[user_group]
     game_count = 0
     total_games = 5 # Number of games to run
 
