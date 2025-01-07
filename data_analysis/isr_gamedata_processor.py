@@ -5,8 +5,54 @@ import re
 from collections import defaultdict
 
 """
-NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (one row per subject) for later processing in R
+NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (one row per subject) for later processing in R.
+
+Important notes: 
+1. Subject must have completed all four rounds + the training round for this to run correctly. It automatically ignores round 0, but round 0 must be present in the folder or it will shift all round metrics by 1 round (e.g. it will report round 2's score as round 1).
+2. When a friendly target is identified, the counter for both targets ID'd AND weapons ID'd goes up by 1, even though friendlies do not have weapons. Think of this as identifying the status of the target's weapons (for friendlies, status = non existent).
 """
+
+def get_quadrant(x, y):
+    """Determine which quadrant a position falls into"""
+    if x < 500: return "SW" if y >= 500 else "NW"
+    else: return "SE" if y >= 500 else "NE"
+
+
+def calculate_quadrant_times(lines):
+    """Calculate time spent in same and different quadrants"""
+    same_quadrant_time = 0
+    diff_quadrant_time = 0
+    last_timestamp = None
+
+    for line in lines:
+        try:
+            data = json.loads(line)
+            if "type" in data and data["type"] == "state":
+                current_timestamp = data["timestamp"]
+
+                # Get positions from game state
+                aircraft = data["game_state"]["aircraft"]
+                agent_pos = aircraft[0]["position"]  # AI aircraft
+                human_pos = aircraft[1]["position"]  # Human aircraft
+
+                # Determine quadrants
+                agent_quadrant = get_quadrant(agent_pos[0], agent_pos[1])
+                human_quadrant = get_quadrant(human_pos[0], human_pos[1])
+
+                # Calculate time difference if not first state
+                if last_timestamp is not None:
+                    time_diff = current_timestamp - last_timestamp
+
+                    # Add time to appropriate counter
+                    if agent_quadrant == human_quadrant: same_quadrant_time += time_diff
+                    else: diff_quadrant_time += time_diff
+
+                last_timestamp = current_timestamp
+
+        except json.JSONDecodeError: continue
+
+    return same_quadrant_time, diff_quadrant_time
+
 
 def extract_metadata(filename):
     """Extract subject_id and user_group from the log file header."""
@@ -34,13 +80,33 @@ def process_log_file(filename):
         final_line = json.loads(lines[-1])
         final_time = json.loads(lines[-1])["time"]
 
+        same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
+        diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
+
         # Process all lines to count waypoints
         waypoint_count = 0
+        human_targets_identified = 0
+        ai_targets_identified = 0
+        human_weapons_identified = 0
+        ai_weapons_identified = 0
+
         for line in lines:
             try:
                 data = json.loads(line)
                 if "type" in data and data["type"] == "mouse_event" and data["event_type"] == "human waypoint":
                     waypoint_count += 1
+                if "identify_type" in data:
+                    if data["identify_type"] == "target_identified":
+                        if data["agent_id"] == "AI":
+                            ai_targets_identified += 1
+                        elif data["agent_id"] == "human":
+                            human_targets_identified += 1
+                    elif data["identify_type"] == "weapon_identified":
+                        if data["agent_id"] == "AI":
+                            ai_weapons_identified += 1
+                        elif data["agent_id"] == "human":
+                            human_weapons_identified += 1
+
             except json.JSONDecodeError:
                 continue
 
@@ -63,8 +129,8 @@ def process_log_file(filename):
                 if "type" in data and data["type"] == "state":
                     final_state = data["game_state"]
                     break
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError: continue
+
         output = {
             'score': round(final_line["final score"],1),
             'round duration': final_time,
@@ -78,7 +144,12 @@ def process_log_file(filename):
             'search_type_commands': search_type_commands,
             'search_area_commands': search_area_commands,
             'hold_commands': hold_commands,
-            'waypoint_override_commands': waypoint_override_commands
+            'waypoint_override_commands': waypoint_override_commands,
+            'human_targets_identified': human_targets_identified,
+            'ai_targets_identified': ai_targets_identified,
+            'human_weapons_identified': human_weapons_identified,
+            'ai_weapons_identified': ai_weapons_identified,
+            'diff_quadrant_percentage': diff_quadrant_percentage
         }
         print(output)
         return output
@@ -126,6 +197,14 @@ def process_all_rounds(round_files):
         new_row[f'searchareacommands_round{round_num - 1}'] = metrics['search_area_commands']
         new_row[f'holdcommands_round{round_num - 1}'] = metrics['hold_commands']
         new_row[f'waypointoverridecommands_round{round_num - 1}'] = metrics['waypoint_override_commands']
+        new_row[f'human_targets_identified_round{round_num - 1}'] = metrics['human_targets_identified']
+        new_row[f'ai_targets_identified_round{round_num - 1}'] = metrics['ai_targets_identified']
+        new_row[f'human_weapons_identified_round{round_num - 1}'] = metrics['human_weapons_identified']
+        new_row[f'ai_weapons_identified_round{round_num - 1}'] = metrics['ai_weapons_identified']
+        new_row[f'diff_quadrant_percentage_round{round_num - 1}'] = metrics['diff_quadrant_percentage']
+
+        #print('in process all rounds')
+        #print(new_row)
 
     return new_row
 
@@ -163,7 +242,12 @@ def process_folder(data_folder, excel_file):
             f'humanhp_round{i}', f'agenthp_round{i}', f'humanwaypoints_round{i}',
             f'totalcommands_round{i}', f'searchtypecommands_round{i}',
             f'searchareacommands_round{i}', f'holdcommands_round{i}',
-            f'waypointoverridecommands_round{i}'
+            f'waypointoverridecommands_round{i}',
+            f'human_targets_identified_round{i}',
+            f'ai_targets_identified_round{i}',
+            f'human_weapons_identified_round{i}',
+            f'ai_weapons_identified_round{i}',
+            f'diff_quadrant_percentage_round{i}'
         ]
         columns.extend(round_cols)
 
@@ -187,36 +271,7 @@ def process_folder(data_folder, excel_file):
     print(f'\nProcessed {len(subject_files)} subjects. Data written to: {excel_file}')
 
 
-def update_excel(log_files, excel_file):
-    """Update Excel file with metrics from all log files by appending a new row."""
-    try:
-        # Read the Excel file
-        df = pd.read_excel(excel_file)
-    except FileNotFoundError:
-        # If file doesn't exist, create empty DataFrame with correct columns
-        columns = ['subject_id', 'user_group','run_order']  # Add metadata columns
-        for i in range(1, 5):  # For rounds 1-4
-            round_cols = [
-                f'score_round{i}', f'targets_round{i}', f'weapons_round{i}',
-                f'humanhp_round{i}', f'agenthp_round{i}', f'timeremaining_round{i}', f'humanwaypoints_round{i}',
-                f'totalcommands_round{i}', f'searchtypecommands_round{i}',
-                f'searchareacommands_round{i}', f'holdcommands_round{i}',
-                f'waypointoverridecommands_round{i}'
-            ]
-            columns.extend(round_cols)
-        df = pd.DataFrame(columns=columns)
-
-    # Process all rounds and create new row
-    new_row = process_all_rounds(log_files)
-
-    # Append the new row to the DataFrame
-    df.loc[len(df)] = new_row
-
-    # Save the updated Excel file
-    df.to_excel(excel_file, index=False)
-
-
 if __name__ == "__main__":
-    data_folder = "pilot_test"  # Folder containing all JSONL files
-    excel_file = "pilot_test_isr_data_header_example.xlsx"
+    data_folder = "type_test"  # Folder containing all JSONL files
+    excel_file = "type_test_isr_data_header_example.xlsx"
     process_folder(data_folder, excel_file)

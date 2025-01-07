@@ -67,7 +67,15 @@ if __name__ == "__main__":
             #print(env.aircraft_ids)
             #print(env.human_idx)
 
-            if log_data: game_logger.log_state(env, env.display_time)
+            if log_data:
+                game_logger.log_state(env, env.display_time)
+                if env.new_target_id is not None: # TODO
+                    game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
+                    env.new_target_id = None
+
+                if env.new_weapon_id is not None:  # TODO
+                    game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
+                    env.new_weapon_id = None
 
             actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], 'None' will use the default search behaviors
             time_sec = float(env.display_time)/1000

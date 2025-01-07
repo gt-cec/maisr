@@ -92,6 +92,8 @@ class MAISREnv(gym.Env):
 
         self.paused = False
         self.unpause_countdown = False
+        self.new_target_id = None # Used to check if a new target has been ID'd so the data logger in main.py can log it
+        self.new_weapon_id = None
 
         self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
@@ -229,17 +231,16 @@ class MAISREnv(gym.Env):
     def step(self, actions:list):
         # if an action was specified, handle that agent's waypoint
 
-        if self.regroup_clicked:
-            self.agents[self.num_ships].regroup_clicked = True
+        if self.regroup_clicked: self.agents[self.num_ships].regroup_clicked = True
+        else: self.agents[self.num_ships].regroup_clicked = False
 
-        else:
-            self.agents[self.num_ships].regroup_clicked = False
 
         if actions is not None and actions != []:
             for action in actions:  # handle each action (waypoint override) provided
                 agent = action[0]
                 waypoint = action[1]
                 self.agents[agent].waypoint_override = waypoint
+
         # move the agents and check for gameplay updates
         for agent in self.agents:
             # move the agents
@@ -260,16 +261,19 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
+                        self.new_target_id = ['human' if aircraft_id == self.human_idx else 'AI', 'target_identified',agent.agent_idx]  # Will be used in main.py to log target ID event
                         self.identified_targets += 1 # Used for the tally box
                         self.score += self.target_points
+                        #print('new target id: ', self.new_target_id)
+
                         if agent.threat == 0:
                             agent.observed_threat = True
+                            self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI','weapon_identified', agent.agent_idx]
                             self.num_identified_ships += 1
                             self.identified_threat_types += 1
                             self.score += self.threat_points
 
-                        if self.config["verbose"]:
-                            print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
+                        if self.config["verbose"]: print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
 
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist)):# or agent.threat == 0):
@@ -277,9 +281,11 @@ class MAISREnv(gym.Env):
                         self.num_identified_ships += 1
                         self.identified_threat_types += 1 # Used for the tally box
                         self.score += self.threat_points
-                        if self.config["verbose"]:
-                            print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
+                        self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI', 'weapon_identified', agent.agent_idx]
+                        #print('new weapon id: ', self.new_weapon_id)
+                        if self.config["verbose"]: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
                         break
+
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist) and agent.threat > 0:
                         if self.agents[aircraft_id].alive:

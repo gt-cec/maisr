@@ -90,6 +90,17 @@ class GameLogger:
         }
         self._write_log_entry(event_data)
 
+    def log_target_id(self, agent_id, event_type, target_id, timestamp):
+        # Logs every time a target or weapon is ID'd and which player (human or AI) identified it
+        event_data = {
+            'timestamp': round(timestamp / 1000 - 5, 1),
+            'identify_type': event_type,
+            'agent_id': agent_id,
+            'target_id': target_id
+        }
+        self._write_log_entry(event_data)
+        print('Target id logged', event_data)
+
     def _write_log_entry(self, data):
         """Write a single entry to the log file"""
         with open(self.filename, 'a') as f:
