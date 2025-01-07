@@ -25,7 +25,9 @@ class MAISREnv(gym.Env):
         self.subject_id = subject_id
         self.round_number = round_number
         self.user_group = user_group
-        self.training = True if (round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4
+        self.training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4
+        print(self.round_number)
+        print(self.training)
 
         #self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
         #self.config["window size"] = (int(self.BASE_WINDOW_WIDTH * self.scaling_ratio),
