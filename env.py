@@ -677,7 +677,8 @@ class MAISREnv(gym.Env):
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
-        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' or self.user_group == 'in situ' else f"ROUND {self.round_number}/4"
+        # TODO CHANGE
         corner_round_font = pygame.font.SysFont(None, 36)
         corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
         corner_round_rect = corner_round_text_surface.get_rect(
@@ -701,7 +702,7 @@ class MAISREnv(gym.Env):
             self.window.blit(countdown_surface, (0, 0))
 
             # Draw round name
-            if self.user_group == 'test':
+            if self.user_group == 'test' or self.user_group == 'in situ':
                 round_text = f"ROUND {self.round_number+1}/4"
             else:
                 if self.round_number == 0: round_text = "TRAINING ROUND"
