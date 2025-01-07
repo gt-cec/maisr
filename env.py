@@ -352,7 +352,7 @@ class MAISREnv(gym.Env):
         # exit when all ships are identified
         state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
         reward = self.get_reward()
-        done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and self.config['infinite health']==False and not self.training) or (self.display_time/1000 >= self.time_limit)
+        done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.training) or (self.display_time/1000 >= self.time_limit)
 
         if done:
             self.done = True
