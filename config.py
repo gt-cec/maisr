@@ -2,7 +2,7 @@
 
 # 1. Enter a subject_id:
 subject_id = '908'
-user_group = 'test' # 'test', 'control' 'card' 'in situ'
+user_group = 'test' # 'test', 'control' 'card' 'in-situ'
 run_order = 1 # 1,2,3, or 4
 
 
@@ -21,7 +21,7 @@ training_configs = {
     'test': './config_files/model_card_configs/modelcard_scenario1_config.json',
     'control': './config_files/training_control_config.json',
     'card': './config_files/training_control_config.json',
-    'in situ': './config_files/training_insitu_config.json'}
+    'in-situ': './config_files/training_insitu_config.json'}
 
 scenario_configs = [
     './config_files/model_card_configs/modelcard_scenario1_config.json',
@@ -55,4 +55,4 @@ def get_ordered_configs(user_group, run_order):
 # Generate the config dictionary based on run_order
 config_dict = {
     group: get_ordered_configs(group, run_order)
-    for group in ['test', 'control', 'card', 'in situ']}
+    for group in ['test', 'control', 'card', 'in-situ']}

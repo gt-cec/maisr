@@ -24,7 +24,7 @@ if __name__ == "__main__":
         sys.exit()
 
     user_group = sys.argv[2]
-    if user_group not in ["test", "card", "control", "in situ"]:
+    if user_group not in ["test", "card", "control", "in-situ"]:
         print("Invalid user group: >" + user_group + "<")
         sys.exit()
 
