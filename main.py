@@ -136,14 +136,12 @@ if __name__ == "__main__":
             for event in ev:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F1:
-                        game_logger.final_log(gameplan_command_history, env)
+                        if log_data: game_logger.final_log(gameplan_command_history, env)
                         pygame.quit()
                     if event.key == pygame.K_SPACE: env.pause(pygame.MOUSEBUTTONDOWN)
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
-
-                    #if log_data: game_logger.log_mouse_event(mouse_position,"click",pygame.time.get_ticks())
 
                     if env.config['gameboard border margin'] < mouse_position[0] < env.config['gameboard size']-env.config['gameboard border margin'] and env.config['gameboard border margin'] < mouse_position[1] < env.config['gameboard size']-env.config['gameboard border margin']:
                         if env.agent_waypoint_clicked:

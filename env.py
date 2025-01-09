@@ -505,7 +505,6 @@ class MAISREnv(gym.Env):
             pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width,self.config["gameboard size"]))  # Right border
             self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-
         # Draw Agent Gameplan sub-window
         self.quadrant_button_height = 120
         self.gameplan_button_width = 180
@@ -582,6 +581,16 @@ class MAISREnv(gym.Env):
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
 
+        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
+        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
+        self.autonomous_button.color = (50, 180, 180)
+        self.autonomous_button.draw(self.window)
+
+        #Draw score box and update with new score value every tick
+        score_button = ScoreWindow(self.score,self.right_pane_edge+15, 3 * (self.quadrant_button_height) + 115 + 90+20)
+        score_button.update(self.score)
+        score_button.draw(self.window)
+
         # Advanced gameplans currently removed
         # self.regroup_button.is_latched = self.regroup_clicked
         # self.regroup_button.color = self.gameplan_button_color
@@ -618,16 +627,16 @@ class MAISREnv(gym.Env):
         # self.target_status_x = self.config['gameboard size'] + 40 + 405
         # if self.agent_info_height_req > 0: self.target_status_y = 500 + self.agent_info_height_req
         # else: self.target_status_y = 280
-
+        #
         # pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400, 100))  # Target tally sub-window box
         # pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400,40))  # Target tally title box
         # tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
         # self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
-
+        #
         # id_tally_text = f"Targets ID\'d (+10 pts):                       {self.identified_targets} / {self.total_targets}"
         # id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
         # self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
-
+        #
         # threat_tally_text = f"WEZs ID\'d (+5 pts):                            {self.identified_threat_types} / {self.total_targets}"
         # threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
         # self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
@@ -641,16 +650,6 @@ class MAISREnv(gym.Env):
         agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
         agent1_health_window.update(self.agents[self.human_idx].health_points)
         agent1_health_window.draw(self.window)
-
-        # Draw score box and update with new score value every tick
-        #score_button = ScoreWindow(self.score,game_width*0.5 - 320/2, game_width + 10)
-        #score_button.update(self.score)
-        #score_button.draw(self.window)
-
-        # self.pause_button = Button("PAUSE", self.right_pane_edge, self.autonomous_button_y+225, 400, 150)
-        # self.pause_button.color = (220,150,40)
-        # self.pause_button.is_latched = self.button_latch_dict['pause']
-        # self.pause_button.draw(self.window)
 
         current_time = pygame.time.get_ticks()
         if not self.paused:
@@ -667,17 +666,12 @@ class MAISREnv(gym.Env):
 
         risk_tolerance_y = 665
         risk_tolerance_height = 110-100
-        new_autonomous_button_y = 590+100+10
-        pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, new_autonomous_button_y-10, 405, 85))  # +30
+        #new_autonomous_button_y = 590+100+10
+        #pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, new_autonomous_button_y-10, 405, 85))  # +30
         #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10), 4)  # Top border +30
         #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
         #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10+95), 4)  # Right border +30
         #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
-
-        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 590+100+10,self.gameplan_button_width * 2 + 15, 65)
-        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
-        self.autonomous_button.color = (50, 180, 180)
-        self.autonomous_button.draw(self.window)
 
         corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
         # TODO CHANGE
