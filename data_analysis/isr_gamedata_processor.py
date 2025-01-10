@@ -10,6 +10,7 @@ NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (on
 Important notes: 
 1. Subject must have completed all four rounds + the training round for this to run correctly. It automatically ignores round 0, but round 0 must be present in the folder or it will shift all round metrics by 1 round (e.g. it will report round 2's score as round 1).
 2. When a friendly target is identified, the counter for both targets ID'd AND weapons ID'd goes up by 1, even though friendlies do not have weapons. Think of this as identifying the status of the target's weapons (for friendlies, status = non existent).
+3. But when tallying how many weapons and targets the AI and human identified, friendlies are NOT counted as weapon IDs.
 """
 
 def get_quadrant(x, y):
@@ -169,21 +170,6 @@ def process_all_rounds(round_files):
     for round_num, filename in enumerate(round_files, 1):
         metrics = process_log_file(filename)
 
-        # Add metrics to new row with round number in column names
-        # new_row[f'score_round{round_num-1}'] = metrics['score']
-        # new_row[f'duration_round{round_num}'] = metrics['round duration']
-        # new_row[f'targets_round{round_num}'] = metrics['targets']
-        # new_row[f'timeremaining_round{round_num}'] = metrics['time remaining']
-        # new_row[f'weapons_round{round_num}'] = metrics['weapons']
-        # new_row[f'humanhp_round{round_num}'] = metrics['human_hp']
-        # new_row[f'agenthp_round{round_num}'] = metrics['agent_hp']
-        # new_row[f'humanwaypoints_round{round_num}'] = metrics['human_waypoints']
-        # new_row[f'totalcommands_round{round_num}'] = metrics['total_commands']
-        # new_row[f'searchtypecommands_round{round_num}'] = metrics['search_type_commands']
-        # new_row[f'searchareacommands_round{round_num}'] = metrics['search_area_commands']
-        # new_row[f'holdcommands_round{round_num}'] = metrics['hold_commands']
-        # new_row[f'waypointoverridecommands_round{round_num}'] = metrics['waypoint_override_commands']
-
         new_row[f'score_round{round_num - 1}'] = metrics['score']
         new_row[f'duration_round{round_num - 1}'] = metrics['round duration']
         new_row[f'targets_round{round_num - 1}'] = metrics['targets']
@@ -224,7 +210,7 @@ def get_subject_files(data_folder):
     # Filter out subjects without all 4 rounds and sort files by round number
     complete_subjects = {}
     for subject_id, files in subject_files.items():
-        if len(files) == 5:
+        if len(files) == 5 or True:
             complete_subjects[subject_id] = [f[1] for f in sorted(files)]
         else:
             print(f"Warning: Subject {subject_id} has {len(files)} rounds instead of 4. Skipping.")
@@ -272,6 +258,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "sarai_test"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_pilot_jan6.xlsx"
+    data_folder = "jan10test"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_pilot_jan10.xlsx"
     process_folder(data_folder, excel_file)

@@ -270,7 +270,7 @@ class MAISREnv(gym.Env):
 
                         if agent.threat == 0:
                             agent.observed_threat = True
-                            self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI','weapon_identified', agent.agent_idx]
+                            #self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI','weapon_identified', agent.agent_idx]
                             self.num_identified_ships += 1
                             self.identified_threat_types += 1
                             self.score += self.threat_points
@@ -610,7 +610,7 @@ class MAISREnv(gym.Env):
         self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
 
         # Draw incoming comm log text
-        y_offset = self.comm_pane_height+50+800
+        y_offset = self.comm_pane_height+50+680
         for entry in self.comm_messages:
             message = entry[0]
             is_ai = entry[1]
