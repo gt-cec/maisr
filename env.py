@@ -439,6 +439,10 @@ class MAISREnv(gym.Env):
         game_width = self.config["gameboard size"]
         ui_width = window_width - game_width
 
+        if self.agent_info_height_req > 0:
+            self.comm_pane_height = 220+self.agent_info_height_req
+        else: self.comm_pane_height = 10
+
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
@@ -586,11 +590,6 @@ class MAISREnv(gym.Env):
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
 
-        #Draw score box and update with new score value every tick
-        score_button = ScoreWindow(self.score,self.right_pane_edge+15, 3 * (self.quadrant_button_height) + 115 + 90+20)
-        score_button.update(self.score)
-        score_button.draw(self.window)
-
         # Advanced gameplans currently removed
         # self.regroup_button.is_latched = self.regroup_clicked
         # self.regroup_button.color = self.gameplan_button_color
@@ -605,13 +604,10 @@ class MAISREnv(gym.Env):
         # self.fan_out_button.draw(self.window)
 
         # Draw Comm Log
-        if self.agent_info_height_req > 0:
-            self.comm_pane_height = 220+self.agent_info_height_req
-        else: self.comm_pane_height = 10
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+800, 400, 40))  # Comm log title box
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+800, 400, 150))  # Comm Log sub-window box
+        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
+        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
         comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1555 // 2)))
+        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
 
         # Draw incoming comm log text
         y_offset = self.comm_pane_height+50+800
@@ -622,6 +618,13 @@ class MAISREnv(gym.Env):
             message_surface = self.message_font.render(message, True, color)
             self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
             y_offset += 30  # Adjust this value to change spacing between messages
+
+
+        #Draw score box and update with new score value every tick
+        #pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.comm_pane_edge, self.comm_pane_height + 35 + 850, 400,100))
+        #score_button = ScoreWindow(self.score,1300,  1300)
+        #score_button.update(self.score)
+        #score_button.draw(self.window)
 
         # # Draw point tally
         # self.target_status_x = self.config['gameboard size'] + 40 + 405
