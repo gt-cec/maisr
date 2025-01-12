@@ -8,9 +8,17 @@ from collections import defaultdict
 NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (one row per subject) for later processing in R.
 
 Important notes: 
-1. Subject must have completed all four rounds + the training round for this to run correctly. It automatically ignores round 0, but round 0 must be present in the folder or it will shift all round metrics by 1 round (e.g. it will report round 2's score as round 1).
-2. When a friendly target is identified, the counter for both targets ID'd AND weapons ID'd goes up by 1, even though friendlies do not have weapons. Think of this as identifying the status of the target's weapons (for friendlies, status = non existent).
-3. But when tallying how many weapons and targets the AI and human identified, friendlies are NOT counted as weapon IDs.
+1. Subject must have completed all four rounds + the training round for this script to run correctly. It automatically ignores round 0, but round 0 must be present in the folder or it will shift all round metrics by 1 round (e.g. it will report round 2's score as round 1).
+2. Note distinction between weapons and threat types. Identifying a friendly target contributes to the threat types counter but not the weapons counter.
+
+The number of hostiles per map is as follows:
+Map 1: 28 hostiles
+map 2: 19 hostiles
+map 3: 22 hostiles
+map 4: 23 hostiles
+
+Number of weapons identified = (threat types identified) - (number of friendly targets)
+
 """
 
 def get_quadrant(x, y):
@@ -93,6 +101,11 @@ def process_log_file(filename):
 
         for line in lines:
             try:
+                if data == "game configuration:./config_files/model_card_configs/modelcard_scenario1_config.json": num_hostiles = 28
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario2_config.json": num_hostiles = 19
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario3_config.json": num_hostiles = 22
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario4_config.json": num_hostiles = 23
+
                 data = json.loads(line)
                 if "type" in data and data["type"] == "mouse_event" and data["event_type"] == "human waypoint":
                     waypoint_count += 1
@@ -137,7 +150,8 @@ def process_log_file(filename):
             'round duration': final_time,
             'time remaining': time_remaining,
             'targets': final_line["identified_targets"],
-            'weapons': final_line["identified_threat_types"],
+            'threat_types': final_line["identified_threat_types"],
+            'weapons': final_line["identified_threat_types"] - (60-num_hostiles),
             'human_hp': final_line["human_health"],
             'agent_hp': final_line["agent_health"],
             'human_waypoints': waypoint_count,
@@ -174,6 +188,7 @@ def process_all_rounds(round_files):
         new_row[f'duration_round{round_num - 1}'] = metrics['round duration']
         new_row[f'targets_round{round_num - 1}'] = metrics['targets']
         new_row[f'timeremaining_round{round_num - 1}'] = metrics['time remaining']
+        new_row[f'threat_types_round{round_num - 1}'] = metrics['threat_types']
         new_row[f'weapons_round{round_num - 1}'] = metrics['weapons']
         new_row[f'humanhp_round{round_num - 1}'] = metrics['human_hp']
         new_row[f'agenthp_round{round_num - 1}'] = metrics['agent_hp']
@@ -224,7 +239,7 @@ def process_folder(data_folder, excel_file):
     columns = ['subject_id', 'user_group', 'run_order']
     for i in range(1, 5):
         round_cols = [
-            f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'weapons_round{i}', f'timeremaining_round{i}',
+            f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'weapons_round{i}', f'threat_types_round{i}', f'timeremaining_round{i}',
             f'humanhp_round{i}', f'agenthp_round{i}', f'humanwaypoints_round{i}',
             f'totalcommands_round{i}', f'searchtypecommands_round{i}',
             f'searchareacommands_round{i}', f'holdcommands_round{i}',
@@ -259,5 +274,5 @@ def process_folder(data_folder, excel_file):
 
 if __name__ == "__main__":
     data_folder = "jan10test"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_pilot_jan10.xlsx"
+    excel_file = "maisr_gamedata_pilot_jan12.xlsx"
     process_folder(data_folder, excel_file)

@@ -50,10 +50,10 @@ if __name__ == "__main__":
     game_count = 0
     total_games = 5 # Number of games to run
 
-    gameplan_command_history = [] # For data logging
     while round_number < total_games:
         config = config_list[round_number]
         env_config = load_env_config(config)
+        gameplan_command_history = []  # For data logging
 
         if log_data:
             game_logger = GameLogger(subject_id, config,user_group,round_number,run_order)
@@ -120,15 +120,15 @@ if __name__ == "__main__":
             # Handle SAGAT surveys
             if 64.00 < time_sec < 65.00 and not env.survey1_launched and env.config['surveys_enabled']:
                 env.survey1_launched = True
-                game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time)
                 env.SAGAT_survey(1)
             if 119.00+5 < time_sec < 120.00+5 and not env.survey2_launched and env.config['surveys_enabled']:
                 env.survey2_launched = True
-                game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time)
                 env.SAGAT_survey(2)
             if 179.0+5 < time_sec < 180.0+5 and not env.survey3_launched and env.config['surveys_enabled']:
                 env.survey3_launched = True
-                game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time)
                 env.SAGAT_survey(3)
 
             # Handle mouse clicks
@@ -402,7 +402,7 @@ if __name__ == "__main__":
                             waiting_for_key = False
                             break
                     elif event.type == pygame.QUIT:
-                        game_logger.final_log(gameplan_command_history, env)
+                        if log_data: game_logger.final_log(gameplan_command_history, env)
                         pygame.quit()
                         sys.exit()
 
