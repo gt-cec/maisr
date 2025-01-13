@@ -42,7 +42,7 @@ class GameLogger:
                       'total_gameplan_commands': len(gameplan_command_history)}
         self._write_log_entry(final_data)
 
-    def log_state(self, env, current_time):
+    def log_state(self, env, current_time, agent0_waypoint, agent1_waypoint):
         """Log the current game state if 10 seconds have elapsed"""
         if self.last_state_log_time == 0 or (current_time - self.last_state_log_time >= self.log_interval):
             state_data = {
@@ -67,12 +67,19 @@ class GameLogger:
                         'position': [agent.x, agent.y],
                         'threat': agent.threat,
                         'observed': agent.observed,
-                        'observed_threat': agent.observed_threat}
+                        'observed_threat': agent.observed_threat
+                    }
                     state_data['game_state']['ships'].append(ship_data)
                 elif agent.agent_class == 'aircraft':
                     aircraft_data = {
                         'id': 'agent' if agent.agent_idx == env.num_ships else 'human',
-                        'position': [round(agent.x,0), round(agent.y,0)],}
+                        'position': [round(agent.x,0), round(agent.y,0)],
+                        'waypoint': agent0_waypoint if agent.agent_idx == env.num_ships else agent1_waypoint,
+                        'direction': agent.direction,
+                        'priority mode': TODO if agent.agent_idx == env.num_ships else 'human', # Auto or manual
+                        'search mode': TODO if agent.agent_idx == env.num_ships else 'human',
+                        'search area' TODO if agent.agent_idx == env.num_ships else 'human'
+                    }
 
                     state_data['game_state']['aircraft'].append(aircraft_data)
 

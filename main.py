@@ -86,6 +86,8 @@ if __name__ == "__main__":
         game_count += 1
         state = env.reset()  # reset the environment
         done = False  # flag for when the run is complete
+        agent0_waypoint = (0,0)
+        agent1_waypoint = (0, 0)
 
         while not done:  # game loop
             #print(env.display_time)
@@ -93,7 +95,7 @@ if __name__ == "__main__":
             #print(env.human_idx)
 
             if log_data:
-                game_logger.log_state(env, env.display_time)
+                game_logger.log_state(env, env.display_time, agent0_waypoint,agent1_waypoint)
                 if env.new_target_id is not None: # TODO
                     game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
                     env.new_target_id = None
@@ -114,6 +116,7 @@ if __name__ == "__main__":
                 actions.append((env.aircraft_ids[0], (env.agents[env.human_idx].x,env.agents[env.human_idx].y)))
             else:
                 agent0_policy.act()
+                agent0_waypoint = agent0_policy.target_point
                 actions.append((env.aircraft_ids[0], agent0_policy.target_point))
                 agent0_policy.update_agent_info()
 
@@ -163,6 +166,7 @@ if __name__ == "__main__":
                         else: # Set human waypoint
                             if log_data: game_logger.log_mouse_event(mouse_position,"human waypoint",env.display_time)
                             actions.append((env.aircraft_ids[-1], mouse_position))
+                            agent1_waypoint = mouse_position
 
                     # Agent 0 gameplan buttons
                     elif env.target_id_button.is_clicked(mouse_position):
