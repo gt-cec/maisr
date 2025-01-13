@@ -67,7 +67,6 @@ if __name__ == "__main__":
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
-
             env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         else:
@@ -89,13 +88,23 @@ if __name__ == "__main__":
         agent0_waypoint = (0,0)
         agent1_waypoint = (0, 0)
 
+        agent_log_info = {
+            'waypoint': 'None',
+            'priority mode': 'None',
+            'search type': 'None',
+            'search area': 'None'
+        }
+
         while not done:  # game loop
-            #print(env.display_time)
-            #print(env.aircraft_ids)
-            #print(env.human_idx)
+            agent_log_info = {
+                'waypoint':agent0_waypoint,
+                'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',
+                'search type': agent0_policy.search_type,
+                'search area': agent0_policy.search_quadrant,
+            }
 
             if log_data:
-                game_logger.log_state(env, env.display_time, agent0_waypoint,agent1_waypoint)
+                game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 if env.new_target_id is not None: # TODO
                     game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
                     env.new_target_id = None
@@ -123,15 +132,15 @@ if __name__ == "__main__":
             # Handle SAGAT surveys
             if 64.00 < time_sec < 65.00 and not env.survey1_launched and env.config['surveys_enabled']:
                 env.survey1_launched = True
-                if log_data: game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 env.SAGAT_survey(1)
             if 119.00+5 < time_sec < 120.00+5 and not env.survey2_launched and env.config['surveys_enabled']:
                 env.survey2_launched = True
-                if log_data: game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 env.SAGAT_survey(2)
             if 179.0+5 < time_sec < 180.0+5 and not env.survey3_launched and env.config['surveys_enabled']:
                 env.survey3_launched = True
-                if log_data: game_logger.log_state(env, env.display_time)
+                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 env.SAGAT_survey(3)
 
             # Handle mouse clicks
@@ -394,7 +403,7 @@ if __name__ == "__main__":
         if done:
             done_time = pygame.time.get_ticks()
             if log_data:
-                game_logger.log_state(env, env.display_time)
+                game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 game_logger.final_log(gameplan_command_history, env)
 
             waiting_for_key = True
