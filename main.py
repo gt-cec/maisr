@@ -47,8 +47,8 @@ if __name__ == "__main__":
     render = "headless" not in sys.argv
 
     config_list = config_dict[user_group]
-    game_count = 0
     total_games = 5 # Number of games to run
+    game_count = 0 # Used to track how many games have been completed so far
 
     while round_number < total_games:
         config = config_list[round_number]
@@ -80,8 +80,6 @@ if __name__ == "__main__":
         agent0_policy = AutonomousPolicy(env, agent0_id)
         agent0_policy.show_low_level_goals,agent0_policy.show_high_level_goals, agent0_policy.show_high_level_rationale,agent0_policy.show_tracked_factors = env.config['show_low_level_goals'], env.config['show_high_level_goals'], env.config['show_high_level_rationale'], env.config['show_tracked_factors']
 
-        #human_idx = env.human_idx
-
         game_count += 1
         state = env.reset()  # reset the environment
         done = False  # flag for when the run is complete
@@ -95,7 +93,7 @@ if __name__ == "__main__":
             'search area': 'None'
         }
 
-        while not done:  # game loop
+        while not done:  # main game loop
             agent_log_info = {
                 'waypoint':agent0_waypoint,
                 'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',
@@ -105,15 +103,15 @@ if __name__ == "__main__":
 
             if log_data:
                 game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                if env.new_target_id is not None: # TODO
+                if env.new_target_id is not None:
                     game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
                     env.new_target_id = None
 
-                if env.new_weapon_id is not None:  # TODO
+                if env.new_weapon_id is not None:
                     game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
                     env.new_weapon_id = None
 
-            actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)], 'None' will use the default search behaviors
+            actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
             time_sec = float(env.display_time)/1000
 
             if env.regroup_clicked:
@@ -270,7 +268,7 @@ if __name__ == "__main__":
                     elif env.waypoint_button.is_clicked(mouse_position):
                         env.button_latch_dict['waypoint'] = True
                         env.agent_waypoint_clicked = True
-                        gameplan_command_history.append([time_sec, 'waypoint'])
+                        #gameplan_command_history.append([time_sec, 'waypoint'])
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",env.display_time)

@@ -101,12 +101,19 @@ def process_log_file(filename):
 
         for line in lines:
             try:
-                if data == "game configuration:./config_files/model_card_configs/modelcard_scenario1_config.json": num_hostiles = 28
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario2_config.json": num_hostiles = 19
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario3_config.json": num_hostiles = 22
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario4_config.json": num_hostiles = 23
-
                 data = json.loads(line)
+
+                if data == "game configuration:./config_files/model_card_configs/modelcard_scenario1_config.json":
+                    num_hostiles = 28
+                elif data == "game configuration:./config_files/training_insitu_config.json" or data == "game configuration:./config_files/training_insitu_config.json":
+                    num_hostiles = 20
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario2_config.json":
+                    num_hostiles = 19
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario3_config.json":
+                    num_hostiles = 22
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario4_config.json":
+                    num_hostiles = 23
+
                 if "type" in data and data["type"] == "mouse_event" and data["event_type"] == "human waypoint":
                     waypoint_count += 1
                 if "identify_type" in data:
@@ -151,7 +158,6 @@ def process_log_file(filename):
             'time remaining': time_remaining,
             'targets': final_line["identified_targets"],
             'threat_types': final_line["identified_threat_types"],
-            'weapons': final_line["identified_threat_types"] - (60-num_hostiles),
             'human_hp': final_line["human_health"],
             'agent_hp': final_line["agent_health"],
             'human_waypoints': waypoint_count,
@@ -189,7 +195,6 @@ def process_all_rounds(round_files):
         new_row[f'targets_round{round_num - 1}'] = metrics['targets']
         new_row[f'timeremaining_round{round_num - 1}'] = metrics['time remaining']
         new_row[f'threat_types_round{round_num - 1}'] = metrics['threat_types']
-        new_row[f'weapons_round{round_num - 1}'] = metrics['weapons']
         new_row[f'humanhp_round{round_num - 1}'] = metrics['human_hp']
         new_row[f'agenthp_round{round_num - 1}'] = metrics['agent_hp']
         new_row[f'humanwaypoints_round{round_num - 1}'] = metrics['human_waypoints']
@@ -239,7 +244,7 @@ def process_folder(data_folder, excel_file):
     columns = ['subject_id', 'user_group', 'run_order']
     for i in range(1, 5):
         round_cols = [
-            f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'weapons_round{i}', f'threat_types_round{i}', f'timeremaining_round{i}',
+            f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'threat_types_round{i}', f'timeremaining_round{i}',
             f'humanhp_round{i}', f'agenthp_round{i}', f'humanwaypoints_round{i}',
             f'totalcommands_round{i}', f'searchtypecommands_round{i}',
             f'searchareacommands_round{i}', f'holdcommands_round{i}',
@@ -273,6 +278,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "jan10test"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_pilot_jan12.xlsx"
+    data_folder = "jan18_test"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_jan18.xlsx"
     process_folder(data_folder, excel_file)
