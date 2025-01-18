@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from numpy.random.mtrand import get_state
+#from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
@@ -13,7 +13,7 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render=False,subject_id='99',user_group='99',round_number='99'):
+    def __init__(self, config={}, window=None, clock=None, render=False,agent_training=False,subject_id='99',user_group='99',round_number='99'):
         super().__init__()
 
         self.config = config
@@ -25,7 +25,8 @@ class MAISREnv(gym.Env):
         self.subject_id = subject_id
         self.round_number = round_number
         self.user_group = user_group
-        self.training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4
+        self.training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+        self.agent_training = agent_training
         print(self.round_number)
         print(self.training)
 
@@ -155,7 +156,6 @@ class MAISREnv(gym.Env):
 
         self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
-
         # set the random seed
         if "seed" in config:
              random.seed(config["seed"])
@@ -182,16 +182,13 @@ class MAISREnv(gym.Env):
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
 
         # for ISR, observation space is the gameboard state
-        self.observation_space = gym.spaces.Dict({
-            "aircraft pos": gym.spaces.Box(low=-1, high=1, shape=(self.config["num aircraft"], 2), dtype=np.float32),
-            "threat pos": gym.spaces.Box(low=-1, high=1, shape=(self.num_ships, 2), dtype=np.float32),
-            "threat class": gym.spaces.MultiBinary([self.num_ships, 2])
-        })
+        self.observation_space = gym.spaces.Box(low=0,high=1,shape=(505,),dtype=np.float32)
+        self.observation = np.zeros(444, dtype=np.float32)
+        self.target_data = np.zeros((self.num_ships, 8), dtype=np.float32)  # For target features
 
         self.reset()
 
         if render:
-            #self.window = pygame.display.set_mode((self.config["gameboard size"], self.config["gameboard size"]))
             self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
     def reset(self):
@@ -224,14 +221,11 @@ class MAISREnv(gym.Env):
 
         if self.config['num aircraft'] == 1: self.agents[self.num_ships].is_visible = False # Do not draw the agent during solo training runs
 
-
-
-        #    self.total_pause_time = pygame.time.get_ticks() - countdown_start
-
-        return get_state()
+        return self.get_state()
 
     def step(self, actions:list):
-        # if an action was specified, handle that agent's waypoint
+        old_score = self.score
+
 
         if self.regroup_clicked: self.agents[self.num_ships].regroup_clicked = True
         else: self.agents[self.num_ships].regroup_clicked = False
@@ -352,8 +346,8 @@ class MAISREnv(gym.Env):
 
 
         # exit when all ships are identified
-        state = self.get_state()  # you can make this self.observation_space and use that (will require a tiny bit of customization, look into RL tutorials)
-        reward = self.get_reward()
+        state = self.get_state()  # TODO This should eventually be replaced with get_observation()
+        reward = self.score - old_score
         done = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.training) or (self.display_time/1000 >= self.time_limit)
 
         if done:
@@ -387,44 +381,89 @@ class MAISREnv(gym.Env):
         return state, reward, done, {}
 
 
-    def get_reward(self):
+    def get_observation(self):
+        # TODO
         """
-            Calculate reward based on:
-            1. Target identification (+reward)
-            2. WEZ identification (+reward)
-            3. Exposure to threat radii (-reward)
-            4. Aircraft damage (-reward)
-            """
-        reward = 0
+        State will include the following features (current count is 444):
+            # Agent and basic game info (13 features):
+            agent_health,        # (0-1)
+            agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
+            agent_y,             # (0-1)
+            agent_alive,         # (0 or 1)
+            agent_waypoint_x     # (0-1) x coordinate of agent's current waypoint
+            agent_waypoint_y     # (0-1) y coordinate of agent's current waypoint
+            teammate_health,     # (0-1)
+            teammate_x,          # (0-1)
+            teammate_y,          # (0-1)
+            teammate_waypoint_x  # (0-1) x coordinate of current waypoint
+            teammate_waypoint_y  # (0-1) y coordinate of current waypoint
+            teammate_alive,      # (0 or 1)
+            time_remaining       # (0-1)
 
-        # # Get current aircraft
-        # aircraft = self.agents[self.num_ships]
-        #
-        # # Check each ship
-        # for agent in self.agents:
-        #     if agent.agent_class == "ship":
-        #         dist = aircraft.distance(agent)
-        #
-        #         # Rewards for identification
-        #         if not agent.observed and aircraft.in_isr_range(distance=dist):  # Reward for identifying a new target
-        #             reward += 10
-        #
-        #         if not agent.observed_threat and aircraft.in_engagement_range(distance=dist):  # Additional reward for identifying threat level
-        #             reward += 5
-        #
-        #         # Penalties for being in threat radius
-        #         if agent.threat > 0 and agent.in_weapon_range(distance=dist):  # Scale penalty based on threat level and time spent in radius
-        #             threat_penalty = -5 * agent.threat
-        #             reward += threat_penalty
-        #
-        # # Penalty for taking damage
-        # if self.agents[self.num_ships].damage > 0:
-        #     damage_penalty = -0.5 * self.agents[self.num_ships].damage
-        #     reward += damage_penalty
-        #
-        # # Small step penalty to encourage efficient paths
-        # reward -= 0.1
-        return reward
+            # Target data (the following are repeated for all 60 targets) (7*60 = 420 features):
+            target_x,            # (0-1)
+            target_y,            # (0-1)
+            id_unknown,          # one-hot (0 or 1)
+            id_friendly,         # one-hot (0 or 1)
+            id_hostile,          # one-hot (0 or 1)
+            threat_known,        # (0 or 1)
+            threat_level         # (0.33, 0.66, 1.0) for small/med/large weapon TODO: Figure out if this is too ambiguous for the agent to learn
+
+            # Handcrafted features (11 features):
+            unknown_targets_NW      # count normalized (0-1)
+            unknown_targets_NE      # count normalized (0-1)
+            unknown_targets_SW      # count normalized (0-1)
+            unknown_targets_SE      # count normalized (0-1)
+            nearest_target_dist     # (0-1)
+            nearest_hostile_dist    # (0-1)
+            agent_in_weapon_range,     # (0 or 1)
+            teammate_in_weapon_range,  # (0 or 1)
+            last_25_seconds,        # (0 or 1)
+            targets_remaining,      # normalized (0-1)
+            threats_remaining       # normalized (0-1)
+        """
+        pass
+        self.observation[0] = self.agents[self.num_ships].health_points / 10.0  # Agent health
+        self.observation[1] = self.agents[self.num_ships].x / self.config["gameboard size"] # Agent x
+        self.observation[2] = self.agents[self.num_ships].y / self.config["gameboard size"] # Agent y
+        self.observation[3] = self.agents[self.num_ships].alive # Agent alive status
+        self.observation[4] = self.agents[self.num_ships].target_point[0] # TODO Confirm this is the variable for agent waypoint
+        self.observation[5] = self.agents[self.num_ships].target_point[1] # TODO Confirm this is the variable for agent waypoint
+
+        self.observation[6] = self.agents[self.human_idx].health_points / 10.0  # Teammate health
+        self.observation[7] = self.agents[self.human_idx].x / self.config["gameboard size"] # Teammate x
+        self.observation[8] = self.agents[self.human_idx].y / self.config["gameboard size"] # Teammate y
+        self.observation[9] = self.agents[self.human_idx].target_point[0]  # TODO Confirm this is the variable for agent waypoint
+        self.observation[10] = self.agents[self.human_idx].target_point[1]  # TODO Confirm this is the variable for agent waypoint
+        self.observation[11] = self.agents[self.human_idx].alive
+        #self.observation[12] = #TODO Time remaining
+
+        # TODO Everything below is incomplete so far
+        # Vectorized target processing
+        target_idx = 0
+        target_start_idx = 9  # Where target features begin
+
+        # Get all target positions at once
+        target_positions = np.array([[agent.x, agent.y] for agent in self.agents if agent.agent_class == "ship"])
+
+        # Process all targets at once where possible
+        for agent in (a for a in self.agents if a.agent_class == "ship"):
+            idx = target_start_idx + (target_idx * 8)
+            self.target_data[target_idx] = [
+                agent.x / self.config["gameboard size"],
+                agent.y / self.config["gameboard size"],
+                1 if not agent.observed else 0,  # unknown
+                1 if agent.observed and agent.threat == 0 else 0,  # friendly
+                1 if agent.observed and agent.threat > 0 else 0,  # hostile
+                1 if not agent.observed_threat else 0,  # threat unknown
+                1 if agent.observed_threat else 0,  # threat known
+                agent.threat / 3.0 if agent.observed_threat else 0  # normalized threat level
+            ]
+            target_idx += 1
+
+        self.observation[target_start_idx:target_start_idx + self.num_ships * 8] = self.target_data.flatten()
+
+
 
     def add_comm_message(self,message,is_ai=True):
         #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -665,17 +704,6 @@ class MAISREnv(gym.Env):
         # Draw agent status window
         if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465 + 120),(self.right_pane_edge + 405, 465 + 120), 4)  # Separating line +30
-
-        risk_tolerance_y = 665
-        risk_tolerance_height = 110-100
-        #new_autonomous_button_y = 590+100+10
-        #pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.right_pane_edge, new_autonomous_button_y-10, 405, 85))  # +30
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10), 4)  # Top border +30
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, new_autonomous_button_y-10),(self.right_pane_edge, risk_tolerance_y+risk_tolerance_height), 4)  # Left border +30
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, new_autonomous_button_y-10),(self.right_pane_edge + 405, new_autonomous_button_y-10+95), 4)  # Right border +30
-        #pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, risk_tolerance_y+risk_tolerance_height),(self.right_pane_edge + 405, risk_tolerance_y+risk_tolerance_height), 4)  # Bottom border +30
-
         corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
         # TODO CHANGE
         corner_round_font = pygame.font.SysFont(None, 36)
@@ -781,28 +809,6 @@ class MAISREnv(gym.Env):
         pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, distance_from_edge), width)
         pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
-
-    # def pause(self,unpause_key):
-    #     print('Game paused')
-    #     self.pause_start_time = pygame.time.get_ticks()
-    #     self.button_latch_dict['pause'] = True
-    #     print('paused at %s (env.display_time = %s)' % (self.pause_start_time, self.display_time))
-    #     self.paused = True
-    #     while self.paused:
-    #         pygame.time.wait(200)
-    #
-    #         self.render()
-    #         ev = pygame.event.get()
-    #         for event in ev:
-    #             if event.type == unpause_key:
-    #                 #mouse_position = pygame.mouse.get_pos()
-    #                 #if unpause_key == pygame.K_SPACE or self.pause_button.is_clicked(mouse_position):
-    #                 self.paused = False
-    #                 self.button_latch_dict['pause'] = False
-    #                 pause_end_time = pygame.time.get_ticks()
-    #                 pause_duration = pause_end_time - self.pause_start_time
-    #                 self.total_pause_time += pause_duration
-    #                 print('Paused for %s' % pause_duration)
 
     def pause(self, unpause_key):
         print('Game paused')
