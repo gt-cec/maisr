@@ -15,19 +15,18 @@ x = 0#1680+235    # Pixel location of right edge of the pygame window. Default =
 y = -3          # Pixel location of top edge of the pygame window
 
 
-
 # 4. (Optional) If necessary, modify which configs are loaded based on the user_group. You will probably skip this.
 training_configs = {
-    'test': './config_files/model_card_configs/modelcard_scenario1_config.json',
+    'test': './config_files/modelcard_scenario1_config.json',
     'control': './config_files/training_control_config.json',
     'card': './config_files/training_control_config.json',
     'in-situ': './config_files/training_insitu_config.json'}
 
 scenario_configs = [
-    './config_files/model_card_configs/modelcard_scenario1_config.json',
-    './config_files/model_card_configs/modelcard_scenario2_config.json',
-    './config_files/model_card_configs/modelcard_scenario3_config.json',
-    './config_files/model_card_configs/modelcard_scenario4_config.json']
+    './config_files/modelcard_scenario1_config.json',
+    './config_files/modelcard_scenario2_config.json',
+    './config_files/modelcard_scenario3_config.json',
+    './config_files//modelcard_scenario4_config.json']
 
 def get_ordered_configs(user_group, run_order):
     # Get the appropriate training config
