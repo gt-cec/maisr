@@ -43,7 +43,7 @@ if __name__ == "__main__":
         print("Invalid input for log data")
         sys.exit()
 
-    print("Starting MAISR environment")
+    print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")
     render = "headless" not in sys.argv
 
     config_list = config_dict[user_group]
