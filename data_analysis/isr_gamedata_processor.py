@@ -27,6 +27,83 @@ def get_quadrant(x, y):
     else: return "SE" if y >= 500 else "NE"
 
 
+def calculate_times(lines):
+    """Calculate various timing metrics and average distance between aircraft"""
+    same_quadrant_time = 0
+    diff_quadrant_time = 0
+    manual_time = 0
+    weapon_time = 0
+    quadrant_time = 0
+    total_distance = 0
+    distance_count = 0
+
+    last_timestamp = None
+    last_priority_mode = None
+    last_search_type = None
+    last_search_area = None
+
+    for line in lines:
+        try:
+            data = json.loads(line)
+            if "type" in data and data["type"] == "state":
+                current_timestamp = data["timestamp"]
+
+                # Get positions and aircraft states
+                aircraft = data["game_state"]["aircraft"]
+                agent_pos = aircraft[0]["position"]  # AI aircraft
+                human_pos = aircraft[1]["position"]  # Human aircraft
+
+                # Get agent modes
+                priority_mode = aircraft[0]["priority mode"]
+                search_type = aircraft[0]["search type"]
+                search_area = aircraft[0]["search area"]
+
+                # Calculate current distance
+                distance = ((agent_pos[0] - human_pos[0]) ** 2 +
+                            (agent_pos[1] - human_pos[1]) ** 2) ** 0.5
+                total_distance += distance
+                distance_count += 1
+
+                # Determine quadrants
+                agent_quadrant = get_quadrant(agent_pos[0], agent_pos[1])
+                human_quadrant = get_quadrant(human_pos[0], human_pos[1])
+
+                # Calculate time difference if not first state
+                if last_timestamp is not None:
+                    time_diff = current_timestamp - last_timestamp
+
+                    # Add time to quadrant counters
+                    if agent_quadrant == human_quadrant:
+                        same_quadrant_time += time_diff
+                    else:
+                        diff_quadrant_time += time_diff
+
+                    # Add time to mode counters
+                    if priority_mode == "manual":
+                        manual_time += time_diff
+
+                        # Only count weapon and quadrant time when in manual mode
+                        if search_type == "wez":
+                            weapon_time += time_diff
+
+                        if search_area in ["NW", "SW", "NE", "SE"]:
+                            quadrant_time += time_diff
+
+                last_timestamp = current_timestamp
+                last_priority_mode = priority_mode
+                last_search_type = search_type
+                last_search_area = search_area
+
+        except json.JSONDecodeError:
+            continue
+
+    average_distance = total_distance / distance_count if distance_count > 0 else 0
+
+    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance
+
+
+
+
 def calculate_quadrant_times(lines):
     """Calculate time spent in same and different quadrants"""
     same_quadrant_time = 0
@@ -89,8 +166,14 @@ def process_log_file(filename):
         final_line = json.loads(lines[-1])
         final_time = json.loads(lines[-1])["time"]
 
-        same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
+
+        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance = calculate_times(lines)
+
+        # same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
+        manual_time_percentage = manual_time / final_time * 100
+        weapon_time_percentage = weapon_time / final_time * 100
+        quadrant_time_percentage = quadrant_time / final_time * 100
 
         # Process all lines to count waypoints
         waypoint_count = 0
@@ -161,18 +244,23 @@ def process_log_file(filename):
             'human_hp': final_line["human_health"],
             'agent_hp': final_line["agent_health"],
             'human_waypoints': waypoint_count,
+
             'total_commands': final_line['total_gameplan_commands'],
             'search_type_commands': search_type_commands,
             'search_area_commands': search_area_commands,
             'hold_commands': hold_commands,
             'waypoint_override_commands': waypoint_override_commands,
+
             'human_targets_identified': human_targets_identified,
             'ai_targets_identified': ai_targets_identified,
             'human_weapons_identified': human_weapons_identified,
             'ai_weapons_identified': ai_weapons_identified,
-            'diff_quadrant_percentage': diff_quadrant_percentage
+
+            'diff_quadrant_percentage': diff_quadrant_percentage,
+            'manual_mode_time_percentage':manual_time_percentage,
+            'weapon_mode_time_percentage':weapon_time_percentage,
+            'quadrant_mode_time_percentage':quadrant_time_percentage
         }
-        print(output)
         return output
 
 
@@ -209,8 +297,9 @@ def process_all_rounds(round_files):
         new_row[f'ai_weapons_identified_round{round_num - 1}'] = metrics['ai_weapons_identified']
         new_row[f'diff_quadrant_percentage_round{round_num - 1}'] = metrics['diff_quadrant_percentage']
 
-        #print('in process all rounds')
-        #print(new_row)
+        new_row[f'manual_mode_time_percentage_round{round_num - 1}'] = metrics['manual_mode_time_percentage']
+        new_row[f'weapon_mode_time_percentage_round{round_num - 1}'] = metrics['weapon_mode_time_percentage']
+        new_row[f'quadrant_mode_time_percentage_round{round_num - 1}'] = metrics['quadrant_mode_time_percentage']
 
     return new_row
 
@@ -246,6 +335,7 @@ def process_folder(data_folder, excel_file):
         round_cols = [
             f'score_round{i}', f'duration_round{i}', f'targets_round{i}', f'threat_types_round{i}', f'timeremaining_round{i}',
             f'humanhp_round{i}', f'agenthp_round{i}', f'humanwaypoints_round{i}',
+
             f'totalcommands_round{i}', f'searchtypecommands_round{i}',
             f'searchareacommands_round{i}', f'holdcommands_round{i}',
             f'waypointoverridecommands_round{i}',
@@ -253,7 +343,11 @@ def process_folder(data_folder, excel_file):
             f'ai_targets_identified_round{i}',
             f'human_weapons_identified_round{i}',
             f'ai_weapons_identified_round{i}',
-            f'diff_quadrant_percentage_round{i}'
+            f'diff_quadrant_percentage_round{i}',
+            
+            f'manual_mode_time_percentage_round{i}',
+            f'weapon_mode_time_percentage_round{i}',
+            f'quadrant_mode_time_percentage_round{i}'
         ]
         columns.extend(round_cols)
 
@@ -278,6 +372,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "jan18_test"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan18.xlsx"
+    data_folder = "jan20checkpoint"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_jan20_v2.xlsx"
     process_folder(data_folder, excel_file)
