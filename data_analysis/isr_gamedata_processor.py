@@ -79,7 +79,7 @@ def calculate_times(lines):
                         diff_quadrant_time += time_diff
 
                     # Add time to mode counters
-                    if priority_mode == "manual":
+                    if priority_mode == "manual" or priority_mode == "waypoint override":
                         manual_time += time_diff
 
                         # Only count weapon and quadrant time when in manual mode
@@ -376,6 +376,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "jan20checkpoint"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan20_v3.xlsx"
+    data_folder = "jan22check"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_jan22_v2.xlsx"
     process_folder(data_folder, excel_file)

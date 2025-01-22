@@ -209,6 +209,9 @@ class AutonomousPolicy:
             if abs(self.env.time_limit - self.env.display_time / 1000) <= 30:
                 self.search_type = 'wez'
                 self.high_level_rationale = '(Critical time remaining)'
+            elif self.aircraft.damage <= 50:
+                self.search_type = 'wez'
+                self.high_level_rationale = ''
             else:
                 self.search_type = 'target'
                 if self.aircraft.damage > 50: self.high_level_rationale = '(Low health)'
