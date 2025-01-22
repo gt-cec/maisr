@@ -94,7 +94,6 @@ class AutonomousPolicy:
         for ship_id in current_state['ships']: # Loop through all ships in environment, calculate distance, find closest unknown ship (or unknown WEZ), and set waypoint to that location
             closest_distance = None
             if self.search_type == 'target':  # If set to target, only consider unknown targets
-                
 
                 if current_state['ships'][ship_id]['observed'] == False and (
                         quadrant_bounds[self.search_quadrant][0] <=  current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[self.search_quadrant][1]) and (
@@ -207,12 +206,9 @@ class AutonomousPolicy:
             self.high_level_rationale = '(Human command)'
 
         else: # Choose according to selected risk tolerance
-            if abs(self.env.time_limit - self.env.display_time / 1000) <= 25:
+            if abs(self.env.time_limit - self.env.display_time / 1000) <= 30:
                 self.search_type = 'wez'
                 self.high_level_rationale = '(Critical time remaining)'
-            elif self.aircraft.damage <= 50:
-                self.search_type = 'wez'
-                self.high_level_rationale = ''
             else:
                 self.search_type = 'target'
                 if self.aircraft.damage > 50: self.high_level_rationale = '(Low health)'
