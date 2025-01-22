@@ -259,7 +259,8 @@ def process_log_file(filename):
             'diff_quadrant_percentage': diff_quadrant_percentage,
             'manual_mode_time_percentage':manual_time_percentage,
             'weapon_mode_time_percentage':weapon_time_percentage,
-            'quadrant_mode_time_percentage':quadrant_time_percentage
+            'quadrant_mode_time_percentage':quadrant_time_percentage,
+            'average_distance':average_distance
         }
         return output
 
@@ -300,6 +301,8 @@ def process_all_rounds(round_files):
         new_row[f'manual_mode_time_percentage_round{round_num - 1}'] = metrics['manual_mode_time_percentage']
         new_row[f'weapon_mode_time_percentage_round{round_num - 1}'] = metrics['weapon_mode_time_percentage']
         new_row[f'quadrant_mode_time_percentage_round{round_num - 1}'] = metrics['quadrant_mode_time_percentage']
+        new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
+
 
     return new_row
 
@@ -347,7 +350,8 @@ def process_folder(data_folder, excel_file):
             
             f'manual_mode_time_percentage_round{i}',
             f'weapon_mode_time_percentage_round{i}',
-            f'quadrant_mode_time_percentage_round{i}'
+            f'quadrant_mode_time_percentage_round{i}',
+            f'average_distance_round{i}'
         ]
         columns.extend(round_cols)
 
@@ -373,5 +377,5 @@ def process_folder(data_folder, excel_file):
 
 if __name__ == "__main__":
     data_folder = "jan20checkpoint"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan20_v2.xlsx"
+    excel_file = "maisr_gamedata_jan20_v3.xlsx"
     process_folder(data_folder, excel_file)
