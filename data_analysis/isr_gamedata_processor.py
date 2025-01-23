@@ -27,7 +27,6 @@ def get_quadrant(x, y):
     if x < 500: return "SW" if y >= 500 else "NW"
     else: return "SE" if y >= 500 else "NE"
 
-
 def calculate_times(lines):
     """Calculate various timing metrics and average distance between aircraft"""
     same_quadrant_time = 0
@@ -74,6 +73,31 @@ def calculate_times(lines):
                 if last_timestamp is not None:
                     time_diff = current_timestamp - last_timestamp
 
+                    # TODO
+                    # try:
+                    #     # Get most recent commands from game state
+                    #     last_search_type_command = None # This should equal the most recent command out of ['autonomous','target_id','wez_id]
+                    #     last_search_area_command = None # This should equal the most recent command out of ['autonomous','full','NW','SW','NE','SE]
+                    #
+                    #     if "gameplan_command_history" in data["game_state"]:
+                    #         commands = data["game_state"]["gameplan_command_history"]
+                    #
+                    #         # Get most recent search type command
+                    #         for cmd in reversed(commands):
+                    #             if cmd[1] in ['autonomous', 'target_id', 'wez_id']:
+                    #                 last_search_type_command = cmd[1]
+                    #                 break
+                    #
+                    #         # Get most recent search area command
+                    #         for cmd in reversed(commands):
+                    #             if cmd[1] in ['autonomous', 'full', 'NW', 'SW', 'NE', 'SE']:
+                    #                 last_search_area_command = cmd[1]
+                    #                 break
+                    # except:
+                    #     # If there's any error accessing command history, default to None
+                    #     last_search_type_command = None
+                    #     last_search_area_command = None
+
                     # Add time to quadrant counters
                     if agent_quadrant == human_quadrant:
                         same_quadrant_time += time_diff
@@ -88,10 +112,10 @@ def calculate_times(lines):
                         manual_time += time_diff
 
                     # Only count weapon and quadrant time when in manual mode
-                    if search_type == "wez" and # TODO: only if a weapon command was sent more recently than "autonomous" or "target_id" commands
+                    if search_type == "wez" and last_search_type_command == 'wez_id':
                         weapon_time += time_diff
 
-                    if search_area in ["NW", "SW", "NE", "SE"] and ## TODO: only if a quadrant command was sent more recently than "full" or "autonomous" commands:
+                    if search_area in ["NW", "SW", "NE", "SE"] and last_search_area_command in ["NW", "SW", "NE", "SE"]:
                         quadrant_time += time_diff
 
                 last_timestamp = current_timestamp
