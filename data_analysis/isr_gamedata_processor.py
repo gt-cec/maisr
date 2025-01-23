@@ -2,6 +2,7 @@ import pandas as pd
 import json
 import os
 import re
+import openpyxl
 from collections import defaultdict
 
 """
@@ -33,6 +34,7 @@ def calculate_times(lines):
     diff_quadrant_time = 0
     manual_time = 0
     weapon_time = 0
+    waypoint_override_time = 0
     quadrant_time = 0
     total_distance = 0
     distance_count = 0
@@ -79,15 +81,18 @@ def calculate_times(lines):
                         diff_quadrant_time += time_diff
 
                     # Add time to mode counters
-                    if priority_mode == "manual" or priority_mode == "waypoint override":
+                    if priority_mode == 'waypoint override':
+                        waypoint_override_time += time_diff
+
+                    if priority_mode == "manual":
                         manual_time += time_diff
 
-                        # Only count weapon and quadrant time when in manual mode
-                        if search_type == "wez":
-                            weapon_time += time_diff
+                    # Only count weapon and quadrant time when in manual mode
+                    if search_type == "wez" and # TODO: only if a weapon command was sent more recently than "autonomous" or "target_id" commands
+                        weapon_time += time_diff
 
-                        if search_area in ["NW", "SW", "NE", "SE"]:
-                            quadrant_time += time_diff
+                    if search_area in ["NW", "SW", "NE", "SE"] and ## TODO: only if a quadrant command was sent more recently than "full" or "autonomous" commands:
+                        quadrant_time += time_diff
 
                 last_timestamp = current_timestamp
                 last_priority_mode = priority_mode
@@ -99,7 +104,7 @@ def calculate_times(lines):
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance, waypoint_override_time
 
 
 
@@ -167,7 +172,7 @@ def process_log_file(filename):
         final_time = json.loads(lines[-1])["time"]
 
 
-        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance = calculate_times(lines)
+        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance, waypoint_override_time = calculate_times(lines)
 
         # same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
@@ -259,6 +264,7 @@ def process_log_file(filename):
             'diff_quadrant_percentage': diff_quadrant_percentage,
             'manual_mode_time_percentage':manual_time_percentage,
             'weapon_mode_time_percentage':weapon_time_percentage,
+            'waypoint_override_time':waypoint_override_time,
             'quadrant_mode_time_percentage':quadrant_time_percentage,
             'average_distance':average_distance
         }
@@ -300,6 +306,7 @@ def process_all_rounds(round_files):
 
         new_row[f'manual_mode_time_percentage_round{round_num - 1}'] = metrics['manual_mode_time_percentage']
         new_row[f'weapon_mode_time_percentage_round{round_num - 1}'] = metrics['weapon_mode_time_percentage']
+        new_row[f'waypoint_override_time{round_num - 1}'] = metrics['waypoint_override_time']
         new_row[f'quadrant_mode_time_percentage_round{round_num - 1}'] = metrics['quadrant_mode_time_percentage']
         new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
 
@@ -350,6 +357,7 @@ def process_folder(data_folder, excel_file):
             
             f'manual_mode_time_percentage_round{i}',
             f'weapon_mode_time_percentage_round{i}',
+            f'waypoint_override_time_round{i}',
             f'quadrant_mode_time_percentage_round{i}',
             f'average_distance_round{i}'
         ]
@@ -376,6 +384,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "jan22check"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan22_v2.xlsx"
+    data_folder = "study_data_jan21"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_jan21.xlsx"
     process_folder(data_folder, excel_file)
