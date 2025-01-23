@@ -86,10 +86,11 @@ class MAISREnv(gym.Env):
 
         # Set point quantities for each event
         self.score = 0
-        self.all_targets_points = 200  # All targets ID'd
+        self.all_targets_points = 0  # All targets ID'd
         self.target_points = 10  # Each target ID'd
         self.threat_points = 5  # Each threat ID'd
-        self.time_points = 10  # Points given per second remaining
+        self.time_points = 15  # Points given per second remaining
+        self.human_hp_remaining_points = 70
         self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
         self.human_dead_points = -400  # Points subtracted for human dying
 
@@ -354,25 +355,24 @@ class MAISREnv(gym.Env):
             self.done = True
             print('Done!')
 
-            if self.num_identified_ships >= self.num_ships:
+            self.score += self.human_hp_remaining_points # Add points for human HP remaining at end of round (always, not just if round ended early)
+
+            if self.num_identified_ships >= self.num_ships: # Add points for finishing early
                 self.score += self.all_targets_points
                 self.score += (self.time_limit - self.display_time/1000)*self.time_points
 
-            #elif self.agents[self.num_ships+1].damage > 100:
             elif not self.agents[self.human_idx].alive:
                 self.score += self.human_dead_points
                 print('Human aircraft destroyed, game over.')
 
             elif self.display_time/1000 >= self.time_limit:
                 print('Out of time, game over.')
-                #self.display_time = 0
 
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
             if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
                 print(f"All targets identified (+{self.all_targets_points} points)")
                 print(f"{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining")
-            # TODO add printout for -30 points if agent destroyed
             print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
             print(f"\nFinal score = {round(self.score,0)}")
 
