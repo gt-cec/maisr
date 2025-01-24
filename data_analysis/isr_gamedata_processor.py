@@ -21,11 +21,54 @@ Number of weapons identified = (threat types identified) - (number of friendly t
 
 """
 
+# TODO test to make sure this calculates correctly
+
+def determine_agent_mode(lines,timestamp):
+    final_line = json.loads(lines[-1])
+    gameplan_command_history = final_line["gameplan_command_history"]
+
+    last_type_command = None
+    last_area_command = None
+
+    agent_search_type = None # Manual weapon, manual target, or autonomous
+    agent_search_area = None # Manual quadrant, manual full, or autonomous
+
+    if gameplan_command_history:
+        gameplan_command_history.reverse()
+        for command in gameplan_command_history:
+
+            if command[0] <= timestamp:  # TODO make sure these are aligned
+                if command[1] in ["wez_id", "target_id", "autonomous"]:
+                    last_type_command = command[1]
+                    break
+        for command in gameplan_command_history:
+            if command[0] <= timestamp:  # TODO make sure these are aligned
+                if command[1] in ["NW", 'NE', 'SW', 'SE', "full", "autonomous"]:
+                    last_area_command = command[1]
+                    break
+
+    if last_type_command == "wez_id":
+        agent_search_type = 'manual weapon'
+    elif last_type_command == "target_id":
+        agent_search_type = 'manual target'
+    elif last_type_command == 'autonomous':
+        agent_search_type = 'autonomous'
+
+    if last_area_command in ["NW", 'NE', 'SW', 'SE']:
+        agent_search_area = 'manual quadrant'
+    elif last_area_command == "autonomous":
+        agent_search_area = 'autonomous'
+    elif last_area_command == "full":
+        agent_search_area = 'manual full'
+
+    return agent_search_type, agent_search_area
+
+
+
 def get_quadrant(x, y):
     """Determine which quadrant a position falls into"""
     if x < 500: return "SW" if y >= 500 else "NW"
     else: return "SE" if y >= 500 else "NE"
-
 
 def calculate_times(lines):
     """Calculate various timing metrics and average distance between aircraft"""
@@ -42,6 +85,7 @@ def calculate_times(lines):
     last_priority_mode = None
     last_search_type = None
     last_search_area = None
+
 
     for line in lines:
         try:
