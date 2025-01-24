@@ -34,17 +34,19 @@ def determine_agent_mode(lines,timestamp):
     agent_search_type = None # Manual weapon, manual target, or autonomous
     agent_search_area = None # Manual quadrant, manual full, or autonomous
 
-    for command in gameplan_command_history.reverse():
-        if command[0] <= timestamp:  # TODO make sure these are aligned
-            if command[1] in ["wez_id", "target_id", "autonomous"]:
-                last_type_command = command[1]
-                break
+    if gameplan_command_history:
+        gameplan_command_history.reverse()
+        for command in gameplan_command_history:
 
-    for command in gameplan_command_history.reverse():
-        if command[0] <= timestamp:  # TODO make sure these are aligned
-            if command[1] in ["NW", 'NE', 'SW', 'SE', "full", "autonomous"]:
-                last_area_command = command[1]
-                break
+            if command[0] <= timestamp:  # TODO make sure these are aligned
+                if command[1] in ["wez_id", "target_id", "autonomous"]:
+                    last_type_command = command[1]
+                    break
+        for command in gameplan_command_history:
+            if command[0] <= timestamp:  # TODO make sure these are aligned
+                if command[1] in ["NW", 'NE', 'SW', 'SE', "full", "autonomous"]:
+                    last_area_command = command[1]
+                    break
 
     if last_type_command == "wez_id":
         agent_search_type = 'manual weapon'
@@ -428,6 +430,6 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "study_data_jan21"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan21.xlsx"
+    data_folder = "jan23checkpoint"  # Folder containing all JSONL files
+    excel_file = "maisr_gamedata_jan23.xlsx"
     process_folder(data_folder, excel_file)
