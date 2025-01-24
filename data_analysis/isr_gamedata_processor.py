@@ -22,6 +22,48 @@ Number of weapons identified = (threat types identified) - (number of friendly t
 
 """
 
+# TODO test to make sure this calculates correctly
+
+def determine_agent_mode(lines,timestamp):
+    final_line = json.loads(lines[-1])
+    gameplan_command_history = final_line["gameplan_command_history"]
+
+    last_type_command = None
+    last_area_command = None
+
+    agent_search_type = None # Manual weapon, manual target, or autonomous
+    agent_search_area = None # Manual quadrant, manual full, or autonomous
+
+    for command in gameplan_command_history.reverse():
+        if command[0] <= timestamp:  # TODO make sure these are aligned
+            if command[1] in ["wez_id", "target_id", "autonomous"]:
+                last_type_command = command[1]
+                break
+
+    for command in gameplan_command_history.reverse():
+        if command[0] <= timestamp:  # TODO make sure these are aligned
+            if command[1] in ["NW", 'NE', 'SW', 'SE', "full", "autonomous"]:
+                last_area_command = command[1]
+                break
+
+    if last_type_command == "wez_id":
+        agent_search_type = 'manual weapon'
+    elif last_type_command == "target_id":
+        agent_search_type = 'manual target'
+    elif last_type_command == 'autonomous':
+        agent_search_type = 'autonomous'
+
+    if last_area_command in ["NW", 'NE', 'SW', 'SE']:
+        agent_search_area = 'manual quadrant'
+    elif last_area_command == "autonomous":
+        agent_search_area = 'autonomous'
+    elif last_area_command == "full":
+        agent_search_area = 'manual full'
+
+    return agent_search_type, agent_search_area
+
+
+
 def get_quadrant(x, y):
     """Determine which quadrant a position falls into"""
     if x < 500: return "SW" if y >= 500 else "NW"
@@ -43,6 +85,7 @@ def calculate_times(lines):
     last_search_type = None
     last_search_area = None
 
+
     for line in lines:
         try:
             data = json.loads(line)
@@ -60,8 +103,7 @@ def calculate_times(lines):
                 search_area = aircraft[0]["search area"]
 
                 # Calculate current distance
-                distance = ((agent_pos[0] - human_pos[0]) ** 2 +
-                            (agent_pos[1] - human_pos[1]) ** 2) ** 0.5
+                distance = ((agent_pos[0] - human_pos[0]) ** 2 + (agent_pos[1] - human_pos[1]) ** 2) ** 0.5
                 total_distance += distance
                 distance_count += 1
 
@@ -69,34 +111,12 @@ def calculate_times(lines):
                 agent_quadrant = get_quadrant(agent_pos[0], agent_pos[1])
                 human_quadrant = get_quadrant(human_pos[0], human_pos[1])
 
+                # Determine agent mode
+                agent_search_mode, agent_search_area = determine_agent_mode(lines,current_timestamp)
+
                 # Calculate time difference if not first state
                 if last_timestamp is not None:
                     time_diff = current_timestamp - last_timestamp
-
-                    # TODO
-                    # try:
-                    #     # Get most recent commands from game state
-                    #     last_search_type_command = None # This should equal the most recent command out of ['autonomous','target_id','wez_id]
-                    #     last_search_area_command = None # This should equal the most recent command out of ['autonomous','full','NW','SW','NE','SE]
-                    #
-                    #     if "gameplan_command_history" in data["game_state"]:
-                    #         commands = data["game_state"]["gameplan_command_history"]
-                    #
-                    #         # Get most recent search type command
-                    #         for cmd in reversed(commands):
-                    #             if cmd[1] in ['autonomous', 'target_id', 'wez_id']:
-                    #                 last_search_type_command = cmd[1]
-                    #                 break
-                    #
-                    #         # Get most recent search area command
-                    #         for cmd in reversed(commands):
-                    #             if cmd[1] in ['autonomous', 'full', 'NW', 'SW', 'NE', 'SE']:
-                    #                 last_search_area_command = cmd[1]
-                    #                 break
-                    # except:
-                    #     # If there's any error accessing command history, default to None
-                    #     last_search_type_command = None
-                    #     last_search_area_command = None
 
                     # Add time to quadrant counters
                     if agent_quadrant == human_quadrant:
@@ -112,10 +132,10 @@ def calculate_times(lines):
                         manual_time += time_diff
 
                     # Only count weapon and quadrant time when in manual mode
-                    if search_type == "wez" and last_search_type_command == 'wez_id':
+                    if agent_search_mode == 'manual weapon':
                         weapon_time += time_diff
 
-                    if search_area in ["NW", "SW", "NE", "SE"] and last_search_area_command in ["NW", "SW", "NE", "SE"]:
+                    if agent_search_area == 'manual quadrant':
                         quadrant_time += time_diff
 
                 last_timestamp = current_timestamp
