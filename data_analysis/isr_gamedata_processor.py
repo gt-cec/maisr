@@ -34,6 +34,7 @@ def calculate_times(lines):
     manual_time = 0
     weapon_time = 0
     quadrant_time = 0
+    waypoint_override_time = 0
     total_distance = 0
     distance_count = 0
 
@@ -78,8 +79,12 @@ def calculate_times(lines):
                     else:
                         diff_quadrant_time += time_diff
 
+                    if priority_mode == "waypoint override":
+                        waypoint_override_time += time_diff
+                        manual_time += time_diff
+
                     # Add time to mode counters
-                    if priority_mode == "manual" or priority_mode == "waypoint override":
+                    if priority_mode == "manual":
                         manual_time += time_diff
 
                         # Only count weapon and quadrant time when in manual mode
@@ -99,7 +104,7 @@ def calculate_times(lines):
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, waypoint_override_time, average_distance
 
 
 
@@ -167,7 +172,7 @@ def process_log_file(filename):
         final_time = json.loads(lines[-1])["time"]
 
 
-        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, average_distance = calculate_times(lines)
+        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, waypoint_override_time, average_distance = calculate_times(lines)
 
         # same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
@@ -260,7 +265,8 @@ def process_log_file(filename):
             'manual_mode_time_percentage':manual_time_percentage,
             'weapon_mode_time_percentage':weapon_time_percentage,
             'quadrant_mode_time_percentage':quadrant_time_percentage,
-            'average_distance':average_distance
+            'average_distance':average_distance,
+            'waypoint_override_time':waypoint_override_time
         }
         return output
 
@@ -302,6 +308,7 @@ def process_all_rounds(round_files):
         new_row[f'weapon_mode_time_percentage_round{round_num - 1}'] = metrics['weapon_mode_time_percentage']
         new_row[f'quadrant_mode_time_percentage_round{round_num - 1}'] = metrics['quadrant_mode_time_percentage']
         new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
+        new_row[f'waypoint_override_time_round{round_num - 1}'] = metrics['waypoint_override_time']
 
 
     return new_row
@@ -351,7 +358,8 @@ def process_folder(data_folder, excel_file):
             f'manual_mode_time_percentage_round{i}',
             f'weapon_mode_time_percentage_round{i}',
             f'quadrant_mode_time_percentage_round{i}',
-            f'average_distance_round{i}'
+            f'average_distance_round{i}',
+            f'waypoint_override_time_round{i}'
         ]
         columns.extend(round_cols)
 
