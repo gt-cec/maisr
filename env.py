@@ -355,7 +355,7 @@ class MAISREnv(gym.Env):
             self.done = True
             print('Done!')
 
-            self.score += self.human_hp_remaining_points # Add points for human HP remaining at end of round (always, not just if round ended early)
+            self.score += self.human_hp_remaining_points * self.agents[self.num_ships+1] # Add points for human HP remaining at end of round (always, not just if round ended early)
 
             if self.num_identified_ships >= self.num_ships: # Add points for finishing early
                 self.score += self.all_targets_points
