@@ -354,6 +354,9 @@ def process_all_rounds(round_files):
         new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
         new_row[f'waypoint_override_time_round{round_num - 1}'] = metrics['waypoint_override_time']
 
+        if new_row['subject_id'] in [353,322,318,321,325,323,317,331,334,352,324,330,329,338,328,340,345,349,342,368,351]:
+            new_row[f'score_round{round_num - 1}'] += 70 * (metrics['human_hp'] - 1) # Correction for bug where HP bonus wasn't added correctly.
+            print(f'&&&&&&&&&& SCORE CORRECTED for subject {new_row['subject_id']} &&&&&&&&&&')
 
     return new_row
 
@@ -373,7 +376,7 @@ def get_subject_files(data_folder):
     # Filter out subjects without all 4 rounds and sort files by round number
     complete_subjects = {}
     for subject_id, files in subject_files.items():
-        if len(files) == 5 or True:
+        if len(files) == 5:
             complete_subjects[subject_id] = [f[1] for f in sorted(files)]
         else:
             print(f"Warning: Subject {subject_id} has {len(files)} rounds instead of 4. Skipping.")
@@ -383,6 +386,8 @@ def get_subject_files(data_folder):
 
 def process_folder(data_folder, excel_file):
     """Process all subject data in a folder and write to Excel file."""
+    skipped_subjects = 0 # Tracking subjects skipped (should be 8 from the pilot study)
+
     # Initialize DataFrame with correct columns
     columns = ['subject_id', 'user_group', 'run_order']
     for i in range(1, 5):
@@ -417,17 +422,24 @@ def process_folder(data_folder, excel_file):
 
     # Process each subject's data
     for subject_id, files in subject_files.items():
-        print(f"\nProcessing subject {subject_id}...")
-        new_row = process_all_rounds(files)
-        df.loc[len(df)] = new_row
-        print(f"Completed processing for subject {subject_id}")
+        if subject_id in [311,319,332,320,303,301,333,309]:
+            print(f"\nSubject {subject_id} is a pilot subject, skipping...")
+            skipped_subjects +=1
+        else:
+            print(f"\nProcessing subject {subject_id}...")
+            new_row = process_all_rounds(files)
+            df.loc[len(df)] = new_row
+            print(f"Completed processing for subject {subject_id}")
 
     # Save the updated Excel file
     df.to_excel(excel_file, index=False)
     print(f'\nProcessed {len(subject_files)} subjects. Data written to: {excel_file}')
+    print(f'Skipped {skipped_subjects} subjects')
 
 
 if __name__ == "__main__":
-    data_folder = "jan22check"  # Folder containing all JSONL files
-    excel_file = "maisr_gamedata_jan22_v2.xlsx"
+    data_folder = "jan26check"  # Folder containing all JSONL files
+
+
+    excel_file = "maisr_gamedata_jan26.xlsx"
     process_folder(data_folder, excel_file)
