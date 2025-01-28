@@ -74,10 +74,15 @@ def calculate_times(lines):
     """Calculate various timing metrics and average distance between aircraft"""
     same_quadrant_time = 0
     diff_quadrant_time = 0
-    manual_time = 0
-    weapon_time = 0
-    quadrant_time = 0
-    waypoint_override_time = 0
+
+    waypoint_override_time = 0  # agent is directed to a waypoint
+    weapon_time = 0  # agent has weapon search type selected, but no waypoint or hold
+    manual_time = 0  # agent has manual search type selected, but no waypoint or hold
+    weapon_or_manual_time = 0  # agent has weapon or manual search type selected
+    hold_time = 0  # agent has hold selected, 
+    quadrant_time = 0  # agent has a quadrant search area selected
+    full_auto_time = 0  # agent has no hold, weapon, manual, or quadrant selected
+
     total_distance = 0
     distance_count = 0
 
@@ -86,6 +91,7 @@ def calculate_times(lines):
     last_search_type = None
     last_search_area = None
 
+    current_mode = "auto"
 
     for line in lines:
         try:
@@ -123,20 +129,28 @@ def calculate_times(lines):
                     else:
                         diff_quadrant_time += time_diff
 
+                    # waypoint override time
                     if priority_mode == "waypoint override":
                         waypoint_override_time += time_diff
-                        manual_time += time_diff
+                        weapon_or_manual_time += time_diff
 
-                    # Add time to mode counters
+                    # manual control mode
                     if priority_mode == "manual":
                         manual_time += time_diff
+                        weapon_or_manual_time += time_diff
 
                         # Only count weapon and quadrant time when in manual mode
+                        # weapon time
                         if search_type == "wez":
                             weapon_time += time_diff
 
+                        # quadrant time
                         if search_area in ["NW", "SW", "NE", "SE"]:
                             quadrant_time += time_diff
+
+                    # auto mode
+                    if priority_mode == "auto":
+                        full_auto_time += time_diff
 
                 last_timestamp = current_timestamp
                 last_priority_mode = priority_mode
