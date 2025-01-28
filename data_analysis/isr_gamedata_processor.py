@@ -162,7 +162,7 @@ def calculate_times(lines):
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, waypoint_override_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, weapon_or_manual_time, quadrant_time, waypoint_override_time, average_distance
 
 
 
@@ -230,7 +230,7 @@ def process_log_file(filename):
         final_time = json.loads(lines[-1])["time"]
 
 
-        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, quadrant_time, waypoint_override_time, average_distance = calculate_times(lines)
+        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, weapon_or_manual_time, quadrant_time, waypoint_override_time, average_distance = calculate_times(lines)
 
         # same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
