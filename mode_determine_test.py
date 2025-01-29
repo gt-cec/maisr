@@ -12,9 +12,15 @@ def new_determine_agent_mode(gameplan_command_history):
 
     last_cmd_time = 0
 
+    # TODO: Account for waypoint override ending
+
     for cmd in gameplan_command_history:
         time_diff = np.floor(cmd[0] - last_cmd_time)
         print(f'Looking at command {cmd} ({time_diff} seconds after previous command)')
+
+        # If [priority_mode = waypoint override] in the gamestate timestamp closest to the command timestamp:
+            # search_area = 'waypoint_override'
+            # search_type = 'waypoint_override'
 
         if cmd[1] in ['NW', 'NE', 'SW', 'SE']:
             search_area = 'manual quadrant'
@@ -23,10 +29,6 @@ def new_determine_agent_mode(gameplan_command_history):
 
         elif cmd[1] == 'autonomous':
             search_area = 'auto full'
-        elif cmd[1] == 'waypoint override':
-            search_area = 'waypoint override'
-        elif cmd[1] == 'hold':
-            search_area = 'hold'
 
         if cmd[1] == 'wez_id':
             search_type = 'manual weapon'
@@ -45,7 +47,7 @@ def new_determine_agent_mode(gameplan_command_history):
             type_mode_history.append(search_type)
 
         last_cmd_time = cmd[0]
-        previous_was_waypoint =
+        previous_was_waypoint = False
 
     return area_mode_history, type_mode_history, search_area
 
