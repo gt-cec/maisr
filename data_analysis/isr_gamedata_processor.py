@@ -23,6 +23,29 @@ Number of weapons identified = (threat types identified) - (number of friendly t
 
 # TODO test to make sure this calculates correctly
 
+def search_type_calculator(command_history, log_timestamp):
+'''Helper function to calculate what search type the AI is in at a given timestamp.
+Uses the gameplan command history logged at the end of the jsonl file
+Outputs the agent's search mode at timestamp log_timestamp
+'''
+    for cmd in command_history:
+        search_type = 'auto weapon' # Initialize as auto weapon because that's how the AI starts
+        if cmd[0] <= log_timestamp:
+            if cmd[1] == 'autonomous': search_type = 'auto weapon'
+			elif cmd[1] == 'wez_id': search_type == 'manual_weapon'
+			elif cmd[1] == 'target_id': search_type == 'manual target'
+    return search_type
+
+def search_area_calculator(command_history, log_timestamp):
+    for cmd in command_history:
+        search_area = 'auto full' # Initialize as auto weapon because that's how the AI starts
+        if cmd[0] <= log_timestamp:
+            if cmd[1] in ['NW','NE','SW','SE']: search_area = 'manual quadrant'
+            elif cmd[1] == 'autonomous': search_area = 'auto full'
+            elif cmd[1] == 'full': search_area = 'manual full'
+    return search_area
+
+# TODO testing
 def determine_agent_mode(lines,timestamp):
     final_line = json.loads(lines[-1])
     gameplan_command_history = final_line["gameplan_command_history"]
@@ -70,15 +93,27 @@ def get_quadrant(x, y):
     if x < 500: return "SW" if y >= 500 else "NW"
     else: return "SE" if y >= 500 else "NE"
 
+
 def calculate_times(lines):
     """Calculate various timing metrics and average distance between aircraft"""
+
+    final_line = json.loads(lines[-1])
+    gameplan_command_history = final_line["gameplan_command_history"]
+    
     same_quadrant_time = 0
     diff_quadrant_time = 0
 
-    waypoint_override_time = 0  # agent is directed to a waypoint
-    weapon_time = 0  # agent has weapon search type selected, but no waypoint or hold
-    manual_time = 0  # agent has manual search type selected, but no waypoint or hold
-    weapon_or_manual_time = 0  # agent has weapon or manual search type selected
+    # TODO make sure weapon/quadrant etc commands dont' trigger when hold and waypoints are commanded
+    
+    waypoint_time = 0  # agent is directed to a waypoint
+    manual_weapon_time = 0  # agent has a manual weapon command (but no waypoint/hold)
+    manual_target_time = 0
+    auto_type_time = 0
+
+    manual_quadrant_time = 0
+    auto_quadrant_time = 0
+    manual_full_time = 0
+    
     hold_time = 0  # agent has hold selected, 
     quadrant_time = 0  # agent has a quadrant search area selected
     full_auto_time = 0  # agent has no hold, weapon, manual, or quadrant selected
@@ -124,33 +159,47 @@ def calculate_times(lines):
                     time_diff = current_timestamp - last_timestamp
 
                     # Add time to quadrant counters
-                    if agent_quadrant == human_quadrant:
-                        same_quadrant_time += time_diff
-                    else:
-                        diff_quadrant_time += time_diff
+                    if agent_quadrant == human_quadrant: same_quadrant_time += time_diff
+                    else: diff_quadrant_time += time_diff
 
                     # waypoint override time
                     if priority_mode == "waypoint override":
                         waypoint_override_time += time_diff
-                        weapon_or_manual_time += time_diff
+                        #weapon_or_manual_time += time_diff
+
+                    # Search type
+                    search_type = search_type_calculator(gameplan_command_history, current_timestamp)
+                    if search_type = 'manual weapon': manual_weapon_time += time_diff
+                	elif search_type in ['auto weapon','auto target']: auto_type_time += time_diff
+                	elif search_type = 'manual target': manual_target_time += time_diff
+                		
+                	# Search area
+                	search_area = search_area_calculator(gameplan_command_history, line[timestamp])
+                	if search_area == 'manual quadrant': manual_quadrant_time += time_diff
+                	elif search_area == 'manual full': manual_full_time += time_diff
+                	elif search_area in ['auto quadrant','auto full']: auto_quadrant_time += time_diff
+                		
+                	# Waypoint overrides and holds
+                	if priority_mode == 'waypoint override': waypoint_time += time_diff
+                	if priority_mode == 'hold': hold_time += time_diff
 
                     # manual control mode
-                    if priority_mode == "manual":
-                        manual_time += time_diff
-                        weapon_or_manual_time += time_diff
+                    #if priority_mode == "manual":
+                     #   manual_time += time_diff
+                      #  weapon_or_manual_time += time_diff
 
                         # Only count weapon and quadrant time when in manual mode
                         # weapon time
-                        if search_type == "wez":
-                            weapon_time += time_diff
+                       # if search_type == "wez":
+                        #    weapon_time += time_diff
 
                         # quadrant time
-                        if search_area in ["NW", "SW", "NE", "SE"]:
-                            quadrant_time += time_diff
+                        #if search_area in ["NW", "SW", "NE", "SE"]:
+                         #   quadrant_time += time_diff
 
                     # auto mode
-                    if priority_mode == "auto":
-                        full_auto_time += time_diff
+                    #if priority_mode == "auto":
+                     #   full_auto_time += time_diff
 
                 last_timestamp = current_timestamp
                 last_priority_mode = priority_mode
@@ -162,7 +211,10 @@ def calculate_times(lines):
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, weapon_or_manual_time, quadrant_time, waypoint_override_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, 
+    manual_weapon_time, manual_target_time, auto_type_time, 
+    manual_quadrant_time, manual_full_time, auto_quadrant_time, 
+    waypoint_time, hold_time, average_distance
 
 
 
