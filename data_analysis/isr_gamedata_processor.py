@@ -45,7 +45,7 @@ def search_area_calculator(command_history, log_timestamp):
             elif cmd[1] == 'full': search_area = 'manual full'
     return search_area
 
-# TODO testing
+# TODO being replaced
 def determine_agent_mode(lines,timestamp):
     final_line = json.loads(lines[-1])
     gameplan_command_history = final_line["gameplan_command_history"]
@@ -114,7 +114,7 @@ def calculate_times(lines):
     auto_quadrant_time = 0
     manual_full_time = 0
     
-    hold_time = 0  # agent has hold selected, 
+    hold_time = 0  # agent has hold selected
     quadrant_time = 0  # agent has a quadrant search area selected
     full_auto_time = 0  # agent has no hold, weapon, manual, or quadrant selected
 
@@ -165,7 +165,8 @@ def calculate_times(lines):
                     # waypoint override time
                     if priority_mode == "waypoint override":
                         waypoint_override_time += time_diff
-                        #weapon_or_manual_time += time_diff
+		    if priority_mode == 'hold':
+			    hold_time += time_diff
 
                     # Search type
                     search_type = search_type_calculator(gameplan_command_history, current_timestamp)
