@@ -73,6 +73,7 @@ def calculate_times(lines):
     manual_quadrant_time = 0 # The agent has a command to a specific quadrant from the human
     auto_area_time = 0 # The agent's quadrant
     manual_full_time = 0
+    manual_typeorarea_time = 0 # Amount of time the AI has EITHER a manual type or manual area command
 
     hold_time = 0  # agent has hold selected
 
@@ -134,16 +135,23 @@ def calculate_times(lines):
                         search_type = search_type_calculator(gameplan_command_history, current_timestamp)
                         if search_type == 'manual weapon':
                             manual_weapon_time += time_diff
+                            manual_typeorarea_time += time_diff
                         elif search_type in ['auto weapon','auto target']:
                             auto_type_time += time_diff
                         elif search_type == 'manual target':
                             manual_target_time += time_diff
+                            manual_typeorarea_time += time_diff
 
                         # Search area
                         search_area = search_area_calculator(gameplan_command_history, current_timestamp)
-                        if search_area == 'manual quadrant': manual_quadrant_time += time_diff
-                        elif search_area == 'manual full': manual_full_time += time_diff
-                        elif search_area in ['auto quadrant','auto full']: auto_area_time += time_diff
+                        if search_area == 'manual quadrant':
+                            manual_quadrant_time += time_diff
+                            manual_typeorarea_time += time_diff
+                        elif search_area == 'manual full':
+                            manual_full_time += time_diff
+                            manual_typeorarea_time += time_diff
+                        elif search_area in ['auto quadrant','auto full']:
+                            auto_area_time += time_diff
 
                 last_timestamp = current_timestamp
 
@@ -152,7 +160,7 @@ def calculate_times(lines):
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, manual_typeorarea_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance
 
 
 
@@ -221,7 +229,7 @@ def process_log_file(filename):
         final_time = json.loads(lines[-1])["time"]
 
 
-        same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance = calculate_times(lines)
+        same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, manual_typeorarea_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance = calculate_times(lines)
 
         print('manual weapon time: ',manual_weapon_time)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
@@ -311,6 +319,9 @@ def process_log_file(filename):
             'manual_weapon_time_percentage': manual_weapon_time/final_time * 100,
             'manual_target_time_percentage': manual_target_time/final_time * 100,
             'manual_quadrant_time_percentage': manual_quadrant_time/final_time * 100,
+
+            'manual_typeorarea_time_percentage':manual_typeorarea_time/final_time * 100,
+            'autonomous_time_percentage': autonomous_time/final_time * 100,
             'manual_full_time_percentage': manual_full_time/final_time * 100,
             'auto_type_time_percentage': auto_type_time/final_time * 100,
             'auto_area_time_percentage': auto_area_time/final_time * 100,
@@ -357,6 +368,10 @@ def process_all_rounds(round_files):
         new_row[f'manual_target_time_percentage_round{round_num - 1}'] = metrics['manual_target_time_percentage']
         new_row[f'manual_quadrant_time_percentage_round{round_num - 1}'] = metrics['manual_quadrant_time_percentage']
         new_row[f'manual_full_time_percentage_round{round_num - 1}'] = metrics['manual_full_time_percentage']
+
+        new_row[f'manual_typeorarea_time_percentage_round{round_num - 1}'] = metrics['manual_typeorarea_time_percentage']
+        new_row[f'autonomous_time_percentage_round{round_num - 1}'] = metrics['autonomous_time_percentage']
+
         new_row[f'auto_type_time_percentage_round{round_num - 1}'] = metrics['auto_type_time_percentage']
         new_row[f'auto_area_time_percentage_round{round_num - 1}'] = metrics['auto_area_time_percentage']
         new_row[f'waypoint_override_time_percentage_round{round_num - 1}'] = metrics['waypoint_override_time_percentage']
@@ -420,6 +435,8 @@ def process_folder(data_folder, excel_file):
             f'manual_target_time_percentage_round{i}',
             f'manual_quadrant_time_percentage_round{i}',
             f'manual_full_time_percentage_round{i}',
+            f'manual_typeorarea_time_percentage_round{i}',
+            f'autonomous_time_percentage_round{i}',
             f'auto_type_time_percentage_round{i}',
             f'auto_area_time_percentage_round{i}',
             f'waypoint_override_time_percentage_round{i}',
