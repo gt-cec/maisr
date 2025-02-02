@@ -24,68 +24,29 @@ Number of weapons identified = (threat types identified) - (number of friendly t
 # TODO test to make sure this calculates correctly
 
 def search_type_calculator(command_history, log_timestamp):
-'''Helper function to calculate what search type the AI is in at a given timestamp.
-Uses the gameplan command history logged at the end of the jsonl file
-Outputs the agent's search mode at timestamp log_timestamp
-'''
+    '''Helper function to calculate what search type the AI is in at a given timestamp.
+    Uses the gameplan command history logged at the end of the jsonl file
+    Outputs the agent's search mode at timestamp log_timestamp
+    '''
+
+    search_type = 'auto weapon'  # Initialize as auto weapon because that's how the AI starts
     for cmd in command_history:
-        search_type = 'auto weapon' # Initialize as auto weapon because that's how the AI starts
         if cmd[0] <= log_timestamp:
             if cmd[1] == 'autonomous': search_type = 'auto weapon'
-			elif cmd[1] == 'wez_id': search_type == 'manual_weapon'
-			elif cmd[1] == 'target_id': search_type == 'manual target'
+            elif cmd[1] == 'wez_id': search_type = 'manual weapon'
+            elif cmd[1] == 'target_id': search_type = 'manual target'
     return search_type
 
+
 def search_area_calculator(command_history, log_timestamp):
+    search_area = 'auto full'  # Initialize as auto weapon because that's how the AI starts
+
     for cmd in command_history:
-        search_area = 'auto full' # Initialize as auto weapon because that's how the AI starts
         if cmd[0] <= log_timestamp:
             if cmd[1] in ['NW','NE','SW','SE']: search_area = 'manual quadrant'
             elif cmd[1] == 'autonomous': search_area = 'auto full'
             elif cmd[1] == 'full': search_area = 'manual full'
     return search_area
-
-# TODO being replaced
-def determine_agent_mode(lines,timestamp):
-    final_line = json.loads(lines[-1])
-    gameplan_command_history = final_line["gameplan_command_history"]
-
-    last_type_command = None
-    last_area_command = None
-
-    agent_search_type = None # Manual weapon, manual target, or autonomous
-    agent_search_area = None # Manual quadrant, manual full, or autonomous
-
-    if gameplan_command_history:
-        gameplan_command_history.reverse()
-        for command in gameplan_command_history:
-
-            if command[0] <= timestamp:  # TODO make sure these are aligned
-                if command[1] in ["wez_id", "target_id", "autonomous"]:
-                    last_type_command = command[1]
-                    break
-        for command in gameplan_command_history:
-            if command[0] <= timestamp:  # TODO make sure these are aligned
-                if command[1] in ["NW", 'NE', 'SW', 'SE', "full", "autonomous"]:
-                    last_area_command = command[1]
-                    break
-
-    if last_type_command == "wez_id":
-        agent_search_type = 'manual weapon'
-    elif last_type_command == "target_id":
-        agent_search_type = 'manual target'
-    elif last_type_command == 'autonomous':
-        agent_search_type = 'autonomous'
-
-    if last_area_command in ["NW", 'NE', 'SW', 'SE']:
-        agent_search_area = 'manual quadrant'
-    elif last_area_command == "autonomous":
-        agent_search_area = 'autonomous'
-    elif last_area_command == "full":
-        agent_search_area = 'manual full'
-
-    return agent_search_type, agent_search_area
-
 
 
 def get_quadrant(x, y):
@@ -99,39 +60,32 @@ def calculate_times(lines):
 
     final_line = json.loads(lines[-1])
     gameplan_command_history = final_line["gameplan_command_history"]
-    
-    same_quadrant_time = 0
-    diff_quadrant_time = 0
 
-    # TODO make sure weapon/quadrant etc commands dont' trigger when hold and waypoints are commanded
-    
-    waypoint_time = 0  # agent is directed to a waypoint
+    same_quadrant_time = 0 # The AI and human are in the same quadrant
+    diff_quadrant_time = 0 # AI and human are in different quadrants
+
+    autonomous_time = 0 # Time the agent is in autonomous mode
+    waypoint_override_time = 0  # agent is directed to a waypoint
     manual_weapon_time = 0  # agent has a manual weapon command (but no waypoint/hold)
-    manual_target_time = 0
-    auto_type_time = 0
+    manual_target_time = 0 # Time the agent has a manual TARGET command
+    auto_type_time = 0 # The agent's search type (target vs weapon) is under auto priorities
 
-    manual_quadrant_time = 0
-    auto_quadrant_time = 0
+    manual_quadrant_time = 0 # The agent has a command to a specific quadrant from the human
+    auto_area_time = 0 # The agent's quadrant
     manual_full_time = 0
-    
+
     hold_time = 0  # agent has hold selected
-    quadrant_time = 0  # agent has a quadrant search area selected
-    full_auto_time = 0  # agent has no hold, weapon, manual, or quadrant selected
 
     total_distance = 0
     distance_count = 0
 
     last_timestamp = None
-    last_priority_mode = None
-    last_search_type = None
-    last_search_area = None
-
-    current_mode = "auto"
 
     for line in lines:
         try:
             data = json.loads(line)
             if "type" in data and data["type"] == "state":
+
                 current_timestamp = data["timestamp"]
 
                 # Get positions and aircraft states
@@ -141,12 +95,9 @@ def calculate_times(lines):
 
                 # Get agent modes
                 priority_mode = aircraft[0]["priority mode"]
-                search_type = aircraft[0]["search type"]
-                search_area = aircraft[0]["search area"]
 
                 # Calculate current distance
-                distance = ((agent_pos[0] - human_pos[0]) ** 2 +
-                            (agent_pos[1] - human_pos[1]) ** 2) ** 0.5
+                distance = ((agent_pos[0] - human_pos[0]) ** 2 + (agent_pos[1] - human_pos[1]) ** 2) ** 0.5
                 total_distance += distance
                 distance_count += 1
 
@@ -158,64 +109,50 @@ def calculate_times(lines):
                 if last_timestamp is not None:
                     time_diff = current_timestamp - last_timestamp
 
+
                     # Add time to quadrant counters
                     if agent_quadrant == human_quadrant: same_quadrant_time += time_diff
                     else: diff_quadrant_time += time_diff
 
+
                     # waypoint override time
-                    if priority_mode == "waypoint override":
+                    if priority_mode == 'auto':
+                        auto_area_time += time_diff
+                        auto_type_time += time_diff
+                        autonomous_time += time_diff
+
+                    elif priority_mode == "waypoint override":
                         waypoint_override_time += time_diff
-		    if priority_mode == 'hold':
-			    hold_time += time_diff
 
-                    # Search type
-                    search_type = search_type_calculator(gameplan_command_history, current_timestamp)
-                    if search_type = 'manual weapon': manual_weapon_time += time_diff
-                	elif search_type in ['auto weapon','auto target']: auto_type_time += time_diff
-                	elif search_type = 'manual target': manual_target_time += time_diff
-                		
-                	# Search area
-                	search_area = search_area_calculator(gameplan_command_history, line[timestamp])
-                	if search_area == 'manual quadrant': manual_quadrant_time += time_diff
-                	elif search_area == 'manual full': manual_full_time += time_diff
-                	elif search_area in ['auto quadrant','auto full']: auto_quadrant_time += time_diff
-                		
-                	# Waypoint overrides and holds
-                	if priority_mode == 'waypoint override': waypoint_time += time_diff
-                	if priority_mode == 'hold': hold_time += time_diff
+                    elif priority_mode == 'hold':
+                        hold_time += time_diff
 
-                    # manual control mode
-                    #if priority_mode == "manual":
-                     #   manual_time += time_diff
-                      #  weapon_or_manual_time += time_diff
 
-                        # Only count weapon and quadrant time when in manual mode
-                        # weapon time
-                       # if search_type == "wez":
-                        #    weapon_time += time_diff
+                    else: # The agent is in some combination of manual modes. Run fn to calculate which.
 
-                        # quadrant time
-                        #if search_area in ["NW", "SW", "NE", "SE"]:
-                         #   quadrant_time += time_diff
+                        # Search type
+                        search_type = search_type_calculator(gameplan_command_history, current_timestamp)
+                        if search_type == 'manual weapon':
+                            manual_weapon_time += time_diff
+                        elif search_type in ['auto weapon','auto target']:
+                            auto_type_time += time_diff
+                        elif search_type == 'manual target':
+                            manual_target_time += time_diff
 
-                    # auto mode
-                    #if priority_mode == "auto":
-                     #   full_auto_time += time_diff
+                        # Search area
+                        search_area = search_area_calculator(gameplan_command_history, current_timestamp)
+                        if search_area == 'manual quadrant': manual_quadrant_time += time_diff
+                        elif search_area == 'manual full': manual_full_time += time_diff
+                        elif search_area in ['auto quadrant','auto full']: auto_area_time += time_diff
 
                 last_timestamp = current_timestamp
-                last_priority_mode = priority_mode
-                last_search_type = search_type
-                last_search_area = search_area
 
         except json.JSONDecodeError:
             continue
 
     average_distance = total_distance / distance_count if distance_count > 0 else 0
 
-    return same_quadrant_time, diff_quadrant_time, 
-    manual_weapon_time, manual_target_time, auto_type_time, 
-    manual_quadrant_time, manual_full_time, auto_quadrant_time, 
-    waypoint_time, hold_time, average_distance
+    return same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance
 
 
 
@@ -274,6 +211,7 @@ def extract_metadata(filename):
         'run_order': run_order
     }
 
+
 def process_log_file(filename):
     """Process a single JSONL log file and extract relevant metrics."""
     with open(filename, 'r') as f:
@@ -283,13 +221,10 @@ def process_log_file(filename):
         final_time = json.loads(lines[-1])["time"]
 
 
-        same_quadrant_time, diff_quadrant_time, manual_time, weapon_time, weapon_or_manual_time, quadrant_time, waypoint_override_time, average_distance = calculate_times(lines)
+        same_quadrant_time, diff_quadrant_time, manual_weapon_time, manual_target_time, auto_type_time, manual_quadrant_time, manual_full_time, auto_area_time, autonomous_time, waypoint_override_time, hold_time, average_distance = calculate_times(lines)
 
-        # same_quadrant_time, diff_quadrant_time = calculate_quadrant_times(lines)
+        print('manual weapon time: ',manual_weapon_time)
         diff_quadrant_percentage = diff_quadrant_time / (diff_quadrant_time + same_quadrant_time) * 100
-        manual_time_percentage = manual_time / final_time * 100
-        weapon_time_percentage = weapon_time / final_time * 100
-        quadrant_time_percentage = quadrant_time / final_time * 100
 
         # Process all lines to count waypoints
         waypoint_count = 0
@@ -332,7 +267,6 @@ def process_log_file(filename):
 
         # Extract gameplan command counts
         gameplan_history = final_line["gameplan_command_history"]
-        total_commands = final_line["total_gameplan_commands"]
 
         # Count different types of commands
         search_type_commands = sum(1 for cmd in gameplan_history if cmd[1] in ["target_id", "wez_id"])
@@ -342,7 +276,6 @@ def process_log_file(filename):
         time_remaining = 240 - final_time if final_line["identified_targets"] == 60 else 0
 
         # Get final game state from second to last line
-        #final_state = None
         for line in reversed(lines):
             try:
                 data = json.loads(line)
@@ -373,11 +306,16 @@ def process_log_file(filename):
             'ai_weapons_identified': ai_weapons_identified,
 
             'diff_quadrant_percentage': diff_quadrant_percentage,
-            'manual_mode_time_percentage':manual_time_percentage,
-            'weapon_mode_time_percentage':weapon_time_percentage,
-            'quadrant_mode_time_percentage':quadrant_time_percentage,
-            'average_distance':average_distance,
-            'waypoint_override_time':waypoint_override_time
+            'average_distance': average_distance,
+
+            'manual_weapon_time_percentage': manual_weapon_time/final_time * 100,
+            'manual_target_time_percentage': manual_target_time/final_time * 100,
+            'manual_quadrant_time_percentage': manual_quadrant_time/final_time * 100,
+            'manual_full_time_percentage': manual_full_time/final_time * 100,
+            'auto_type_time_percentage': auto_type_time/final_time * 100,
+            'auto_area_time_percentage': auto_area_time/final_time * 100,
+            'waypoint_override_time_percentage':waypoint_override_time/final_time * 100,
+            'hold_time_percentage': hold_time/final_time * 100
         }
         return output
 
@@ -415,11 +353,18 @@ def process_all_rounds(round_files):
         new_row[f'ai_weapons_identified_round{round_num - 1}'] = metrics['ai_weapons_identified']
         new_row[f'diff_quadrant_percentage_round{round_num - 1}'] = metrics['diff_quadrant_percentage']
 
-        new_row[f'manual_mode_time_percentage_round{round_num - 1}'] = metrics['manual_mode_time_percentage']
-        new_row[f'weapon_mode_time_percentage_round{round_num - 1}'] = metrics['weapon_mode_time_percentage']
-        new_row[f'quadrant_mode_time_percentage_round{round_num - 1}'] = metrics['quadrant_mode_time_percentage']
+        new_row[f'manual_weapon_time_percentage_round{round_num - 1}'] = metrics['manual_weapon_time_percentage']
+        new_row[f'manual_target_time_percentage_round{round_num - 1}'] = metrics['manual_target_time_percentage']
+        new_row[f'manual_quadrant_time_percentage_round{round_num - 1}'] = metrics['manual_quadrant_time_percentage']
+        new_row[f'manual_full_time_percentage_round{round_num - 1}'] = metrics['manual_full_time_percentage']
+        new_row[f'auto_type_time_percentage_round{round_num - 1}'] = metrics['auto_type_time_percentage']
+        new_row[f'auto_area_time_percentage_round{round_num - 1}'] = metrics['auto_area_time_percentage']
+        new_row[f'waypoint_override_time_percentage_round{round_num - 1}'] = metrics['waypoint_override_time_percentage']
+        new_row[f'hold_time_percentage_round{round_num - 1}'] = metrics['hold_time_percentage']
+
+        print(new_row[f'manual_weapon_time_percentage_round{round_num - 1}'])
+
         new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
-        new_row[f'waypoint_override_time_round{round_num - 1}'] = metrics['waypoint_override_time']
 
         if new_row['subject_id'] in [353,322,318,321,325,323,317,331,334,352,324,330,329,338,328,340,345,349,342,368,351]:
             new_row[f'score_round{round_num - 1}'] += 70 * (metrics['human_hp'] - 1) # Correction for bug where HP bonus wasn't added correctly.
@@ -443,7 +388,7 @@ def get_subject_files(data_folder):
     # Filter out subjects without all 4 rounds and sort files by round number
     complete_subjects = {}
     for subject_id, files in subject_files.items():
-        if len(files) == 5:
+        if len(files) == 5 or True:
             complete_subjects[subject_id] = [f[1] for f in sorted(files)]
         else:
             print(f"Warning: Subject {subject_id} has {len(files)} rounds instead of 4. Skipping.")
@@ -471,11 +416,15 @@ def process_folder(data_folder, excel_file):
             f'ai_weapons_identified_round{i}',
             f'diff_quadrant_percentage_round{i}',
             
-            f'manual_mode_time_percentage_round{i}',
-            f'weapon_mode_time_percentage_round{i}',
-            f'quadrant_mode_time_percentage_round{i}',
+            f'manual_weapon_time_percentage_round{i}',
+            f'manual_target_time_percentage_round{i}',
+            f'manual_quadrant_time_percentage_round{i}',
+            f'manual_full_time_percentage_round{i}',
+            f'auto_type_time_percentage_round{i}',
+            f'auto_area_time_percentage_round{i}',
+            f'waypoint_override_time_percentage_round{i}',
+            f'hold_time_percentage_round{i}',
             f'average_distance_round{i}',
-            f'waypoint_override_time_round{i}'
         ]
         columns.extend(round_cols)
 
@@ -489,7 +438,7 @@ def process_folder(data_folder, excel_file):
 
     # Process each subject's data
     for subject_id, files in subject_files.items():
-        if subject_id in [311,319,332,320,303,301,333,309]:
+        if subject_id in [311,319,332,320,303,301,333,309,344]:
             print(f"\nSubject {subject_id} is a pilot subject, skipping...")
             skipped_subjects +=1
         else:
@@ -505,8 +454,7 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "jan26check"  # Folder containing all JSONL files
+    data_folder = "feb2test"  # Folder containing all JSONL files
 
-
-    excel_file = "maisr_gamedata_jan26.xlsx"
+    excel_file = "feb2test.xlsx"
     process_folder(data_folder, excel_file)
