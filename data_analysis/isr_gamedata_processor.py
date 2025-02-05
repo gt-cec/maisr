@@ -478,7 +478,7 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "feb2test"  # Folder containing all JSONL files
+    data_folder = "feb4test"  # Folder containing all JSONL files
 
-    excel_file = "feb2test.xlsx"
+    excel_file = "feb4test.xlsx"
     process_folder(data_folder, excel_file)
