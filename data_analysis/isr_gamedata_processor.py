@@ -108,6 +108,7 @@ def calculate_times(lines):
 
                 # Calculate time difference if not first state
                 if last_timestamp is not None:
+                    manual_typeorarea_time_alreadyadded = False
                     time_diff = current_timestamp - last_timestamp
 
 
@@ -136,20 +137,26 @@ def calculate_times(lines):
                         if search_type == 'manual weapon':
                             manual_weapon_time += time_diff
                             manual_typeorarea_time += time_diff
+                            manual_typeorarea_time_alreadyadded = True
                         elif search_type in ['auto weapon','auto target']:
                             auto_type_time += time_diff
                         elif search_type == 'manual target':
                             manual_target_time += time_diff
-                            manual_typeorarea_time += time_diff
+                            if not manual_typeorarea_time_alreadyadded:
+                                manual_typeorarea_time += time_diff
+                                manual_typeorarea_time_alreadyadded = True
 
                         # Search area
                         search_area = search_area_calculator(gameplan_command_history, current_timestamp)
                         if search_area == 'manual quadrant':
                             manual_quadrant_time += time_diff
-                            manual_typeorarea_time += time_diff
+                            if not manual_typeorarea_time_alreadyadded:
+                                manual_typeorarea_time += time_diff
+                                manual_typeorarea_time_alreadyadded = True
                         elif search_area == 'manual full':
                             manual_full_time += time_diff
-                            manual_typeorarea_time += time_diff
+                            if not manual_typeorarea_time_alreadyadded:
+                                manual_typeorarea_time += time_diff
                         elif search_area in ['auto quadrant','auto full']:
                             auto_area_time += time_diff
 
