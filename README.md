@@ -1,5 +1,7 @@
 # MAISR: Multi-Agent Intelligence, Surveillance, and Reconnaissance
 
+NOTE: This branch is the version of the MAISR environment used in the team familiarization study in January 2025.
+
 This codebase is a PyGame variant of the [CEC ISR domain](https://github.com/gt-cec/onr-isr). This allows for exploring multi-agent ISR and training reinforcement learning policies at a far higher framerate than is possible with the web browser domain.
 
 ### Quick Start
