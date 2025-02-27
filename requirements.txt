@@ -2,3 +2,4 @@ flask
 pygame
 gym
 numpy
+pygame
