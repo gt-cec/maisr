@@ -1,7 +1,7 @@
 """To set up experiment run:"""
 
 # 1. Enter a subject_id:
-subject_id = '908'
+subject_id = '999'
 user_group = 'test' # 'test', 'control' 'card' 'in-situ'
 run_order = 1 # 1,2,3, or 4
 
@@ -20,7 +20,15 @@ training_configs = {
     'test': './config_files/modelcard_scenario1_config.json',
     'control': './config_files/training_control_config.json',
     'card': './config_files/training_control_config.json',
-    'in-situ': './config_files/training_insitu_config.json'}
+    'in-situ': './config_files/training_insitu_config.json',
+    "transparency_test": './config_files/transparency_config_0.json'
+}
+
+transparency_configs = [
+    './config_files/transparency_config_0.json',
+    './config_files/transparency_config_0.json',
+    './config_files/transparency_config_0.json',
+    './config_files/transparency_config_0.json',]
 
 scenario_configs = [
     './config_files/modelcard_scenario1_config.json',
@@ -45,6 +53,9 @@ def get_ordered_configs(user_group, run_order):
         # Test group only gets scenario configs, no training
         ordered_scenarios = [scenario_configs[i] for i in order_mappings[run_order]]
         return ordered_scenarios
+    elif user_group == 'transparency_test':
+        ordered_scenarios = [transparency_configs[i] for i in order_mappings[run_order]]
+        return ordered_scenarios
     else:
         # Other groups get training + scenarios
         ordered_scenarios = [scenario_configs[i] for i in order_mappings[run_order]]
@@ -54,4 +65,4 @@ def get_ordered_configs(user_group, run_order):
 # Generate the config dictionary based on run_order
 config_dict = {
     group: get_ordered_configs(group, run_order)
-    for group in ['test', 'control', 'card', 'in-situ']}
+    for group in ['test', 'control', 'card', 'in-situ', 'transparency_test']}

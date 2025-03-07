@@ -7,7 +7,6 @@ class AutonomousPolicy:
         self.env = env
         self.aircraft_id = aircraft_id
 
-
         self.target_point = (0,0)
 
         # For displaying on agent status window
@@ -40,7 +39,8 @@ class AutonomousPolicy:
         self.update_rate = 20
 
 
-    def act(self):  # Execute policy based on chosen gameplan
+    def act(self):
+        """Execute policy loop"""
         self.aircraft = self.env.agents[self.aircraft_id]
         if self.ticks_since_update > self.update_rate:
             self.ticks_since_update = 0
@@ -54,21 +54,31 @@ class AutonomousPolicy:
             elif self.waypoint_override != False: # Execute the waypoint
                 self.target_point = self.human_waypoint(self.waypoint_override)
 
-            else:
-                self.calculate_priorities()
-                self.target_point, closest_target_distance = self.basic_search()
+            else: # Execute core search algorithm
+                self.calculate_priorities() # Decide search type and area
+                self.target_point, closest_target_distance = self.basic_search() # Pick nearest valid target
 
-                # Populate agent info
                 self.current_target_distance = closest_target_distance
-                if closest_target_distance: self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
+                if closest_target_distance:
+                    self.low_level_rationale = f'IDing target {int(closest_target_distance)} units away'
+
                 if self.search_type_override != 'none':
                     self.high_level_rationale = '(Human command)'
 
+            # Update AGENT STATUS window with new status
             self.update_agent_info()
-        else: self.ticks_since_update += 1
+
+        else:
+            self.ticks_since_update += 1
 
 
     def basic_search(self):
+        """Executes the core search loop:
+            1. Consider all targets on map
+            2. Sort them by closest-first
+            3. Pick the closest VALID target (validity depends on search area/type mode
+            4. Set waypoint to the chosen target"""
+
         current_state = self.env.get_state()
         current_target_distances = {}  # Will be {agent_idx:distance}
         #closest_distance = None
@@ -77,19 +87,6 @@ class AutonomousPolicy:
         gameboard_size = self.env.config["gameboard size"]
         quadrant_bounds = {'full': (0, gameboard_size, 0, gameboard_size),'NW': (0, gameboard_size * 0.5, 0, gameboard_size * 0.5),'NE': (gameboard_size * 0.5, gameboard_size, 0, gameboard_size * 0.5),'SW': (0, gameboard_size * 0.5, gameboard_size * 0.5, gameboard_size), 'SE': (gameboard_size * 0.5, gameboard_size, gameboard_size * 0.5,gameboard_size)}  # specifies (Min x, max x, min y, max y)
 
-        # Find nearby threats for status display
-        # self.nearby_threats = []
-        # threat_distances = {}
-        # for ship_id in current_state['ships']:
-        #     ship = current_state['ships'][ship_id]
-        #     if ship['observed'] and ship['observed threat'] and ship['threat'] > 0:
-        #         dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
-        #         threat_distances[ship_id] = dist
-
-        # Get 2 closest threats
-        # sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
-        # for threat_id, dist in sorted_threats[:2]:
-        #     self.nearby_threats.append((threat_id, int(dist)))
 
         for ship_id in current_state['ships']: # Loop through all ships in environment, calculate distance, find closest unknown ship (or unknown WEZ), and set waypoint to that location
             closest_distance = None
@@ -142,11 +139,12 @@ class AutonomousPolicy:
 
 
     def hold_policy(self):
+        """Hold at current location"""
         target_waypoint = self.aircraft.x, self.aircraft.y
         return target_waypoint
 
     def human_waypoint(self,waypoint_position):
-        # Set the waypoint to waypoint_position and maintain until complete
+        """Set the waypoint to waypoint_position and maintain until complete"""
         waypoint_threshold = 5
         target_waypoint = self.waypoint_override
 
@@ -155,11 +153,26 @@ class AutonomousPolicy:
             self.waypoint_override = False
         return target_waypoint
 
-    # Push various types of information about the agent's decision-making to the AGENT STATUS window, if set.
     def update_agent_info(self):
-        """Update the agent info display with current status"""
+        """Push various types of information about the agent's decision-making to the AGENT STATUS window"""
         if not hasattr(self.env, 'agent_info_display'):
             return
+
+        # Find nearby threats for status display
+        current_state = self.env.get_state()
+        self.nearby_threats = []
+        threat_distances = {}
+        for ship_id in current_state['ships']:
+            ship = current_state['ships'][ship_id]
+            if ship['observed'] and ship['threat'] > 0:
+                dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,
+                                  self.aircraft.y - self.env.agents[ship_id].y)
+                threat_distances[ship_id] = dist
+
+        # Get 2 closest threats
+        sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
+        for threat_id, dist in sorted_threats[:2]:
+            self.nearby_threats.append((threat_id, int(dist)))
 
         # Format nearby threats text
         threats_text = "None detected"
@@ -192,14 +205,18 @@ class AutonomousPolicy:
         self.env.agent_info_display.update_text(self.status_lines)
 
 
-    def calculate_risk_level(self): # Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets
+    def calculate_risk_level(self):
+        """Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets"""
+
         hostile_targets_nearby = sum(1 for agent in self.env.agents if agent.agent_class == "ship" and agent.threat > 0 and agent.observed_threat and math.hypot(agent.x - self.aircraft.x, agent.y - self.aircraft.y) <= 30)
 
         risk_level_function = 10 * hostile_targets_nearby + self.env.agents[self.env.num_ships].damage
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
 
-    def calculate_priorities(self): # Set search type (target or wez), search quadrant (One of the 4 quadrants or the full board)
+    def calculate_priorities(self):
+        """Set search type (target or wez), search quadrant (One of the 4 quadrants or the full board)
+        """
         # Set search_type
         if self.search_type_override != 'none': # If player has set a specific search type, use that
             self.search_type = self.search_type_override
