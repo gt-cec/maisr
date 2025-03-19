@@ -176,44 +176,44 @@ if __name__ == "__main__":
                             agent1_waypoint = mouse_position
 
                     # Agent 0 gameplan buttons
-                    elif env.target_id_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"target id",env.display_time)
-                        agent0_policy.search_type_override = 'target'
-                        agent0_policy.waypoint_override = False
-                        #if env.button_latch_dict['target_id'] == False:
-                        gameplan_command_history.append([time_sec, 'target_id'])
+                   # elif env.target_id_button.is_clicked(mouse_position):
+                   #     if log_data: game_logger.log_mouse_event(mouse_position,"target id",env.display_time)
+                   #     agent0_policy.search_type_override = 'target'
+                   #     agent0_policy.waypoint_override = False
+                   #     #if env.button_latch_dict['target_id'] == False:
+                   #     gameplan_command_history.append([time_sec, 'target_id'])
 
-                        env.button_latch_dict['target_id'] = True
-                        if env.button_latch_dict['target_id']:
-                            env.button_latch_dict['wez_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold'] = False, False, False # target id and wez id policies are mutually exclusive
-                            env.button_latch_dict['manual_priorities'] = True
+                   #    env.button_latch_dict['target_id'] = True
+                   #     if env.button_latch_dict['target_id']:
+                   #         env.button_latch_dict['wez_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold'] = False, False, False # target id and wez id policies are mutually exclusive
+                   #         env.button_latch_dict['manual_priorities'] = True
 
-                        if agent0_policy.hold_commanded:
-                            agent0_policy.hold_commanded = False
-                            env.button_latch_dict['hold'] = False
+                   #     if agent0_policy.hold_commanded:
+                   #         agent0_policy.hold_commanded = False
+                   #         env.button_latch_dict['hold'] = False
 
-                        env.comm_text = 'Beginning target ID'
-                        #print(env.comm_text)
-                        env.add_comm_message(env.comm_text)
+                   #     env.comm_text = 'Beginning target ID'
+                   #     #print(env.comm_text)
+                   #     env.add_comm_message(env.comm_text)
 
-                    elif env.wez_id_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"wez id",env.display_time)
-                        agent0_policy.search_type_override = 'wez'
-                        agent0_policy.waypoint_override = False
-                        #if env.button_latch_dict['wez_id'] == False:
-                        gameplan_command_history.append([time_sec, 'wez_id'])
+                   # elif env.wez_id_button.is_clicked(mouse_position):
+                   #     if log_data: game_logger.log_mouse_event(mouse_position,"wez id",env.display_time)
+                   #     agent0_policy.search_type_override = 'wez'
+                   #     agent0_policy.waypoint_override = False
+                   #     #if env.button_latch_dict['wez_id'] == False:
+                   #     gameplan_command_history.append([time_sec, 'wez_id'])
 
-                        env.button_latch_dict['wez_id'] = True #not env.button_latch_dict['wez_id']
-                        if env.button_latch_dict['wez_id']:
-                            env.button_latch_dict['target_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
-                            env.button_latch_dict['manual_priorities'] = True
+                   #     env.button_latch_dict['wez_id'] = True #not env.button_latch_dict['wez_id']
+                   #     if env.button_latch_dict['wez_id']:
+                   #         env.button_latch_dict['target_id'], env.button_latch_dict['autonomous'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
+                   #         env.button_latch_dict['manual_priorities'] = True
 
-                        if agent0_policy.hold_commanded:
-                            agent0_policy.hold_commanded = False
-                            env.button_latch_dict['hold'] = False
+                   #     if agent0_policy.hold_commanded:
+                   #         agent0_policy.hold_commanded = False
+                   #         env.button_latch_dict['hold'] = False
 
-                        env.comm_text = 'Beginning target+WEZ ID'
-                        env.add_comm_message(env.comm_text)
+                   #     env.comm_text = 'Beginning target+WEZ ID'
+                   #     env.add_comm_message(env.comm_text)
 
                     # elif env.regroup_button.is_clicked(mouse_position):
                     #     if not env.regroup_clicked:
@@ -248,27 +248,27 @@ if __name__ == "__main__":
                     #         env.button_latch_dict['fan_out'] = False
                     #         env.button_latch_dict['autonomous'] = True
 
-                    elif env.hold_button.is_clicked(mouse_position):
-                        if not agent0_policy.hold_commanded:
-                            if log_data: game_logger.log_mouse_event(mouse_position,"hold",env.display_time)
-                            agent0_policy.hold_commanded = True
-                            agent0_policy.waypoint_override = False
-                            gameplan_command_history.append([time_sec, 'hold'])
-                            env.button_latch_dict['hold'] = True  # not env.button_latch_dict['hold']
-                            env.button_latch_dict['autonomous'] = False
-                            env.comm_text = 'Holding'
+                   # elif env.hold_button.is_clicked(mouse_position):
+                   #     if not agent0_policy.hold_commanded:
+                   #         if log_data: game_logger.log_mouse_event(mouse_position,"hold",env.display_time)
+                   #         agent0_policy.hold_commanded = True
+                   #         agent0_policy.waypoint_override = False
+                   #         gameplan_command_history.append([time_sec, 'hold'])
+                   #         env.button_latch_dict['hold'] = True  # not env.button_latch_dict['hold']
+                   #         env.button_latch_dict['autonomous'] = False
+                   #         env.comm_text = 'Holding'
 
-                        else:
-                            agent0_policy.hold_commanded = False
-                            env.button_latch_dict['hold'] = False  # not env.button_latch_dict['hold']
-                            env.comm_text = 'Resuming search'
-                            env.button_latch_dict['autonomous'] = True
-                        env.add_comm_message(env.comm_text,is_ai=True)
+                   #     else:
+                   #         agent0_policy.hold_commanded = False
+                   #         env.button_latch_dict['hold'] = False  # not env.button_latch_dict['hold']
+                   #         env.comm_text = 'Resuming search'
+                   #         env.button_latch_dict['autonomous'] = True
+                   #     env.add_comm_message(env.comm_text,is_ai=True)
 
-                    elif env.waypoint_button.is_clicked(mouse_position):
-                        env.button_latch_dict['waypoint'] = True
-                        env.agent_waypoint_clicked = True
-                        #gameplan_command_history.append([time_sec, 'waypoint'])
+                   # elif env.waypoint_button.is_clicked(mouse_position):
+                   #     env.button_latch_dict['waypoint'] = True
+                   #     env.agent_waypoint_clicked = True
+                   #     #gameplan_command_history.append([time_sec, 'waypoint'])
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",env.display_time)
@@ -356,38 +356,38 @@ if __name__ == "__main__":
                         env.add_comm_message(env.comm_text,is_ai=True)
 
 
-                    elif env.manual_priorities_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"manual priorities",env.display_time)
-                        agent0_policy.search_quadrant_override = 'none'
-                        agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['manual_priorities']:
-                        gameplan_command_history.append([time_sec, 'manual_priorities']) # For data logging
-                        agent0_policy.search_type_override = 'none'
-                        env.button_latch_dict['manual_priorities'] = True #not env.button_latch_dict['autonomous']
-                        if env.button_latch_dict['manual_priorities']: env.button_latch_dict['autonomous'] = False
-                        if agent0_policy.hold_commanded:
-                            agent0_policy.hold_commanded = False
-                            env.button_latch_dict['hold'] = False
-                        #env.comm_text = 'Beginning autonomous search'
-                        #print(env.comm_text)
-                        #env.add_comm_message(env.comm_text,is_ai=True)
+                   # elif env.manual_priorities_button.is_clicked(mouse_position):
+                   #     if log_data: game_logger.log_mouse_event(mouse_position,"manual priorities",env.display_time)
+                   #     agent0_policy.search_quadrant_override = 'none'
+                   #     agent0_policy.waypoint_override = False
+                   #     #if not env.button_latch_dict['manual_priorities']:
+                   #     gameplan_command_history.append([time_sec, 'manual_priorities']) # For data logging
+                   #     agent0_policy.search_type_override = 'none'
+                   #     env.button_latch_dict['manual_priorities'] = True #not env.button_latch_dict['autonomous']
+                   #     if env.button_latch_dict['manual_priorities']: env.button_latch_dict['autonomous'] = False
+                   #     if agent0_policy.hold_commanded:
+                   #         agent0_policy.hold_commanded = False
+                   #         env.button_latch_dict['hold'] = False
+                   #     #env.comm_text = 'Beginning autonomous search'
+                   #     #print(env.comm_text)
+                   #     #env.add_comm_message(env.comm_text,is_ai=True)
 
-                    elif env.autonomous_button.is_clicked(mouse_position):
-                        if log_data: game_logger.log_mouse_event(mouse_position,"autonomous",env.display_time)
-                        agent0_policy.search_quadrant_override = 'none'
-                        agent0_policy.search_type_override = 'none'
-                        agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['autonomous']:
-                        gameplan_command_history.append([time_sec, 'autonomous'])  # For data logging
-                        env.button_latch_dict['autonomous'] = True #not env.button_latch_dict['autonomous']
-                        if env.button_latch_dict['autonomous']:
-                            env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['full'], env.button_latch_dict['hold'],env.button_latch_dict['target_id'],env.button_latch_dict['wez_id'],env.button_latch_dict['hold'],env.button_latch_dict['manual_priorities'] = False, False, False, False, False, False, False,False,False,False  # mutually exclusive
-                        if agent0_policy.hold_commanded:
-                            agent0_policy.hold_commanded = False
-                            env.button_latch_dict['hold'] = False
-                        env.comm_text = 'Beginning autonomous search'
-                        #print(env.comm_text)
-                        env.add_comm_message(env.comm_text,is_ai=True)
+                   # elif env.autonomous_button.is_clicked(mouse_position):
+                   #     if log_data: game_logger.log_mouse_event(mouse_position,"autonomous",env.display_time)
+                   #     agent0_policy.search_quadrant_override = 'none'
+                   #     agent0_policy.search_type_override = 'none'
+                   #     agent0_policy.waypoint_override = False
+                   #     #if not env.button_latch_dict['autonomous']:
+                   #     gameplan_command_history.append([time_sec, 'autonomous'])  # For data logging
+                   #     env.button_latch_dict['autonomous'] = True #not env.button_latch_dict['autonomous']
+                   #     if env.button_latch_dict['autonomous']:
+                   #         env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['full'], env.button_latch_dict['hold'],env.button_latch_dict['target_id'],env.button_latch_dict['wez_id'],env.button_latch_dict['hold'],env.button_latch_dict['manual_priorities'] = False, False, False, False, False, False, False,False,False,False  # mutually exclusive
+                   #     if agent0_policy.hold_commanded:
+                   #         agent0_policy.hold_commanded = False
+                   #         env.button_latch_dict['hold'] = False
+                   #     env.comm_text = 'Beginning autonomous search'
+                   #     #print(env.comm_text)
+                   #     env.add_comm_message(env.comm_text,is_ai=True)
 
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:

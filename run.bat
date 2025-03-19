@@ -18,7 +18,7 @@ if "%cond%"=="5" set cond="transparency_test"
 if "%new_round_num%"=="" (goto start) else (set round_num=%new_round_num%)
 
 :start
-call "C:\Users\Ryan\PycharmProjects\maisr\.venv\Scripts\activate.bat"
+::call "C:\Users\Ryan\PycharmProjects\maisr\.venv\Scripts\activate.bat"
 :: Run the Python script and pass the variables to it
 echo Starting pygame with ID %userid%, condition %cond% and round %round_num%
 python main.py %userid% %cond% %round_num% %log_data%
