@@ -206,6 +206,12 @@ class AgentInfoDisplay:
             'EXTREME': ((0, 0, 0), (255, 255, 255))  # (Black bg, white text)
         }
 
+        self.progress_colors = {
+            'ON TRACK': ((50, 255, 50), (0, 0, 0)),  # (Green bg, black text)
+            'BEHIND': ((255, 165, 0), (0, 0, 0)),  # (Orange bg, black text)
+            'AHEAD': ((0, 0, 0), (255, 255, 255))  # (Black bg, white text)
+        }
+
     def draw(self, window):
         # Draw background rectangles
         pygame.draw.rect(window, self.title_color, self.title_rect)
@@ -250,6 +256,39 @@ class AgentInfoDisplay:
                     # Fallback if risk level not recognized
                     risk_surface = self.content_font.render(risk_level, True, (0, 0, 0))
                     window.blit(risk_surface,
+                                (self.content_rect.x + self.text_margin + label_surface.get_width(), y_offset))
+            
+            elif "MISSION PROGRESS" in line:
+                # Split the line into label and value
+                label, progress_level = line.split(": ")
+                progress_level = progress_level.strip()
+
+                # Render the label part
+                label_surface = self.content_font.render(label + ": ", True, (0, 0, 0))
+                window.blit(label_surface, (self.content_rect.x + self.text_margin, y_offset))
+
+                if progress_level in self.progress_colors:
+                    bg_color, text_color = self.progress_colors[progress_level]
+
+                    # Render the progress level to get its width
+                    progress_surface = self.content_font.render(progress_level, True, text_color)
+                    progress_width = progress_surface.get_width()
+
+                    # Draw background rectangle just for the progress level text
+                    progress_rect = pygame.Rect(
+                        self.content_rect.x + self.text_margin + label_surface.get_width(),
+                        y_offset-3,
+                        progress_width+6,
+                        self.line_height - 10
+                    )
+                    pygame.draw.rect(window, bg_color, progress_rect)
+
+                    # Draw the progress level text
+                    window.blit(progress_surface, (progress_rect.x, y_offset))
+                else:
+                    # Fallback if progress level not recognized
+                    progress_surface = self.content_font.render(progress_level, True, (0, 0, 0))
+                    window.blit(progress_surface,
                                 (self.content_rect.x + self.text_margin + label_surface.get_width(), y_offset))
             else:
                 # Draw regular lines

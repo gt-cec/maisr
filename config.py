@@ -2,7 +2,7 @@
 
 # 1. Enter a subject_id:
 subject_id = '999'
-user_group = 'test' # 'test', 'control' 'card' 'in-situ'
+user_group = 'test' # 'test', 'control' 'card' 'in-situ' 'transparency'
 run_order = 1 # 1,2,3, or 4
 
 
@@ -21,14 +21,14 @@ training_configs = {
     'control': './config_files/training_control_config.json',
     'card': './config_files/training_control_config.json',
     'in-situ': './config_files/training_insitu_config.json',
-    "transparency_test": './config_files/transparency_config_0.json'
+    'transparency': './config_files/training_control_config.json'
 }
 
 transparency_configs = [
     './config_files/transparency_config_0.json',
-    './config_files/transparency_config_0.json',
-    './config_files/transparency_config_0.json',
-    './config_files/transparency_config_0.json',]
+    './config_files/transparency_config_1.json',
+    './config_files/transparency_config_2.json',
+    './config_files/transparency_config_3.json',]
 
 scenario_configs = [
     './config_files/modelcard_scenario1_config.json',
@@ -41,11 +41,12 @@ def get_ordered_configs(user_group, run_order):
     training_config = training_configs[user_group]
 
     # Define scenario ordering based on run_order
+    # balanced latin square, each condition appears exactly once in row and column
     order_mappings = {
-        1: [0, 1, 2, 3],  # Original order: 1,2,3,4
-        2: [1, 2, 3, 0],  # Start with 2: 2,3,4,1
-        3: [2, 0, 1, 3],  # Start with 3: 3,1,2,4
-        4: [3, 2, 0, 1]  # Start with 4: 4,3,1,2
+        1: [0, 1, 3, 2],  
+        2: [1, 3, 2, 0],  
+        3: [3, 2, 0, 1],  
+        4: [2, 0, 1, 3]  
     }
 
     # Reorder scenario configs based on run_order
@@ -53,9 +54,9 @@ def get_ordered_configs(user_group, run_order):
         # Test group only gets scenario configs, no training
         ordered_scenarios = [scenario_configs[i] for i in order_mappings[run_order]]
         return ordered_scenarios
-    elif user_group == 'transparency_test':
+    elif user_group == 'transparency':
         ordered_scenarios = [transparency_configs[i] for i in order_mappings[run_order]]
-        return ordered_scenarios
+        return [training_config] + ordered_scenarios
     else:
         # Other groups get training + scenarios
         ordered_scenarios = [scenario_configs[i] for i in order_mappings[run_order]]
@@ -65,4 +66,12 @@ def get_ordered_configs(user_group, run_order):
 # Generate the config dictionary based on run_order
 config_dict = {
     group: get_ordered_configs(group, run_order)
-    for group in ['test', 'control', 'card', 'in-situ', 'transparency_test']}
+    for group in ['test', 'control', 'card', 'in-situ', 'transparency']}
+
+# Generate the config dictionary on demand
+def get_config_dict():
+    config_dict = {
+        group: get_ordered_configs(group, run_order)
+        for group in ['test', 'control', 'card', 'in-situ', 'transparency']
+    }
+    return config_dict

@@ -16,8 +16,10 @@ class AutonomousPolicy:
         self.nearby_threats = []  # List of up to 2 nearest threats
         self.three_upcoming_targets = []  # Target IDs of nearest unknown targets
         self.current_target_distance = 0  # Distance to current target if pursuing one
+        self.cluster = False # whether or not a cluster is detected
 
         self.risk_level = ''
+        self.mission_progress = ''
 
         # Agent priorities to follow during search (can be overridden by human)
         self.search_quadrant = '' # Auto-selected by policy unless search_quadrant_override is not 'none'
@@ -45,6 +47,7 @@ class AutonomousPolicy:
         if self.ticks_since_update > self.update_rate:
             self.ticks_since_update = 0
             self.calculate_risk_level()
+            self.calculate_mission_progress()
 
             if self.hold_commanded:
                 self.target_point = self.hold_policy()
@@ -56,11 +59,14 @@ class AutonomousPolicy:
 
             else: # Execute core search algorithm
                 self.calculate_priorities() # Decide search type and area
-                self.target_point, closest_target_distance = self.basic_search() # Pick nearest valid target
+                self.target_point, target_distance, target_bearing = self.basic_search() # Pick nearest valid target
 
-                self.current_target_distance = closest_target_distance
-                if closest_target_distance:
-                    self.low_level_rationale = f'IDing target {int(closest_target_distance)} units away'
+                self.current_target_distance = target_distance
+                if target_distance:
+                    if self.cluster:
+                        self.low_level_rationale = f'Cluster- {int(target_distance)} units at {int(target_bearing)} deg' #\N{DEGREE SIGN}
+                    else:
+                        self.low_level_rationale = f'Nearest- {int(target_distance)} units at {int(target_bearing)} deg' #\N{DEGREE SIGN}
 
                 if self.search_type_override != 'none':
                     self.high_level_rationale = '(Human command)'
@@ -81,22 +87,26 @@ class AutonomousPolicy:
 
         current_state = self.env.get_state()
         current_target_distances = {}  # Will be {agent_idx:distance}
-        #closest_distance = None
+        closest_distance = None
         dist = None
+        target_waypoint = None
+        target_distance = None
+        target_bearing = None
 
         gameboard_size = self.env.config["gameboard size"]
         quadrant_bounds = {'full': (0, gameboard_size, 0, gameboard_size),'NW': (0, gameboard_size * 0.5, 0, gameboard_size * 0.5),'NE': (gameboard_size * 0.5, gameboard_size, 0, gameboard_size * 0.5),'SW': (0, gameboard_size * 0.5, gameboard_size * 0.5, gameboard_size), 'SE': (gameboard_size * 0.5, gameboard_size, gameboard_size * 0.5,gameboard_size)}  # specifies (Min x, max x, min y, max y)
 
 
         for ship_id in current_state['ships']: # Loop through all ships in environment, calculate distance, find closest unknown ship (or unknown WEZ), and set waypoint to that location
-            closest_distance = None
+            #closest_distance = None
             if self.search_type == 'target':  # If set to target, only consider unknown targets
 
                 if current_state['ships'][ship_id]['observed'] == False and (
                         quadrant_bounds[self.search_quadrant][0] <=  current_state['ships'][ship_id]['position'][0] <= quadrant_bounds[self.search_quadrant][1]) and (
                             quadrant_bounds[self.search_quadrant][2] <=  current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
                     
-                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
+                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,
+                                      self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
 
                 if dist is not None:
@@ -109,7 +119,8 @@ class AutonomousPolicy:
                     quadrant_bounds[self.search_quadrant][0] <= current_state['ships'][ship_id]['position'][0] <=quadrant_bounds[self.search_quadrant][1]) and (
                         quadrant_bounds[self.search_quadrant][2] <= current_state['ships'][ship_id]['position'][1] <=quadrant_bounds[self.search_quadrant][3]):
                     
-                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
+                    dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,
+                                      self.aircraft.y - self.env.agents[ship_id].y)
                     current_target_distances[ship_id] = dist
                     if dist is not None:
                         if closest_distance is None or dist < closest_distance:
@@ -127,15 +138,19 @@ class AutonomousPolicy:
         if current_target_distances: # If there are targets nearby, set waypoint to the nearest one
             nearest_target_id = min(current_target_distances, key=current_target_distances.get)
             target_waypoint = tuple((self.env.agents[nearest_target_id].x, self.env.agents[nearest_target_id].y))
+            target_distance = current_target_distances[nearest_target_id]
+            target_bearing = (math.degrees(math.atan2(target_waypoint[1] - self.aircraft.y, target_waypoint[0] - self.aircraft.x)) + 90 + 360) % 360 # normalize bearing 0-360 where up is 0 degrees
 
         elif self.search_type == 'tag team':
             target_waypoint = (self.env.agents[self.env.num_ships + 1].x,self.env.agents[self.env.num_ships + 1].y)
+            target_distance = math.hypot(self.aircraft.x - target_waypoint[0],
+                                      self.aircraft.y - target_waypoint[1])
 
         else:  # If all targets ID'd, loiter in center of board or specified quadrant
             quadrant_centers = {'full': (gameboard_size * 0.5,gameboard_size * 0.5), 'NW': (gameboard_size * 0.25, gameboard_size * 0.25), 'NE':(gameboard_size * 0.75, gameboard_size * 0.25), 'SW':(gameboard_size * 0.25, gameboard_size * 0.75),'SE':(gameboard_size * 0.75, gameboard_size * 0.75)}
             target_waypoint =  quadrant_centers[self.search_quadrant]
 
-        return target_waypoint, closest_distance
+        return target_waypoint, target_distance, target_bearing
 
 
     def hold_policy(self):
@@ -185,6 +200,7 @@ class AutonomousPolicy:
         # Low level goals
         if self.show_low_level_goals:
             self.status_lines.append(f"CURRENT GOAL: {self.low_level_rationale}")
+            self.status_lines.append(f"NEARBY THREATS: {threats_text}")
 
         # High level goals
         if self.show_high_level_goals:
@@ -198,7 +214,7 @@ class AutonomousPolicy:
         # Tracked factors
         if self.show_tracked_factors:
             self.status_lines.append(f"RISK LEVEL: {self.risk_level}")
-            self.status_lines.append(f"NEARBY THREATS: {threats_text}")
+            self.status_lines.append(f"MISSION PROGRESS: {self.mission_progress}")
 
         # Update the display
         self.env.agent_info_display.text = self.status_lines
@@ -213,6 +229,22 @@ class AutonomousPolicy:
         risk_level_function = 10 * hostile_targets_nearby + self.env.agents[self.env.num_ships].damage
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
+    def calculate_mission_progress(self):
+        """Calculates predicted number of targets ID'd at mission end, based on current rate"""
+        current_num_observed = sum(1 for agent in self.env.agents if agent.agent_class == "ship" and agent.observed_threat)
+        current_mission_time = self.env.display_time/1000
+        #print("current mission time ", current_mission_time)
+        current_rate = current_num_observed / current_mission_time
+        #print("current rate ", current_rate)
+        expected_num_observed = current_rate * self.env.time_limit
+        #print("expected observed ", expected_num_observed)
+        num_ships = self.env.config['num ships']
+        if expected_num_observed < num_ships-5:
+            self.mission_progress = 'BEHIND'
+        elif expected_num_observed > num_ships+5:
+            self.mission_progress = 'AHEAD'
+        else:
+            self.mission_progress = 'ON TRACK'
 
     def calculate_priorities(self):
         """Set search type (target or wez), search quadrant (One of the 4 quadrants or the full board)
@@ -242,6 +274,7 @@ class AutonomousPolicy:
         elif quadrants[0][1] >= quadrants[1][1] + 7:
             self.search_quadrant = quadrants[0][0]
             self.quadrant_rationale = f'(Significant target grouping in {self.search_quadrant})'
+            self.cluster = True
         else:
             self.search_quadrant = 'full'
             self.quadrant_rationale = ''

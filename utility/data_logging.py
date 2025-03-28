@@ -12,7 +12,7 @@ class GameLogger:
 
         # Create unique filename with timestamp
         timestamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
-        self.filename = f'./experiment_data/maisr_subject{subject_id}_round{round_number}_{timestamp}.jsonl'
+        self.filename = f'./experiment_data/maisr_SAT_subject{subject_id}_round{round_number}_{timestamp}.jsonl'
 
         self.config_name = config_name
         self.subject_id = subject_id
