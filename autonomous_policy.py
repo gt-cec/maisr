@@ -273,7 +273,7 @@ class AutonomousPolicy:
             self.quadrant_rationale = '(Human command)'
         elif quadrants[0][1] >= quadrants[1][1] + 7:
             self.search_quadrant = quadrants[0][0]
-            self.quadrant_rationale = f'(Significant target grouping in {self.search_quadrant})'
+            self.quadrant_rationale = f'(Signif. target grouping in {self.search_quadrant})'
             self.cluster = True
         else:
             self.search_quadrant = 'full'
@@ -310,3 +310,7 @@ class AutonomousPolicy:
 
         ship_quadrants = sorted(ship_quadrants.items(), key=lambda x: x[1], reverse=True)
         return ship_quadrants
+    
+    def update_show_agent_search_type(self, show_agent_search_type=True):
+        self.env.agents[self.aircraft_id].show_agent_search_type = show_agent_search_type
+        

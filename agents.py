@@ -67,7 +67,7 @@ class Agent:
 
 # aircraft agent class
 class Aircraft(Agent):
-    def __init__(self, env, direction, color, speed=1, scale=1, prob_detect=0.1,max_health=10, waypoint_type='wez', flight_pattern="none", policy=None,is_visible=True):
+    def __init__(self, env, direction, color, speed=1, scale=1, prob_detect=0.1,max_health=10, waypoint_type='wez', flight_pattern="none", policy=None,is_visible=True, show_agent_waypoint=True, show_agent_search_type=True):
         super().__init__(env, direction, color, scale, speed, agent_class="aircraft")
         self.damage = 0  # damage taken by the aircraft
         self.prob_detect = prob_detect # Probability of taking damage on a given timestep if inside a threat radius
@@ -79,7 +79,8 @@ class Aircraft(Agent):
         self.policy = policy # Not implemented right now
         self.alive = True
         self.is_visible = is_visible
-        self.show_agent_waypoint = env.show_agent_waypoint
+        self.show_agent_waypoint = show_agent_waypoint
+        self.show_agent_search_type = show_agent_search_type
         self.regroup_clicked = False
         self.base_speed = speed
 
@@ -117,8 +118,9 @@ class Aircraft(Agent):
 
 
             if self.target_point is not None:
-                if self.show_agent_waypoint >= 1:
+                if self.show_agent_waypoint:
                     pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
+                if self.show_agent_search_type:
                     if (self.waypoint_type=='wez'):
                         pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw small box at waypoint 
                     if (self.waypoint_type=='target'):

@@ -59,7 +59,7 @@ if __name__ == "__main__":
     y = config.y
     config_dict = config.get_config_dict()
     config_list = config_dict[user_group]
-    print("For run order "+ str(run_order) + " config list "+ str(config_list))
+    #print("For run order "+ str(run_order) + " config list "+ str(config_list))
     total_games = 5 # Number of games to run
     game_count = 0 # Used to track how many games have been completed so far
 
@@ -205,6 +205,7 @@ if __name__ == "__main__":
                         if env.button_latch_dict['target_id']:
                             env.button_latch_dict['wez_id'], env.button_latch_dict['auto_type'], env.button_latch_dict['hold'] = False, False, False # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                            agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
 
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
@@ -221,10 +222,11 @@ if __name__ == "__main__":
                         #if env.button_latch_dict['wez_id'] == False:
                         gameplan_command_history.append([time_sec, 'wez_id'])
 
-                        env.button_latch_dict['wez_id'] = True #not env.button_latch_dict['wez_id']
+                        env.button_latch_dict['wez_id'] = True
                         if env.button_latch_dict['wez_id']:
                             env.button_latch_dict['target_id'], env.button_latch_dict['auto_type'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
+                            agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
 
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
@@ -240,10 +242,13 @@ if __name__ == "__main__":
                         #if env.button_latch_dict['wez_id'] == False:
                         gameplan_command_history.append([time_sec, 'auto_type'])
 
-                        env.button_latch_dict['auto_type'] = True #not env.button_latch_dict['wez_id']
+                        env.button_latch_dict['auto_type'] = True 
                         if env.button_latch_dict['auto_type']:
                             env.button_latch_dict['target_id'], env.button_latch_dict['wez_id'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
-                            env.button_latch_dict['manual_priorities'] = True
+                            env.button_latch_dict['manual_priorities'] = False
+                            # if show high level goals
+                            if not env.show_high_level_goals:
+                                agent0_policy.update_show_agent_search_type(show_agent_search_type=False)
 
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False

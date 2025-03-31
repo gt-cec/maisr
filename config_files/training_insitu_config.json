@@ -16,7 +16,7 @@
 	"human speed": 2.8,
 	"agent start location": [200,600],
 	"human start location": [250,600],
-	"show agent waypoint": 1,
+	"show agent waypoint": true,
 	"show_low_level_goals": false,
 	"show_high_level_goals": false,
 	"show_high_level_rationale": false,

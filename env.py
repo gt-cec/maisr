@@ -159,16 +159,20 @@ class MAISREnv(gym.Env):
 
         # Situation-awareness based agent transparency config
         self.show_agent_waypoint = self.config['show agent waypoint']
+        self.show_low_level_goals = self.config['show_low_level_goals']
+        self.show_high_level_goals = self.config['show_high_level_goals']
+        self.show_tracked_factors = self.config['show_tracked_factors']
         self.agent_priorities = 'placeholder'
+        
 
         # SAGAT survey flags
         self.survey1_launched, self.survey2_launched, self.survey3_launched, self.survey4_launched = False, False, False, False
 
         # Calculate required height of agent status info
         self.agent_info_height_req = 0
-        if self.config['show_low_level_goals']: self.agent_info_height_req += 1.7
-        if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
-        if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
+        if self.show_low_level_goals: self.agent_info_height_req += 1.7
+        if self.show_high_level_goals: self.agent_info_height_req += 1.7
+        if self.show_tracked_factors: self.agent_info_height_req += 1.7
 
         if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
             #self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
@@ -234,8 +238,8 @@ class MAISREnv(gym.Env):
         agent1_initial_location = self.config['human start location']
 
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], waypoint_type='wez', flight_pattern=self.config["search pattern"]) # Agent
-        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, waypoint_type='wez', flight_pattern=self.config["search pattern"]) # Human
+        agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], waypoint_type='wez', flight_pattern=self.config["search pattern"], show_agent_waypoint=self.show_agent_waypoint, show_agent_search_type=self.show_high_level_goals) # Agent
+        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, waypoint_type='wez', flight_pattern=self.config["search pattern"], show_agent_waypoint=True) # Human
         self.agents[self.num_ships].x,self.agents[self.num_ships].y = agent0_initial_location
         self.agents[self.human_idx].x, self.agents[self.human_idx].y = agent1_initial_location
 
@@ -529,14 +533,14 @@ class MAISREnv(gym.Env):
         pygame.draw.rect(self.window, (255,255,255), (0, 0, 35, game_width))  # Left
         pygame.draw.rect(self.window, (255,255,255), (1000-33, 0, 35, game_width-2))  # Right
 
-        # Draw a border around current quadrant
-        if (quadrant=='NW'):
+        # Draw a border around current quadrant if (operator selected a quadrant) or (auto_area and show_high_level_goals is enabled)
+        if (quadrant=='NW') and ((not self.auto_area_button.is_latched) or (self.auto_area_button.is_latched and self.show_high_level_goals)) :
             pygame.draw.rect(self.window, (0, 160, 160), (35,35, self.config["gameboard size"]//2 - 35 , self.config["gameboard size"]//2 - 35), 4)  # NW
-        elif (quadrant=='SW'):
+        elif (quadrant=='SW') and ((not self.auto_area_button.is_latched) or (self.auto_area_button.is_latched and self.show_high_level_goals)):
             pygame.draw.rect(self.window, (0, 160, 160), (35,self.config["gameboard size"] // 2, self.config["gameboard size"]//2 - 35 , self.config["gameboard size"]//2 - 35), 4)  # SW
-        elif (quadrant=='NE'):
+        elif (quadrant=='NE') and ((not self.auto_area_button.is_latched) or (self.auto_area_button.is_latched and self.show_high_level_goals)):
             pygame.draw.rect(self.window, (0, 160, 160), (self.config["gameboard size"] // 2,35, self.config["gameboard size"]//2 - 35, self.config["gameboard size"]//2 - 35), 4)  # NE
-        elif (quadrant=='SE'):
+        elif (quadrant=='SE') and ((not self.auto_area_button.is_latched) or (self.auto_area_button.is_latched and self.show_high_level_goals)):
             pygame.draw.rect(self.window, (0, 160, 160), (self.config["gameboard size"] // 2, self.config["gameboard size"] // 2, self.config["gameboard size"]//2 - 35 , self.config["gameboard size"]//2 - 35), 4)  # SE
                                                   
 

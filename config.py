@@ -21,7 +21,7 @@ training_configs = {
     'control': './config_files/training_control_config.json',
     'card': './config_files/training_control_config.json',
     'in-situ': './config_files/training_insitu_config.json',
-    'transparency': './config_files/training_control_config.json'
+    'transparency': './config_files/training_transparency_config.json'
 }
 
 transparency_configs = [
