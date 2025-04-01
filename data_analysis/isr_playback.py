@@ -3,6 +3,8 @@ import json
 import math
 import argparse
 from pathlib import Path
+import os
+import ctypes
 
 
 class PlaybackViewer:
@@ -29,9 +31,15 @@ class PlaybackViewer:
         self.AIRCRAFT_ISR_RADIUS = 85
 
         # Setup display
-        self.window = pygame.display.set_mode(self.WINDOW_SIZE)
+        #self.window = pygame.display.set_mode(self.WINDOW_SIZE)
         pygame.display.set_caption("ISR Experiment Playback")
         self.clock = pygame.time.Clock()
+        ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
+        window_width, window_height = self.WINDOW_SIZE[0], self.WINDOW_SIZE[1]
+        x = 0 #1680+235    # Pixel location of right edge of the pygame window. Default = 235 (renders in center of a 1920x1080 screen if gameboard is configured to 1450px)
+        y = -3          # Pixel location of top edge of the pygame window
+        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
+        self.window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
 
         # Load game states
         self.states = self.load_states(log_file)
@@ -247,6 +255,6 @@ class PlaybackViewer:
 
 
 if __name__ == "__main__":
-    log_file = "maisr_subject914_round0_2025_01_13_14_31_52.jsonl"
+    log_file = "maisr_SAT_subject524_round4_2025_04_01_12_38_42.jsonl"
     viewer = PlaybackViewer(log_file)
     viewer.run()
