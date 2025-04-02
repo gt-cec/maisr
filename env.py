@@ -378,7 +378,7 @@ class MAISREnv(gym.Env):
             self.done = True
             print('Done!')
 
-            self.score += self.human_hp_remaining_points #* self.agents[self.num_ships+1] # Add points for human HP remaining at end of round (always, not just if round ended early)
+            self.score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
 
             if self.num_identified_ships >= self.num_ships: # Add points for finishing early
                 self.score += self.all_targets_points
@@ -393,10 +393,12 @@ class MAISREnv(gym.Env):
 
             print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
             print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
+            print(f'Human aircraft HP remaining: {self.agents[self.human_idx].health_points}')
+            print(f'{self.agents[self.human_idx].health_points} HP * {self.human_hp_remaining_points} = +{self.agents[self.human_idx].health_points * self.human_hp_remaining_points} points')
             if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
-                print(f"All targets identified (+{self.all_targets_points} points)")
-                print(f"{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining")
-            print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
+                #print(f"All targets identified (+{self.all_targets_points} points)")
+                print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
+                print(f"{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = +{round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining")
             print(f"\nFinal score = {round(self.score,0)}")
 
             # administer TLX_survey

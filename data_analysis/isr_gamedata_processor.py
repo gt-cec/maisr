@@ -32,7 +32,7 @@ def search_type_calculator(command_history, log_timestamp):
     search_type = 'auto weapon'  # Initialize as auto weapon because that's how the AI starts
     for cmd in command_history:
         if cmd[0] <= log_timestamp:
-            if cmd[1] == 'autonomous': search_type = 'auto weapon'
+            if cmd[1] == 'auto type id': search_type = 'auto weapon'
             elif cmd[1] == 'wez_id': search_type = 'manual weapon'
             elif cmd[1] == 'target_id': search_type = 'manual target'
     return search_type
@@ -44,7 +44,7 @@ def search_area_calculator(command_history, log_timestamp):
     for cmd in command_history:
         if cmd[0] <= log_timestamp:
             if cmd[1] in ['NW','NE','SW','SE']: search_area = 'manual quadrant'
-            elif cmd[1] == 'autonomous': search_area = 'auto full'
+            elif cmd[1] == 'autonomous area': search_area = 'auto full'
             elif cmd[1] == 'full': search_area = 'manual full'
     return search_area
 
@@ -252,16 +252,18 @@ def process_log_file(filename):
             try:
                 data = json.loads(line)
 
-                if data == "game configuration:./config_files/model_card_configs/modelcard_scenario1_config.json":
+                if data == "game configuration:./config_files/model_card_configs/modelcard_scenario1_config.json" or data == "game configuration:./config_files/transparency_config_0.json":
                     num_hostiles = 28
                 elif data == "game configuration:./config_files/training_insitu_config.json" or data == "game configuration:./config_files/training_insitu_config.json":
                     num_hostiles = 20
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario2_config.json":
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario2_config.json" or data == "game configuration:./config_files/transparency_config_1.json":
                     num_hostiles = 19
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario3_config.json":
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario3_config.json" or data == "game configuration:./config_files/transparency_config_2.json":
                     num_hostiles = 22
-                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario4_config.json":
+                elif data == "game configuration:./config_files/model_card_configs/modelcard_scenario4_config.json" or data == "game configuration:./config_files/transparency_config_3.json":
                     num_hostiles = 23
+                elif data == "game configuration:./config_files/training_transparency_config.json":
+                    num_hostiles = 50
 
                 if "type" in data and data["type"] == "mouse_event" and data["event_type"] == "human waypoint":
                     waypoint_count += 1
@@ -388,7 +390,7 @@ def process_all_rounds(round_files):
 
         new_row[f'average_distance_round{round_num - 1}'] = metrics['average_distance']
 
-        if new_row['subject_id'] in [353,322,318,321,325,323,317,331,334,352,324,330,329,338,328,340,345,349,342,368,351]:
+        if new_row['subject_id'] in ['521','522','523','524','525','526','527','528','529']:
             new_row[f'score_round{round_num - 1}'] += 70 * (metrics['human_hp'] - 1) # Correction for bug where HP bonus wasn't added correctly.
             print(f'&&&&&&&&&& SCORE CORRECTED for subject {new_row['subject_id']} &&&&&&&&&&')
 
@@ -398,7 +400,7 @@ def process_all_rounds(round_files):
 def get_subject_files(data_folder):
     """Group files by subject ID and ensure each subject has all 4 rounds."""
     subject_files = defaultdict(list)
-    pattern = re.compile(r'maisr_subject(\d{3})_round(\d).*\.jsonl')
+    pattern = re.compile(r'maisr_SAT_subject(\d{3})_round(\d).*\.jsonl')
 
     for filename in os.listdir(data_folder):
         match = pattern.match(filename)
@@ -420,7 +422,7 @@ def get_subject_files(data_folder):
 
 def process_folder(data_folder, excel_file):
     """Process all subject data in a folder and write to Excel file."""
-    skipped_subjects = 0 # Tracking subjects skipped (should be 8 from the pilot study)
+    skipped_subjects = 0 # Tracking subjects skipped 
 
     # Initialize DataFrame with correct columns
     columns = ['subject_id', 'user_group', 'run_order']
@@ -462,7 +464,7 @@ def process_folder(data_folder, excel_file):
 
     # Process each subject's data
     for subject_id, files in subject_files.items():
-        if subject_id in [311,319,332,320,303,301,333,309,344]:
+        if subject_id in ['501','502','503','504','505','506']:
             print(f"\nSubject {subject_id} is a pilot subject, skipping...")
             skipped_subjects +=1
         else:
@@ -478,7 +480,7 @@ def process_folder(data_folder, excel_file):
 
 
 if __name__ == "__main__":
-    data_folder = "feb4test"  # Folder containing all JSONL files
+    data_folder = "PreHPcorrection"  # Folder containing all JSONL files
 
-    excel_file = "feb4test.xlsx"
+    excel_file = "PreHPcorrection.xlsx"
     process_folder(data_folder, excel_file)
