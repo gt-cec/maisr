@@ -205,7 +205,8 @@ if __name__ == "__main__":
                         if env.button_latch_dict['target_id']:
                             env.button_latch_dict['wez_id'], env.button_latch_dict['auto_type'], env.button_latch_dict['hold'] = False, False, False # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
-                            agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
+                            if env.show_high_level_goals:
+                                agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
 
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
@@ -226,7 +227,8 @@ if __name__ == "__main__":
                         if env.button_latch_dict['wez_id']:
                             env.button_latch_dict['target_id'], env.button_latch_dict['auto_type'], env.button_latch_dict['hold']= False, False, False  # target id and wez id policies are mutually exclusive
                             env.button_latch_dict['manual_priorities'] = True
-                            agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
+                            if env.show_high_level_goals:
+                                agent0_policy.update_show_agent_search_type(show_agent_search_type=True)
 
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
