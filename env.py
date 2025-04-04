@@ -227,7 +227,6 @@ class MAISREnv(gym.Env):
     def step(self, actions:list):
         old_score = self.score
 
-
         if self.regroup_clicked: self.agents[self.num_ships].regroup_clicked = True
         else: self.agents[self.num_ships].regroup_clicked = False
 

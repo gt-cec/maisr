@@ -7,34 +7,40 @@ import sys
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-#from config import subject_id, user_group, log_data, x, y, config_dict, run_order
 from config import x, y, config_dict, run_order
 from autonomous_policy import AutonomousPolicy
 import webbrowser
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 5:
+
+    if len(sys.argv) == 1:
+        print('No args specified, loading parameters from config.py')
+        from config import subject_id, user_group, log_data, x, y, round_number
+
+    elif len(sys.argv) < 5:
         print("Missing args, run as: python main.py subject_id user_group starting_round_number log_data")
         sys.exit()
 
-    subject_id = sys.argv[1]
+    else:
+        subject_id = sys.argv[1]
+        user_group = sys.argv[2]
+        round_number = sys.argv[3]
+        log_data = sys.argv[4]
+
     if not subject_id.isdigit():
         print("Invalid subject ID: >" + subject_id + "<")
         sys.exit()
 
-    user_group = sys.argv[2]
     if user_group not in ["test", "card", "control", "in-situ"]:
         print("Invalid user group: >" + user_group + "<")
         sys.exit()
 
-    round_number = sys.argv[3]
     if round_number not in ["0", "1", "2", "3", "4"] or not round_number.isdigit():
         print("Invalid round number: " + ">" + round_number + "<")
         sys.exit()
     round_number = int(round_number)
 
-    log_data = sys.argv[4]
     if log_data == 'y':
         log_data = True
     elif log_data == 'n':
@@ -86,62 +92,47 @@ if __name__ == "__main__":
         agent0_waypoint = (0,0)
         agent1_waypoint = (0, 0)
 
-        agent_log_info = {
-            'waypoint': 'None',
-            'priority mode': 'None',
-            'search type': 'None',
-            'search area': 'None'
-        }
+        agent_log_info = {'waypoint': 'None', 'priority mode': 'None', 'search type': 'None', 'search area': 'None'}
 
         while not done:  # main game loop
             agent_log_info = {
-                'waypoint':agent0_waypoint,
-                'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',
-                'search type': agent0_policy.search_type,
-                'search area': agent0_policy.search_quadrant,
-            }
+                'waypoint':agent0_waypoint, 'search type': agent0_policy.search_type, 'search area': agent0_policy.search_quadrant,
+                'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',}
 
             if log_data:
                 game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                if env.new_target_id is not None:
+                if env.new_target_id:
                     game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
                     env.new_target_id = None
 
-                if env.new_weapon_id is not None:
+                if env.new_weapon_id:
                     game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
                     env.new_weapon_id = None
 
-            actions = [] # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
-            time_sec = float(env.display_time)/1000
-
-            if env.regroup_clicked:
-                agent_human_distance = math.hypot(env.agents[env.num_ships].x - env.agents[env.human_idx].x,env.agents[env.num_ships].y - env.agents[env.human_idx].y)
-                if agent_human_distance <= 50: env.regroup_clicked = False
-
-            # Agent 0: Act based on currently selected gameplan
-            if env.regroup_clicked:
-                actions.append((env.aircraft_ids[0], (env.agents[env.human_idx].x,env.agents[env.human_idx].y)))
-            else:
-                agent0_policy.act()
-                agent0_waypoint = agent0_policy.target_point
-                actions.append((env.aircraft_ids[0], agent0_policy.target_point))
-                agent0_policy.update_agent_info()
-
             # Handle SAGAT surveys
-            if 64.00 < time_sec < 65.00 and not env.survey1_launched and env.config['surveys_enabled']:
-                env.survey1_launched = True
-                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                env.SAGAT_survey(1)
-            if 119.00+5 < time_sec < 120.00+5 and not env.survey2_launched and env.config['surveys_enabled']:
-                env.survey2_launched = True
-                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                env.SAGAT_survey(2)
-            if 179.0+5 < time_sec < 180.0+5 and not env.survey3_launched and env.config['surveys_enabled']:
-                env.survey3_launched = True
-                if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                env.SAGAT_survey(3)
+            # if 64.00 < time_sec < 65.00 and not env.survey1_launched and env.config['surveys_enabled']:
+            #     env.survey1_launched = True
+            #     if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
+            #     env.SAGAT_survey(1)
+            # if 119.00+5 < time_sec < 120.00+5 and not env.survey2_launched and env.config['surveys_enabled']:
+            #     env.survey2_launched = True
+            #     if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
+            #     env.SAGAT_survey(2)
+            # if 179.0+5 < time_sec < 180.0+5 and not env.survey3_launched and env.config['surveys_enabled']:
+            #     env.survey3_launched = True
+            #     if log_data: game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
+            #     env.SAGAT_survey(3)
 
-            # Handle mouse clicks
+            # Handle agent actions (from autonomous_policy)
+            actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
+
+            agent0_policy.act() # Calculate agent's target waypoint
+            agent0_waypoint = agent0_policy.target_point
+            actions.append((env.aircraft_ids[0], agent0_policy.target_point))
+            agent0_policy.update_agent_info()
+
+            # Handle human actions (mouse clicks)
+            time_sec = float(env.display_time) / 1000
             ev = pygame.event.get()
             for event in ev:
                 if event.type == pygame.KEYDOWN:
@@ -158,7 +149,6 @@ if __name__ == "__main__":
                             if log_data:
                                 game_logger.log_mouse_event(mouse_position,"waypoint override",env.display_time)
                                 gameplan_command_history.append([time_sec,'waypoint override',mouse_position])
-                            #print('Agent waypoint set to %s' % (mouse_position,))
                             env.comm_text = 'Moving to waypoint'
                             env.add_comm_message(env.comm_text, is_ai=True)
                             agent0_action = mouse_position
@@ -180,7 +170,6 @@ if __name__ == "__main__":
                         if log_data: game_logger.log_mouse_event(mouse_position,"target id",env.display_time)
                         agent0_policy.search_type_override = 'target'
                         agent0_policy.waypoint_override = False
-                        #if env.button_latch_dict['target_id'] == False:
                         gameplan_command_history.append([time_sec, 'target_id'])
 
                         env.button_latch_dict['target_id'] = True
@@ -193,14 +182,12 @@ if __name__ == "__main__":
                             env.button_latch_dict['hold'] = False
 
                         env.comm_text = 'Beginning target ID'
-                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text)
 
                     elif env.wez_id_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"wez id",env.display_time)
                         agent0_policy.search_type_override = 'wez'
                         agent0_policy.waypoint_override = False
-                        #if env.button_latch_dict['wez_id'] == False:
                         gameplan_command_history.append([time_sec, 'wez_id'])
 
                         env.button_latch_dict['wez_id'] = True #not env.button_latch_dict['wez_id']
@@ -214,39 +201,6 @@ if __name__ == "__main__":
 
                         env.comm_text = 'Beginning target+WEZ ID'
                         env.add_comm_message(env.comm_text)
-
-                    # elif env.regroup_button.is_clicked(mouse_position):
-                    #     if not env.regroup_clicked:
-                    #         gameplan_command_history.append([time_sec, 'regroup'])  # For data logging
-                    #         agent0_policy.waypoint_override = False
-                    #         env.regroup_clicked = True
-                    #     else: env.regroup_clicked = False
-                    #
-                    # elif env.tag_team_button.is_clicked(mouse_position):
-                    #     if not env.tag_team_commanded:
-                    #         env.tag_team_commanded = True
-                    #         agent0_policy.search_type_override = 'tag team'
-                    #         agent0_policy.waypoint_override = False
-                    #         env.button_latch_dict['tag_team'] = True
-                    #         env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
-                    #     else:
-                    #         agent0_policy.search_type_override = 'none'
-                    #         env.tag_team_commanded = False
-                    #         env.button_latch_dict['tag_team'] = False
-                    #         env.button_latch_dict['autonomous'] = True
-
-                    # elif env.fan_out_button.is_clicked(mouse_position):
-                    #     if not env.fan_out_commanded:
-                    #         env.fan_out_commanded = True
-                    #         agent0_policy.waypoint_override = False
-                    #         agent0_policy.search_type_override = 'fan out'
-                    #         env.button_latch_dict['fan_out'] = True
-                    #         env.button_latch_dict['autonomous'],env.button_latch_dict['manual_priorities'] = False, False
-                    #     else:
-                    #         agent0_policy.search_type_override = 'none'
-                    #         env.fan_out_commanded = False
-                    #         env.button_latch_dict['fan_out'] = False
-                    #         env.button_latch_dict['autonomous'] = True
 
                     elif env.hold_button.is_clicked(mouse_position):
                         if not agent0_policy.hold_commanded:
@@ -268,13 +222,11 @@ if __name__ == "__main__":
                     elif env.waypoint_button.is_clicked(mouse_position):
                         env.button_latch_dict['waypoint'] = True
                         env.agent_waypoint_clicked = True
-                        #gameplan_command_history.append([time_sec, 'waypoint'])
 
                     elif env.NW_quad_button.is_clicked(mouse_position) and not env.full_quad_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NW",env.display_time)
                         agent0_policy.search_quadrant_override = 'NW'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['NW']:
                         gameplan_command_history.append([time_sec, 'NW']) # For data logging
 
                         env.button_latch_dict['NW'] = True #not env.button_latch_dict['NW']
@@ -291,7 +243,6 @@ if __name__ == "__main__":
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - NE",env.display_time)
                         agent0_policy.search_quadrant_override = 'NE'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['NE']:
                         gameplan_command_history.append([time_sec, 'NE'])  # For data logging
 
                         env.button_latch_dict['NE'] = True #not env.button_latch_dict['NE']
@@ -308,7 +259,6 @@ if __name__ == "__main__":
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SW",env.display_time)
                         agent0_policy.search_quadrant_override = 'SW'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['SW']:
                         gameplan_command_history.append([time_sec, 'SW'])  # For data logging
 
                         env.button_latch_dict['SW'] = True #not env.button_latch_dict['SW']
@@ -325,7 +275,6 @@ if __name__ == "__main__":
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - SE",env.display_time)
                         agent0_policy.search_quadrant_override = 'SE'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['SE']:
                         gameplan_command_history.append([time_sec, 'SE'])  # For data logging
 
                         env.button_latch_dict['SE'] = True #not env.button_latch_dict['SE']
@@ -342,7 +291,6 @@ if __name__ == "__main__":
                         if log_data: game_logger.log_mouse_event(mouse_position,"quadrant - full",env.display_time)
                         agent0_policy.search_quadrant_override = 'full'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['full']:
                         gameplan_command_history.append([time_sec, 'full'])  # For data logging
                         env.button_latch_dict['full'] = True
                         if env.button_latch_dict['full']:
@@ -352,7 +300,6 @@ if __name__ == "__main__":
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Prioritizing full map'
-                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
 
@@ -368,30 +315,26 @@ if __name__ == "__main__":
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
-                        #env.comm_text = 'Beginning autonomous search'
-                        #print(env.comm_text)
-                        #env.add_comm_message(env.comm_text,is_ai=True)
 
                     elif env.autonomous_button.is_clicked(mouse_position):
                         if log_data: game_logger.log_mouse_event(mouse_position,"autonomous",env.display_time)
                         agent0_policy.search_quadrant_override = 'none'
                         agent0_policy.search_type_override = 'none'
                         agent0_policy.waypoint_override = False
-                        #if not env.button_latch_dict['autonomous']:
                         gameplan_command_history.append([time_sec, 'autonomous'])  # For data logging
-                        env.button_latch_dict['autonomous'] = True #not env.button_latch_dict['autonomous']
+                        env.button_latch_dict['autonomous'] = True
                         if env.button_latch_dict['autonomous']:
                             env.button_latch_dict['NE'], env.button_latch_dict['SW'], env.button_latch_dict['NW'], env.button_latch_dict['SE'], env.button_latch_dict['full'], env.button_latch_dict['hold'],env.button_latch_dict['target_id'],env.button_latch_dict['wez_id'],env.button_latch_dict['hold'],env.button_latch_dict['manual_priorities'] = False, False, False, False, False, False, False,False,False,False  # mutually exclusive
                         if agent0_policy.hold_commanded:
                             agent0_policy.hold_commanded = False
                             env.button_latch_dict['hold'] = False
                         env.comm_text = 'Beginning autonomous search'
-                        #print(env.comm_text)
                         env.add_comm_message(env.comm_text,is_ai=True)
 
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 state, reward, done, _ = env.step(actions)  # step through the environment
+
             if env.init: env.init = False
 
             # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
