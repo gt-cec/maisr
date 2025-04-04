@@ -2,4 +2,8 @@ flask
 pygame
 gym
 numpy
-pygame
+sys
+os
+ctypes
+json
+math
