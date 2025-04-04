@@ -1,17 +1,18 @@
 import pygame
 import json
 import math
+import os
+import ctypes
 import argparse
 from pathlib import Path
 
 
 class PlaybackViewer:
     def __init__(self, log_file):
-        # Initialize pygame
         pygame.init()
 
         # Constants from original simulation
-        self.WINDOW_SIZE = (1450, 1080)
+        self.WINDOW_SIZE = (1080, 1080)
         self.GAMEBOARD_SIZE = 1000
         self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255)]  # AI, Human
         self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
@@ -29,7 +30,9 @@ class PlaybackViewer:
         self.AIRCRAFT_ISR_RADIUS = 85
 
         # Setup display
-        self.window = pygame.display.set_mode(self.WINDOW_SIZE)
+        ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
+        os.environ['SDL_VIDEO_WINDOW_POS'] = f"{235},{-3}"
+        self.window = pygame.display.set_mode(self.WINDOW_SIZE, flags=pygame.NOFRAME)
         pygame.display.set_caption("ISR Experiment Playback")
         self.clock = pygame.time.Clock()
 
@@ -57,13 +60,9 @@ class PlaybackViewer:
         with open(log_file, 'r') as f:
             for line in f:
                 try:
-                    print(json.loads(line))
-                    #print(type(json.loads(line)))
-                    #print('\n')
                     data = json.loads(line)
 
                     if not type(data) == str:
-                        print('data is a dict')
                         if data.get('type') == 'state' and 'game_state' in data:
                             states.append(data['game_state'])
 
@@ -160,13 +159,13 @@ class PlaybackViewer:
         pygame.draw.rect(self.window, (200, 200, 200), self.next_button)
         pygame.draw.rect(self.window, (200, 200, 200), self.play_button)
 
-        prev_text = self.font.render("←", True, (0, 0, 0))
-        next_text = self.font.render("→", True, (0, 0, 0))
-        play_text = self.font.render("⏸" if self.is_playing else "▶", True, (0, 0, 0))
+        prev_text = self.font.render("Back", True, (0, 0, 0))
+        next_text = self.font.render("Step", True, (0, 0, 0))
+        play_text = self.font.render("Pause" if self.is_playing else "Play", True, (0, 0, 0))
 
-        self.window.blit(prev_text, (self.prev_button.centerx - 10, self.prev_button.centery - 10))
-        self.window.blit(next_text, (self.next_button.centerx - 10, self.next_button.centery - 10))
-        self.window.blit(play_text, (self.play_button.centerx - 10, self.play_button.centery - 10))
+        self.window.blit(prev_text, (self.prev_button.centerx - 25, self.prev_button.centery - 10))
+        self.window.blit(next_text, (self.next_button.centerx - 25, self.next_button.centery - 10))
+        self.window.blit(play_text, (self.play_button.centerx - 25, self.play_button.centery - 10))
 
         # Draw state counter
         counter_text = self.font.render(f"State: {self.current_state_idx + 1}/{len(self.states)}",
@@ -247,6 +246,7 @@ class PlaybackViewer:
 
 
 if __name__ == "__main__":
-    log_file = "maisr_subject914_round0_2025_01_13_14_31_52.jsonl"
+    #log_file = "<INSERT LOG FILE NAME HERE>.jsonl"
+    log_file = 'maisr_subject317_round3_2025_01_23_16_07_12.jsonl'
     viewer = PlaybackViewer(log_file)
     viewer.run()

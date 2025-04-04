@@ -2,7 +2,6 @@ from agents import *
 import sys
 import os
 import ctypes
-import sys
 
 from env import MAISREnv
 from gui import *
@@ -10,7 +9,6 @@ from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order
 from autonomous_policy import AutonomousPolicy
 import webbrowser
-
 
 if __name__ == "__main__":
 
@@ -336,10 +334,7 @@ if __name__ == "__main__":
                 state, reward, done, _ = env.step(actions)  # step through the environment
 
             if env.init: env.init = False
-
-            # update agent policy here if desired, note that you can use env.observation_space and env.action_space instead of the dictionary format
-            if render:  # if in PyGame mode, render the environment
-                env.render()
+            if render: env.render()
 
         if done:
             done_time = pygame.time.get_ticks()
@@ -347,18 +342,19 @@ if __name__ == "__main__":
                 game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 game_logger.final_log(gameplan_command_history, env)
 
-            waiting_for_key = True
-            while waiting_for_key:
-                env.render()  # Keep rendering while waiting
-                for event in pygame.event.get():
-                    if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                        if (pygame.time.get_ticks()-done_time)/1000 > 1.5: # Cooldown to prevent accidentally clicking continue
-                            waiting_for_key = False
-                            break
-                    elif event.type == pygame.QUIT:
-                        if log_data: game_logger.final_log(gameplan_command_history, env)
-                        pygame.quit()
-                        sys.exit()
+            if render:
+                waiting_for_key = True
+                while waiting_for_key:
+                    env.render()  # Keep rendering while waiting
+                    for event in pygame.event.get():
+                        if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                            if (pygame.time.get_ticks()-done_time)/1000 > 1.5: # Cooldown to prevent accidentally clicking continue
+                                waiting_for_key = False
+                                break
+                        elif event.type == pygame.QUIT:
+                            if log_data: game_logger.final_log(gameplan_command_history, env)
+                            pygame.quit()
+                            sys.exit()
 
         round_number += 1
         print("Game complete:", game_count)
@@ -366,4 +362,4 @@ if __name__ == "__main__":
             pygame.quit()
 
     print("ALL GAMES COMPLETE")
-    webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_3ITZnNRRBqioKR8?subject_id='+str(subject_id)+'&user_group='+str(user_group))
+    #webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_3ITZnNRRBqioKR8?subject_id='+str(subject_id)+'&user_group='+str(user_group))
