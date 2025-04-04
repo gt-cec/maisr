@@ -246,7 +246,6 @@ class PlaybackViewer:
 
 
 if __name__ == "__main__":
-    #log_file = "<INSERT LOG FILE NAME HERE>.jsonl"
-    log_file = 'maisr_subject317_round3_2025_01_23_16_07_12.jsonl'
+    log_file = "<INSERT LOG FILE NAME HERE>.jsonl"
     viewer = PlaybackViewer(log_file)
     viewer.run()
