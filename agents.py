@@ -12,9 +12,6 @@ class Agent:
         self.env = env
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
-        #self.x = random.randint(0, env.config["gameboard size"])
-        #self.y = random.randint(0, env.config["gameboard size"])
-
         self.x = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
         self.y = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
 
@@ -183,6 +180,7 @@ class Ship(Agent):
         self.idx = -1  # ship index, can be the index of the agents array
         self.observed = False  # whether the ship has been observed
         self.observed_threat = False  # whether the threat level of the ship has been observed
+        self.observed_by = None  # the aircraft that observed the ship
         #self.neutral = False
         # set threat level of the ship
         if threat != -1:
@@ -244,25 +242,27 @@ class Ship(Agent):
             else:
                 display_color = self.env.AGENT_COLOR_OBSERVED
 
-        super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color) # TODO: The self.env here might be causing problems
 
         threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
         possible_threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[3]
 
         # Draw orange circle for any unidentified target (neutral or hostile)
-        if not self.observed_threat or (self.observed_threat and self.threat == 0):
+        if (self.threat > 0 and not self.observed_threat) or (self.threat == 0 and not self.observed):
             pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED,
                                (self.x, self.y),
                                possible_threat_radius * self.scale,
                                2)
-        if self.observed_threat and self.threat == 0:
-            pygame.draw.circle(window, (255,255,255),
-                               (self.x, self.y),
-                               possible_threat_radius * self.scale,
-                               2)
+        if self.observed and not self.observed_threat and self.threat > 0:
+            # if observed by an aircraft, draw a circle around the ship
+            if self.observed_by is not None:
+                pygame.draw.circle(window, self.observed_by.color,
+                                (self.x, self.y),
+                                self.width * 1.4 * self.scale)
         # If threat is observed and ship is hostile, show actual threat radius
-        elif self.observed_threat and self.threat > 0:
+        if self.observed_threat and self.threat > 0:
             pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT,(self.x, self.y),threat_radius * self.scale,2)
+
+        super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color) # TODO: The self.env here might be causing problems
 
 
     def move(self):

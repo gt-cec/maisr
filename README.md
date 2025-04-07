@@ -59,6 +59,7 @@ Currently the game files are not organized according to best coding practices (t
 * Starts the data logging function for saving experiment data
 * Handles each aircraft's actions (The agent, AKA agent_0, has a policy that is called at the beginning of each game step. The human is controlled via mouse click event handler.)
 * Handles GUI events such as button clicks (much of this code will eventually move into gui.py)
+
 #### `env.py`
 * Processes and renders the game environment
 * Renders the GUI (this may move into a class inside gui.py later)

@@ -281,6 +281,7 @@ class MAISREnv(gym.Env):
                     # if in the aircraft's ISR range, set to observed
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
+                        agent.observed_by = self.agents[aircraft_id]
                         self.new_target_id = ['human' if aircraft_id == self.human_idx else 'AI', 'target_identified',agent.agent_idx]  # Will be used in main.py to log target ID event
                         self.identified_targets += 1 # Used for the tally box
                         self.score += self.target_points

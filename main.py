@@ -3,6 +3,7 @@ import sys
 import os
 import ctypes
 import sys
+import platform
 
 from env import MAISREnv
 from gui import *
@@ -76,7 +77,8 @@ if __name__ == "__main__":
             print("Starting in PyGame mode")
             pygame.init()
             clock = pygame.time.Clock()
-            ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
+            if platform.system() == 'Windows':
+                ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
