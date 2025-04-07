@@ -210,6 +210,8 @@ def load_env_config(json_path=None):
 
         # Merge loaded config with defaults
         final_config = default_config.copy()
+        final_config["sensor fusion mode"] = True  # throw this into the config at some point
+        final_config["sensor fusion step duration"] = 1000 # throw this into the config at some point
         final_config.update(loaded_config)
 
         return final_config

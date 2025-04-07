@@ -14,7 +14,6 @@ log_data = True
 x = 0#1680+235    # Pixel location of right edge of the pygame window. Default = 235 (renders in center of a 1920x1080 screen if gameboard is configured to 1450px)
 y = -3          # Pixel location of top edge of the pygame window
 
-
 # 4. (Optional) If necessary, modify which configs are loaded based on the user_group. You will probably skip this.
 training_configs = {
     'test': './config_files/modelcard_scenario1_config.json',

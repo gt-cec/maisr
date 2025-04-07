@@ -8,7 +8,7 @@ from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
 import webbrowser
-
+import time
 
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
@@ -19,8 +19,9 @@ class MAISREnv(gym.Env):
         self.config = config
         self.window = window
         self.clock = clock
-        self.init = True # Used to render static windows the first time
-        self.start_countdown_time = 5000 # How long in milliseconds to count down at the beginning of the game before it starts
+        self.step_count = 0  # Used to track the number of steps taken in the environment
+        self.init = True  # Used to render static windows the first time
+        self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
 
         self.subject_id = subject_id
         self.round_number = round_number
@@ -248,12 +249,11 @@ class MAISREnv(gym.Env):
         return self.get_state()
 
     def step(self, actions:list):
+        self.step_count += 1
         old_score = self.score
-
 
         if self.regroup_clicked: self.agents[self.num_ships].regroup_clicked = True
         else: self.agents[self.num_ships].regroup_clicked = False
-
 
         if actions is not None and actions != []:
             for action in actions:  # handle each action (waypoint override) provided
@@ -275,6 +275,10 @@ class MAISREnv(gym.Env):
 
             # handle ships
             if agent.agent_class == "ship":
+                # if it has been more than the step_limit since observed, reset the observation status
+                if agent.observed_by is not None and self.step_count - agent.observed_step > self.config["sensor fusion step duration"]:
+                    agent.observed = False
+                    agent.observed_by = None
                 # check if ship is within range of aircraft
                 for aircraft_id in self.aircraft_ids:
                     dist = agent.distance(self.agents[aircraft_id])
@@ -282,6 +286,7 @@ class MAISREnv(gym.Env):
                     if not agent.observed and self.agents[aircraft_id].in_isr_range(distance=dist):
                         agent.observed = True
                         agent.observed_by = self.agents[aircraft_id]
+                        agent.observed_step = self.step_count
                         self.new_target_id = ['human' if aircraft_id == self.human_idx else 'AI', 'target_identified',agent.agent_idx]  # Will be used in main.py to log target ID event
                         self.identified_targets += 1 # Used for the tally box
                         self.score += self.target_points
@@ -298,14 +303,16 @@ class MAISREnv(gym.Env):
 
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist)):# or agent.threat == 0):
-                        agent.observed_threat = True
-                        self.num_identified_ships += 1
-                        self.identified_threat_types += 1 # Used for the tally box
-                        self.score += self.threat_points
-                        self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI', 'weapon_identified', agent.agent_idx]
-                        #print('new weapon id: ', self.new_weapon_id)
-                        if self.config["verbose"]: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
-                        break
+                        # if in sensor fusion mode, only identify if the aircraft is NOT the aircraft that identified neutrality
+                        # ignore if this was the aircraft that identified the neutrality
+                        if not self.config["sensor fusion mode"] or (self.config["sensor fusion mode"] and agent.observed_by.agent_idx != aircraft_id and self.step_count - agent.observed_step < 100):
+                            agent.observed_threat = True
+                            self.num_identified_ships += 1
+                            self.identified_threat_types += 1 # Used for the tally box
+                            self.score += self.threat_points
+                            self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI', 'weapon_identified', agent.agent_idx]
+                            #print('new weapon id: ', self.new_weapon_id)
+                            if self.config["verbose"]: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
 
                     # if in the ship's weapon range, damage the aircraft
                     if agent.in_weapon_range(distance=dist) and agent.threat > 0:

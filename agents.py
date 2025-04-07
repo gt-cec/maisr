@@ -87,8 +87,6 @@ class Aircraft(Agent):
             return
 
         if self.is_visible:
-
-
             # draw the aircraft
             nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
             tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
@@ -254,7 +252,7 @@ class Ship(Agent):
                                2)
         if self.observed and not self.observed_threat and self.threat > 0:
             # if observed by an aircraft, draw a circle around the ship
-            if self.observed_by is not None:
+            if self.env.config["sensor fusion mode"] and self.observed_by is not None:
                 pygame.draw.circle(window, self.observed_by.color,
                                 (self.x, self.y),
                                 self.width * 1.4 * self.scale)
