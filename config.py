@@ -28,7 +28,11 @@ transparency_configs = [
     './config_files/transparency_config_0.json',
     './config_files/transparency_config_1.json',
     './config_files/transparency_config_2.json',
-    './config_files/transparency_config_3.json',]
+    './config_files/transparency_config_3.json',
+    './config_files/transparency_control_0.json',
+    './config_files/transparency_control_1.json',
+    './config_files/transparency_control_2.json',
+    './config_files/transparency_control_3.json']
 
 scenario_configs = [
     './config_files/modelcard_scenario1_config.json',
@@ -46,7 +50,11 @@ def get_ordered_configs(user_group, run_order):
         1: [0, 1, 3, 2],  
         2: [1, 3, 2, 0],  
         3: [3, 2, 0, 1],  
-        4: [2, 0, 1, 3]  
+        4: [2, 0, 1, 3],
+        5: [4, 5, 7, 6],
+        6: [5, 7, 6, 4],
+        7: [7, 6, 4, 5],
+        8: [6, 4, 5, 7]  
     }
 
     # Reorder scenario configs based on run_order
@@ -69,9 +77,8 @@ config_dict = {
     for group in ['test', 'control', 'card', 'in-situ', 'transparency']}
 
 # Generate the config dictionary on demand
-def get_config_dict():
+def get_config_dict(user_group='transparency'):
     config_dict = {
-        group: get_ordered_configs(group, run_order)
-        for group in ['test', 'control', 'card', 'in-situ', 'transparency']
+        user_group: get_ordered_configs(user_group, run_order)
     }
     return config_dict

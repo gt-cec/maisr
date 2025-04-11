@@ -30,7 +30,7 @@ if __name__ == "__main__":
         sys.exit()
 
     run_order = sys.argv[3]
-    if run_order not in ["1", "2", "3", "4"] or not run_order.isdigit():
+    if run_order not in ["1", "2", "3", "4", "5", "6", "7", "8"] or not run_order.isdigit():
         print("Invalid run order: " + ">" + run_order + "<")
         sys.exit()
     run_order = int(run_order)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     config.run_order = run_order
     x = config.x
     y = config.y
-    config_dict = config.get_config_dict()
+    config_dict = config.get_config_dict(user_group)
     config_list = config_dict[user_group]
     #print("For run order "+ str(run_order) + " config list "+ str(config_list))
     total_games = 5 # Number of games to run
