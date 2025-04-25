@@ -12,17 +12,27 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render=False,agent_training=False,
-                 obs_type = 'vector', action_type = 'continuous',
+    def __init__(self, config={}, window=None, clock=None, render_mode='none',agent_training=False,
+                 obs_type = 'vector', action_type = 'continuous', reward_type = 'normal',
                  subject_id='99',user_group='99',round_number='99'):
+        """
+        args:
+            render_mode: 'none', 'human
+
+        """
 
         super().__init__()
 
-        if obs_type not in ['vector', 'cnn']: raise ValueError(f"obs_type must be one of 'vector,'cnn, got '{obs_type}'")
-        if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
+        if obs_type not in ['vector', 'cnn']:
+            raise ValueError(f"obs_type must be one of 'vector,'cnn, got '{obs_type}'")
+        if action_type not in ['discrete', 'continuous']:
+            raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
+        if reward_type not in ['normal']:
+            raise ValueError('reward_type must be normal. Others coming soon')
 
         self.obs_type = obs_type
         self.action_type = action_type
+        self.reward_type = reward_type
 
         self.config = config
         self.window = window
@@ -131,11 +141,10 @@ class MAISREnv(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
-        self.render_bool = render
+        self.render_mode = render_mode
         self.pause_font = pygame.font.SysFont(None, 74)
         self.pause_subtitle_font = pygame.font.SysFont(None, 40)
         self.done = False
-        self._previous_score = 0
         self.time_limit = self.config['time limit']
 
         # For visual damage flash
@@ -212,7 +221,7 @@ class MAISREnv(gym.Env):
 
         self.reset()
 
-        if render:
+        if render_mode == 'human':
             self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
     def reset(self):
@@ -252,11 +261,13 @@ class MAISREnv(gym.Env):
         returns:
         """
 
+        new_score = 0
+
         agent_action = None
         human_action = None
 
-        print(f'Actions: {actions}')
-        print(f'Looking for human ID {self.human_idx}')
+        #print(f'Actions: {actions}')
+        #print(f'Looking for human ID {self.human_idx}')
 
         for tup in actions:
             if tup[0] == self.aircraft_ids[0]: agent_action = tup[1]
@@ -264,7 +275,11 @@ class MAISREnv(gym.Env):
 
         if agent_action is None:
             print(f'ERROR: ACTIONS LIST {actions}')
-            raise Exception(f'ERROR: Agent action not found in actions list {actions}')
+            raise Exception(f'ERROR: Agent action not found in actions list')
+
+        if agent_action is not None:
+            waypoint = (float(agent_action['waypoint'][0]), float(agent_action['waypoint'][1]))
+            agent_action['waypoint'] = waypoint
 
         id_method = agent_action['id_method']
         # TODO do something with ID method
@@ -305,7 +320,7 @@ class MAISREnv(gym.Env):
                         agent.observed = True
                         self.new_target_id = ['human' if aircraft_id == self.human_idx else 'AI', 'target_identified',agent.agent_idx]  # Will be used in main.py to log target ID event
                         self.identified_targets += 1 # Used for the tally box
-                        self.score += self.target_points
+                        new_score += self.target_points
                         #print('new target id: ', self.new_target_id)
 
                         if agent.threat == 0:
@@ -313,7 +328,7 @@ class MAISREnv(gym.Env):
                             #self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI','weapon_identified', agent.agent_idx]
                             self.num_identified_ships += 1
                             self.identified_threat_types += 1
-                            self.score += self.threat_points
+                            new_score += self.threat_points
 
                         if self.config["verbose"]: print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
 
@@ -322,7 +337,7 @@ class MAISREnv(gym.Env):
                         agent.observed_threat = True
                         self.num_identified_ships += 1
                         self.identified_threat_types += 1 # Used for the tally box
-                        self.score += self.threat_points
+                        new_score += self.threat_points
                         self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI', 'weapon_identified', agent.agent_idx]
                         #print('new weapon id: ', self.new_weapon_id)
                         if self.config["verbose"]: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
@@ -360,19 +375,10 @@ class MAISREnv(gym.Env):
                                             agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed'] * self.config['human speed'] * 1.1,flight_pattern=self.config["search pattern"])  # Human
                                             self.human_idx += 1
 
-
-        agent0 = self.agents[self.aircraft_ids[0]]
-        hostile_targets_nearby = sum(1 for agent in self.agents
-                                     if agent.agent_class == "ship" and agent.threat > 0
-                                     and agent.observed_threat and math.hypot(agent.x - agent0.x, agent.y - agent0.y) <= 30)
-        risk_level_function = 10*hostile_targets_nearby + (100 - 10*self.agents[self.agent_idx].health_points) # TODO tune this
-
-        self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
-
-        # Check if any aircraft are recently deceased (RIP)
+        # Check if the agent is recently deceased (RIP)
         if not self.agents[self.agent_idx].alive and not self.agent0_dead:
             self.agent0_dead = True
-            self.score += self.wingman_dead_points
+            new_score += self.wingman_dead_points
             print(f'{self.wingman_dead_points} points for agent wingman destruction')
 
         # progress update
@@ -394,14 +400,14 @@ class MAISREnv(gym.Env):
             self.done = True # TODO REMOVE
             #print('Done!')
 
-            self.score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
+            new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
 
             if self.num_identified_ships >= self.num_ships: # Add points for finishing early
-                self.score += self.all_targets_points
-                self.score += (self.time_limit - self.display_time/1000)*self.time_points
+                new_score += self.all_targets_points
+                new_score += (self.time_limit - self.display_time/1000)*self.time_points
 
             elif not self.agents[self.human_idx].alive:
-                self.score += self.human_dead_points
+                new_score += self.human_dead_points
                 #print('Human aircraft destroyed, game over.')
 
             # elif self.display_time/1000 >= self.time_limit:
@@ -415,11 +421,14 @@ class MAISREnv(gym.Env):
             # print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
             # print(f"\nFinal score = {round(self.score,0)}")
 
-            if self.render_bool: pygame.time.wait(50)
+            if self.render_mode == 'human':
+                pygame.time.wait(50)
 
         # Calculate reward
-        reward = self.score - self._previous_score
-        self._previous_score = self.score
+        if new_score > self.score:
+            print(f'New score this step: {new_score}')
+        reward = self.get_reward(new_score) # TODO
+        self.score += new_score
 
         # Get observation
         observation = self.get_observation()
@@ -429,6 +438,14 @@ class MAISREnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
+
+    def get_reward(self, new_score):
+        if self.reward_type == 'normal': # Considers all the points
+            reward = new_score - self.score
+        else:
+            raise ValueError('Unknown reward type')
+
+        return reward
 
     def get_observation(self):
         """
@@ -523,33 +540,33 @@ class MAISREnv(gym.Env):
             target_start_idx = 13
             self.observation[target_start_idx:target_start_idx + self.num_ships * 7] = self.target_data.flatten()         # Copy target data into observation vector
 
-        if self.init:
-            print("Observation vector explanation:")
-            print(f"[0] Agent health: {self.observation[0]}")
-            print(f"[1] Agent x position: {self.observation[1]}")
-            print(f"[2] Agent y position: {self.observation[2]}")
-            print(f"[3] Agent alive status: {self.observation[3]}")
-            print(f"[4] Agent waypoint x: {self.observation[4]}")
-            print(f"[5] Agent waypoint y: {self.observation[5]}")
-            print(f"[6] Teammate health: {self.observation[6]}")
-            print(f"[7] Teammate x position: {self.observation[7]}")
-            print(f"[8] Teammate y position: {self.observation[8]}")
-            print(f"[9] Teammate waypoint x: {self.observation[9]}")
-            print(f"[10] Teammate waypoint y: {self.observation[10]}")
-            print(f"[11] Teammate alive status: {self.observation[11]}")
-            print(f"[12] Time remaining normalized: {self.observation[12]}")
-
-            # Print target data
-            for i in range(1):
-                base_idx = 13 + i * 7
-                print(f"\nTarget {i} data:")
-                print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
-                print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
-                print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
-                print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
-                print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
-                print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
-                print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
+        # if self.init:
+        #     print("Observation vector explanation:")
+        #     print(f"[0] Agent health: {self.observation[0]}")
+        #     print(f"[1] Agent x position: {self.observation[1]}")
+        #     print(f"[2] Agent y position: {self.observation[2]}")
+        #     print(f"[3] Agent alive status: {self.observation[3]}")
+        #     print(f"[4] Agent waypoint x: {self.observation[4]}")
+        #     print(f"[5] Agent waypoint y: {self.observation[5]}")
+        #     print(f"[6] Teammate health: {self.observation[6]}")
+        #     print(f"[7] Teammate x position: {self.observation[7]}")
+        #     print(f"[8] Teammate y position: {self.observation[8]}")
+        #     print(f"[9] Teammate waypoint x: {self.observation[9]}")
+        #     print(f"[10] Teammate waypoint y: {self.observation[10]}")
+        #     print(f"[11] Teammate alive status: {self.observation[11]}")
+        #     print(f"[12] Time remaining normalized: {self.observation[12]}")
+        #
+        #     # Print target data
+        #     for i in range(1):
+        #         base_idx = 13 + i * 7
+        #         print(f"\nTarget {i} data:")
+        #         print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
+        #         print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
+        #         print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
+        #         print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
+        #         print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
+        #         print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
+        #         print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
 
         elif self.obs_type == 'cnn':
             raise ValueError('CNN Obs type not supported yet')
@@ -649,6 +666,9 @@ class MAISREnv(gym.Env):
             self.comm_messages.pop(0)
 
     def render(self, mode='human', close=False):
+        if mode == 'none': # TODO replace this with something cleaner
+            return
+
         window_width, window_height = self.config['window size'][0], self.config['window size'][0]
         game_width = self.config["gameboard size"]
         ui_width = window_width - game_width
@@ -880,7 +900,6 @@ class MAISREnv(gym.Env):
         if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
         corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
-        # TODO CHANGE
         corner_round_font = pygame.font.SysFont(None, 36)
         corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
         corner_round_rect = corner_round_text_surface.get_rect(
@@ -1136,3 +1155,23 @@ class MAISREnv(gym.Env):
         continue_surface = continue_font.render('Press any key to continue...', True, (100, 100, 100))
         self.window.blit(continue_surface, continue_surface.get_rect(
             center=(window_x + window_width // 2, window_y + window_height - 40)))
+
+    def get_nearby_hostiles(self, aircraft_agent):
+        """
+        Calculates number of hostile targets close to the agent
+        args:
+            agent: The aircraft agent to check for. Must access via self.agents[self.agent_idx]
+        """
+        hostile, friendly, unknown = 0,0,0
+
+        for agent in self.agents:
+            if agent.agent_class == 'ship' and math.hypot(agent.x - aircraft_agent.x, agent.y - aircraft_agent.y) <= 30:
+                if not agent.observed: # TODO make sure agent.observed corresponds to the agent being totally unknown
+                    unknown += 1
+                elif agent.threat > 0 and agent.observed_threat: # Increment 1 for hostile
+                    hostile += 1
+                elif agent.threat <= 0 and agent.observed_threat:
+                    friendly += 1
+
+        print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
+        return hostile, friendly, unknown

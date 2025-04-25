@@ -104,14 +104,14 @@ if __name__ == "__main__":
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
-            env = MAISREnv(env_config, window, clock=clock, render=True,subject_id=subject_id,user_group=user_group,round_number=round_number)
+            env = MAISREnv(env_config, window, clock=clock, render_mode='human',subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         else:
             print("Starting in headless mode")
             pygame.init()
             clock = pygame.time.Clock()
             pygame.font.init()
-            env = MAISREnv(env_config, None, render=False)
+            env = MAISREnv(env_config, None, render_mode='none')
 
         agent0_id = env.num_ships  # Hack to dynamically get agent IDs
         agent0_policy = AutonomousPolicy(env, agent0_id)
@@ -191,7 +191,12 @@ if __name__ == "__main__":
 
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
             if not hold_commanded:
+                #agent_action = env.action_space.sample()
                 agent_action = agent0_policy.act()  # Calculate agent's action
+
+                #print(agent_action)
+                #print(agent_action2)
+
                 #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
                 actions.append((env.aircraft_ids[0], agent_action))
                 hold_commanded = False
@@ -201,7 +206,8 @@ if __name__ == "__main__":
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
             if env.init: env.init = False
-            if render: env.render()
+            if env.render_mode == 'human':
+                env.render()
 
             agent_log_info = {
                 'waypoint': agent_action['waypoint'], 'search type': agent0_policy.search_type,
@@ -226,7 +232,7 @@ if __name__ == "__main__":
                 game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
                 game_logger.final_log(button_handler.get_command_history(), env)
 
-            if render:
+            if env.render_mode == 'human':
                 waiting_for_key = True
                 while waiting_for_key:
                     env.render()  # Keep rendering while waiting
@@ -242,7 +248,7 @@ if __name__ == "__main__":
                             sys.exit()
 
         round_number += 1
-        if render:
+        if env.render_mode == 'human':
             print("Game complete:", game_count)
             pygame.quit()
 

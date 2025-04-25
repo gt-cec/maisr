@@ -40,6 +40,7 @@ class AutonomousPolicy:
         self.update_rate = 20
 
 
+
     def act(self):  # Execute policy based on chosen gameplan
         self.aircraft = self.env.agents[self.aircraft_id]
         if self.ticks_since_update > self.update_rate:
@@ -198,10 +199,11 @@ class AutonomousPolicy:
         self.env.agent_info_display.update_text(self.status_lines)
 
 
-    def calculate_risk_level(self): # Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets
-        hostile_targets_nearby = sum(1 for agent in self.env.agents if agent.agent_class == "ship" and agent.threat > 0 and agent.observed_threat and math.hypot(agent.x - self.aircraft.x, agent.y - self.aircraft.y) <= 30)
+    def calculate_risk_level(self):
+        """Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets"""
 
-        risk_level_function = 10 * hostile_targets_nearby + self.env.agents[self.env.num_ships].damage
+        hostile_nearby, friendly_nearby, unknown_nearby = self.env.get_nearby_hostiles(self.env.agents[self.env.agent_idx])
+        risk_level_function = 10 * hostile_nearby + self.env.agents[self.env.num_ships].damage
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
 
