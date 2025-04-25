@@ -86,7 +86,9 @@ if __name__ == "__main__":
         sys.exit()
 
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")
+
     render = "headless" not in sys.argv
+    reward_type = 'balanced-sparse' # TODO move into a config file
 
     config_list = config_dict[user_group]
     total_games = 5 # Number of games to run
@@ -104,14 +106,19 @@ if __name__ == "__main__":
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
-            env = MAISREnv(env_config, window, clock=clock, render_mode='human',subject_id=subject_id,user_group=user_group,round_number=round_number)
+            env = MAISREnv(env_config, window, clock=clock, render_mode='human',
+                           reward_type=reward_type, obs_type='vector', action_type='continuous',
+                           subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         else:
             print("Starting in headless mode")
             pygame.init()
             clock = pygame.time.Clock()
             pygame.font.init()
-            env = MAISREnv(env_config, None, render_mode='none')
+            env = MAISREnv(env_config, None, render_mode='none',
+                           reward_type=reward_type, obs_type='vector', action_type='continuous',
+                           subject_id=subject_id, user_group=user_group, round_number=round_number)
+
 
         agent0_id = env.num_ships  # Hack to dynamically get agent IDs
         agent0_policy = AutonomousPolicy(env, agent0_id)

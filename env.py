@@ -13,21 +13,25 @@ class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='none',agent_training=False,
-                 obs_type = 'vector', action_type = 'continuous', reward_type = 'normal',
+                 obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
                  subject_id='99',user_group='99',round_number='99'):
         """
         args:
-            render_mode: 'none', 'human
+            render_mode: 'none', 'human'
+            reward_type:
+                balanced-sparse: Points for IDing targets, weapons, and finishing early
+                balanced-dense: Variant 1 + penalty for damage + others
+                cautious-sparse: BS but very low reward for IDing weapons
+                aggressive-sparse: BS but very high reward for IDing weapons
 
         """
-
         super().__init__()
 
         if obs_type not in ['vector', 'cnn']:
             raise ValueError(f"obs_type must be one of 'vector,'cnn, got '{obs_type}'")
         if action_type not in ['discrete', 'continuous']:
             raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
-        if reward_type not in ['normal']:
+        if reward_type not in ['balanced-sparse']:
             raise ValueError('reward_type must be normal. Others coming soon')
 
         self.obs_type = obs_type
@@ -440,7 +444,7 @@ class MAISREnv(gym.Env):
 
 
     def get_reward(self, new_score):
-        if self.reward_type == 'normal': # Considers all the points
+        if self.reward_type == 'balanced-sparse': # Considers all the points
             reward = new_score - self.score
         else:
             raise ValueError('Unknown reward type')
