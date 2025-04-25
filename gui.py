@@ -42,7 +42,360 @@ class Button:
         return self.rect.collidepoint(pos)
 
 
-# TODO: Clean this up
+########################################################################################################################
+################################################     BUTTON HANDLER    #################################################
+########################################################################################################################
+
+
+class ButtonHandler:
+    def __init__(self, env, agent0_policy, game_logger=None, log_data=False):
+        self.env = env
+        self.agent0_policy = agent0_policy
+        self.game_logger = game_logger
+        self.log_data = log_data
+        self.gameplan_command_history = []
+
+    def handle_mouse_click(self, mouse_position, time_sec):
+        """Handle mouse clicks and button interactions"""
+        # Handle game area clicks
+        if self._is_in_game_area(mouse_position):
+            return self._handle_game_area_click(mouse_position, time_sec)
+
+        # Handle button clicks
+        elif self.env.target_id_button.is_clicked(mouse_position):
+            return self._handle_target_id_button(mouse_position, time_sec)
+        elif self.env.wez_id_button.is_clicked(mouse_position):
+            return self._handle_wez_id_button(mouse_position, time_sec)
+        elif self.env.hold_button.is_clicked(mouse_position):
+            return self._handle_hold_button(mouse_position, time_sec)
+        elif self.env.waypoint_button.is_clicked(mouse_position):
+            return self._handle_waypoint_button(mouse_position)
+        elif self.env.NW_quad_button.is_clicked(mouse_position) and not self.env.full_quad_button.is_clicked(
+                mouse_position):
+            return self._handle_nw_quad_button(mouse_position, time_sec)
+        elif self.env.NE_quad_button.is_clicked(mouse_position) and not self.env.full_quad_button.is_clicked(
+                mouse_position):
+            return self._handle_ne_quad_button(mouse_position, time_sec)
+        elif self.env.SW_quad_button.is_clicked(mouse_position) and not self.env.full_quad_button.is_clicked(
+                mouse_position):
+            return self._handle_sw_quad_button(mouse_position, time_sec)
+        elif self.env.SE_quad_button.is_clicked(mouse_position) and not self.env.full_quad_button.is_clicked(
+                mouse_position):
+            return self._handle_se_quad_button(mouse_position, time_sec)
+        elif self.env.full_quad_button.is_clicked(mouse_position):
+            return self._handle_full_quad_button(mouse_position, time_sec)
+        elif self.env.manual_priorities_button.is_clicked(mouse_position):
+            return self._handle_manual_priorities_button(mouse_position, time_sec)
+        elif self.env.autonomous_button.is_clicked(mouse_position):
+            return self._handle_autonomous_button(mouse_position, time_sec)
+
+        return None, None  # No action needed
+
+    def _is_in_game_area(self, mouse_position):
+        """Check if click is in the main game area"""
+        margin = self.env.config['gameboard border margin']
+        size = self.env.config['gameboard size']
+        return (margin < mouse_position[0] < size - margin and
+                margin < mouse_position[1] < size - margin)
+
+    def _handle_game_area_click(self, mouse_position, time_sec):
+        """Handle clicks in the main game area"""
+        if self.env.agent_waypoint_clicked:
+            if self.log_data:
+                self.game_logger.log_mouse_event(mouse_position, "waypoint override", self.env.display_time)
+                self.gameplan_command_history.append([time_sec, 'waypoint override', mouse_position])
+
+            self.env.comm_text = 'Moving to waypoint'
+            self.env.add_comm_message(self.env.comm_text, is_ai=True)
+
+            agent0_action = mouse_position
+            self.agent0_policy.waypoint_override = mouse_position
+
+            if self.agent0_policy.hold_commanded:
+                self.agent0_policy.hold_commanded = False
+                self.env.button_latch_dict['hold'] = False
+
+            self.env.agent_waypoint_clicked = False
+            self.env.button_latch_dict['waypoint'] = False
+
+            return (self.env.aircraft_ids[0], agent0_action), None
+        else:  # Set human waypoint
+            if self.log_data:
+                self.game_logger.log_mouse_event(mouse_position, "human waypoint", self.env.display_time)
+            return None, (self.env.aircraft_ids[-1], mouse_position)
+
+    def _handle_target_id_button(self, mouse_position, time_sec):
+        """Handle target ID button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "target id", self.env.display_time)
+
+        self.agent0_policy.search_type_override = 'target'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'target_id'])
+
+        self.env.button_latch_dict['target_id'] = True
+        if self.env.button_latch_dict['target_id']:
+            self.env.button_latch_dict['wez_id'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False  # target id and wez id policies are mutually exclusive
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Beginning target ID'
+        self.env.add_comm_message(self.env.comm_text)
+
+        return None, None
+
+    def _handle_wez_id_button(self, mouse_position, time_sec):
+        """Handle WEZ ID button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "wez id", self.env.display_time)
+
+        self.agent0_policy.search_type_override = 'wez'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'wez_id'])
+
+        self.env.button_latch_dict['wez_id'] = True
+        if self.env.button_latch_dict['wez_id']:
+            self.env.button_latch_dict['target_id'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False  # target id and wez id policies are mutually exclusive
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Beginning target+WEZ ID'
+        self.env.add_comm_message(self.env.comm_text)
+
+        return None, None
+
+    def _handle_hold_button(self, mouse_position, time_sec):
+        """Handle hold button click"""
+        if not self.agent0_policy.hold_commanded:
+            if self.log_data:
+                self.game_logger.log_mouse_event(mouse_position, "hold", self.env.display_time)
+
+            self.agent0_policy.hold_commanded = True
+            self.agent0_policy.waypoint_override = False
+            self.gameplan_command_history.append([time_sec, 'hold'])
+
+            self.env.button_latch_dict['hold'] = True
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.comm_text = 'Holding'
+        else:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.comm_text = 'Resuming search'
+            self.env.button_latch_dict['autonomous'] = True
+
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_waypoint_button(self, mouse_position):
+        """Handle waypoint button click"""
+        self.env.button_latch_dict['waypoint'] = True
+        self.env.agent_waypoint_clicked = True
+        return None, None
+
+    def _handle_nw_quad_button(self, mouse_position, time_sec):
+        """Handle NW quadrant button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "quadrant - NW", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'NW'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'NW'])
+
+        self.env.button_latch_dict['NW'] = True
+        if self.env.button_latch_dict['NW']:
+            self.env.button_latch_dict['NE'] = False
+            self.env.button_latch_dict['SE'] = False
+            self.env.button_latch_dict['SW'] = False
+            self.env.button_latch_dict['full'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Prioritizing NW quadrant'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_ne_quad_button(self, mouse_position, time_sec):
+        """Handle NE quadrant button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "quadrant - NE", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'NE'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'NE'])
+
+        self.env.button_latch_dict['NE'] = True
+        if self.env.button_latch_dict['NE']:
+            self.env.button_latch_dict['NW'] = False
+            self.env.button_latch_dict['SE'] = False
+            self.env.button_latch_dict['SW'] = False
+            self.env.button_latch_dict['full'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Prioritizing NE quadrant'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_sw_quad_button(self, mouse_position, time_sec):
+        """Handle SW quadrant button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "quadrant - SW", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'SW'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'SW'])
+
+        self.env.button_latch_dict['SW'] = True
+        if self.env.button_latch_dict['SW']:
+            self.env.button_latch_dict['NE'] = False
+            self.env.button_latch_dict['SE'] = False
+            self.env.button_latch_dict['NW'] = False
+            self.env.button_latch_dict['full'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Prioritizing SW quadrant'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_se_quad_button(self, mouse_position, time_sec):
+        """Handle SE quadrant button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "quadrant - SE", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'SE'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'SE'])
+
+        self.env.button_latch_dict['SE'] = True
+        if self.env.button_latch_dict['SE']:
+            self.env.button_latch_dict['NE'] = False
+            self.env.button_latch_dict['SW'] = False
+            self.env.button_latch_dict['NW'] = False
+            self.env.button_latch_dict['full'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Prioritizing SE quadrant'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_full_quad_button(self, mouse_position, time_sec):
+        """Handle full quadrant button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "quadrant - full", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'full'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'full'])
+
+        self.env.button_latch_dict['full'] = True
+        if self.env.button_latch_dict['full']:
+            self.env.button_latch_dict['NE'] = False
+            self.env.button_latch_dict['SW'] = False
+            self.env.button_latch_dict['NW'] = False
+            self.env.button_latch_dict['SE'] = False
+            self.env.button_latch_dict['autonomous'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Prioritizing full map'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def _handle_manual_priorities_button(self, mouse_position, time_sec):
+        """Handle manual priorities button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "manual priorities", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'none'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'manual_priorities'])
+
+        self.agent0_policy.search_type_override = 'none'
+        self.env.button_latch_dict['manual_priorities'] = True
+
+        if self.env.button_latch_dict['manual_priorities']:
+            self.env.button_latch_dict['autonomous'] = False
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        return None, None
+
+    def _handle_autonomous_button(self, mouse_position, time_sec):
+        """Handle autonomous button click"""
+        if self.log_data:
+            self.game_logger.log_mouse_event(mouse_position, "autonomous", self.env.display_time)
+
+        self.agent0_policy.search_quadrant_override = 'none'
+        self.agent0_policy.search_type_override = 'none'
+        self.agent0_policy.waypoint_override = False
+        self.gameplan_command_history.append([time_sec, 'autonomous'])
+
+        self.env.button_latch_dict['autonomous'] = True
+        if self.env.button_latch_dict['autonomous']:
+            self.env.button_latch_dict['NE'] = False
+            self.env.button_latch_dict['SW'] = False
+            self.env.button_latch_dict['NW'] = False
+            self.env.button_latch_dict['SE'] = False
+            self.env.button_latch_dict['full'] = False
+            self.env.button_latch_dict['hold'] = False
+            self.env.button_latch_dict['target_id'] = False
+            self.env.button_latch_dict['wez_id'] = False
+            self.env.button_latch_dict['manual_priorities'] = False
+
+        if self.agent0_policy.hold_commanded:
+            self.agent0_policy.hold_commanded = False
+            self.env.button_latch_dict['hold'] = False
+
+        self.env.comm_text = 'Beginning autonomous search'
+        self.env.add_comm_message(self.env.comm_text, is_ai=True)
+        return None, None
+
+    def get_command_history(self):
+        """Return the command history for logging"""
+        return self.gameplan_command_history
+
+########################################################################################################################
+###################################################   SCORE WINDOW   ###################################################
+########################################################################################################################
+
 class ScoreWindow:
     def __init__(self, score, x, y):
         self.rect = pygame.Rect(x,y,150,70)

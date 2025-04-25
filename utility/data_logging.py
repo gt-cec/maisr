@@ -40,6 +40,7 @@ class GameLogger:
                       'human_health': env.agents[env.human_idx].health_points,
                       'gameplan_command_history': gameplan_command_history,
                       'total_gameplan_commands': len(gameplan_command_history)}
+        print('[LOGGER] Final log saved')
         self._write_log_entry(final_data)
 
     def log_state(self, env, current_time, agent1_waypoint,agent_log_info):

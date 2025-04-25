@@ -1,17 +1,20 @@
 ################################################### FOR MANUAL SETUP ###################################################
 """Modify these variables if you want to run main.py directly instead of using run.bat"""
 
-# 1. Enter a subject_id:
+# Enter a subject_id:
 subject_id = '999' # Used to name log files, and passed into qualtrics survey metadata
 user_group = 'test' # 'test', 'control' 'card' 'in-situ'
 run_order = 1 # Int, 1,2,3, or 4
 round_number = '0' # String 0,1,2,3,4 (Used to start from a round other than 0, e.g. if you need to restart during a study.
 
+# SAGAT surveys
+surveys_enabled = True # TODO Should add this to the run.bat args too
+times = [65.0, 125.0, 185.0]
 
-# 2. Set whether to log data (run data will be saved to a json file in ./experiment_data)
+# Set whether to log data (run data will be saved to a json file in ./experiment_data)
 log_data = 'y' # 'y' or 'n' (string)
 
-# 3. Modify pygame render window parameters if needed
+# Modify pygame render window parameters if needed
 x = 235 #1680+235    # Pixel location of right edge of the pygame window. Default = 235 (renders in center of a 1920x1080 screen if gameboard is configured to 1450px)
 y = -3          # Pixel location of top edge of the pygame window
 
@@ -61,3 +64,4 @@ def get_ordered_configs(user_group, run_order):
 config_dict = {
     group: get_ordered_configs(group, run_order)
     for group in ['test', 'control', 'card', 'in-situ']}
+

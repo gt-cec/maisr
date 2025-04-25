@@ -143,9 +143,6 @@ class MAISREnv(gym.Env):
         self.show_agent_waypoint = self.config['show agent waypoint']
         self.agent_priorities = 'placeholder'
 
-        # SAGAT survey flags
-        self.survey1_launched, self.survey2_launched, self.survey3_launched = False, False, False
-
         # Calculate required height of agent status info
         self.agent_info_height_req = 0
         if self.config['show_low_level_goals']: self.agent_info_height_req += 1
@@ -377,7 +374,9 @@ class MAISREnv(gym.Env):
 
             if self.render_bool: pygame.time.wait(50)
 
-        return state, reward, done, {}
+        info = None
+
+        return state, reward, done, info
 
 
     def get_observation(self):
@@ -870,16 +869,6 @@ class MAISREnv(gym.Env):
                         self.total_pause_time += pause_duration
                         print('Paused for %s' % pause_duration)
                         return  # Exit the pause function
-
-    def SAGAT_survey(self,survey_index):
-        if survey_index == 1:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=1')
-        elif survey_index == 2:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=2')
-        elif survey_index == 3:
-            webbrowser.open_new_tab('https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6?subject_id='+str(self.subject_id)+'&scenario_number='+str(self.round_number)+'&user_group='+str(self.user_group)+'&survey_number=3')
-
-        self.pause(pygame.MOUSEBUTTONDOWN)
 
     def _render_game_complete(self):
         """Render the game complete screen with final statistics"""
