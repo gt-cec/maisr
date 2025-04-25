@@ -13,7 +13,7 @@ class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='none',
-                 agent_training=False, time_scale = 1,
+                 agent_training=False,
                  obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
                  subject_id='99',user_group='99',round_number='99'):
         """
@@ -36,13 +36,24 @@ class MAISREnv(gym.Env):
         if reward_type not in ['balanced-sparse']:
             raise ValueError('reward_type must be normal. Others coming soon')
 
+        self.config = config
+        self.verbose = True if self.config['verbose'] == 'true' else False
+
         self.obs_type = obs_type
         self.action_type = action_type
         self.reward_type = reward_type
-        self.time_scale = time_scale
+        #self.time_scale = time_scale
+
+
+
         self.agent_training = agent_training
 
-        self.config = config
+        self.subject_id = subject_id
+        self.round_number = round_number
+        self.user_group = user_group
+        self.human_training = True if (self.round_number == 0 and self.user_group != 'test') else False  # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+
+
         self.init = True # Used to render static windows the first time
 
         self.paused = False
@@ -100,7 +111,6 @@ class MAISREnv(gym.Env):
             raise ValueError("Obs type CNN not supported yet")
 
 
-
         # constants
         self.AGENT_BASE_DRAW_WIDTH = 10  # an agent scale unit of 1 draws this many pixels wide
         self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
@@ -121,15 +131,25 @@ class MAISREnv(gym.Env):
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
         self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
 
+        self.show_agent_waypoint = self.config['show agent waypoint']
+
+        # Set point quantities for each event
+        self.score = 0
+        self.all_targets_points = 0  # All targets ID'd
+        self.target_points = 10  # Each target ID'd
+        self.threat_points = 5  # Each threat ID'd
+        self.time_points = 15  # Points given per second remaining
+        self.human_hp_remaining_points = 70
+        self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
+        self.human_dead_points = -400  # Points subtracted for human dying
+
         if not agent_training:
             self.window = window
             self.clock = clock
             self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
 
-            self.subject_id = subject_id
-            self.round_number = round_number
-            self.user_group = user_group
-            self.human_training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+
+
             # Set GUI locations
             self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
             self.window_x = self.config["window size"][0]
@@ -158,15 +178,7 @@ class MAISREnv(gym.Env):
             self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
             self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
-            # Set point quantities for each event
-            self.score = 0
-            self.all_targets_points = 0  # All targets ID'd
-            self.target_points = 10  # Each target ID'd
-            self.threat_points = 5  # Each threat ID'd
-            self.time_points = 15  # Points given per second remaining
-            self.human_hp_remaining_points = 70
-            self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
-            self.human_dead_points = -400  # Points subtracted for human dying
+
 
             self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
             self.human_quadrant = None
@@ -200,7 +212,7 @@ class MAISREnv(gym.Env):
             self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
 
             # Situational-awareness based agent transparency config
-            self.show_agent_waypoint = self.config['show agent waypoint']
+
             self.agent_priorities = 'placeholder'
 
             # Calculate required height of agent status info
@@ -341,7 +353,7 @@ class MAISREnv(gym.Env):
                         self.identified_threat_types += 1
                         new_score += self.threat_points
 
-                    if self.config["verbose"]:
+                    if self.verbose:
                         print(f"Ship {ship_idx} observed by aircraft {aircraft_idx}")
 
                 # If threat not observed and in engagement range
@@ -354,7 +366,7 @@ class MAISREnv(gym.Env):
                     self.new_weapon_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'weapon_identified',
                                           ship_idx]
 
-                    if self.config["verbose"]:
+                    if self.verbose:
                         print(f"Ship {ship_idx} threat level identified by aircraft {aircraft_idx}")
                     break  # Once identified, break the inner loop
 
@@ -365,14 +377,13 @@ class MAISREnv(gym.Env):
                             if aircraft_idx == self.agent_idx:  # Agent damaged
                                 self.agents[aircraft_idx].health_points -= 1
                                 self.agents[aircraft_idx].draw_damage()
-                                print(f'Agent {aircraft_idx} -1 HP')
+                                if self.verbose: print(f'AI -1 HP')
                                 self.agents[aircraft_idx].damage = ((4 - self.agents[
                                     aircraft_idx].health_points) / 4) * 100
                             else:  # Human damaged
                                 self.agents[aircraft_idx].health_points -= 1
-                                print(f'Human -1 HP')
-                                self.agents[aircraft_idx].damage = ((4 - self.agents[
-                                    aircraft_idx].health_points) / 4) * 100
+                                if self.verbose: print(f'Human -1 HP')
+                                self.agents[aircraft_idx].damage = ((4 - self.agents[aircraft_idx].health_points) / 4) * 100
                                 self.damage_flash_start = pygame.time.get_ticks()
                                 self.damage_flash_alpha = 255
 
@@ -381,7 +392,7 @@ class MAISREnv(gym.Env):
                                 self.agents[aircraft_idx].damage = 100
                                 if self.config['infinite health'] == False:
                                     self.agents[aircraft_idx].alive = False
-                                    print(f'Aircraft {aircraft_idx} destroyed')
+                                    if self.verbose: print(f'Aircraft {aircraft_idx} destroyed')
                                     if self.human_training and aircraft_idx == self.human_idx:  # Respawn in training round
                                         agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,
                                                         color=self.AIRCRAFT_COLORS[1],
@@ -394,10 +405,10 @@ class MAISREnv(gym.Env):
         if not self.agents[self.agent_idx].alive and not self.agent0_dead:
             self.agent0_dead = True
             new_score += self.wingman_dead_points
-            print(f'{self.wingman_dead_points} points for agent wingman destruction')
+            if self.verbose: print(f'{self.wingman_dead_points} points for agent wingman destruction')
 
         # Progress update
-        if self.config["verbose"]:
+        if self.verbose:
             print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids),
                   "Damage:", self.damage)
 
@@ -440,7 +451,7 @@ class MAISREnv(gym.Env):
         info = {} # Additional info
 
         if self.agent_training:
-            self.display_time =+ (1000/60) * self.time_scale
+            self.display_time =+ (1000/60)
 
         elif not self.paused:
             current_time = pygame.time.get_ticks()
@@ -522,7 +533,7 @@ class MAISREnv(gym.Env):
                             self.identified_threat_types += 1
                             new_score += self.threat_points
 
-                        if self.config["verbose"]: print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
+                        if self.verbose: print("Ship {} observed by aircraft {}".format(agent.agent_idx, aircraft_id))
 
                     # if in the aircraft's engagement range, identify threat level
                     if not agent.observed_threat and (self.agents[aircraft_id].in_engagement_range(distance=dist)):# or agent.threat == 0):
@@ -532,7 +543,7 @@ class MAISREnv(gym.Env):
                         new_score += self.threat_points
                         self.new_weapon_id = ['human' if aircraft_id == self.human_idx else 'AI', 'weapon_identified', agent.agent_idx]
                         #print('new weapon id: ', self.new_weapon_id)
-                        if self.config["verbose"]: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
+                        if self.verbose: print("Ship {} threat level identified by aircraft {}".format(agent.agent_idx, aircraft_id))
                         break
 
                     # if in the ship's weapon range, damage the aircraft
@@ -540,15 +551,10 @@ class MAISREnv(gym.Env):
                         if self.agents[aircraft_id].alive:
                             if random.random() < self.agents[aircraft_id].prob_detect:
 
-                                # if self.missiles_enabled:
-                                #     agents.Missile(self, 0, max_health=10, color=(200, 0, 0),speed=self.config['game speed'] * self.config['human speed']*0.9,flight_pattern=self.config["search pattern"], target_aircraft_id=aircraft_id)
-                                #     self.agents[-1].x, self.agents[-1].y = agent.x, agent.y
-                                #     self.agents[-1].waypoint_override = (self.agents[aircraft_id].x, self.agents[aircraft_id].y)
-
                                 if aircraft_id == self.agent_idx: # agent damaged
                                     self.agents[aircraft_id].health_points -= 1
                                     self.agents[aircraft_id].draw_damage()
-                                    print(f'Agent {aircraft_id} -1 HP')
+                                    print(f'AI -1 HP')
                                     self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
 
                                 else: # Human damaged
@@ -562,10 +568,10 @@ class MAISREnv(gym.Env):
                                     self.agents[aircraft_id].damage = 100
                                     if self.config['infinite health'] == False:
                                         self.agents[aircraft_id].alive = False
-                                        print(f'Aircraft {aircraft_id} destroyed')
-                                        if self.human_training: # Respawn in training round
-                                            agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed'] * self.config['human speed'] * 1.1,flight_pattern=self.config["search pattern"])  # Human
-                                            self.human_idx += 1
+                                        print(f'{'human' if aircraft_id == self.human_idx else 'AI'} destroyed')
+                                        #if self.human_training: # Respawn in training round
+                                            #agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed'] * self.config['human speed'] * 1.1,flight_pattern=self.config["search pattern"])  # Human
+                                            #self.human_idx += 1
 
         # Check if the agent is recently deceased (RIP)
         if not self.agents[self.agent_idx].alive and not self.agent0_dead:
@@ -574,7 +580,7 @@ class MAISREnv(gym.Env):
             print(f'{self.wingman_dead_points} points for agent wingman destruction')
 
         # progress update
-        if self.config["verbose"]: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
+        if self.verbose: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
 
         # Update human's quadrant
         if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
@@ -585,13 +591,14 @@ class MAISREnv(gym.Env):
             else: self.human_quadrant = 'SE'
 
         # Check termination conditions
-        self.terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
+        #self.terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
+        self.terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.agent_idx].alive and not self.config['infinite health'] and not self.human_training)
+        # TODO make this more configurable. Either AI, human or both need to be alive
         self.truncated = (self.display_time / 1000 >= self.time_limit)
 
         if self.terminated or self.truncated:
-            #print('Done!')
 
-            new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
+            #new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
 
             if self.num_identified_ships >= self.num_ships: # Add points for finishing early
                 new_score += self.all_targets_points
@@ -604,35 +611,34 @@ class MAISREnv(gym.Env):
             # elif self.display_time/1000 >= self.time_limit:
             #     print('Out of time, game over.')
             #
-            # print(f'\nTargets identified: {self.identified_targets} / {self.total_targets} ({self.identified_targets * 10} points)')
-            # print(f'Threat levels identified: {self.identified_threat_types} / {self.total_targets} ({self.identified_threat_types * 5} points)')
-            # if self.num_identified_ships >= len(self.agents) - len(self.aircraft_ids):
-            #     print(f"All targets identified (+{self.all_targets_points} points)")
-            #     print(f"{round(self.config['time limit'] - self.display_time/1000,1)} * {self.time_points} = {round((self.config['time limit'] - self.display_time / 1000) * self.time_points,0)} points added for time remaining")
-            # print(f"Time remaining: {round(self.config['time limit'] - self.display_time/1000,1)} seconds")
-            # print(f"\nFinal score = {round(self.score,0)}")
+            print(f'\n FINAL SCORE {self.score} | {self.identified_targets} targets | {self.identified_threat_types} threats | {self.agents[self.agent_idx].health_points} HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
             if self.render_mode == 'human':
                 pygame.time.wait(50)
 
         # Calculate reward
-        if new_score > self.score:
-            print(f'New score this step: {new_score}')
         reward = self.get_reward(new_score) # TODO
+        #if reward > 0: print(f'Reward +{reward}')
         self.score += new_score
 
-        # Get observation
-        observation = self.get_observation()
+        observation = self.get_observation() # Get observation
+        info = {} # Additional info
 
-        # Additional info
-        info = {}
+        if self.agent_training:
+            self.display_time = self.display_time + (1000/60)
+
+        elif not self.paused:
+            current_time = pygame.time.get_ticks()
+            self.display_time = current_time - self.total_pause_time
 
         return observation, reward, self.terminated, self.truncated, info
 
 
     def get_reward(self, new_score):
         if self.reward_type == 'balanced-sparse': # Considers all the points
-            reward = new_score - self.score
+            reward = new_score
+            # TODO check this
+            #print(f'reward = {reward}')
         else:
             raise ValueError('Unknown reward type')
 
