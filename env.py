@@ -12,11 +12,13 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render_mode='none',agent_training=False,
+    def __init__(self, config={}, window=None, clock=None, render_mode='none',
+                 agent_training=False, time_scale = 1,
                  obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
                  subject_id='99',user_group='99',round_number='99'):
         """
         args:
+            time_scale: How much to scale time by
             render_mode: 'none', 'human'
             reward_type:
                 balanced-sparse: Points for IDing targets, weapons, and finishing early
@@ -37,172 +39,45 @@ class MAISREnv(gym.Env):
         self.obs_type = obs_type
         self.action_type = action_type
         self.reward_type = reward_type
-
-        self.config = config
-        self.window = window
-        self.clock = clock
-        self.init = True # Used to render static windows the first time
-        self.start_countdown_time = 5000 # How long in milliseconds to count down at the beginning of the game before it starts
-
-        self.subject_id = subject_id
-        self.round_number = round_number
-        self.user_group = user_group
-        self.training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+        self.time_scale = time_scale
         self.agent_training = agent_training
 
-        #self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
-        #self.config["window size"] = (int(self.BASE_WINDOW_WIDTH * self.scaling_ratio),
-            #int(self.BASE_WINDOW_HEIGHT * self.scaling_ratio))
-
-        # constants
-        self.AGENT_BASE_DRAW_WIDTH = 10  # an agent scale unit of 1 draws this many pixels wide
-        self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
-        self.AGENT_COLOR_OBSERVED = (128, 0, 128)  # purple
-        self.AGENT_COLOR_THREAT = (255, 0, 0)  # red
-        self.AGENT_THREAT_RADIUS = [0, 1.4, 2.5, 4]  # threat radius for each level
-
-        self.AIRCRAFT_NOSE_LENGTH = 10  # pixel length of aircraft nose (forward of wings)
-        self.AIRCRAFT_TAIL_LENGTH = 25  # pixel length of aircraft tail (behind wings)
-        self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
-        self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
-        self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
-        self.AIRCRAFT_ENGAGEMENT_RADIUS = 40 #100  # pixel width of aircraft engagement (to identify WEZ of threats)
-        self.AIRCRAFT_ISR_RADIUS = 85 #170  # pixel width of aircraft scanner (to identify hostile vs benign)
-
-        self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
-        self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
-        self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
-        self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
-
-        # Set GUI locations
-        self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
-        self.window_x = self.config["window size"][0]
-        self.window_y = self.config["window size"][1]
-        self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
-        self.comm_pane_edge = self.right_pane_edge
-        self.gameplan_button_width = 180
-        self.quadrant_button_height = 120
-        self.autonomous_button_y = 590
-
-        self.missiles_enabled = self.config['missiles_enabled']
-
-        # Initialize buttons
-        self.gameplan_button_color = (255, 120, 80)
-        self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
-        self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)  # (255, 120, 80))
-        self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
-        self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
-        self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
-        self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
-        self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
-        self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
-        self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
-        self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
-
-        # Advanced gameplans
-        #self.regroup_button = Button("REGROUP", self.right_pane_edge+15, self.autonomous_button_y-10,self.gameplan_button_width, 80)
-        #self.tag_team_button = Button("TAG TEAM", self.right_pane_edge + 30 + self.gameplan_button_width, self.autonomous_button_y-10,self.gameplan_button_width, 80)
-        #self.fan_out_button = Button("FAN OUT", 1230, 1035,self.gameplan_button_width, 50)
-
-        # Set point quantities for each event
-        self.score = 0
-        self.all_targets_points = 0  # All targets ID'd
-        self.target_points = 10  # Each target ID'd
-        self.threat_points = 5  # Each threat ID'd
-        self.time_points = 15  # Points given per second remaining
-        self.human_hp_remaining_points = 70
-        self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
-        self.human_dead_points = -400  # Points subtracted for human dying
+        self.config = config
+        self.init = True # Used to render static windows the first time
 
         self.paused = False
         self.unpause_countdown = False
-        self.new_target_id = None # Used to check if a new target has been ID'd so the data logger in main.py can log it
+        self.new_target_id = None  # Used to check if a new target has been ID'd so the data logger in main.py can log it
         self.new_weapon_id = None
 
-        self.agent0_dead = False # Used at end of loop to check if agent recently deceased.
+        self.agent0_dead = False  # Used at end of loop to check if agent recently deceased.
         self.agent1_dead = False
-        self.risk_level = 'LOW'
-        self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
-        self.regroup_clicked = False
-        self.tag_team_commanded = False
-        self.fan_out_commanded = False
 
-        self.human_quadrant = None
+        self.terminated = False
+        self.truncated = False
 
-        # Comm log
-        self.comm_messages = []
-        self.max_messages = 4
-        self.message_font = pygame.font.SysFont(None,30)
-        self.ai_color = self.AIRCRAFT_COLORS[0]
-        self.human_color = self.AIRCRAFT_COLORS[1]
-
-        # Target tally
-        self.identified_targets = 0
-        self.identified_threat_types = 0
-        self.tally_font = pygame.font.SysFont(None,28)
-
-        self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
-        self.pause_start_time = 0
-        self.total_pause_time = 0
-        self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
-        self.render_mode = render_mode
-        self.pause_font = pygame.font.SysFont(None, 74)
-        self.pause_subtitle_font = pygame.font.SysFont(None, 40)
-        self.done = False
         self.time_limit = self.config['time limit']
-
-        # For visual damage flash
-        self.damage_flash_duration = 500  # Duration of flash in milliseconds
-        self.damage_flash_start = 0  # When the last damage was taken
-        self.damage_flash_alpha = 0  # Current opacity of flash effect
-        self.agent_damage_flash_start = 0
-        self.agent_damage_flash_alpha = 0
-        self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
-
-        # Situational-awareness based agent transparency config
-        self.show_agent_waypoint = self.config['show agent waypoint']
-        self.agent_priorities = 'placeholder'
-
-        # Calculate required height of agent status info
-        self.agent_info_height_req = 0
-        if self.config['show_low_level_goals']: self.agent_info_height_req += 1
-        if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
-        if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
-
-        if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
-            self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
-
-        self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
         # set the random seed
         if "seed" in config:
-             random.seed(config["seed"])
+            random.seed(config["seed"])
         else:
-             print("Note: 'seed' is not in the env config, defaulting to 0.")
-             random.seed(0)
-
-        # check gameplay color config value
-        if "gameplay color" not in self.config:
-            print("Note: 'gameplay color' is not in the env config, defaulting to 'white'.")
+            print("Note: no 'seed' specified in the env config.")
+            # random.seed(0)
 
         # determine the number of ships
         self.num_ships = self.config['num ships']
         self.total_targets = self.num_ships
 
         self.agent_idx = self.num_ships
-        self.human_idx = self.num_ships + 1 # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
-
-        # check default search pattern
-        if "search pattern" not in config:
-            print("Note: 'search pattern' is not in the env config, defaulting to 'square'.")
-            self.config["search pattern"] = "square"
+        self.human_idx = self.num_ships + 1  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         # for ISR, action space is a waypoint (x,y)
         if self.action_type == 'continuous':
             self.action_space = gym.spaces.Dict({
                 'waypoint': gym.spaces.Box(
                     low=np.array([0, 0], dtype=np.float32),
-                    high=np.array([self.config['gameboard size'] , self.config['gameboard size'] ], dtype=np.float32),
+                    high=np.array([self.config['gameboard size'], self.config['gameboard size']], dtype=np.float32),
                     dtype=np.float32
                 ),
                 'id_method': gym.spaces.Discrete(3)  # 0: do nothing, 1: self ID, 2: ask human
@@ -221,12 +96,125 @@ class MAISREnv(gym.Env):
 
             self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
             self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)  # For target features
-        else: raise ValueError("Obs type CNN not supported yet")
+        else:
+            raise ValueError("Obs type CNN not supported yet")
+
+
+
+        # constants
+        self.AGENT_BASE_DRAW_WIDTH = 10  # an agent scale unit of 1 draws this many pixels wide
+        self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
+        self.AGENT_COLOR_OBSERVED = (128, 0, 128)  # purple
+        self.AGENT_COLOR_THREAT = (255, 0, 0)  # red
+        self.AGENT_THREAT_RADIUS = [0, 1.4, 2.5, 4]  # threat radius for each level
+
+        self.AIRCRAFT_NOSE_LENGTH = 10  # pixel length of aircraft nose (forward of wings)
+        self.AIRCRAFT_TAIL_LENGTH = 25  # pixel length of aircraft tail (behind wings)
+        self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
+        self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
+        self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
+        self.AIRCRAFT_ENGAGEMENT_RADIUS = 40  # 100  # pixel width of aircraft engagement (to identify WEZ of threats)
+        self.AIRCRAFT_ISR_RADIUS = 85  # 170  # pixel width of aircraft scanner (to identify hostile vs benign)
+
+        self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
+        self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
+        self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
+        self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80, 80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
+
+        if not agent_training:
+            self.window = window
+            self.clock = clock
+            self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
+
+            self.subject_id = subject_id
+            self.round_number = round_number
+            self.user_group = user_group
+            self.human_training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+            # Set GUI locations
+            self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
+            self.window_x = self.config["window size"][0]
+            self.window_y = self.config["window size"][1]
+            if render_mode == 'human':
+                self.window = pygame.display.set_mode((self.window_x, self.window_y))
+
+            self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
+            self.comm_pane_edge = self.right_pane_edge
+            self.gameplan_button_width = 180
+            self.quadrant_button_height = 120
+            self.autonomous_button_y = 590
+
+            self.missiles_enabled = self.config['missiles_enabled']
+
+            # Initialize buttons
+            self.gameplan_button_color = (255, 120, 80)
+            self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+            self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)  # (255, 120, 80))
+            self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
+            self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
+            self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
+            self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
+            self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
+            self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
+            self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+            self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
+
+            # Set point quantities for each event
+            self.score = 0
+            self.all_targets_points = 0  # All targets ID'd
+            self.target_points = 10  # Each target ID'd
+            self.threat_points = 5  # Each threat ID'd
+            self.time_points = 15  # Points given per second remaining
+            self.human_hp_remaining_points = 70
+            self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
+            self.human_dead_points = -400  # Points subtracted for human dying
+
+            self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
+            self.human_quadrant = None
+
+            # Comm log
+            self.comm_messages = []
+            self.max_messages = 4
+            self.message_font = pygame.font.SysFont(None,30)
+            self.ai_color = self.AIRCRAFT_COLORS[0]
+            self.human_color = self.AIRCRAFT_COLORS[1]
+
+            # Target tally
+            self.identified_targets = 0
+            self.identified_threat_types = 0
+            self.tally_font = pygame.font.SysFont(None,28)
+
+            self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
+            self.pause_start_time = 0
+            self.total_pause_time = 0
+            self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+            self.render_mode = render_mode
+            self.pause_font = pygame.font.SysFont(None, 74)
+            self.pause_subtitle_font = pygame.font.SysFont(None, 40)
+
+            # For visual damage flash
+            self.damage_flash_duration = 500  # Duration of flash in milliseconds
+            self.damage_flash_start = 0  # When the last damage was taken
+            self.damage_flash_alpha = 0  # Current opacity of flash effect
+            self.agent_damage_flash_start = 0
+            self.agent_damage_flash_alpha = 0
+            self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
+
+            # Situational-awareness based agent transparency config
+            self.show_agent_waypoint = self.config['show agent waypoint']
+            self.agent_priorities = 'placeholder'
+
+            # Calculate required height of agent status info
+            self.agent_info_height_req = 0
+            if self.config['show_low_level_goals']: self.agent_info_height_req += 1
+            if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
+            if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
+            if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
+                self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
+
+            self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
         self.reset()
 
-        if render_mode == 'human':
-            self.window = pygame.display.set_mode((self.window_x,self.window_y))
 
     def reset(self):
         self.agents = []
@@ -257,6 +245,209 @@ class MAISREnv(gym.Env):
 
         return self.get_state()
 
+    def step_vectorized(self, actions: list):
+        # TODO
+        """
+        args:
+            actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
+
+        returns:
+        """
+
+        new_score = 0
+
+        agent_action = None
+        human_action = None
+
+        for tup in actions:
+            if tup[0] == self.aircraft_ids[0]:
+                agent_action = tup[1]
+            elif tup[0] == self.human_idx:
+                human_action = tup[1]
+
+        if agent_action is None:
+            print(f'ERROR: ACTIONS LIST {actions}')
+            raise Exception(f'ERROR: Agent action not found in actions list')
+
+        if agent_action is not None:
+            waypoint = (float(agent_action['waypoint'][0]), float(agent_action['waypoint'][1]))
+            agent_action['waypoint'] = waypoint
+
+        id_method = agent_action['id_method']
+
+        # Put waypoints back into actions list
+        waypoint_queue = []
+        waypoint_queue.append((self.agent_idx, tuple(agent_action['waypoint'])))
+
+        if human_action is not None:
+            if human_action['waypoint'] is not None:
+                waypoint_queue.append((self.human_idx, tuple(human_action['waypoint'])))
+
+        if waypoint_queue is not None and waypoint_queue != []:
+            for action in waypoint_queue:  # handle each action (waypoint override) provided
+                agent = action[0]
+                waypoint = action[1]
+                self.agents[agent].waypoint_override = waypoint
+
+        # Move the agents
+        for agent in self.agents:
+            if agent.agent_class == "aircraft" and agent.alive:
+                agent.move()
+
+        # Vectorized ship-aircraft interactions section begins here
+        # --------------------------------------------------------
+
+        # Create arrays for ship and aircraft data
+        ship_indices = [i for i, agent in enumerate(self.agents) if agent.agent_class == "ship"]
+        aircraft_indices = self.aircraft_ids.copy()
+
+        # Extract positions
+        ship_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in ship_indices])
+        aircraft_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in aircraft_indices])
+
+        # Create arrays for ship properties
+        ship_observed = np.array([self.agents[i].observed for i in ship_indices])
+        ship_threat_level = np.array([self.agents[i].threat for i in ship_indices])
+        ship_observed_threat = np.array([self.agents[i].observed_threat for i in ship_indices])
+
+        # Create distance matrix between all ships and aircraft
+        # Shape: (num_ships, num_aircraft)
+        distances = np.zeros((len(ship_indices), len(aircraft_indices)))
+        for s_idx, ship_idx in enumerate(ship_indices):
+            for a_idx, aircraft_idx in enumerate(aircraft_indices):
+                distances[s_idx, a_idx] = math.hypot(
+                    self.agents[ship_idx].x - self.agents[aircraft_idx].x,
+                    self.agents[ship_idx].y - self.agents[aircraft_idx].y
+                )
+
+        # Process ISR (observation) interactions
+        for s_idx, ship_idx in enumerate(ship_indices):
+            for a_idx, aircraft_idx in enumerate(aircraft_indices):
+                # Get the current distance
+                dist = distances[s_idx, a_idx]
+
+                # If ship not observed and in ISR range
+                if not self.agents[ship_idx].observed and self.agents[aircraft_idx].in_isr_range(distance=dist):
+                    self.agents[ship_idx].observed = True
+                    self.new_target_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'target_identified',
+                                          ship_idx]
+                    self.identified_targets += 1
+                    new_score += self.target_points
+
+                    # If it's a neutral ship, auto-identify threat level
+                    if self.agents[ship_idx].threat == 0:
+                        self.agents[ship_idx].observed_threat = True
+                        self.num_identified_ships += 1
+                        self.identified_threat_types += 1
+                        new_score += self.threat_points
+
+                    if self.config["verbose"]:
+                        print(f"Ship {ship_idx} observed by aircraft {aircraft_idx}")
+
+                # If threat not observed and in engagement range
+                if not self.agents[ship_idx].observed_threat and self.agents[aircraft_idx].in_engagement_range(
+                        distance=dist):
+                    self.agents[ship_idx].observed_threat = True
+                    self.num_identified_ships += 1
+                    self.identified_threat_types += 1
+                    new_score += self.threat_points
+                    self.new_weapon_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'weapon_identified',
+                                          ship_idx]
+
+                    if self.config["verbose"]:
+                        print(f"Ship {ship_idx} threat level identified by aircraft {aircraft_idx}")
+                    break  # Once identified, break the inner loop
+
+                # Check damage from ship weapons
+                if self.agents[ship_idx].in_weapon_range(distance=dist) and self.agents[ship_idx].threat > 0:
+                    if self.agents[aircraft_idx].alive:
+                        if random.random() < self.agents[aircraft_idx].prob_detect:
+                            if aircraft_idx == self.agent_idx:  # Agent damaged
+                                self.agents[aircraft_idx].health_points -= 1
+                                self.agents[aircraft_idx].draw_damage()
+                                print(f'Agent {aircraft_idx} -1 HP')
+                                self.agents[aircraft_idx].damage = ((4 - self.agents[
+                                    aircraft_idx].health_points) / 4) * 100
+                            else:  # Human damaged
+                                self.agents[aircraft_idx].health_points -= 1
+                                print(f'Human -1 HP')
+                                self.agents[aircraft_idx].damage = ((4 - self.agents[
+                                    aircraft_idx].health_points) / 4) * 100
+                                self.damage_flash_start = pygame.time.get_ticks()
+                                self.damage_flash_alpha = 255
+
+                            # Check if aircraft destroyed
+                            if self.agents[aircraft_idx].health_points <= 0:
+                                self.agents[aircraft_idx].damage = 100
+                                if self.config['infinite health'] == False:
+                                    self.agents[aircraft_idx].alive = False
+                                    print(f'Aircraft {aircraft_idx} destroyed')
+                                    if self.human_training and aircraft_idx == self.human_idx:  # Respawn in training round
+                                        agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,
+                                                        color=self.AIRCRAFT_COLORS[1],
+                                                        speed=self.config['game speed'] * self.config[
+                                                            'human speed'] * 1.1,
+                                                        flight_pattern=self.config["search pattern"])
+                                        self.human_idx += 1
+
+        # Check if the agent is recently deceased (RIP)
+        if not self.agents[self.agent_idx].alive and not self.agent0_dead:
+            self.agent0_dead = True
+            new_score += self.wingman_dead_points
+            print(f'{self.wingman_dead_points} points for agent wingman destruction')
+
+        # Progress update
+        if self.config["verbose"]:
+            print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids),
+                  "Damage:", self.damage)
+
+        # Update human's quadrant
+        if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
+            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+                self.human_quadrant = 'NW'
+            else:
+                self.human_quadrant = 'SW'
+        else:
+            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+                self.human_quadrant = 'NE'
+            else:
+                self.human_quadrant = 'SE'
+
+        # Check termination conditions
+        self.terminated = (self.num_identified_ships >= self.num_ships) or (
+                    not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
+        self.truncated = (self.display_time / 1000 >= self.time_limit)
+
+        if self.terminated or self.truncated:
+            new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points
+
+            if self.num_identified_ships >= self.num_ships:  # Add points for finishing early
+                new_score += self.all_targets_points
+                new_score += (self.time_limit - self.display_time / 1000) * self.time_points
+            elif not self.agents[self.human_idx].alive:
+                new_score += self.human_dead_points
+
+            if hasattr(self, 'render_mode') and self.render_mode == 'human':
+                pygame.time.wait(50)
+
+        # Calculate reward
+        if new_score > self.score:
+            print(f'New score this step: {new_score}')
+        reward = self.get_reward(new_score)
+        self.score += new_score
+
+        observation = self.get_observation() # Get observation
+        info = {} # Additional info
+
+        if self.agent_training:
+            self.display_time =+ (1000/60) * self.time_scale
+
+        elif not self.paused:
+            current_time = pygame.time.get_ticks()
+            self.display_time = current_time - self.total_pause_time
+
+        return observation, reward, self.terminated, self.truncated, info
+
     def step(self, actions:list):
         """
         args:
@@ -266,7 +457,6 @@ class MAISREnv(gym.Env):
         """
 
         # TODO implement vectorized update positions and process-interactions methods at bottom
-
         new_score = 0
 
         agent_action = None
@@ -299,10 +489,6 @@ class MAISREnv(gym.Env):
         if human_action is not None:
             if human_action['waypoint'] is not None:
                 waypoint_queue.append((self.human_idx, tuple(human_action['waypoint'])))
-        #else:
-            #print('(ENV.STEP) human action none, skipping')
-
-        #self.agents[self.agent_idx].regroup_clicked = self.regroup_clicked TODO move into autonomous_policy (and rename that to rulebasedpolicy
 
         if waypoint_queue is not None and waypoint_queue != []:
             for action in waypoint_queue:  # handle each action (waypoint override) provided
@@ -377,7 +563,7 @@ class MAISREnv(gym.Env):
                                     if self.config['infinite health'] == False:
                                         self.agents[aircraft_id].alive = False
                                         print(f'Aircraft {aircraft_id} destroyed')
-                                        if self.training: # Respawn in training round
+                                        if self.human_training: # Respawn in training round
                                             agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed'] * self.config['human speed'] * 1.1,flight_pattern=self.config["search pattern"])  # Human
                                             self.human_idx += 1
 
@@ -399,11 +585,10 @@ class MAISREnv(gym.Env):
             else: self.human_quadrant = 'SE'
 
         # Check termination conditions
-        terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.training)
-        truncated = (self.display_time / 1000 >= self.time_limit)
+        self.terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
+        self.truncated = (self.display_time / 1000 >= self.time_limit)
 
-        if terminated or truncated:
-            self.done = True # TODO REMOVE
+        if self.terminated or self.truncated:
             #print('Done!')
 
             new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
@@ -442,7 +627,7 @@ class MAISREnv(gym.Env):
         # Additional info
         info = {}
 
-        return observation, reward, terminated, truncated, info
+        return observation, reward, self.terminated, self.truncated, info
 
 
     def get_reward(self, new_score):
@@ -686,8 +871,6 @@ class MAISREnv(gym.Env):
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
-        #pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard size"] // 2, 0), (self.config["gameboard size"] // 2, self.config["gameboard size"]), 2)
-        #pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard size"] // 2), (self.config["gameboard size"], self.config["gameboard size"] // 2), 2)
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
@@ -895,8 +1078,8 @@ class MAISREnv(gym.Env):
         agent1_health_window.draw(self.window)
 
         current_time = pygame.time.get_ticks()
-        if not self.paused:
-            self.display_time = current_time - self.total_pause_time
+        # if not self.paused:
+        #     self.display_time = current_time - self.total_pause_time
 
         if current_time > self.start_countdown_time:
             self.time_window.update(self.display_time)
@@ -971,7 +1154,7 @@ class MAISREnv(gym.Env):
             self.window.blit(pause_text, text_rect)
             self.window.blit(pause_subtext, pause_sub_rect)
 
-        if self.done:
+        if self.terminated or self.truncated:
             self._render_game_complete()
 
         pygame.display.update()
@@ -1356,13 +1539,13 @@ class MAISREnv(gym.Env):
                             if aircraft.agent_idx == self.agent_idx:
                                 # Agent damage
                                 aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
-                                if self.render_bool:
+                                if self.render_mode:
                                     self.agent_damage_flash_start = pygame.time.get_ticks() if pygame.get_init() else 0
                                     self.agent_damage_flash_alpha = 255
                             else:
                                 # Human damage
                                 aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
-                                if self.render_bool:
+                                if self.render_mode:
                                     self.damage_flash_start = pygame.time.get_ticks() if pygame.get_init() else 0
                                     self.damage_flash_alpha = 255
 

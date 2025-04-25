@@ -85,7 +85,7 @@ class GameLogger:
                     state_data['game_state']['aircraft'].append(aircraft_data)
 
             self._write_log_entry(state_data)
-            print('Game state logged')
+            #print('Game state logged')
             self.last_state_log_time = current_time
 
     def log_mouse_event(self, event_pos, event_type, timestamp):
