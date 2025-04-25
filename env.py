@@ -180,9 +180,10 @@ class MAISREnv(gym.Env):
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
 
         # for ISR, observation space is the gameboard state
+        self.obs_size = 13 + 11 + 7*self.num_ships
         self.observation_space = gym.spaces.Box(low=0,high=1,shape=(505,),dtype=np.float32)
-        self.observation = np.zeros(444, dtype=np.float32)
-        self.target_data = np.zeros((self.num_ships, 8), dtype=np.float32)  # For target features
+        self.observation = np.zeros(self.obs_size, dtype=np.float32)
+        self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)  # For target features
 
         self.reset()
 
@@ -421,6 +422,9 @@ class MAISREnv(gym.Env):
             threats_remaining       # normalized (0-1)
         """
         pass
+        #num_features = 13 + 11 + 7*self.num_ships
+        #self.observation =
+
         self.observation[0] = self.agents[self.num_ships].health_points / 10.0  # Agent health
         self.observation[1] = self.agents[self.num_ships].x / self.config["gameboard size"] # Agent x
         self.observation[2] = self.agents[self.num_ships].y / self.config["gameboard size"] # Agent y
