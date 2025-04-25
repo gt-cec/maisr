@@ -184,7 +184,7 @@ if __name__ == "__main__":
                         hold_commanded = True
 
                     if human_action and new_human_action:
-                        print(f'MAIN: HUMAN {(env.aircraft_ids[1],human_action)}')
+                        #print(f'MAIN: HUMAN {(env.aircraft_ids[1],human_action)}')
                         actions.append((env.human_idx,human_action))
                         agent1_waypoint = human_action
                         new_human_action = False
@@ -192,7 +192,7 @@ if __name__ == "__main__":
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
             if not hold_commanded:
                 agent_action = agent0_policy.act()  # Calculate agent's action
-                print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+                #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
                 actions.append((env.aircraft_ids[0], agent_action))
                 hold_commanded = False
 

@@ -523,11 +523,36 @@ class MAISREnv(gym.Env):
             target_start_idx = 13
             self.observation[target_start_idx:target_start_idx + self.num_ships * 7] = self.target_data.flatten()         # Copy target data into observation vector
 
+        if self.init:
+            print("Observation vector explanation:")
+            print(f"[0] Agent health: {self.observation[0]}")
+            print(f"[1] Agent x position: {self.observation[1]}")
+            print(f"[2] Agent y position: {self.observation[2]}")
+            print(f"[3] Agent alive status: {self.observation[3]}")
+            print(f"[4] Agent waypoint x: {self.observation[4]}")
+            print(f"[5] Agent waypoint y: {self.observation[5]}")
+            print(f"[6] Teammate health: {self.observation[6]}")
+            print(f"[7] Teammate x position: {self.observation[7]}")
+            print(f"[8] Teammate y position: {self.observation[8]}")
+            print(f"[9] Teammate waypoint x: {self.observation[9]}")
+            print(f"[10] Teammate waypoint y: {self.observation[10]}")
+            print(f"[11] Teammate alive status: {self.observation[11]}")
+            print(f"[12] Time remaining normalized: {self.observation[12]}")
+
+            # Print target data
+            for i in range(1):
+                base_idx = 13 + i * 7
+                print(f"\nTarget {i} data:")
+                print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
+                print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
+                print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
+                print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
+                print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
+                print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
+                print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
+
         elif self.obs_type == 'cnn':
             raise ValueError('CNN Obs type not supported yet')
-
-        else:
-            raise ValueError('Unknown observation type')
 
         # ######## Handcrafted features (last 11 features) ########
         # feature_start_idx = target_start_idx + self.num_ships * 7
@@ -609,6 +634,8 @@ class MAISREnv(gym.Env):
         #
         # self.observation[feature_start_idx + 9] = targets_remaining / self.num_ships
         # self.observation[feature_start_idx + 10] = threats_remaining / self.num_ships
+
+
 
         return self.observation
 
