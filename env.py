@@ -265,6 +265,8 @@ class MAISREnv(gym.Env):
         returns:
         """
 
+        # TODO implement vectorized update positions and process-interactions methods at bottom
+
         new_score = 0
 
         agent_action = None
@@ -1179,3 +1181,199 @@ class MAISREnv(gym.Env):
 
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
+
+
+###################################################################################################
+############################################# TESTING #############################################
+###################################################################################################
+
+    def _update_positions(self, agent_actions):
+        """
+        Update agent positions based on actions in a vectorized manner.
+
+        Args:
+            agent_actions: Dictionary mapping agent_id to action dict
+        """
+        # Extract all aircraft agents
+        aircraft_agents = [agent for agent in self.agents if agent.agent_class == "aircraft"]
+        n_aircraft = len(aircraft_agents)
+
+        # Create arrays for current positions and waypoints
+        positions = np.zeros((n_aircraft, 2), dtype=np.float32)
+        waypoints = np.zeros((n_aircraft, 2), dtype=np.float32)
+        speeds = np.zeros(n_aircraft, dtype=np.float32)
+        alive_mask = np.ones(n_aircraft, dtype=bool)
+
+        # Fill arrays with data
+        for i, agent in enumerate(aircraft_agents):
+            positions[i] = [agent.x, agent.y]
+
+            # Get waypoint from action or use current waypoint
+            if agent.agent_idx in agent_actions:
+                waypoint = agent_actions[agent.agent_idx]['waypoint']
+                agent.waypoint_override = waypoint
+
+            if agent.waypoint_override is not None:
+                waypoints[i] = agent.waypoint_override
+            elif agent.target_point is not None:
+                waypoints[i] = agent.target_point
+            else:
+                waypoints[i] = positions[i]  # Default to current position
+
+            speeds[i] = agent.speed
+            alive_mask[i] = agent.alive
+
+        # Calculate direction vectors and distances
+        directions = waypoints - positions
+        distances = np.linalg.norm(directions, axis=1)
+
+        # Normalize direction vectors where distance > 0
+        mask = distances > 0
+        if np.any(mask):
+            directions[mask] = directions[mask] / distances[mask, np.newaxis]
+
+        # Calculate new positions
+        move_mask = (distances > speeds) & alive_mask
+        new_positions = positions.copy()
+        new_positions[move_mask] += directions[move_mask] * speeds[move_mask, np.newaxis]
+        new_positions[~move_mask & alive_mask] = waypoints[~move_mask & alive_mask]
+
+        # Update agent objects with new positions
+        for i, agent in enumerate(aircraft_agents):
+            if alive_mask[i]:
+                agent.x, agent.y = new_positions[i]
+
+                # Calculate direction (angle) for rendering
+                if mask[i]:  # If there's a valid direction
+                    agent.direction = np.arctan2(directions[i, 1], directions[i, 0])
+
+                # Clear waypoint override if reached
+                if distances[i] <= speeds[i] and agent.waypoint_override is not None:
+                    agent.waypoint_override = None
+
+        # Also update ship positions if needed
+        for agent in self.agents:
+            if agent.agent_class == "ship" and agent.speed > 0:
+                # Ships have simpler movement logic, can be handled individually
+                agent.move()
+
+
+    def _process_interactions(self):
+        """
+        Process all interactions between agents in a vectorized way.
+        Returns new score from the interactions.
+        """
+        new_score = 0
+
+        # Extract all aircraft and ships
+        aircrafts = np.array([agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive])
+        ships = np.array([agent for agent in self.agents if agent.agent_class == "ship"])
+
+        if len(aircrafts) == 0 or len(ships) == 0:
+            return new_score
+
+        # Create position arrays
+        aircraft_positions = np.array([[a.x, a.y] for a in aircrafts])
+        ship_positions = np.array([[s.x, s.y] for s in ships])
+
+        # Create arrays for ship properties
+        observed = np.array([s.observed for s in ships])
+        observed_threat = np.array([s.observed_threat for s in ships])
+        threat_levels = np.array([s.threat for s in ships])
+
+        # Calculate pairwise distances between all aircraft and ships
+        # This creates a matrix of shape (n_aircraft, n_ships)
+        distances = np.sqrt(
+            ((aircraft_positions[:, np.newaxis, :] - ship_positions[np.newaxis, :, :]) ** 2).sum(axis=2))
+
+        # Process ISR detection (observation)
+        for i, aircraft in enumerate(aircrafts):
+            # Get ISR range for this aircraft
+            isr_range = self.AIRCRAFT_ISR_RADIUS
+
+            # Find all ships within ISR range that aren't observed yet
+            in_isr_range = (distances[i] <= isr_range) & ~observed
+            newly_observed = np.where(in_isr_range)[0]
+
+            for ship_idx in newly_observed:
+                ship = ships[ship_idx]
+                ship.observed = True
+                self.identified_targets += 1
+                new_score += self.target_points
+
+                # Log which agent detected the target
+                self.new_target_id = [
+                    'human' if aircraft.agent_idx == self.human_idx else 'AI',
+                    'target_identified',
+                    ship.agent_idx
+                ]
+
+                # If target is neutral (threat=0), automatically ID threat too
+                if ship.threat == 0:
+                    ship.observed_threat = True
+                    self.num_identified_ships += 1
+                    self.identified_threat_types += 1
+                    new_score += self.threat_points
+
+        # Process engagement detection (threat identification)
+        for i, aircraft in enumerate(aircrafts):
+            # Get engagement range for this aircraft
+            engagement_range = self.AIRCRAFT_ENGAGEMENT_RADIUS
+
+            # Find all ships within engagement range that aren't threat-observed yet
+            in_engagement_range = (distances[i] <= engagement_range) & ~observed_threat
+            newly_identified = np.where(in_engagement_range)[0]
+
+            for ship_idx in newly_identified:
+                ship = ships[ship_idx]
+                ship.observed_threat = True
+                self.num_identified_ships += 1
+                self.identified_threat_types += 1
+                new_score += self.threat_points
+
+                # Log which agent identified the threat
+                self.new_weapon_id = [
+                    'human' if aircraft.agent_idx == self.human_idx else 'AI',
+                    'weapon_identified',
+                    ship.agent_idx
+                ]
+
+        # Process damage to aircraft from hostile ships
+        for i, aircraft in enumerate(aircrafts):
+            # Calculate which ships can damage this aircraft
+            for j, ship in enumerate(ships):
+                if ship.threat > 0:  # Only hostile ships can cause damage
+                    # Calculate threat range for this ship
+                    threat_range = self.AGENT_BASE_DRAW_WIDTH * self.AGENT_THREAT_RADIUS[ship.threat]
+
+                    # Check if aircraft is in threat range
+                    if distances[i, j] <= threat_range:
+                        # Apply probabilistic damage
+                        if np.random.random() < aircraft.prob_detect:
+                            aircraft.health_points -= 1
+
+                            # Track which aircraft was damaged
+                            if aircraft.agent_idx == self.agent_idx:
+                                # Agent damage
+                                aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
+                                if self.render_bool:
+                                    self.agent_damage_flash_start = pygame.time.get_ticks() if pygame.get_init() else 0
+                                    self.agent_damage_flash_alpha = 255
+                            else:
+                                # Human damage
+                                aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
+                                if self.render_bool:
+                                    self.damage_flash_start = pygame.time.get_ticks() if pygame.get_init() else 0
+                                    self.damage_flash_alpha = 255
+
+                            # Check if aircraft is destroyed
+                            if aircraft.health_points <= 0 and not self.config['infinite_health']:
+                                aircraft.damage = 100
+                                aircraft.alive = False
+
+                                # Handle aircraft destruction
+                                if aircraft.agent_idx == self.agent_idx and not self.agent0_dead:
+                                    self.agent0_dead = True
+                                    new_score += self.wingman_dead_points
+
+        return new_score

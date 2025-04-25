@@ -145,21 +145,8 @@ if __name__ == "__main__":
         hold_commanded = False
 
         while not (terminated or truncated):  # main game loop
-            if surveys_enabled: sagat.check() # Check if it's time to launch a SAGAT survey
-
-            # agent_log_info = {
-            #     'waypoint':agent_action['waypoint'], 'search type': agent0_policy.search_type, 'search area': agent0_policy.search_quadrant,
-            #     'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',}
-            #
-            # if log_data:
-            #     game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-            #     if env.new_target_id:
-            #         game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
-            #         env.new_target_id = None
-            #
-            #     if env.new_weapon_id:
-            #         game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
-            #         env.new_weapon_id = None
+            if surveys_enabled:
+                sagat.check() # Check if it's time to launch a SAGAT survey
 
             # Handle agent actions (from autonomous_policy)
             actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
