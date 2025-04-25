@@ -1,6 +1,5 @@
-import gym
+import gymnasium as gym
 import numpy as np
-#from numpy.random.mtrand import get_state
 import pygame
 import random
 import agents
@@ -13,8 +12,17 @@ import webbrowser
 class MAISREnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render=False,agent_training=False,subject_id='99',user_group='99',round_number='99'):
+    def __init__(self, config={}, window=None, clock=None, render=False,agent_training=False,
+                 obs_type = 'vector', action_type = 'continuous',
+                 subject_id='99',user_group='99',round_number='99'):
+
         super().__init__()
+
+        if obs_type not in ['vector', 'cnn']: raise ValueError(f"obs_type must be one of 'vector,'cnn, got '{obs_type}'")
+        if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
+
+        self.obs_type = obs_type
+        self.action_type = action_type
 
         self.config = config
         self.window = window
@@ -27,8 +35,6 @@ class MAISREnv(gym.Env):
         self.user_group = user_group
         self.training = True if (self.round_number == 0 and user_group != 'test') else False # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
         self.agent_training = agent_training
-        #print(self.round_number)
-        #print(self.training)
 
         #self.config["gameboard size"] = int(self.BASE_GAMEBOARD_SIZE * self.scaling_ratio)
         #self.config["window size"] = (int(self.BASE_WINDOW_WIDTH * self.scaling_ratio),
@@ -179,26 +185,30 @@ class MAISREnv(gym.Env):
             self.config["search pattern"] = "square"
 
         # for ISR, action space is a waypoint (x,y)
-        self.action_space = gym.spaces.Dict({
-            'waypoint': gym.spaces.Box(
-                low=np.array([0, 0], dtype=np.float32),
-                high=np.array([self.config['gameboard size'] , self.config['gameboard size'] ], dtype=np.float32),
-                dtype=np.float32
-            ),
-            'id_method': gym.spaces.Discrete(3)  # 0: do nothing, 1: self ID, 2: ask human
-        })
+        if self.action_type == 'continuous':
+            self.action_space = gym.spaces.Dict({
+                'waypoint': gym.spaces.Box(
+                    low=np.array([0, 0], dtype=np.float32),
+                    high=np.array([self.config['gameboard size'] , self.config['gameboard size'] ], dtype=np.float32),
+                    dtype=np.float32
+                ),
+                'id_method': gym.spaces.Discrete(3)  # 0: do nothing, 1: self ID, 2: ask human
+            })
+        else:
+            raise ValueError("Action type discrete not supported yet")
 
         # for ISR, observation space is the gameboard state
         self.num_obs_features = 13 + 11 + 7 * self.num_ships
 
-        self.observation_space = gym.spaces.Box(
-            low=0,
-            high=1,
-            shape=(self.num_obs_features,),  # Wrap in tuple to make it iterable
-            dtype=np.float32)
+        if self.obs_type == 'vector':
+            self.observation_space = gym.spaces.Box(
+                low=0, high=1,
+                shape=(self.num_obs_features,),  # Wrap in tuple to make it iterable
+                dtype=np.float32)
 
-        self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
-        self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)  # For target features
+            self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
+            self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)  # For target features
+        else: raise ValueError("Obs type CNN not supported yet")
 
         self.reset()
 
@@ -461,56 +471,63 @@ class MAISREnv(gym.Env):
             threats_remaining       # normalized (0-1)
         """
 
-        self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
+        if self.obs_type == 'vector':
+            self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
 
-        self.observation[0] = self.agents[self.agent_idx].health_points / 10.0  # Agent health
-        self.observation[1] = self.agents[self.agent_idx].x / self.config["gameboard size"] # Agent x
-        self.observation[2] = self.agents[self.agent_idx].y / self.config["gameboard size"] # Agent y
-        self.observation[3] = 1.0 if self.agents[self.num_ships].alive else 0.0  # Agent alive status
+            self.observation[0] = self.agents[self.agent_idx].health_points / 10.0  # Agent health
+            self.observation[1] = self.agents[self.agent_idx].x / self.config["gameboard size"] # Agent x
+            self.observation[2] = self.agents[self.agent_idx].y / self.config["gameboard size"] # Agent y
+            self.observation[3] = 1.0 if self.agents[self.num_ships].alive else 0.0  # Agent alive status
 
-        if self.agents[self.agent_idx].target_point is not None:
-            self.observation[4] = self.agents[self.agent_idx].target_point[0] / self.config["gameboard size"]
-            self.observation[5] = self.agents[self.agent_idx].target_point[1] / self.config["gameboard size"]
+            if self.agents[self.agent_idx].target_point is not None:
+                self.observation[4] = self.agents[self.agent_idx].target_point[0] / self.config["gameboard size"]
+                self.observation[5] = self.agents[self.agent_idx].target_point[1] / self.config["gameboard size"]
+            else:
+                self.observation[4] = self.observation[1]  # Default to current position
+                self.observation[5] = self.observation[2]
+
+            self.observation[6] = self.agents[self.human_idx].health_points / 10.0  # Teammate health
+            self.observation[7] = self.agents[self.human_idx].x / self.config["gameboard size"]  # Teammate x
+            self.observation[8] = self.agents[self.human_idx].y / self.config["gameboard size"]  # Teammate y
+
+            # Teammate waypoint
+            if self.agents[self.human_idx].target_point is not None:
+                self.observation[9] = self.agents[self.human_idx].target_point[0] / self.config["gameboard size"]
+                self.observation[10] = self.agents[self.human_idx].target_point[1] / self.config["gameboard size"]
+            else:
+                self.observation[9] = self.observation[7]  # Default to current position
+                self.observation[10] = self.observation[8]
+
+            self.observation[11] = 1.0 if self.agents[self.human_idx].alive else 0.0  # Teammate alive status
+
+            self.observation[12] = (self.time_limit - self.display_time / 1000) / self.time_limit # Time remaining
+
+            # Process all ship targets
+            self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)
+            target_idx = 0
+            for agent_idx, agent in enumerate(self.agents):
+                if agent.agent_class == "ship":
+                    # Normalized position
+                    self.target_data[target_idx, 0] = agent.x / self.config["gameboard size"]
+                    self.target_data[target_idx, 1] = agent.y / self.config["gameboard size"]
+                    # One-hot encoding of target identity
+                    self.target_data[target_idx, 2] = 1.0 if not agent.observed else 0.0  # unknown
+                    self.target_data[target_idx, 3] = 1.0 if agent.observed and agent.threat == 0 else 0.0  # friendly
+                    self.target_data[target_idx, 4] = 1.0 if agent.observed and agent.threat > 0 else 0.0  # hostile
+                    # Threat status
+                    self.target_data[target_idx, 5] = 0.0 if agent.observed_threat else 1.0  # threat unknown
+                    # Normalized threat level
+                    self.target_data[target_idx, 6] = agent.threat / 3.0 if agent.observed_threat else 0.0
+                    target_idx += 1
+
+            target_start_idx = 13
+            self.observation[target_start_idx:target_start_idx + self.num_ships * 7] = self.target_data.flatten()         # Copy target data into observation vector
+
+        elif self.obs_type == 'cnn':
+            raise ValueError('CNN Obs type not supported yet')
+
         else:
-            self.observation[4] = self.observation[1]  # Default to current position
-            self.observation[5] = self.observation[2]
-
-        self.observation[6] = self.agents[self.human_idx].health_points / 10.0  # Teammate health
-        self.observation[7] = self.agents[self.human_idx].x / self.config["gameboard size"]  # Teammate x
-        self.observation[8] = self.agents[self.human_idx].y / self.config["gameboard size"]  # Teammate y
-
-        # Teammate waypoint
-        if self.agents[self.human_idx].target_point is not None:
-            self.observation[9] = self.agents[self.human_idx].target_point[0] / self.config["gameboard size"]
-            self.observation[10] = self.agents[self.human_idx].target_point[1] / self.config["gameboard size"]
-        else:
-            self.observation[9] = self.observation[7]  # Default to current position
-            self.observation[10] = self.observation[8]
-
-        self.observation[11] = 1.0 if self.agents[self.human_idx].alive else 0.0  # Teammate alive status
-
-        self.observation[12] = (self.time_limit - self.display_time / 1000) / self.time_limit # Time remaining
-
-        # Process all ship targets
-        self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)
-        target_idx = 0
-        for agent_idx, agent in enumerate(self.agents):
-            if agent.agent_class == "ship":
-                # Normalized position
-                self.target_data[target_idx, 0] = agent.x / self.config["gameboard size"]
-                self.target_data[target_idx, 1] = agent.y / self.config["gameboard size"]
-                # One-hot encoding of target identity
-                self.target_data[target_idx, 2] = 1.0 if not agent.observed else 0.0  # unknown
-                self.target_data[target_idx, 3] = 1.0 if agent.observed and agent.threat == 0 else 0.0  # friendly
-                self.target_data[target_idx, 4] = 1.0 if agent.observed and agent.threat > 0 else 0.0  # hostile
-                # Threat status
-                self.target_data[target_idx, 5] = 0.0 if agent.observed_threat else 1.0  # threat unknown
-                # Normalized threat level
-                self.target_data[target_idx, 6] = agent.threat / 3.0 if agent.observed_threat else 0.0
-                target_idx += 1
-
-        target_start_idx = 13
-        self.observation[target_start_idx:target_start_idx + self.num_ships * 7] = self.target_data.flatten()         # Copy target data into observation vector
+            raise ValueError('Unknown observation type')
 
         # ######## Handcrafted features (last 11 features) ########
         # feature_start_idx = target_start_idx + self.num_ships * 7

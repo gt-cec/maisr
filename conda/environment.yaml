@@ -10,5 +10,6 @@ dependencies:
   - pytorch
   - matplotlib
   - pygame
+  - json
   - pip:
     - gymnasium
