@@ -3,9 +3,6 @@ import sys
 import os
 import ctypes
 
-import signal
-import traceback
-
 from env import MAISREnv
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
@@ -31,7 +28,7 @@ class SAGAT:
                     self.subject_id) + '&scenario_number=' + str(self.round_number) + '&user_group=' + str(
                     self.user_group) + '&survey_number=1')
             self.survey1_launched = True
-            env.pause(pygame.MOUSEBUTTONDOWN)  # TODO Test this
+            env.pause(pygame.MOUSEBUTTONDOWN)
 
         elif times[1] - 1.0 < env.display_time/1000 < times[1] + 1.0 and not self.survey2_launched:
             print(f'Time = {env.display_time / 1000}, survey 2 triggered')
@@ -40,7 +37,7 @@ class SAGAT:
                     self.subject_id) + '&scenario_number=' + str(self.round_number) + '&user_group=' + str(
                     self.user_group) + '&survey_number=2')
             self.survey2_launched = True
-            env.pause(pygame.MOUSEBUTTONDOWN)  # TODO Test this
+            env.pause(pygame.MOUSEBUTTONDOWN)
 
         elif times[2] - 1.0 < env.display_time/1000 < times[2] + 1.0 and not self.survey3_launched:
             print(f'Time = {env.display_time / 1000}, survey 3 triggered')
@@ -49,9 +46,7 @@ class SAGAT:
                     self.subject_id) + '&scenario_number=' + str(self.round_number) + '&user_group=' + str(
                     self.user_group) + '&survey_number=3')
             self.survey3_launched = True
-            env.pause(pygame.MOUSEBUTTONDOWN)  # TODO Test this
-
-
+            env.pause(pygame.MOUSEBUTTONDOWN)
 
 if __name__ == "__main__":
 
@@ -130,9 +125,7 @@ if __name__ == "__main__":
             game_logger.initial_log()
             button_handler = ButtonHandler(env, agent0_policy, game_logger, log_data=True)
 
-
         else: button_handler = ButtonHandler(env, agent0_policy, log_data=False)
-
 
         game_count += 1
         state = env.reset()  # reset the environment
