@@ -129,44 +129,42 @@ if __name__ == "__main__":
 
         game_count += 1
         state = env.reset()  # reset the environment
-        done = False  # flag for when the run is complete
-        agent0_waypoint = (0,0)
+        terminated, truncated = False, False  # flag for when the run is complete
         agent1_waypoint = (0, 0)
 
         agent_log_info = {'waypoint': 'None', 'priority mode': 'None', 'search type': 'None', 'search area': 'None'}
+        agent_action = {'waypoint':(0,0), 'id_method':0}
 
-        while not done:  # main game loop
+        hold_commanded = False
+
+        while not (terminated or truncated):  # main game loop
             if surveys_enabled: sagat.check() # Check if it's time to launch a SAGAT survey
 
-            agent_log_info = {
-                'waypoint':agent0_waypoint, 'search type': agent0_policy.search_type, 'search area': agent0_policy.search_quadrant,
-                'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',}
-
-            if log_data:
-                game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                if env.new_target_id:
-                    game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
-                    env.new_target_id = None
-
-                if env.new_weapon_id:
-                    game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
-                    env.new_weapon_id = None
+            # agent_log_info = {
+            #     'waypoint':agent_action['waypoint'], 'search type': agent0_policy.search_type, 'search area': agent0_policy.search_quadrant,
+            #     'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if env.button_latch_dict['manual_priorities'] else 'auto',}
+            #
+            # if log_data:
+            #     game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
+            #     if env.new_target_id:
+            #         game_logger.log_target_id(env.new_target_id[0],env.new_target_id[1],env.new_target_id[2],env.display_time)
+            #         env.new_target_id = None
+            #
+            #     if env.new_weapon_id:
+            #         game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
+            #         env.new_weapon_id = None
 
             # Handle agent actions (from autonomous_policy)
             actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
 
-            agent0_policy.act() # Calculate agent's target waypoint
-            agent0_waypoint = agent0_policy.target_point
-            actions.append((env.aircraft_ids[0], agent0_policy.target_point))
-            agent0_policy.update_agent_info()
+            # TODO: Currently crashes when i give agent a waypoint.
 
             # Handle human actions (mouse clicks)
-            ev = pygame.event.get()
+            ev = pygame.event.get() # TODO See if i need to get rid of all the pygame button logic for training
             for event in ev:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F1:
-                        if log_data:
-                            game_logger.final_log(button_handler.gameplan_command_history, env)
+                        if log_data: game_logger.final_log(button_handler.gameplan_command_history, env)
                         pygame.quit()
                     if event.key == pygame.K_SPACE:
                         env.pause(pygame.MOUSEBUTTONDOWN)
@@ -175,23 +173,54 @@ if __name__ == "__main__":
                     mouse_position = pygame.mouse.get_pos()
                     time_sec = float(env.display_time) / 1000
 
-                    agent0_action_override, human_action = button_handler.handle_mouse_click(mouse_position, time_sec)
+                    agent0_action_override, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
+
+                    human_action = {'waypoint': human_waypoint, 'id_method': 0}
+                    new_human_action = True # TODO placeholder hack since human_action is never None because of above
 
                     if agent0_action_override: # If human overrode agent's waypoint, replace it in the queue
-                        actions.append(agent0_action_override)
+                        agent_action = {'waypoint': agent0_action_override, 'id_method': 0}
+                        actions.append((env.aircraft_ids[0], agent_action))
+                        hold_commanded = True
 
-                    if human_action:
-                        actions.append(human_action)
-                        agent1_waypoint = human_action[1]
+                    if human_action and new_human_action:
+                        print(f'MAIN: HUMAN {(env.aircraft_ids[1],human_action)}')
+                        actions.append((env.human_idx,human_action))
+                        agent1_waypoint = human_action
+                        new_human_action = False
+
+            # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
+            if not hold_commanded:
+                agent_action = agent0_policy.act()  # Calculate agent's action
+                print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+                actions.append((env.aircraft_ids[0], agent_action))
+                hold_commanded = False
 
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
-                state, reward, done, info = env.step(actions)  # step through the environment
+                observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
             if env.init: env.init = False
             if render: env.render()
 
-        if done:
+            agent_log_info = {
+                'waypoint': agent_action['waypoint'], 'search type': agent0_policy.search_type,
+                'search area': agent0_policy.search_quadrant,
+                'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if
+                env.button_latch_dict['manual_priorities'] else 'auto', }
+
+            if log_data:
+                game_logger.log_state(env, env.display_time, agent1_waypoint, agent_log_info)
+                if env.new_target_id:
+                    game_logger.log_target_id(env.new_target_id[0], env.new_target_id[1], env.new_target_id[2],env.display_time)
+                    env.new_target_id = None
+
+                if env.new_weapon_id:
+                    game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
+                    env.new_weapon_id = None
+
+
+        if terminated or truncated:
             done_time = pygame.time.get_ticks()
             if log_data:
                 game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
@@ -213,8 +242,8 @@ if __name__ == "__main__":
                             sys.exit()
 
         round_number += 1
-        print("Game complete:", game_count)
         if render:
+            print("Game complete:", game_count)
             pygame.quit()
 
     print("ALL GAMES COMPLETE")

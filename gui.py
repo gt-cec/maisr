@@ -118,11 +118,11 @@ class ButtonHandler:
             self.env.agent_waypoint_clicked = False
             self.env.button_latch_dict['waypoint'] = False
 
-            return (self.env.aircraft_ids[0], agent0_action), None
+            return agent0_action, None
         else:  # Set human waypoint
             if self.log_data:
                 self.game_logger.log_mouse_event(mouse_position, "human waypoint", self.env.display_time)
-            return None, (self.env.aircraft_ids[-1], mouse_position)
+            return None, mouse_position
 
     def _handle_target_id_button(self, mouse_position, time_sec):
         """Handle target ID button click"""

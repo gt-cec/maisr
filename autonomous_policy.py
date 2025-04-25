@@ -65,7 +65,13 @@ class AutonomousPolicy:
                     self.high_level_rationale = '(Human command)'
 
             self.update_agent_info()
-        else: self.ticks_since_update += 1
+        else:
+            self.ticks_since_update += 1
+
+        self.id_method = 0 # TODO hardcoded for now
+
+        self.action = {'waypoint':self.target_point, 'id_method':self.id_method}
+        return self.action
 
 
     def basic_search(self):
