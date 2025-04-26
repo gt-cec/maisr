@@ -163,7 +163,7 @@ class MAISREnv(gym.Env):
             self.quadrant_button_height = 120
             self.autonomous_button_y = 590
 
-            self.missiles_enabled = self.config['missiles_enabled']
+            #self.missiles_enabled = self.config['missiles_enabled']
 
             # Initialize buttons
             self.gameplan_button_color = (255, 120, 80)

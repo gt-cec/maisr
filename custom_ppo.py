@@ -236,7 +236,7 @@ class PPOTrainer:
             if epoch % save_freq == 0 or is_best or epoch == epochs - 1:
                 self.save_checkpoint(epoch, avg_episode_reward, is_best)
                 os.makedirs('training_results', exist_ok=True)
-                pd.DataFrame(epoch_rewards, columns=['rewards']).to_csv('results/epoch_rewards.csv', index=False)
+                pd.DataFrame(epoch_rewards, columns=['rewards']).to_csv('training_results/epoch_rewards.csv', index=False)
 
         # Create directory if it doesn't exist
 
