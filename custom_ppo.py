@@ -5,6 +5,7 @@ import os
 import time
 import pandas as pd
 from datetime import datetime
+import wandb
 
 # TODO test this
 
@@ -24,6 +25,20 @@ class PPOTrainer:
 
         # Track best performance for saving best model
         self.best_reward = float('-inf')
+
+        self.run = wandb.init(
+            entity="ryanbowers166-gt",
+            project="maisr-rl",
+            name='maisr_rl_4_25',
+            config={
+                "learning_rate": 3e-4,
+                "gamma": 0.99,
+                "reward": 'default',
+                "architecture": 'MaisrActorCritic',
+                'obs_type': 'vector',
+                'action_type': 'continuous',
+                'reward_type': 'balanced-sparse',},
+        )
 
 
     def save_checkpoint(self, epoch, avg_reward, is_best=False):
@@ -204,6 +219,13 @@ class PPOTrainer:
             avg_epoch_time = sum(epoch_times) / len(epoch_times)
             print(f"  Average epoch time: {avg_epoch_time:.2f} seconds")
 
+            self.run.log({
+                'average episode reward':avg_episode_reward,
+                'value loss':value_loss.item(),
+                'waypoint loss':waypoint_loss.item(),
+                'ID method':id_loss.item(),
+            })
+
             # Check if this is the best model
             # TODO need to compare this to the saved model's best too, not just best for this run
             is_best = avg_episode_reward > self.best_reward
@@ -213,15 +235,16 @@ class PPOTrainer:
             # Save checkpoint based on frequency or if it's the best model
             if epoch % save_freq == 0 or is_best or epoch == epochs - 1:
                 self.save_checkpoint(epoch, avg_episode_reward, is_best)
+                os.makedirs('training_results', exist_ok=True)
+                pd.DataFrame(epoch_rewards, columns=['rewards']).to_csv('results/epoch_rewards.csv', index=False)
 
         # Create directory if it doesn't exist
-        os.makedirs('training_results', exist_ok=True)
 
-        # Convert rewards list to DataFrame and save as CSV
-        pd.DataFrame(epoch_rewards, columns=['rewards']).to_csv('results/epoch_rewards.csv', index=False)
 
         # Print confirmation
         print(f"Epoch rewards saved to results/epoch_rewards.csv")
+
+        self.run.finish()
 
     # TODO save checkpoints
     # Integrate wanbd
