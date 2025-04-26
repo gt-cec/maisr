@@ -11,20 +11,20 @@ class MAISRActorCritic(nn.Module):
 
         # Shared feature extractor
         self.shared = nn.Sequential(
-            nn.Linear(obs_dim, 256),
-            nn.LayerNorm(256),
+            nn.Linear(obs_dim, 64),
+            nn.LayerNorm(64),
             nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.LayerNorm(256),
+            nn.Linear(64, 64),
+            nn.LayerNorm(64),
             nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.LayerNorm(128),
+            nn.Linear(64, 64),
+            nn.LayerNorm(64),
             nn.ReLU()
         )
 
         # Actor network - waypoint head
         self.waypoint_head = nn.Sequential(
-            nn.Linear(128, 64),
+            nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, act_dim_continuous),
             nn.Tanh()  # Output in range [-1, 1]
@@ -32,14 +32,14 @@ class MAISRActorCritic(nn.Module):
 
         # Actor network - ID method head
         self.id_method_head = nn.Sequential(
-            nn.Linear(128, 32),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, act_dim_discrete)
         )
 
         # Critic network
         self.critic = nn.Sequential(
-            nn.Linear(128, 64),
+            nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, 1)
         )
