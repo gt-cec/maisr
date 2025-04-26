@@ -142,19 +142,18 @@ if __name__ == "__main__":
         agent_log_info = {'waypoint': 'None', 'priority mode': 'None', 'search type': 'None', 'search area': 'None'}
         agent_action = {'waypoint':(0,0), 'id_method':0}
 
-        hold_commanded = False
+        agent_overridden = False
 
+        # TODO: Currently crashes when i give agent a waypoint.
         while not (terminated or truncated):  # main game loop
             if surveys_enabled:
                 sagat.check() # Check if it's time to launch a SAGAT survey
 
-            # Handle agent actions (from autonomous_policy)
             actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
 
-            # TODO: Currently crashes when i give agent a waypoint.
 
             # Handle human actions (mouse clicks)
-            ev = pygame.event.get() # TODO See if i need to get rid of all the pygame button logic for training
+            ev = pygame.event.get()
             for event in ev:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F1:
@@ -169,13 +168,13 @@ if __name__ == "__main__":
 
                     agent0_action_override, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
 
-                    human_action = {'waypoint': human_waypoint, 'id_method': 0}
+                    human_action = [human_waypoint[0], human_waypoint[1]]
                     new_human_action = True # TODO placeholder hack since human_action is never None because of above
 
                     if agent0_action_override: # If human overrode agent's waypoint, replace it in the queue
-                        agent_action = {'waypoint': agent0_action_override, 'id_method': 0}
+                        agent_action = agent0_action_override
                         actions.append((env.aircraft_ids[0], agent_action))
-                        hold_commanded = True
+                        agent_overridden = True
 
                     if human_action and new_human_action:
                         #print(f'MAIN: HUMAN {(env.aircraft_ids[1],human_action)}')
@@ -184,16 +183,13 @@ if __name__ == "__main__":
                         new_human_action = False
 
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-            if not hold_commanded:
+            if not agent_overridden:
                 #agent_action = env.action_space.sample()
                 agent_action = agent0_policy.act()  # Calculate agent's action
 
-                #print(agent_action)
-                #print(agent_action2)
-
                 #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
                 actions.append((env.aircraft_ids[0], agent_action))
-                hold_commanded = False
+                agent_overridden = False
 
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
