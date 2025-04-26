@@ -167,6 +167,7 @@ if __name__ == "__main__":
         hold_commanded = False
 
         while not (terminated or truncated):  # main game loop
+
             actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
 
             # Handle human actions (mouse clicks)
@@ -183,9 +184,7 @@ if __name__ == "__main__":
                     mouse_position = pygame.mouse.get_pos()
                     time_sec = float(env.display_time) / 1000
 
-                    _, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
-
-                    human_action = {'waypoint': human_waypoint, 'id_method': 0}
+                    _, human_action = button_handler.handle_mouse_click(mouse_position, time_sec)
                     new_human_action = True # TODO placeholder hack since human_action is never None because of above
 
                     if human_action and new_human_action:
@@ -194,34 +193,20 @@ if __name__ == "__main__":
                         agent1_waypoint = human_action
                         new_human_action = False
 
-            # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-            if not hold_commanded:
-                state_tensor = torch.tensor(state, dtype=torch.float32)
 
-                # Get action from the model
-                with torch.no_grad():
-                    agent_action = agent0_policy.act(state_tensor)
-                    print(f'Agent chose action {agent_action}')
+            state_tensor = torch.tensor(state, dtype=torch.float32)
 
-                if isinstance(agent_action, dict):
-                    agent_action = {
-                        'waypoint': agent_action['waypoint'],
-                        'id_method': agent_action['id_method']
-                    }
-                else:
-                    # If the model returns waypoints directly
-                    agent_action = {
-                        'waypoint': agent_action,
-                        'id_method': 0  # Default ID method
-                    }
-                actions.append((env.aircraft_ids[0], agent_action))
-                hold_commanded = False
+            with torch.no_grad():
+                agent_action = agent0_policy.act(state_tensor)
+                print(f'Agent chose action {agent_action}')
 
+            actions.append((env.aircraft_ids[0], agent_action))
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
             if env.init: env.init = False
+
             if env.render_mode == 'human':
                 env.render()
 
