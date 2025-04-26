@@ -281,6 +281,8 @@ class MAISREnv(gym.Env):
         #         self.agents[agent].waypoint_override = waypoint
 
         for action in actions:
+            print(f'Action in queue is {action}')
+            print(f'Passing {action[1]} to agent waypoint override')
             self.agents[action[0]].waypoint_override = action[1]
 
         # move the agents and check for gameplay updates

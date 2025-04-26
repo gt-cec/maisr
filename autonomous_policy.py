@@ -69,9 +69,8 @@ class AutonomousPolicy:
         else:
             self.ticks_since_update += 1
 
-        self.id_method = 0 # TODO hardcoded for now
 
-        self.action = {'waypoint':self.target_point, 'id_method':self.id_method}
+        self.action = self.target_point
         return self.action
 
 

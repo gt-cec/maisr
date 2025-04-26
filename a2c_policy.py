@@ -31,11 +31,11 @@ class MAISRActorCritic(nn.Module):
         )
 
         # Actor network - ID method head
-        self.id_method_head = nn.Sequential(
-            nn.Linear(128, 32),
-            nn.ReLU(),
-            nn.Linear(32, act_dim_discrete)
-        )
+        # self.id_method_head = nn.Sequential(
+        #     nn.Linear(128, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, act_dim_discrete)
+        # )
 
         # Critic network
         self.critic = nn.Sequential(
@@ -51,7 +51,7 @@ class MAISRActorCritic(nn.Module):
 
         # Actor outputs
         waypoint_raw = self.waypoint_head(features)
-        id_logits = self.id_method_head(features)
+        #id_logits = self.id_method_head(features)
 
         # Scale waypoint from [-1, 1] to [0, gameboard_size]
         waypoint = (waypoint_raw + 1) * (self.gameboard_size / 2)
@@ -59,20 +59,18 @@ class MAISRActorCritic(nn.Module):
         # Value estimate
         value = self.critic(features)
 
-        return waypoint, id_logits, value
+        return waypoint, value
 
     def act(self, obs):
         with torch.no_grad():
-            waypoint, id_logits, _ = self.forward(obs)
-            id_probs = F.softmax(id_logits, dim=-1)
-            id_method = torch.multinomial(id_probs, 1).item()
+            waypoint, value, = self.forward(obs)
+            #id_probs = F.softmax(id_logits, dim=-1)
+            #id_method = torch.multinomial(id_probs, 1).item()
 
-        return {
-            'waypoint': waypoint.cpu().numpy(),
-            'id_method': id_method
-        }
+        return waypoint.cpu().numpy()
+        #return {'waypoint': waypoint.cpu().numpy(), 'id_method': id_method}
 
     def get_value(self, obs):
         with torch.no_grad():
-            _, _, value = self.forward(obs)
+            _, value = self.forward(obs)
         return value.item()

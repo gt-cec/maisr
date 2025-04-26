@@ -168,26 +168,23 @@ if __name__ == "__main__":
 
                     agent0_action_override, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
 
-                    human_action = [human_waypoint[0], human_waypoint[1]]
-                    new_human_action = True # TODO placeholder hack since human_action is never None because of above
+                    if human_waypoint is not None:
+                        human_action = [human_waypoint[0], human_waypoint[1]]
+                        actions.append((env.human_idx, human_action))
+                        agent1_waypoint = human_action
 
                     if agent0_action_override: # If human overrode agent's waypoint, replace it in the queue
                         agent_action = agent0_action_override
                         actions.append((env.aircraft_ids[0], agent_action))
                         agent_overridden = True
 
-                    if human_action and new_human_action:
-                        #print(f'MAIN: HUMAN {(env.aircraft_ids[1],human_action)}')
-                        actions.append((env.human_idx,human_action))
-                        agent1_waypoint = human_action
-                        new_human_action = False
 
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
             if not agent_overridden:
                 #agent_action = env.action_space.sample()
                 agent_action = agent0_policy.act()  # Calculate agent's action
 
-                #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+                print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
                 actions.append((env.aircraft_ids[0], agent_action))
                 agent_overridden = False
 
@@ -200,7 +197,7 @@ if __name__ == "__main__":
                 env.render()
 
             agent_log_info = {
-                'waypoint': agent_action['waypoint'], 'search type': agent0_policy.search_type,
+                'waypoint': agent_action, 'search type': agent0_policy.search_type,
                 'search area': agent0_policy.search_quadrant,
                 'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if
                 env.button_latch_dict['manual_priorities'] else 'auto', }
