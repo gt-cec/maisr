@@ -11,8 +11,12 @@ import wandb
 
 class PPOTrainer:
     def __init__(self, env, model, checkpoint_dir, lr=3e-4, gamma=0.99, clip_ratio=0.2, target_kl=0.01):
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Training on: {self.device}")
+
         self.env = env
-        self.model = model
+        self.model = model.to(self.device)
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
         self.gamma = gamma
@@ -29,7 +33,7 @@ class PPOTrainer:
         self.run = wandb.init(
             entity="ryanbowers166-gt",
             project="maisr-rl",
-            name='maisr_rl_4_25',
+            name='maisr_rl_4_25_round2',
             config={
                 "learning_rate": 3e-4,
                 "gamma": 0.99,
@@ -37,7 +41,8 @@ class PPOTrainer:
                 "architecture": 'MaisrActorCritic',
                 'obs_type': 'vector',
                 'action_type': 'continuous',
-                'reward_type': 'balanced-sparse',},
+                'reward_type': 'balanced-sparse',
+                'device': str(self.device),},
         )
 
 
@@ -48,6 +53,7 @@ class PPOTrainer:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'reward': avg_reward,
+            'device': str(self.device),
         }
 
         # Save regular checkpoint
@@ -68,9 +74,16 @@ class PPOTrainer:
             print(f"Checkpoint {checkpoint_path} does not exist")
             return False
 
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+        # Move optimizer states to correct device
+        for state in self.optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(self.device)
+
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']} with reward {checkpoint['reward']}")
         return checkpoint['epoch']
 
@@ -121,6 +134,8 @@ class PPOTrainer:
             done = False
 
             while not done:
+                obs_tensor = torch.tensor(obs, dtype=torch.float32).to(self.device)
+
                 action = self.model.act(torch.tensor(obs, dtype=torch.float32))
                 value = self.model.get_value(torch.tensor(obs, dtype=torch.float32))
 
@@ -154,17 +169,18 @@ class PPOTrainer:
             epoch_rewards.append(avg_episode_reward)
 
             # Compute returns and advantages
-            last_value = self.model.get_value(torch.tensor(obs, dtype=torch.float32))
+            last_obs_tensor = torch.tensor(obs, dtype=torch.float32).to(self.device)
+            last_value = self.model.get_value(last_obs_tensor)
             returns, advantages = self.compute_gae(
                 rewards, values, last_value, dones, self.gamma
             )
 
             # Convert to tensors
-            obs_tensor = torch.tensor(np.array(observations), dtype=torch.float32)
-            waypoint_tensor = torch.tensor(np.array(waypoints), dtype=torch.float32)
-            id_method_tensor = torch.tensor(np.array(id_methods), dtype=torch.long)
-            returns_tensor = torch.tensor(returns, dtype=torch.float32)
-            advantages_tensor = torch.tensor(advantages, dtype=torch.float32)
+            obs_tensor = torch.tensor(np.array(observations), dtype=torch.float32).to(self.device)
+            waypoint_tensor = torch.tensor(np.array(waypoints), dtype=torch.float32).to(self.device)
+            id_method_tensor = torch.tensor(np.array(id_methods), dtype=torch.long).to(self.device)
+            returns_tensor = torch.tensor(returns, dtype=torch.float32).to(self.device)
+            advantages_tensor = torch.tensor(advantages, dtype=torch.float32).to(self.device)
 
             # Normalize advantages
             advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)

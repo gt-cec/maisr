@@ -8,6 +8,7 @@ dependencies:
   - pip
   - numpy
   - pytorch
+  - torchvision
   - matplotlib
   - pygame
   - json

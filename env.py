@@ -1,9 +1,9 @@
 import gymnasium as gym
 import numpy as np
-import pygame
+#import pygame
 import random
 import agents
-from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
+#from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
 import webbrowser
@@ -148,13 +148,13 @@ class MAISREnv(gym.Env):
             self.clock = clock
             self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
 
-
-
             # Set GUI locations
             self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
             self.window_x = self.config["window size"][0]
             self.window_y = self.config["window size"][1]
             if render_mode == 'human':
+                import pygame
+                from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
                 self.window = pygame.display.set_mode((self.window_x, self.window_y))
 
             self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
@@ -561,7 +561,7 @@ class MAISREnv(gym.Env):
                                     self.agents[aircraft_id].health_points -= 1
                                     if self.verbose: print(f'Human -1 HP')
                                     self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
-                                    self.damage_flash_start = pygame.time.get_ticks()
+                                    #self.damage_flash_start = pygame.time.get_ticks() # TODO
                                     self.damage_flash_alpha = 255  # Start fully opaque
 
                                 if self.agents[aircraft_id].health_points <= 0:
@@ -863,6 +863,7 @@ class MAISREnv(gym.Env):
             self.comm_messages.pop(0)
 
     def render(self, mode='human', close=False):
+        pass # TODO
         if mode == 'none': # TODO replace this with something cleaner
             return
 

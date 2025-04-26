@@ -45,8 +45,10 @@ class MAISRActorCritic(nn.Module):
         )
 
         self.gameboard_size = gameboard_size
+        self.device = None
 
     def forward(self, obs):
+        obs = obs.to(self.device)
         features = self.shared(obs)
 
         # Actor outputs
@@ -62,6 +64,9 @@ class MAISRActorCritic(nn.Module):
         return waypoint, id_logits, value
 
     def act(self, obs):
+        if self.device is None:
+            self.device = next(self.parameters()).device
+
         with torch.no_grad():
             waypoint, id_logits, _ = self.forward(obs)
             id_probs = F.softmax(id_logits, dim=-1)
@@ -73,6 +78,9 @@ class MAISRActorCritic(nn.Module):
         }
 
     def get_value(self, obs):
+        if self.device is None:
+            self.device = next(self.parameters()).device
+
         with torch.no_grad():
             _, _, value = self.forward(obs)
         return value.item()

@@ -51,7 +51,7 @@ class SAGAT:
 
 if __name__ == "__main__":
 
-    checkpoint_path = 'checkpoints/best_model_4_26.pt'
+    checkpoint_path = 'checkpoints/best_model_4_25.pt'
     config_path = './config_files/rl_training_config.json'
 
     if len(sys.argv) == 1:
