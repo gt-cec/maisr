@@ -339,19 +339,9 @@ class MAISREnvVec(gym.Env):
             if np.any(threatening_targets) and np.random.random() < aircraft.prob_detect:
                 aircraft.health_points -= 1
 
-                # Track which aircraft was damaged
-                if aircraft.agent_idx == self.agent_idx:
-                    # Agent damage
-                    #aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
-                    if self.render_mode == 'human' and pygame.get_init():
-                        self.agent_damage_flash_start = pygame.time.get_ticks()
-                        self.agent_damage_flash_alpha = 255
-                else:
-                    # Human damage
-                    #aircraft.damage = ((4 - aircraft.health_points) / 4) * 100
-                    if self.render_mode == 'human' and pygame.get_init():
-                        self.damage_flash_start = pygame.time.get_ticks()
-                        self.damage_flash_alpha = 255
+                if self.render_mode == 'human' and pygame.get_init():
+                    self.agent_damage_flash_start = pygame.time.get_ticks()
+                    self.agent_damage_flash_alpha = 255
 
             # Check if aircraft is destroyed
             if aircraft.health_points <= 0 and not self.config['infinite health']:
@@ -367,20 +357,16 @@ class MAISREnvVec(gym.Env):
         # progress update
         if self.verbose: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
 
-        # Check termination conditions
+        # Check termination conditions # TODO make this more configurable. Either AI, human or both need to be alive
         self.terminated = (self.num_identified_ships >= self.num_targets) or (not self.agents[self.agent_idx].alive and not self.config['infinite health'] and not self.human_training)
-        # TODO make this more configurable. Either AI, human or both need to be alive
         self.truncated = (self.display_time / 1000 >= self.time_limit)
-
         if self.terminated or self.truncated:
-            #new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points # Add points for human HP remaining at end of round (always, not just if round ended early)
             if self.num_identified_ships >= self.num_targets: # Add points for finishing early
                 new_score += self.all_targets_points
                 new_score += (self.time_limit - self.display_time/1000)*self.time_points
 
             elif not self.agents[self.human_idx].alive:
                 new_score += self.human_dead_points
-                #print('Human aircraft destroyed, game over.')
 
             print(f'\n FINAL SCORE {self.score} | {self.identified_targets} targets | {self.identified_threat_types} threats | {self.agents[self.agent_idx].health_points} HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
@@ -394,8 +380,7 @@ class MAISREnvVec(gym.Env):
         observation = self.get_observation() # Get observation
         info = {} # Additional info
 
-        if self.agent_training:
-            self.display_time = self.display_time + (1000/60)
+        if self.agent_training: self.display_time = self.display_time + (1000/60)
 
         elif not self.paused:
             current_time = pygame.time.get_ticks()
@@ -407,10 +392,7 @@ class MAISREnvVec(gym.Env):
     def get_reward(self, new_score):
         if self.reward_type == 'balanced-sparse': # Considers all the points
             reward = new_score
-            # TODO check this
-            #print(f'reward = {reward}')
-        else:
-            raise ValueError('Unknown reward type')
+        else: raise ValueError('Unknown reward type')
 
         return reward
 
@@ -455,7 +437,7 @@ class MAISREnvVec(gym.Env):
             threats_remaining       # normalized (0-1)
         """
 
-        # Content to add here
+        # TODO Add handcrafted features
             # Update human's quadrant
             # if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
             #     if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
@@ -496,143 +478,87 @@ class MAISREnvVec(gym.Env):
                 self.observation[10] = self.observation[8]
 
             self.observation[11] = 1.0 if self.agents[self.human_idx].alive else 0.0  # Teammate alive status
-
             self.observation[12] = (self.time_limit - self.display_time / 1000) / self.time_limit # Time remaining
 
-            # Process all ship targets
-            self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)
-            target_idx = 0
-            for agent_idx, agent in enumerate(self.agents):
-                if agent.agent_class == "ship":
-                    # Normalized position
-                    self.target_data[target_idx, 0] = agent.x / self.config["gameboard size"]
-                    self.target_data[target_idx, 1] = agent.y / self.config["gameboard size"]
-                    # One-hot encoding of target identity
-                    self.target_data[target_idx, 2] = 1.0 if not agent.observed else 0.0  # unknown
-                    self.target_data[target_idx, 3] = 1.0 if agent.observed and agent.threat == 0 else 0.0  # friendly
-                    self.target_data[target_idx, 4] = 1.0 if agent.observed and agent.threat > 0 else 0.0  # hostile
-                    # Threat status
-                    self.target_data[target_idx, 5] = 0.0 if agent.observed_threat else 1.0  # threat unknown
-                    # Normalized threat level
-                    self.target_data[target_idx, 6] = agent.threat / 3.0 if agent.observed_threat else 0.0
-                    target_idx += 1
+            # Process all target data (7 features per target)
+            # Create an array to hold target data
+            self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)
+
+            # Normalized positions (columns 0-1 of target_data)
+            self.target_data[:, 0] = self.targets[:, 3] / self.config["gameboard size"]  # x position
+            self.target_data[:, 1] = self.targets[:, 4] / self.config["gameboard size"]  # y position
+
+            # Get info levels and target values
+            info_levels = self.targets[:, 2]
+            target_values = self.targets[:, 1]
+
+            # One-hot encoding of target identity (columns 2-4 of target_data)
+            self.target_data[:, 2] = (info_levels == 0).astype(np.float32)  # unknown
+            self.target_data[:, 3] = ((info_levels > 0) & (target_values == 0)).astype(np.float32)  # friendly
+            self.target_data[:, 4] = ((info_levels > 0) & (target_values == 1)).astype(np.float32)  # hostile
+
+            # Threat status (column 5 of target_data)
+            self.target_data[:, 5] = (info_levels < 1.0).astype(np.float32)  # threat unknown
+
+            # Normalized threat level (column 6 of target_data)
+            # For high-value targets (1), we'll use threat level 2/3
+            # For regular targets (0), we'll use threat level 0
+            self.target_data[:, 6] = np.where(
+                info_levels >= 1.0,
+                (2.0 / 3.0) * target_values,
+                0.0
+            )
+
+            # self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)
+            # target_idx = 0
+            # for agent_idx, agent in enumerate(self.agents):
+            #     if agent.agent_class == "ship":
+            #         # Normalized position
+            #         self.target_data[target_idx, 0] = agent.x / self.config["gameboard size"]
+            #         self.target_data[target_idx, 1] = agent.y / self.config["gameboard size"]
+            #         # One-hot encoding of target identity
+            #         self.target_data[target_idx, 2] = 1.0 if not agent.observed else 0.0  # unknown
+            #         self.target_data[target_idx, 3] = 1.0 if agent.observed and agent.threat == 0 else 0.0  # friendly
+            #         self.target_data[target_idx, 4] = 1.0 if agent.observed and agent.threat > 0 else 0.0  # hostile
+            #         # Threat status
+            #         self.target_data[target_idx, 5] = 0.0 if agent.observed_threat else 1.0  # threat unknown
+            #         # Normalized threat level
+            #         self.target_data[target_idx, 6] = agent.threat / 3.0 if agent.observed_threat else 0.0
+            #         target_idx += 1
 
             target_start_idx = 13
             self.observation[target_start_idx:target_start_idx + self.num_targets * 7] = self.target_data.flatten()         # Copy target data into observation vector
 
-        # if self.init:
-        #     print("Observation vector explanation:")
-        #     print(f"[0] Agent health: {self.observation[0]}")
-        #     print(f"[1] Agent x position: {self.observation[1]}")
-        #     print(f"[2] Agent y position: {self.observation[2]}")
-        #     print(f"[3] Agent alive status: {self.observation[3]}")
-        #     print(f"[4] Agent waypoint x: {self.observation[4]}")
-        #     print(f"[5] Agent waypoint y: {self.observation[5]}")
-        #     print(f"[6] Teammate health: {self.observation[6]}")
-        #     print(f"[7] Teammate x position: {self.observation[7]}")
-        #     print(f"[8] Teammate y position: {self.observation[8]}")
-        #     print(f"[9] Teammate waypoint x: {self.observation[9]}")
-        #     print(f"[10] Teammate waypoint y: {self.observation[10]}")
-        #     print(f"[11] Teammate alive status: {self.observation[11]}")
-        #     print(f"[12] Time remaining normalized: {self.observation[12]}")
-        #
-        #     # Print target data
-        #     for i in range(1):
-        #         base_idx = 13 + i * 7
-        #         print(f"\nTarget {i} data:")
-        #         print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
-        #         print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
-        #         print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
-        #         print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
-        #         print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
-        #         print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
-        #         print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
+        if self.init:
+            print("Observation vector explanation:")
+            print(f"[0] Agent health: {self.observation[0]}")
+            print(f"[1] Agent x position: {self.observation[1]}")
+            print(f"[2] Agent y position: {self.observation[2]}")
+            print(f"[3] Agent alive status: {self.observation[3]}")
+            print(f"[4] Agent waypoint x: {self.observation[4]}")
+            print(f"[5] Agent waypoint y: {self.observation[5]}")
+            print(f"[6] Teammate health: {self.observation[6]}")
+            print(f"[7] Teammate x position: {self.observation[7]}")
+            print(f"[8] Teammate y position: {self.observation[8]}")
+            print(f"[9] Teammate waypoint x: {self.observation[9]}")
+            print(f"[10] Teammate waypoint y: {self.observation[10]}")
+            print(f"[11] Teammate alive status: {self.observation[11]}")
+            print(f"[12] Time remaining normalized: {self.observation[12]}")
+
+            # Print target data
+            for i in range(1):
+                base_idx = 13 + i * 7
+                print(f"\nTarget {i} data:")
+                print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
+                print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
+                print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
+                print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
+                print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
+                print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
+                print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
 
         elif self.obs_type == 'cnn':
             raise ValueError('CNN Obs type not supported yet')
-
-        # ######## Handcrafted features (last 11 features) ########
-        # feature_start_idx = target_start_idx + self.num_targets * 7
-        #
-        # # Count unknown targets in each quadrant
-        # quadrant_counts = [0, 0, 0, 0]  # NW, NE, SW, SE
-        # nearest_target_dist = float('inf')
-        # nearest_hostile_dist = float('inf')
-        # agent_in_weapon_range = 0
-        # teammate_in_weapon_range = 0
-        #
-        # for agent in self.agents:
-        #     if agent.agent_class == "ship":
-        #         # Check if ship is unknown
-        #         if not agent.observed:
-        #             # Determine which quadrant the ship is in
-        #             half_size = self.config["gameboard size"] / 2
-        #             if agent.x < half_size:
-        #                 if agent.y < half_size:
-        #                     quadrant_counts[0] += 1  # NW
-        #                 else:
-        #                     quadrant_counts[2] += 1  # SW
-        #             else:
-        #                 if agent.y < half_size:
-        #                     quadrant_counts[1] += 1  # NE
-        #                 else:
-        #                     quadrant_counts[3] += 1  # SE
-        #
-        #             # Calculate distance to nearest unknown target
-        #             dist_to_agent = math.hypot(
-        #                 agent.x - self.agents[self.num_targets].x,
-        #                 agent.y - self.agents[self.num_targets].y
-        #             )
-        #             if dist_to_agent < nearest_target_dist:
-        #                 nearest_target_dist = dist_to_agent
-        #
-        #         # Check for hostiles
-        #         if agent.observed and agent.threat > 0:
-        #             # Calculate distance to nearest hostile
-        #             dist_to_agent = math.hypot(
-        #                 agent.x - self.agents[self.num_targets].x,
-        #                 agent.y - self.agents[self.num_targets].y
-        #             )
-        #             if dist_to_agent < nearest_hostile_dist:
-        #                 nearest_hostile_dist = dist_to_agent
-        #
-        #             # Check if agents are in weapon range
-        #             if agent.in_weapon_range(self.agents[self.num_targets]):
-        #                 agent_in_weapon_range = 1
-        #             if agent.in_weapon_range(self.agents[self.human_idx]):
-        #                 teammate_in_weapon_range = 1
-        #
-        # # Normalize and add quadrant counts
-        # max_possible = self.num_targets / 4  # Theoretical max per quadrant
-        # for i, count in enumerate(quadrant_counts):
-        #     self.observation[feature_start_idx + i] = min(1.0, count / max_possible)
-        #
-        # # Add distances to nearest targets
-        # self.observation[feature_start_idx + 4] = 0.0 if nearest_target_dist == float('inf') else min(1.0,
-        #                                                                                               nearest_target_dist /
-        #                                                                                               self.config[
-        #                                                                                                   "gameboard size"])
-        # self.observation[feature_start_idx + 5] = 0.0 if nearest_hostile_dist == float('inf') else min(1.0,
-        #                                                                                                nearest_hostile_dist /
-        #                                                                                                self.config[
-        #                                                                                                    "gameboard size"])
-        #
-        # # Add weapon range indicators
-        # self.observation[feature_start_idx + 6] = agent_in_weapon_range
-        # self.observation[feature_start_idx + 7] = teammate_in_weapon_range
-        #
-        # # Last 25 seconds indicator
-        # self.observation[feature_start_idx + 8] = 1.0 if (self.time_limit - self.display_time / 1000) <= 25 else 0.0
-        #
-        # # Targets and threats remaining
-        # targets_remaining = sum(1 for agent in self.agents if agent.agent_class == "ship" and not agent.observed)
-        # threats_remaining = sum(1 for agent in self.agents if agent.agent_class == "ship" and (
-        #             not agent.observed_threat or (agent.observed and agent.threat > 0 and not agent.observed_threat)))
-        #
-        # self.observation[feature_start_idx + 9] = targets_remaining / self.num_targets
-        # self.observation[feature_start_idx + 10] = threats_remaining / self.num_targets
-
-
 
         return self.observation
 
