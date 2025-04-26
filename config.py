@@ -8,7 +8,7 @@ run_order = 1 # Int, 1,2,3, or 4
 round_number = '0' # String 0,1,2,3,4 (Used to start from a round other than 0, e.g. if you need to restart during a study.
 
 # SAGAT surveys
-surveys_enabled = True # TODO Should add this to the run.bat args too
+surveys_enabled = False # TODO Should add this to the run.bat args too
 times = [65.0, 125.0, 185.0]
 
 # Set whether to log data (run data will be saved to a json file in ./experiment_data)
