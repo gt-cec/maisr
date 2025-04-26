@@ -13,6 +13,7 @@ from config import x, y, config_dict, run_order, surveys_enabled, times
 def train_rl_agent(episodes=1000):
 
     checkpoint_dir = 'checkpoints'
+    checkpoint_path = 'checkpoints/best_model.pt'
 
     # Initialize environment in training mode
     env_config = load_env_config("./config_files/rl_training_config.json")

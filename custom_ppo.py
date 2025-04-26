@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 import os
+import time
 from datetime import datetime
 
 # TODO test this
@@ -88,10 +89,13 @@ class PPOTrainer:
 
         self.env.agents[self.env.human_idx].x, self.env.agents[self.env.human_idx].y = 2000, 2000 # TODO hack
 
-        # Track rewards for saving best model
-        epoch_rewards = []
+        epoch_rewards = [] # Track rewards for saving best model
+        epoch_times = [] # Track epoch times
 
         for epoch in range(start_epoch, epochs):
+
+            epoch_start_time = time.time()
+
             # Collect experience
             observations, actions, waypoints, id_methods, rewards, values, dones = [], [], [], [], [], [], []
             episode_rewards = []
@@ -184,12 +188,20 @@ class PPOTrainer:
                     loss.backward()
                     self.optimizer.step()
 
+            # End timing the epoch
+            epoch_end_time = time.time()
+            epoch_duration = epoch_end_time - epoch_start_time
+            epoch_times.append(epoch_duration)
+
             # Log metrics
             print(f"Epoch {epoch} stats:")
             print(f"  Average episode reward: {avg_episode_reward:.4f}")
             print(f"  Value loss: {value_loss.item():.4f}")
             print(f"  Waypoint loss: {waypoint_loss.item():.4f}")
             print(f"  ID method loss: {id_loss.item():.4f}")
+
+            avg_epoch_time = sum(epoch_times) / len(epoch_times)
+            print(f"  Average epoch time: {avg_epoch_time:.2f} seconds")
 
             # Check if this is the best model
             is_best = avg_episode_reward > self.best_reward
