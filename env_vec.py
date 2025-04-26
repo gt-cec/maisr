@@ -608,9 +608,22 @@ class MAISREnvVec(gym.Env):
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         #         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
 
+        SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
+        SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
+        #SHIP_REGULAR_LOWQ =
+        ##SHIP_REGULAR_HIGHQ
+        #SHIP_HIGHVAL_LOWQ
+        #SHIP_HIGHVAL_HIGHQ
+        #self.AGENT_COLOR_OBSERVED = (128, 0, 128)  # purple
+        #self.AGENT_COLOR_THREAT = (255, 0, 0)  # red
+
+        # color_list = [  # color_list[value][info level]
+        #     ['regular-unknown', 'regular-lowQ', 'regular-highQ'],
+        #     ['highval-unknown', 'highval-lowQ', 'highval-highQ'], ]
+
         color_list = [  # color_list[value][info level]
-            ['regular-unknown', 'regular-lowQ', 'regular-highQ'],
-            ['highval-unknown', 'highval-lowQ', 'highval-highQ'], ]
+            [SHIP_REGULAR_UNOBSERVED, 'regular-lowQ', 'regular-highQ'],
+            [SHIP_HIGHVAL_UNOBSERVED, 'highval-lowQ', 'highval-highQ'], ]
 
         # TODO fix get_observation to use self.targets?
 
