@@ -11,10 +11,10 @@ class MAISRActorCritic(nn.Module):
 
         # Shared feature extractor
         self.shared = nn.Sequential(
-            nn.Linear(obs_dim, 512),
-            nn.LayerNorm(512),
+            nn.Linear(obs_dim, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(256, 256),
             nn.LayerNorm(256),
             nn.ReLU(),
             nn.Linear(256, 128),
@@ -45,7 +45,7 @@ class MAISRActorCritic(nn.Module):
         )
 
         self.gameboard_size = gameboard_size
-        self.device = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, obs):
         obs = obs.to(self.device)
@@ -64,8 +64,7 @@ class MAISRActorCritic(nn.Module):
         return waypoint, id_logits, value
 
     def act(self, obs):
-        if self.device is None:
-            self.device = next(self.parameters()).device
+        obs = obs.to(self.device)
 
         with torch.no_grad():
             waypoint, id_logits, _ = self.forward(obs)
@@ -78,8 +77,7 @@ class MAISRActorCritic(nn.Module):
         }
 
     def get_value(self, obs):
-        if self.device is None:
-            self.device = next(self.parameters()).device
+        obs.to(self.device)
 
         with torch.no_grad():
             _, _, value = self.forward(obs)

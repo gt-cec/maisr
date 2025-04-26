@@ -107,7 +107,7 @@ class PPOTrainer:
         returns = advantages + values
         return returns, advantages
 
-    def train(self, epochs=5000, steps_per_epoch=4000, batch_size=64, checkpoint_path=None, save_freq=20):
+    def train(self, epochs=5000, steps_per_epoch=4000, batch_size=256, checkpoint_path=None, save_freq=20):
 
         # Resume from checkpoint if specified
         start_epoch = 0
@@ -133,16 +133,22 @@ class PPOTrainer:
             obs = self.env.reset()
             done = False
 
+            start_time = time.time()
             while not done:
                 obs_tensor = torch.tensor(obs, dtype=torch.float32).to(self.device)
 
-                action = self.model.act(torch.tensor(obs, dtype=torch.float32))
+                #start_time = time.time()
+                action = self.model.act(obs_tensor)
                 value = self.model.get_value(torch.tensor(obs, dtype=torch.float32))
+                #print(f"TIMING: self.model.act and get_value: {time.time() - start_time:.4f} sec")
 
+                #start_time = time.time()
                 next_obs, reward, terminated, truncated, info = self.env.step([
                     (self.env.aircraft_ids[0], action),
                     (self.env.aircraft_ids[1], {'waypoint': (2000,2000), 'id_method': 0}),
                 ])
+                #print(f"TIMING: Step: {time.time() - start_time:.4f} sec")
+
 
                 # Store experience
                 observations.append(obs)
@@ -163,6 +169,8 @@ class PPOTrainer:
                     current_episode_reward = 0
                 else:
                     obs = next_obs
+
+            print(f"TIMING: Game round took {time.time() - start_time:.4f} seconds")
 
             # Calculate average episode reward
             avg_episode_reward = np.mean(episode_rewards) if episode_rewards else 0
@@ -185,6 +193,7 @@ class PPOTrainer:
             # Normalize advantages
             advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
 
+            start_time = time.time()
             # PPO update
             for _ in range(10):  # Multiple epochs of optimization
                 # Sample mini-batches
@@ -220,6 +229,7 @@ class PPOTrainer:
                     loss.backward()
                     self.optimizer.step()
 
+            print(f"TIMING: PPO update took {time.time() - start_time:.4f} seconds")
             # End timing the epoch
             epoch_end_time = time.time()
             epoch_duration = epoch_end_time - epoch_start_time
