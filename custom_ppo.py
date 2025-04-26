@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn.functional as F
 import os
 import time
+import pandas as pd
 from datetime import datetime
 
 # TODO test this
@@ -78,7 +79,7 @@ class PPOTrainer:
         returns = advantages + values
         return returns, advantages
 
-    def train(self, epochs=10000, steps_per_epoch=4000, batch_size=64, checkpoint_path=None, save_freq=20):
+    def train(self, epochs=5000, steps_per_epoch=4000, batch_size=64, checkpoint_path=None, save_freq=20):
 
         # Resume from checkpoint if specified
         start_epoch = 0
@@ -212,6 +213,15 @@ class PPOTrainer:
             # Save checkpoint based on frequency or if it's the best model
             if epoch % save_freq == 0 or is_best or epoch == epochs - 1:
                 self.save_checkpoint(epoch, avg_episode_reward, is_best)
+
+        # Create directory if it doesn't exist
+        os.makedirs('training_results', exist_ok=True)
+
+        # Convert rewards list to DataFrame and save as CSV
+        pd.DataFrame(epoch_rewards, columns=['rewards']).to_csv('results/epoch_rewards.csv', index=False)
+
+        # Print confirmation
+        print(f"Epoch rewards saved to results/epoch_rewards.csv")
 
     # TODO save checkpoints
     # Integrate wanbd
