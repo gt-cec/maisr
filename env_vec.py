@@ -599,9 +599,27 @@ class MAISREnvVec(gym.Env):
 
         current_time = pygame.time.get_ticks()
 
-        # Draw the agents
+        # Draw the aircraft
         for agent in self.agents:
             agent.draw(self.window)
+
+        # Draw the targets TODO
+
+        # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
+        #         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
+
+        color_list = [  # color_list[value][info level]
+            ['regular-unknown', 'regular-lowQ', 'regular-highQ'],
+            ['highval-unknown', 'highval-lowQ', 'highval-highQ'], ]
+
+        # TODO fix get_observation to use self.targets?
+
+        for target in self.targets:
+            target_width = 5 if target[1] == 0 else 10
+            target_color = color_list[int(target[1])][int(target[2])]
+            print('################')
+            print(target[3],target[4])
+            pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width) # TODO center msut be a pair of numbers
 
         # Draw green lines and black crossbars
         self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
@@ -765,31 +783,6 @@ class MAISREnvVec(gym.Env):
             self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
             y_offset += 30  # Adjust this value to change spacing between messages
 
-
-        #Draw score box and update with new score value every tick
-        #pygame.draw.rect(self.window, (230, 230, 230),pygame.Rect(self.comm_pane_edge, self.comm_pane_height + 35 + 850, 400,100))
-        #score_button = ScoreWindow(self.score,1300,  1300)
-        #score_button.update(self.score)
-        #score_button.draw(self.window)
-
-        # # Draw point tally
-        # self.target_status_x = self.config['gameboard size'] + 40 + 405
-        # if self.agent_info_height_req > 0: self.target_status_y = 500 + self.agent_info_height_req
-        # else: self.target_status_y = 280
-        #
-        # pygame.draw.rect(self.window, (230, 230, 230), pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400, 100))  # Target tally sub-window box
-        # pygame.draw.rect(self.window, (200, 200, 200),pygame.Rect(self.right_pane_edge, self.autonomous_button_y+200, 400,40))  # Target tally title box
-        # tally_title_surface = pygame.font.SysFont(None, 36).render('SCORE', True, (0, 0, 0))
-        # self.window.blit(tally_title_surface, tally_title_surface.get_rect(center=(self.right_pane_edge + 400 // 2, self.autonomous_button_y+240 // 2)))
-        #
-        # id_tally_text = f"Targets ID\'d (+10 pts):                       {self.identified_targets} / {self.total_targets}"
-        # id_tally_surface = self.tally_font.render(id_tally_text, True, (0, 0, 0))
-        # self.window.blit(id_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+250-100))
-        #
-        # threat_tally_text = f"WEZs ID\'d (+5 pts):                            {self.identified_threat_types} / {self.total_targets}"
-        # threat_tally_surface = self.tally_font.render(threat_tally_text, True, (0, 0, 0))
-        # self.window.blit(threat_tally_surface, (self.right_pane_edge+10, self.autonomous_button_y+275-100))
-
         # Draw health boxes
         if self.config['num aircraft'] > 1:
             agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
@@ -801,8 +794,6 @@ class MAISREnvVec(gym.Env):
         agent1_health_window.draw(self.window)
 
         current_time = pygame.time.get_ticks()
-        # if not self.paused:
-        #     self.display_time = current_time - self.total_pause_time
 
         if current_time > self.start_countdown_time:
             self.time_window.update(self.display_time)
@@ -817,7 +808,6 @@ class MAISREnvVec(gym.Env):
         corner_round_rect = corner_round_text_surface.get_rect(
             center=(675, 1030))
         self.window.blit(corner_round_text_surface, corner_round_rect)
-
 
         # Countdown from 5 seconds at start of game
         if current_time <= self.start_countdown_time:
@@ -861,7 +851,6 @@ class MAISREnvVec(gym.Env):
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     return
-
 
         if self.paused and not self.unpause_countdown:
             pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
