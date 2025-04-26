@@ -202,7 +202,7 @@ class AutonomousPolicy:
         """Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets"""
 
         hostile_nearby, friendly_nearby, unknown_nearby = self.env.get_nearby_hostiles(self.env.agents[self.env.agent_idx])
-        risk_level_function = 10 * hostile_nearby + self.env.agents[self.env.num_ships].damage
+        risk_level_function = 10 * hostile_nearby - self.env.agents[self.env.num_ships].health_points # TODO tune
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
 
@@ -216,12 +216,12 @@ class AutonomousPolicy:
             if abs(self.env.time_limit - self.env.display_time / 1000) <= 30:
                 self.search_type = 'wez'
                 self.high_level_rationale = '(Critical time remaining)'
-            elif self.aircraft.damage <= 50:
+            elif self.aircraft.health_points > 5:
                 self.search_type = 'wez'
                 self.high_level_rationale = ''
             else:
                 self.search_type = 'target'
-                if self.aircraft.damage > 50: self.high_level_rationale = '(Low health)'
+                if self.aircraft.health_points <= 5 : self.high_level_rationale = '(Low health)'
                 else: self.high_level_rationale = ''
 
         # Set quadrant to search in. If the densest quadrant is substantially denser than the second most dense, prioritize that quadrant. Otherwise do not prioritize a quadrant.

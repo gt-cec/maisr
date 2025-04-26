@@ -69,7 +69,7 @@ class Agent:
 class Aircraft(Agent):
     def __init__(self, env, direction, color, speed=1, scale=1, prob_detect=0.1,max_health=10, flight_pattern="none", policy=None,is_visible=True):
         super().__init__(env, direction, color, scale, speed, agent_class="aircraft")
-        self.damage = 0  # damage taken by the aircraft
+        #self.damage = 0  # damage taken by the aircraft
         self.prob_detect = prob_detect # Probability of taking damage on a given timestep if inside a threat radius
         self.max_health = max_health
         self.health_points = max_health
@@ -271,76 +271,3 @@ class Ship(Agent):
         if distance is None and agent is None:
             raise ValueError("Either distance or agent must be provided")
         return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
-
-class Missile(Agent):
-    def __init__(self, env, direction, color, speed=1, scale=0.5,max_health=4, flight_pattern="none", policy=None,is_visible=True, target_aircraft_id=None,prob_detect=0):
-        super().__init__(env, direction, color, scale, speed, agent_class="missile")
-        self.damage = 0  # damage taken by the aircraft
-        self.max_health = max_health
-        self.health_points = max_health
-        self.flight_pattern = flight_pattern
-        self.env.aircraft_ids.append(self.agent_idx)
-        self.policy = policy # Not implemented right now
-        self.alive = True
-        self.is_visible = is_visible
-        self.show_agent_waypoint = env.show_agent_waypoint
-        self.regroup_clicked = False
-        self.base_speed = speed
-        self.target_aircraft_id = target_aircraft_id
-        self.prob_detect = prob_detect
-        self.spawn_time = env.display_time
-        self.lifespan = 20000
-
-    def draw(self, window):
-        nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
-        tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,
-                      self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
-        if not self.alive: return
-        if self.is_visible:
-            if self.damage >= 100 and self.env.config['infinite health'] == False:
-                self.destroy()
-                pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
-                return
-
-            # draw the aircraft
-            left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-            right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-            pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
-            pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
-            pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
-
-            if self.target_point is not None:
-                if self.show_agent_waypoint >= 1:
-                    pygame.draw.line(window, (200, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
-                    #pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
-
-    # check if another agent is in the ISR range
-    def in_isr_range(self, agent=None, distance=None) -> bool:
-        if distance is None and agent is None:
-            raise ValueError("Either distance or agent must be provided")
-        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ISR_RADIUS)
-
-    # check if another agent is in the engagement range
-    def in_engagement_range(self, agent=None, distance=None) -> bool:
-        if distance is None and agent is None:
-            raise ValueError("Either distance or agent must be provided")
-        return (not self.regroup_clicked) and ((math.hypot(agent.x - self.x, agent.y - self.y) if distance is None else distance) <= self.env.AIRCRAFT_ENGAGEMENT_RADIUS)
-
-    # check the waypoints and flight path
-    def move(self):
-        if not self.alive:
-            return
-
-        if (self.env.display_time - self.spawn_time) > self.lifespan:
-            self.destroy()
-            return
-
-        super().move()
-
-    def destroy(self):
-        if self.alive:
-            print('Missile %s destroyed' % self.agent_idx)
-            self.alive = False
-
-            if self.agent_idx in self.env.aircraft_ids:
-                self.env.aircraft_ids.remove(self.agent_idx)

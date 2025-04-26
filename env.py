@@ -219,7 +219,6 @@ class MAISREnv(gym.Env):
         self.score = 0
         self.identified_targets = 0
         self.identified_threat_types = 0
-        self.done = False
         self.init = True
 
         # create the ships
@@ -248,37 +247,6 @@ class MAISREnv(gym.Env):
 
         # TODO implement vectorized update positions and process-interactions methods at bottom
         new_score = 0
-
-        # agent_action = None
-        # human_action = None
-        #
-        # for tup in actions:
-        #     if tup[0] == self.aircraft_ids[0]: agent_action = tup[1]
-        #     elif tup[0] == self.human_idx: human_action = tup[1]
-        #
-        # if agent_action is not None:
-        #     waypoint = (float(agent_action['waypoint'][0]), float(agent_action['waypoint'][1]))
-        #     agent_action['waypoint'] = waypoint
-        #
-        # else:
-        #     print(f'ERROR: ACTIONS LIST {actions}')
-        #     raise Exception(f'ERROR: Agent action not found in actions list')
-
-
-
-        # # Put waypoints back into actions list
-        # waypoint_queue = []
-        # waypoint_queue.append((self.agent_idx, tuple(agent_action['waypoint'])))
-        #
-        # if human_action is not None:
-        #     if human_action['waypoint'] is not None:
-        #         waypoint_queue.append((self.human_idx, tuple(human_action['waypoint'])))
-        #
-        # if waypoint_queue is not None and waypoint_queue != []:
-        #     for action in waypoint_queue:  # handle each action (waypoint override) provided
-        #         agent = action[0]
-        #         waypoint = action[1]
-        #         self.agents[agent].waypoint_override = waypoint
 
         for action in actions:
             print(f'Action in queue is {action}')
@@ -360,13 +328,7 @@ class MAISREnv(gym.Env):
         # progress update
         if self.verbose: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
 
-        # Update human's quadrant
-        if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
-            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NW'
-            else: self.human_quadrant = 'SW'
-        else:
-            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2): self.human_quadrant = 'NE'
-            else: self.human_quadrant = 'SE'
+
 
         # Check termination conditions
         #self.terminated = (self.num_identified_ships >= self.num_ships) or (not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
@@ -462,6 +424,19 @@ class MAISREnv(gym.Env):
             targets_remaining,      # normalized (0-1)
             threats_remaining       # normalized (0-1)
         """
+
+        # Content to add here
+            # Update human's quadrant
+            # if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
+            #     if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+            #         self.human_quadrant = 'NW'
+            #     else:
+            #         self.human_quadrant = 'SW'
+            # else:
+            #     if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+            #         self.human_quadrant = 'NE'
+            #     else:
+            #         self.human_quadrant = 'SE'
 
         if self.obs_type == 'vector':
             self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
