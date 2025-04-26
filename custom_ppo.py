@@ -78,7 +78,7 @@ class PPOTrainer:
         returns = advantages + values
         return returns, advantages
 
-    def train(self, epochs=10000, steps_per_epoch=4000, batch_size=64, checkpoint_path=None, save_freq=10):
+    def train(self, epochs=10000, steps_per_epoch=4000, batch_size=64, checkpoint_path=None, save_freq=20):
 
         # Resume from checkpoint if specified
         start_epoch = 0
@@ -204,6 +204,7 @@ class PPOTrainer:
             print(f"  Average epoch time: {avg_epoch_time:.2f} seconds")
 
             # Check if this is the best model
+            # TODO need to compare this to the saved model's best too, not just best for this run
             is_best = avg_episode_reward > self.best_reward
             if is_best:
                 self.best_reward = avg_episode_reward
