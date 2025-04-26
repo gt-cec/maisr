@@ -249,215 +249,215 @@ class MAISREnv(gym.Env):
         # create the aircraft
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
         agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
-        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed']*1.1, flight_pattern=self.config["search pattern"]) # Human
+        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Human
         self.agents[self.agent_idx].x,self.agents[self.agent_idx].y = self.config['agent start location']
         self.agents[self.human_idx].x, self.agents[self.human_idx].y = self.config['human start location']
 
         if self.config['num aircraft'] == 1: self.agents[self.agent_idx].is_visible = False # Do not draw the agent during solo training runs
 
-        return self.get_state()
+        return self.get_observation()
 
-    def step_vectorized(self, actions: list):
-        # TODO
-        """
-        args:
-            actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-
-        returns:
-        """
-
-        new_score = 0
-
-        agent_action = None
-        human_action = None
-
-        for tup in actions:
-            if tup[0] == self.aircraft_ids[0]:
-                agent_action = tup[1]
-            elif tup[0] == self.human_idx:
-                human_action = tup[1]
-
-        if agent_action is None:
-            print(f'ERROR: ACTIONS LIST {actions}')
-            raise Exception(f'ERROR: Agent action not found in actions list')
-
-        if agent_action is not None:
-            waypoint = (float(agent_action['waypoint'][0]), float(agent_action['waypoint'][1]))
-            agent_action['waypoint'] = waypoint
-
-        id_method = agent_action['id_method']
-
-        # Put waypoints back into actions list
-        waypoint_queue = []
-        waypoint_queue.append((self.agent_idx, tuple(agent_action['waypoint'])))
-
-        if human_action is not None:
-            if human_action['waypoint'] is not None:
-                waypoint_queue.append((self.human_idx, tuple(human_action['waypoint'])))
-
-        if waypoint_queue is not None and waypoint_queue != []:
-            for action in waypoint_queue:  # handle each action (waypoint override) provided
-                agent = action[0]
-                waypoint = action[1]
-                self.agents[agent].waypoint_override = waypoint
-
-        # Move the agents
-        for agent in self.agents:
-            if agent.agent_class == "aircraft" and agent.alive:
-                agent.move()
-
-        # Vectorized ship-aircraft interactions section begins here
-        # --------------------------------------------------------
-
-        # Create arrays for ship and aircraft data
-        ship_indices = [i for i, agent in enumerate(self.agents) if agent.agent_class == "ship"]
-        aircraft_indices = self.aircraft_ids.copy()
-
-        # Extract positions
-        ship_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in ship_indices])
-        aircraft_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in aircraft_indices])
-
-        # Create arrays for ship properties
-        ship_observed = np.array([self.agents[i].observed for i in ship_indices])
-        ship_threat_level = np.array([self.agents[i].threat for i in ship_indices])
-        ship_observed_threat = np.array([self.agents[i].observed_threat for i in ship_indices])
-
-        # Create distance matrix between all ships and aircraft
-        # Shape: (num_ships, num_aircraft)
-        distances = np.zeros((len(ship_indices), len(aircraft_indices)))
-        for s_idx, ship_idx in enumerate(ship_indices):
-            for a_idx, aircraft_idx in enumerate(aircraft_indices):
-                distances[s_idx, a_idx] = math.hypot(
-                    self.agents[ship_idx].x - self.agents[aircraft_idx].x,
-                    self.agents[ship_idx].y - self.agents[aircraft_idx].y
-                )
-
-        # Process ISR (observation) interactions
-        for s_idx, ship_idx in enumerate(ship_indices):
-            for a_idx, aircraft_idx in enumerate(aircraft_indices):
-                # Get the current distance
-                dist = distances[s_idx, a_idx]
-
-                # If ship not observed and in ISR range
-                if not self.agents[ship_idx].observed and self.agents[aircraft_idx].in_isr_range(distance=dist):
-                    self.agents[ship_idx].observed = True
-                    self.new_target_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'target_identified',
-                                          ship_idx]
-                    self.identified_targets += 1
-                    new_score += self.target_points
-
-                    # If it's a neutral ship, auto-identify threat level
-                    if self.agents[ship_idx].threat == 0:
-                        self.agents[ship_idx].observed_threat = True
-                        self.num_identified_ships += 1
-                        self.identified_threat_types += 1
-                        new_score += self.threat_points
-
-                    if self.verbose:
-                        print(f"Ship {ship_idx} observed by aircraft {aircraft_idx}")
-
-                # If threat not observed and in engagement range
-                if not self.agents[ship_idx].observed_threat and self.agents[aircraft_idx].in_engagement_range(
-                        distance=dist):
-                    self.agents[ship_idx].observed_threat = True
-                    self.num_identified_ships += 1
-                    self.identified_threat_types += 1
-                    new_score += self.threat_points
-                    self.new_weapon_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'weapon_identified',
-                                          ship_idx]
-
-                    if self.verbose:
-                        print(f"Ship {ship_idx} threat level identified by aircraft {aircraft_idx}")
-                    break  # Once identified, break the inner loop
-
-                # Check damage from ship weapons
-                if self.agents[ship_idx].in_weapon_range(distance=dist) and self.agents[ship_idx].threat > 0:
-                    if self.agents[aircraft_idx].alive:
-                        if random.random() < self.agents[aircraft_idx].prob_detect:
-                            if aircraft_idx == self.agent_idx:  # Agent damaged
-                                self.agents[aircraft_idx].health_points -= 1
-                                self.agents[aircraft_idx].draw_damage()
-                                if self.verbose: print(f'AI -1 HP')
-                                self.agents[aircraft_idx].damage = ((4 - self.agents[
-                                    aircraft_idx].health_points) / 4) * 100
-                            else:  # Human damaged
-                                self.agents[aircraft_idx].health_points -= 1
-                                if self.verbose: print(f'Human -1 HP')
-                                self.agents[aircraft_idx].damage = ((4 - self.agents[aircraft_idx].health_points) / 4) * 100
-                                self.damage_flash_start = pygame.time.get_ticks()
-                                self.damage_flash_alpha = 255
-
-                            # Check if aircraft destroyed
-                            if self.agents[aircraft_idx].health_points <= 0:
-                                self.agents[aircraft_idx].damage = 100
-                                if self.config['infinite health'] == False:
-                                    self.agents[aircraft_idx].alive = False
-                                    if self.verbose: print(f'Aircraft {aircraft_idx} destroyed')
-                                    if self.human_training and aircraft_idx == self.human_idx:  # Respawn in training round
-                                        agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,
-                                                        color=self.AIRCRAFT_COLORS[1],
-                                                        speed=self.config['game speed'] * self.config[
-                                                            'human speed'] * 1.1,
-                                                        flight_pattern=self.config["search pattern"])
-                                        self.human_idx += 1
-
-        # Check if the agent is recently deceased (RIP)
-        if not self.agents[self.agent_idx].alive and not self.agent0_dead:
-            self.agent0_dead = True
-            new_score += self.wingman_dead_points
-            if self.verbose: print(f'{self.wingman_dead_points} points for agent wingman destruction')
-
-        # Progress update
-        if self.verbose:
-            print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids),
-                  "Damage:", self.damage)
-
-        # Update human's quadrant
-        if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
-            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
-                self.human_quadrant = 'NW'
-            else:
-                self.human_quadrant = 'SW'
-        else:
-            if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
-                self.human_quadrant = 'NE'
-            else:
-                self.human_quadrant = 'SE'
-
-        # Check termination conditions
-        self.terminated = (self.num_identified_ships >= self.num_ships) or (
-                    not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
-        self.truncated = (self.display_time / 1000 >= self.time_limit)
-
-        if self.terminated or self.truncated:
-            new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points
-
-            if self.num_identified_ships >= self.num_ships:  # Add points for finishing early
-                new_score += self.all_targets_points
-                new_score += (self.time_limit - self.display_time / 1000) * self.time_points
-            elif not self.agents[self.human_idx].alive:
-                new_score += self.human_dead_points
-
-            if hasattr(self, 'render_mode') and self.render_mode == 'human':
-                pygame.time.wait(50)
-
-        # Calculate reward
-        if new_score > self.score:
-            print(f'New score this step: {new_score}')
-        reward = self.get_reward(new_score)
-        self.score += new_score
-
-        observation = self.get_observation() # Get observation
-        info = {} # Additional info
-
-        if self.agent_training:
-            self.display_time =+ (1000/60)
-
-        elif not self.paused:
-            current_time = pygame.time.get_ticks()
-            self.display_time = current_time - self.total_pause_time
-
-        return observation, reward, self.terminated, self.truncated, info
+    # def step_vectorized(self, actions: list):
+    #     # TODO
+    #     """
+    #     args:
+    #         actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
+    #
+    #     returns:
+    #     """
+    #
+    #     new_score = 0
+    #
+    #     agent_action = None
+    #     human_action = None
+    #
+    #     for tup in actions:
+    #         if tup[0] == self.aircraft_ids[0]:
+    #             agent_action = tup[1]
+    #         elif tup[0] == self.human_idx:
+    #             human_action = tup[1]
+    #
+    #     if agent_action is None:
+    #         print(f'ERROR: ACTIONS LIST {actions}')
+    #         raise Exception(f'ERROR: Agent action not found in actions list')
+    #
+    #     if agent_action is not None:
+    #         waypoint = (float(agent_action['waypoint'][0]), float(agent_action['waypoint'][1]))
+    #         agent_action['waypoint'] = waypoint
+    #
+    #     id_method = agent_action['id_method']
+    #
+    #     # Put waypoints back into actions list
+    #     waypoint_queue = []
+    #     waypoint_queue.append((self.agent_idx, tuple(agent_action['waypoint'])))
+    #
+    #     if human_action is not None:
+    #         if human_action['waypoint'] is not None:
+    #             waypoint_queue.append((self.human_idx, tuple(human_action['waypoint'])))
+    #
+    #     if waypoint_queue is not None and waypoint_queue != []:
+    #         for action in waypoint_queue:  # handle each action (waypoint override) provided
+    #             agent = action[0]
+    #             waypoint = action[1]
+    #             self.agents[agent].waypoint_override = waypoint
+    #
+    #     # Move the agents
+    #     for agent in self.agents:
+    #         if agent.agent_class == "aircraft" and agent.alive:
+    #             agent.move()
+    #
+    #     # Vectorized ship-aircraft interactions section begins here
+    #     # --------------------------------------------------------
+    #
+    #     # Create arrays for ship and aircraft data
+    #     ship_indices = [i for i, agent in enumerate(self.agents) if agent.agent_class == "ship"]
+    #     aircraft_indices = self.aircraft_ids.copy()
+    #
+    #     # Extract positions
+    #     ship_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in ship_indices])
+    #     aircraft_positions = np.array([(self.agents[i].x, self.agents[i].y) for i in aircraft_indices])
+    #
+    #     # Create arrays for ship properties
+    #     ship_observed = np.array([self.agents[i].observed for i in ship_indices])
+    #     ship_threat_level = np.array([self.agents[i].threat for i in ship_indices])
+    #     ship_observed_threat = np.array([self.agents[i].observed_threat for i in ship_indices])
+    #
+    #     # Create distance matrix between all ships and aircraft
+    #     # Shape: (num_ships, num_aircraft)
+    #     distances = np.zeros((len(ship_indices), len(aircraft_indices)))
+    #     for s_idx, ship_idx in enumerate(ship_indices):
+    #         for a_idx, aircraft_idx in enumerate(aircraft_indices):
+    #             distances[s_idx, a_idx] = math.hypot(
+    #                 self.agents[ship_idx].x - self.agents[aircraft_idx].x,
+    #                 self.agents[ship_idx].y - self.agents[aircraft_idx].y
+    #             )
+    #
+    #     # Process ISR (observation) interactions
+    #     for s_idx, ship_idx in enumerate(ship_indices):
+    #         for a_idx, aircraft_idx in enumerate(aircraft_indices):
+    #             # Get the current distance
+    #             dist = distances[s_idx, a_idx]
+    #
+    #             # If ship not observed and in ISR range
+    #             if not self.agents[ship_idx].observed and self.agents[aircraft_idx].in_isr_range(distance=dist):
+    #                 self.agents[ship_idx].observed = True
+    #                 self.new_target_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'target_identified',
+    #                                       ship_idx]
+    #                 self.identified_targets += 1
+    #                 new_score += self.target_points
+    #
+    #                 # If it's a neutral ship, auto-identify threat level
+    #                 if self.agents[ship_idx].threat == 0:
+    #                     self.agents[ship_idx].observed_threat = True
+    #                     self.num_identified_ships += 1
+    #                     self.identified_threat_types += 1
+    #                     new_score += self.threat_points
+    #
+    #                 if self.verbose:
+    #                     print(f"Ship {ship_idx} observed by aircraft {aircraft_idx}")
+    #
+    #             # If threat not observed and in engagement range
+    #             if not self.agents[ship_idx].observed_threat and self.agents[aircraft_idx].in_engagement_range(
+    #                     distance=dist):
+    #                 self.agents[ship_idx].observed_threat = True
+    #                 self.num_identified_ships += 1
+    #                 self.identified_threat_types += 1
+    #                 new_score += self.threat_points
+    #                 self.new_weapon_id = ['human' if aircraft_idx == self.human_idx else 'AI', 'weapon_identified',
+    #                                       ship_idx]
+    #
+    #                 if self.verbose:
+    #                     print(f"Ship {ship_idx} threat level identified by aircraft {aircraft_idx}")
+    #                 break  # Once identified, break the inner loop
+    #
+    #             # Check damage from ship weapons
+    #             if self.agents[ship_idx].in_weapon_range(distance=dist) and self.agents[ship_idx].threat > 0:
+    #                 if self.agents[aircraft_idx].alive:
+    #                     if random.random() < self.agents[aircraft_idx].prob_detect:
+    #                         if aircraft_idx == self.agent_idx:  # Agent damaged
+    #                             self.agents[aircraft_idx].health_points -= 1
+    #                             self.agents[aircraft_idx].draw_damage()
+    #                             if self.verbose: print(f'AI -1 HP')
+    #                             self.agents[aircraft_idx].damage = ((4 - self.agents[
+    #                                 aircraft_idx].health_points) / 4) * 100
+    #                         else:  # Human damaged
+    #                             self.agents[aircraft_idx].health_points -= 1
+    #                             if self.verbose: print(f'Human -1 HP')
+    #                             self.agents[aircraft_idx].damage = ((4 - self.agents[aircraft_idx].health_points) / 4) * 100
+    #                             self.damage_flash_start = pygame.time.get_ticks()
+    #                             self.damage_flash_alpha = 255
+    #
+    #                         # Check if aircraft destroyed
+    #                         if self.agents[aircraft_idx].health_points <= 0:
+    #                             self.agents[aircraft_idx].damage = 100
+    #                             if self.config['infinite health'] == False:
+    #                                 self.agents[aircraft_idx].alive = False
+    #                                 if self.verbose: print(f'Aircraft {aircraft_idx} destroyed')
+    #                                 if self.human_training and aircraft_idx == self.human_idx:  # Respawn in training round
+    #                                     agents.Aircraft(self, 0, prob_detect=0.04, max_health=10,
+    #                                                     color=self.AIRCRAFT_COLORS[1],
+    #                                                     speed=self.config['game speed'] * self.config[
+    #                                                         'human speed'] * 1.1,
+    #                                                     flight_pattern=self.config["search pattern"])
+    #                                     self.human_idx += 1
+    #
+    #     # Check if the agent is recently deceased (RIP)
+    #     if not self.agents[self.agent_idx].alive and not self.agent0_dead:
+    #         self.agent0_dead = True
+    #         new_score += self.wingman_dead_points
+    #         if self.verbose: print(f'{self.wingman_dead_points} points for agent wingman destruction')
+    #
+    #     # Progress update
+    #     if self.verbose:
+    #         print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids),
+    #               "Damage:", self.damage)
+    #
+    #     # Update human's quadrant
+    #     if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
+    #         if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+    #             self.human_quadrant = 'NW'
+    #         else:
+    #             self.human_quadrant = 'SW'
+    #     else:
+    #         if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
+    #             self.human_quadrant = 'NE'
+    #         else:
+    #             self.human_quadrant = 'SE'
+    #
+    #     # Check termination conditions
+    #     self.terminated = (self.num_identified_ships >= self.num_ships) or (
+    #                 not self.agents[self.human_idx].alive and not self.config['infinite health'] and not self.human_training)
+    #     self.truncated = (self.display_time / 1000 >= self.time_limit)
+    #
+    #     if self.terminated or self.truncated:
+    #         new_score += self.human_hp_remaining_points * self.agents[self.human_idx].health_points
+    #
+    #         if self.num_identified_ships >= self.num_ships:  # Add points for finishing early
+    #             new_score += self.all_targets_points
+    #             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
+    #         elif not self.agents[self.human_idx].alive:
+    #             new_score += self.human_dead_points
+    #
+    #         if hasattr(self, 'render_mode') and self.render_mode == 'human':
+    #             pygame.time.wait(50)
+    #
+    #     # Calculate reward
+    #     if new_score > self.score:
+    #         print(f'New score this step: {new_score}')
+    #     reward = self.get_reward(new_score)
+    #     self.score += new_score
+    #
+    #     observation = self.get_observation() # Get observation
+    #     info = {} # Additional info
+    #
+    #     if self.agent_training:
+    #         self.display_time += (1000/60)
+    #
+    #     elif not self.paused:
+    #         current_time = pygame.time.get_ticks()
+    #         self.display_time = current_time - self.total_pause_time
+    #
+    #     return observation, reward, self.terminated, self.truncated, info
 
     def step(self, actions:list):
         """
@@ -554,12 +554,12 @@ class MAISREnv(gym.Env):
                                 if aircraft_id == self.agent_idx: # agent damaged
                                     self.agents[aircraft_id].health_points -= 1
                                     self.agents[aircraft_id].draw_damage()
-                                    print(f'AI -1 HP')
+                                    if self.verbose: print(f'AI -1 HP')
                                     self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
 
                                 else: # Human damaged
                                     self.agents[aircraft_id].health_points -= 1
-                                    print(f'Human -1 HP')
+                                    if self.verbose: print(f'Human -1 HP')
                                     self.agents[aircraft_id].damage = ((4 - self.agents[aircraft_id].health_points) / 4) * 100
                                     self.damage_flash_start = pygame.time.get_ticks()
                                     self.damage_flash_alpha = 255  # Start fully opaque
