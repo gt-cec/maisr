@@ -68,8 +68,7 @@ class MAISREnvVec(gym.Env):
         self.num_targets = self.config['num ships']
         self.total_targets = self.num_targets
 
-        self.agent_idx = self.num_targets
-        self.human_idx = self.num_targets + 1  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
+
 
         if self.action_type == 'continuous':
             self.action_space = gym.spaces.Box(
@@ -229,13 +228,24 @@ class MAISREnvVec(gym.Env):
 
         # create the aircraft
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
+        print('Num targets: ', self.num_targets)
+        print(range(self.config['num aircraft']))
         for i in range(self.config['num aircraft']):
+            print(i)
             agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
-            self.agents[self.num_targets+i].x, self.agents[self.num_targets+i].y = self.config['agent start location']
+
+            #self.agents[self.num_targets+i].x, self.agents[self.num_targets+i].y = self.config['agent start location']
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location']
 
         #agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Human
         #self.agents[self.human_idx].x, self.agents[self.human_idx].y = self.config['human start location']
         #if self.config['num aircraft'] == 1: self.agents[self.agent_idx].is_visible = False # Do not draw the agent during solo training runs
+
+        self.agent_idx = self.aircraft_ids[0]
+        self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
+
+        print('Agents in the environment now:')
+        print(self.agents)
 
         return self.get_observation()
 
@@ -252,19 +262,17 @@ class MAISREnvVec(gym.Env):
         new_score = 0
 
         for action in actions:
-            print(f'Action in queue is {action}')
-            print(f'Passing {action[1]} to agent waypoint override')
+            #print(f'Action in queue is {action}')
+            #print(f'Passing {action[1]} to agent waypoint override')
             self.agents[action[0]].waypoint_override = action[1]
 
         # move the agents and check for gameplay updates
-        aircraft_agents = [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]
-        for aircraft in aircraft_agents:
+        #aircraft_agents = [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]
+        for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
-            # First, move using the waypoint override set above
-            aircraft.move()
+            aircraft.move() # First, move using the waypoint override set above
 
-            # Get aircraft position
-            aircraft_pos = np.array([aircraft.x, aircraft.y])
+            aircraft_pos = np.array([aircraft.x, aircraft.y]) # Get aircraft position
 
             # Calculate distances to all targets
             target_positions = self.targets[:, 3:5]  # x,y coordinates
@@ -275,7 +283,7 @@ class MAISREnvVec(gym.Env):
             in_isr_range = distances <= isr_range
 
             # Find unidentified targets within ISR range
-            unidentified_in_range = in_isr_range and (self.targets[:, 2] == 0)
+            unidentified_in_range = in_isr_range & (self.targets[:, 2] == 0)
             newly_identified_indices = np.where(unidentified_in_range)[0]
 
             # Process newly identified targets
@@ -349,7 +357,7 @@ class MAISREnvVec(gym.Env):
                 aircraft.alive = False
 
         # Check if the agent is recently deceased (RIP)
-        if not self.agents[self.agent_idx].alive and not self.agent0_dead:
+        if not self.agents[self.aircraft_ids[0]].alive and not self.agent0_dead:
             self.agent0_dead = True
             new_score += self.wingman_dead_points
             print(f'{self.wingman_dead_points} points for agent wingman destruction')
@@ -358,7 +366,7 @@ class MAISREnvVec(gym.Env):
         if self.verbose: print("   Found:", self.num_identified_ships, "Total:", len(self.agents) - len(self.aircraft_ids), "Damage:", self.damage)
 
         # Check termination conditions # TODO make this more configurable. Either AI, human or both need to be alive
-        self.terminated = (self.num_identified_ships >= self.num_targets) or (not self.agents[self.agent_idx].alive and not self.config['infinite health'] and not self.human_training)
+        self.terminated = (self.num_identified_ships >= self.num_targets) or (not self.agents[self.aircraft_ids[0]].alive and not self.config['infinite health'] and not self.human_training)
         self.truncated = (self.display_time / 1000 >= self.time_limit)
         if self.terminated or self.truncated:
             if self.num_identified_ships >= self.num_targets: # Add points for finishing early
@@ -368,7 +376,7 @@ class MAISREnvVec(gym.Env):
             elif not self.agents[self.human_idx].alive:
                 new_score += self.human_dead_points
 
-            print(f'\n FINAL SCORE {self.score} | {self.identified_targets} targets | {self.identified_threat_types} threats | {self.agents[self.agent_idx].health_points} HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'\n FINAL SCORE {self.score} | {self.identified_targets} targets | {self.identified_threat_types} threats | {self.agents[self.aircraft_ids[0]].health_points} HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
             if self.render_mode == 'human':
                 pygame.time.wait(50)
@@ -453,36 +461,36 @@ class MAISREnvVec(gym.Env):
         if self.obs_type == 'vector':
             self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
 
-            self.observation[0] = self.agents[self.agent_idx].health_points / 10.0  # Agent health
-            self.observation[1] = self.agents[self.agent_idx].x / self.config["gameboard size"] # Agent x
-            self.observation[2] = self.agents[self.agent_idx].y / self.config["gameboard size"] # Agent y
-            self.observation[3] = 1.0 if self.agents[self.num_targets].alive else 0.0  # Agent alive status
+            self.observation[0] = self.agents[self.aircraft_ids[0]].health_points / 10.0  # Agent health
+            self.observation[1] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
+            self.observation[2] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"] # Agent y
+            self.observation[3] = 1.0 if self.agents[self.aircraft_ids[1]].alive else 0.0  # Agent alive status
 
-            if self.agents[self.agent_idx].target_point is not None:
-                self.observation[4] = self.agents[self.agent_idx].target_point[0] / self.config["gameboard size"]
-                self.observation[5] = self.agents[self.agent_idx].target_point[1] / self.config["gameboard size"]
+            if self.agents[self.aircraft_ids[0]].target_point is not None:
+                self.observation[4] = self.agents[self.aircraft_ids[0]].target_point[0] / self.config["gameboard size"]
+                self.observation[5] = self.agents[self.aircraft_ids[0]].target_point[1] / self.config["gameboard size"]
             else:
                 self.observation[4] = self.observation[1]  # Default to current position
                 self.observation[5] = self.observation[2]
 
-            self.observation[6] = self.agents[self.human_idx].health_points / 10.0  # Teammate health
-            self.observation[7] = self.agents[self.human_idx].x / self.config["gameboard size"]  # Teammate x
-            self.observation[8] = self.agents[self.human_idx].y / self.config["gameboard size"]  # Teammate y
+            self.observation[6] = self.agents[self.aircraft_ids[1]].health_points / 10.0  # Teammate health
+            self.observation[7] = self.agents[self.aircraft_ids[1]].x / self.config["gameboard size"]  # Teammate x
+            self.observation[8] = self.agents[self.aircraft_ids[1]].y / self.config["gameboard size"]  # Teammate y
 
             # Teammate waypoint
-            if self.agents[self.human_idx].target_point is not None:
-                self.observation[9] = self.agents[self.human_idx].target_point[0] / self.config["gameboard size"]
-                self.observation[10] = self.agents[self.human_idx].target_point[1] / self.config["gameboard size"]
+            if self.agents[self.aircraft_ids[1]].target_point is not None:
+                self.observation[9] = self.agents[self.aircraft_ids[1]].target_point[0] / self.config["gameboard size"]
+                self.observation[10] = self.agents[self.aircraft_ids[1]].target_point[1] / self.config["gameboard size"]
             else:
                 self.observation[9] = self.observation[7]  # Default to current position
                 self.observation[10] = self.observation[8]
 
-            self.observation[11] = 1.0 if self.agents[self.human_idx].alive else 0.0  # Teammate alive status
+            self.observation[11] = 1.0 if self.agents[self.aircraft_ids[1]].alive else 0.0  # Teammate alive status
             self.observation[12] = (self.time_limit - self.display_time / 1000) / self.time_limit # Time remaining
 
             # Process all target data (7 features per target)
             # Create an array to hold target data
-            self.target_data = np.zeros((self.num_ships, 7), dtype=np.float32)
+            self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)
 
             # Normalized positions (columns 0-1 of target_data)
             self.target_data[:, 0] = self.targets[:, 3] / self.config["gameboard size"]  # x position
@@ -784,8 +792,8 @@ class MAISREnvVec(gym.Env):
 
         # Draw health boxes
         if self.config['num aircraft'] > 1:
-            agent0_health_window = HealthWindow(self.agent_idx,10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
-            agent0_health_window.update(self.agents[self.agent_idx].health_points)
+            agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
+            agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
             agent0_health_window.draw(self.window)
 
         agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
@@ -1005,7 +1013,7 @@ class MAISREnvVec(gym.Env):
         self.window.blit(title_surface, title_surface.get_rect(center=(window_x + window_width // 2, window_y + 30)))
 
         # Calculate statistics
-        agent_status = "ALIVE" if self.agents[self.agent_idx].alive else "DESTROYED"
+        agent_status = "ALIVE" if self.agents[self.aircraft_ids[0]].alive else "DESTROYED"
         agent_status_color = (0, 255, 0) if agent_status == "ALIVE" else (255, 0, 0)
         human_status = 'ALIVE' if self.agents[self.human_idx].alive else "DESTROYED"
         human_status_color = (0, 255, 0) if human_status == "ALIVE" else (255, 0, 0)
@@ -1064,7 +1072,7 @@ class MAISREnvVec(gym.Env):
         """
         Calculates number of hostile targets close to the agent
         args:
-            agent: The aircraft agent to check for. Must access via self.agents[self.agent_idx]
+            agent: The aircraft agent to check for. Must access via self.agents[self.aircraft_ids[0]]
         """
         hostile, friendly, unknown = 0,0,0
 

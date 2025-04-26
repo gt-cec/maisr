@@ -77,7 +77,7 @@ class AutonomousPolicy:
     def basic_search(self):
         current_state = self.env.get_state()
         current_target_distances = {}  # Will be {agent_idx:distance}
-        #closest_distance = None
+        closest_distance = None
         dist = None
 
         gameboard_size = self.env.config["gameboard size"]
@@ -125,7 +125,7 @@ class AutonomousPolicy:
                             closest_distance = dist
 
             elif self.search_type == 'tag team': # Only search unknown targets and WEZs within 300 pixels of the human ship (TODO testing)
-                ship_to_human = math.hypot(self.env.agents[self.env.num_ships + 1].x - self.env.agents[ship_id].x, self.env.agents[self.env.num_ships + 1].y - self.env.agents[ship_id].y)
+                ship_to_human = math.hypot(self.env.agents[self.env.human_idx].x - self.env.agents[ship_id].x, self.env.agents[self.env.human_idx].y - self.env.agents[ship_id].y)
                 if (current_state['ships'][ship_id]['observed'] == True and current_state['ships'][ship_id]['observed threat'] == False) and (ship_to_human < 300):
                     #dist = math.hypot(self.aircraft.x - self.env.agents[ship_id].x,self.aircraft.y - self.env.agents[ship_id].y)
                     dist = ship_to_human
@@ -138,7 +138,7 @@ class AutonomousPolicy:
             target_waypoint = tuple((self.env.agents[nearest_target_id].x, self.env.agents[nearest_target_id].y))
 
         elif self.search_type == 'tag team':
-            target_waypoint = (self.env.agents[self.env.num_ships + 1].x,self.env.agents[self.env.num_ships + 1].y)
+            target_waypoint = (self.env.agents[self.env.human_idx].x,self.env.agents[self.env.human_idx].y)
 
         else:  # If all targets ID'd, loiter in center of board or specified quadrant
             quadrant_centers = {'full': (gameboard_size * 0.5,gameboard_size * 0.5), 'NW': (gameboard_size * 0.25, gameboard_size * 0.25), 'NE':(gameboard_size * 0.75, gameboard_size * 0.25), 'SW':(gameboard_size * 0.25, gameboard_size * 0.75),'SE':(gameboard_size * 0.75, gameboard_size * 0.75)}
@@ -202,7 +202,7 @@ class AutonomousPolicy:
         """Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets"""
 
         hostile_nearby, friendly_nearby, unknown_nearby = self.env.get_nearby_hostiles(self.env.agents[self.env.agent_idx])
-        risk_level_function = 10 * hostile_nearby - self.env.agents[self.env.num_ships].health_points # TODO tune
+        risk_level_function = 10 * hostile_nearby - self.env.agents[self.env.agent_idx].health_points # TODO tune
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
 

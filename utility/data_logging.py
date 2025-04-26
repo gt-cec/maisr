@@ -36,7 +36,7 @@ class GameLogger:
                       'identified_targets':env.identified_targets,
                       'time': round(env.display_time / 1000 - 5, 0),
                       'identified_threat_types': env.identified_threat_types,
-                      'agent_health': env.agents[env.num_ships].health_points,
+                      'agent_health': env.agents[env.agent_idx].health_points,
                       'human_health': env.agents[env.human_idx].health_points,
                       'gameplan_command_history': gameplan_command_history,
                       'total_gameplan_commands': len(gameplan_command_history)}
@@ -54,7 +54,7 @@ class GameLogger:
                     'time': round(env.display_time/1000,0),
                     'identified_targets': env.identified_targets,
                     'identified_threat_types': env.identified_threat_types,
-                    'agent_health': env.agents[env.num_ships].health_points,
+                    'agent_health': env.agents[env.agent_idx].health_points,
                     'human_health': env.agents[env.human_idx].health_points,
                     'ships': [],
                     'aircraft': []}
@@ -73,13 +73,13 @@ class GameLogger:
                     state_data['game_state']['ships'].append(ship_data)
                 elif agent.agent_class == 'aircraft':
                     aircraft_data = {
-                        'id': 'agent' if agent.agent_idx == env.num_ships else 'human',
+                        'id': 'agent' if agent.agent_idx == env.agent_idx else 'human',
                         'position': [round(agent.x,0), round(agent.y,0)],
-                        'waypoint': agent_log_info['waypoint'] if agent.agent_idx == env.num_ships else agent1_waypoint,
+                        'waypoint': agent_log_info['waypoint'] if agent.agent_idx == env.agent_idx else agent1_waypoint,
                         'direction': agent.direction,
-                        'priority mode': agent_log_info['priority mode'] if agent.agent_idx == env.num_ships else 'human', # Auto or manual
-                        'search type': agent_log_info['search type'] if agent.agent_idx == env.num_ships else 'human',
-                        'search area': agent_log_info['search area'] if agent.agent_idx == env.num_ships else 'human'
+                        'priority mode': agent_log_info['priority mode'] if agent.agent_idx == env.agent_idx else 'human', # Auto or manual
+                        'search type': agent_log_info['search type'] if agent.agent_idx == env.agent_idx else 'human',
+                        'search area': agent_log_info['search area'] if agent.agent_idx == env.agent_idx else 'human'
                     }
 
                     state_data['game_state']['aircraft'].append(aircraft_data)

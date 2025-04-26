@@ -3,7 +3,8 @@ import sys
 import os
 import ctypes
 
-from env import MAISREnv
+#from env import MAISREnv
+from env_vec import MAISREnvVec
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order, surveys_enabled, times
@@ -106,7 +107,7 @@ if __name__ == "__main__":
             window_width, window_height = env_config['window size'][0], env_config['window size'][1]
             os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
             window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
-            env = MAISREnv(env_config, window, clock=clock, render_mode='human',
+            env = MAISREnvVec(env_config, window, clock=clock, render_mode='human',
                            reward_type=reward_type, obs_type='vector', action_type='continuous',
                            subject_id=subject_id,user_group=user_group,round_number=round_number)
 
@@ -115,12 +116,12 @@ if __name__ == "__main__":
             pygame.init()
             clock = pygame.time.Clock()
             pygame.font.init()
-            env = MAISREnv(env_config, None, render_mode='none',
+            env = MAISREnvVec(env_config, None, render_mode='none',
                            reward_type=reward_type, obs_type='vector', action_type='continuous',
                            subject_id=subject_id, user_group=user_group, round_number=round_number)
 
 
-        agent0_id = env.num_ships  # Hack to dynamically get agent IDs
+        agent0_id = env.aircraft_ids[0]  # Hack to dynamically get agent IDs
         agent0_policy = AutonomousPolicy(env, agent0_id)
         agent0_policy.show_low_level_goals,agent0_policy.show_high_level_goals, agent0_policy.show_high_level_rationale,agent0_policy.show_tracked_factors = env.config['show_low_level_goals'], env.config['show_high_level_goals'], env.config['show_high_level_rationale'], env.config['show_tracked_factors']
 
@@ -184,7 +185,7 @@ if __name__ == "__main__":
                 #agent_action = env.action_space.sample()
                 agent_action = agent0_policy.act()  # Calculate agent's action
 
-                print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+                #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
                 actions.append((env.aircraft_ids[0], agent_action))
                 agent_overridden = False
 
