@@ -124,8 +124,8 @@ class MAISREnvVec(gym.Env):
         self.human_hp_remaining_points = 70
         self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
         self.human_dead_points = -400  # Points subtracted for human dying
-        self.steps_for_lowqual_info = 50 # TODO
-        self.steps_for_highqual_info = 100
+        self.steps_for_lowqual_info = 100 # TODO tune this
+        self.steps_for_highqual_info = 300 # TODO tune this
 
         if not agent_training:
             self.window = window
@@ -302,44 +302,85 @@ class MAISREnvVec(gym.Env):
             #print(f"Aircraft at ({aircraft.x:.1f}, {aircraft.y:.1f}), ISR range: {isr_range}")
             print(f"Targets in ISR range: {np.where(in_isr_range)[0].tolist()}. Target timers: {self.target_timers[np.where(in_isr_range)[0].tolist()]}")
 
-            # Process newly identified targets
+            # Process newly identified targets (TODO below should be a fix but untested)
             for target_idx in range(self.num_targets):
-                # If target is in range and not fully identified
-                if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0:
-                    self.target_timers[target_idx] += 1 # Increment timer for this target
+                if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0: # If target is in range and not fully identified
+                    self.target_timers[target_idx] += 1  # Increment timer for this target
 
-                    # Low quality ID after 100 steps
-                    if self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[target_idx, 2] < 0.5:
+                    if self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[ # High quality ID after e.g. 300 steps (check this first)
+                        target_idx, 2] < 1.0:
+                        # If reaching high quality, update from whatever the previous level was to full identification
+                        if self.targets[target_idx, 2] < 1.0:  # Only update if not already at high quality
+                            # If we were previously at low quality, only add the difference in points
+                            if self.targets[target_idx, 2] >= 0.5:  # Was already at low quality
+                                new_score += self.high_qual_points
+                            else:  # Was at no quality, add both low and high quality points
+                                new_score += self.low_qual_points + self.high_qual_points
+
+                            # Set to high quality
+                            self.targets[target_idx, 2] = 1.0
+
+                            # Log which aircraft identified the high quality info
+                            if self.gather_info:
+                                info["new_identifications"].append({
+                                    "type": "high quality info gathered",
+                                    "target_id": int(self.targets[target_idx, 0]),
+                                    "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
+                                    "time": self.display_time
+                                })
+
+                    # Low quality ID after e.g. 100 steps (check this after high quality)
+                    elif self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[
+                        target_idx, 2] < 0.5:
+                        # Only update if not already at low quality
                         self.targets[target_idx, 2] = 0.5
-                        #self.identified_targets += 1 # TODO probably can remove
-
                         new_score += self.low_qual_points
-                        if self.gather_info: info["score_breakdown"]["target_points"] += self.low_qual_points
 
-                        # Log which aircraft identified the target
                         if self.gather_info:
+                            info["score_breakdown"]["target_points"] += self.low_qual_points
                             info["new_identifications"].append({
                                 "type": "low quality info gathered",
                                 "target_id": int(self.targets[target_idx, 0]),
                                 "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
                                 "time": self.display_time
                             })
-
-                    # High quality ID after 300 steps
-                    if self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[target_idx, 2] < 1.0:
-                        self.targets[target_idx, 2] = 1.0
-                        #self.num_lowq_gathered += 1
-                        #self.num_highq_gathered += 1
-                        new_score += self.high_qual_points
-
-                        # Log which aircraft identified the threat
-                        if self.gather_info:
-                            info["new_identifications"].append({
-                                "type": "high quality info gathered",
-                                "target_id": int(self.targets[target_idx, 0]),
-                                "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
-                                "time": self.display_time
-                            })
+            # for target_idx in range(self.num_targets):
+            #     # If target is in range and not fully identified
+            #     if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0:
+            #         self.target_timers[target_idx] += 1 # Increment timer for this target
+            #
+            #         # Low quality ID after 100 steps
+            #         if self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[target_idx, 2] < 0.5:
+            #             self.targets[target_idx, 2] = 0.5
+            #             #self.identified_targets += 1 # TODO probably can remove
+            #
+            #             new_score += self.low_qual_points
+            #             if self.gather_info: info["score_breakdown"]["target_points"] += self.low_qual_points
+            #
+            #             # Log which aircraft identified the target
+            #             if self.gather_info:
+            #                 info["new_identifications"].append({
+            #                     "type": "low quality info gathered",
+            #                     "target_id": int(self.targets[target_idx, 0]),
+            #                     "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
+            #                     "time": self.display_time
+            #                 })
+            #
+            #         # High quality ID after 300 steps
+            #         if self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[target_idx, 2] < 1.0:
+            #             self.targets[target_idx, 2] = 1.0
+            #             #self.num_lowq_gathered += 1
+            #             #self.num_highq_gathered += 1
+            #             new_score += self.high_qual_points
+            #
+            #             # Log which aircraft identified the threat
+            #             if self.gather_info:
+            #                 info["new_identifications"].append({
+            #                     "type": "high quality info gathered",
+            #                     "target_id": int(self.targets[target_idx, 0]),
+            #                     "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
+            #                     "time": self.display_time
+            #                 })
 
                     # Check if this is a high-value target that can detect us
                     if self.targets[target_idx, 1] == 1.0 and np.random.random() < aircraft.prob_detect:
@@ -678,8 +719,8 @@ class MAISREnvVec(gym.Env):
         SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
 
-        SHIP_REGULAR_LOWQ = (0, 130, 210)
-        SHIP_HIGHVAL_LOWQ = (0, 150, 255)
+        SHIP_REGULAR_LOWQ = (130, 0, 210)
+        SHIP_HIGHVAL_LOWQ = (150, 0, 255)
 
         SHIP_REGULAR_HIGHQ = (0, 255, 210)
         SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
