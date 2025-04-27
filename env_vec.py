@@ -289,7 +289,6 @@ class MAISREnvVec(gym.Env):
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
             aircraft.move() # First, move using the waypoint override set above
-
             aircraft_pos = np.array([aircraft.x, aircraft.y]) # Get aircraft position
 
             # Calculate distances to all targets
@@ -299,6 +298,9 @@ class MAISREnvVec(gym.Env):
             # Find targets within ISR range (for identification)
             isr_range = self.AIRCRAFT_ISR_RADIUS
             in_isr_range = distances <= isr_range
+
+            #print(f"Aircraft at ({aircraft.x:.1f}, {aircraft.y:.1f}), ISR range: {isr_range}")
+            print(f"Targets in ISR range: {np.where(in_isr_range)[0].tolist()}. Target timers: {self.target_timers[np.where(in_isr_range)[0].tolist()]}")
 
             # Process newly identified targets
             for target_idx in range(self.num_targets):
@@ -313,8 +315,6 @@ class MAISREnvVec(gym.Env):
 
                         new_score += self.low_qual_points
                         if self.gather_info: info["score_breakdown"]["target_points"] += self.low_qual_points
-
-                        # TODO in progress: Implementing "info" dict.
 
                         # Log which aircraft identified the target
                         if self.gather_info:
@@ -352,8 +352,8 @@ class MAISREnvVec(gym.Env):
                         if self.render_mode == 'human' and pygame.get_init():
                             self.agent_damage_flash_start = pygame.time.get_ticks()
                             self.agent_damage_flash_alpha = 255
-                else:
-                    self.target_timers[target_idx] = 0 # Reset timer if target is out of range (TODO might remove this. Can be cumulative
+                #else:
+                    #self.target_timers[target_idx] = 0 # Reset timer if target is out of range (TODO might remove this. Can be cumulative
 
             # Check if aircraft is destroyed
             if aircraft.health_points <= 0 and not self.config['infinite health']:
