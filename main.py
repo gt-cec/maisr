@@ -175,27 +175,27 @@ if __name__ == "__main__":
                         agent1_waypoint = human_action
 
                     if agent0_action_override: # If human overrode agent's waypoint, replace it in the queue
+                        agent0_policy.receive_command(agent0_action_override)
                         agent_action = agent0_action_override
-                        actions.append((env.aircraft_ids[0], agent_action))
+                        #actions.append((env.aircraft_ids[0], agent_action))
                         agent_overridden = True
 
 
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-            if not agent_overridden:
-                #agent_action = env.action_space.sample()
-                agent_action = agent0_policy.act()  # Calculate agent's action
+        if not agent_overridden:
+            #agent_action = env.action_space.sample()
+            agent_action = agent0_policy.act()  # Calculate agent's action
 
-                #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
-                actions.append((env.aircraft_ids[0], agent_action))
-                agent_overridden = False
+            #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+            actions.append((env.aircraft_ids[0], agent_action))
+            agent_overridden = False
 
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
             if env.init: env.init = False
-            if env.render_mode == 'human':
-                env.render()
+            if env.render_mode == 'human': env.render()
 
             agent_log_info = {
                 'waypoint': agent_action, 'search type': agent0_policy.search_type,

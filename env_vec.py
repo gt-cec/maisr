@@ -250,7 +250,6 @@ class MAISREnvVec(gym.Env):
             self.agents[action[0]].waypoint_override = action[1]
 
         # move the agents and check for gameplay updates
-        #aircraft_agents = [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
             aircraft.move() # First, move using the waypoint override set above
@@ -270,6 +269,7 @@ class MAISREnvVec(gym.Env):
             newly_identified_indices = np.where(unidentified_in_range)[0]
 
             # Process newly identified targets
+            # TODO replace with new mechanic - 2sec in range to get lowQ, 7 sec to get highQ
             for idx in newly_identified_indices:
                 # Update target info level to 0.5 (identified but threat unknown)
                 self.targets[idx, 2] = 0.5
@@ -570,8 +570,7 @@ class MAISREnvVec(gym.Env):
         game_width = self.config["gameboard size"]
         ui_width = window_width - game_width
 
-        if self.agent_info_height_req > 0:
-            self.comm_pane_height = 220+self.agent_info_height_req
+        if self.agent_info_height_req > 0: self.comm_pane_height = 220+self.agent_info_height_req
         else: self.comm_pane_height = 10
 
         # gameboard background
@@ -586,11 +585,7 @@ class MAISREnvVec(gym.Env):
         for agent in self.agents:
             agent.draw(self.window)
 
-        # Draw the targets TODO
-
-        # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
-        #         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
-
+        # Draw the targets
         SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
 
@@ -607,7 +602,7 @@ class MAISREnvVec(gym.Env):
         # TODO fix get_observation to use self.targets?
 
         for target in self.targets:
-            target_width = 5 if target[1] == 0 else 10
+            target_width = 7 if target[1] == 0 else 10
             target_color = color_list[int(target[1])][int(target[2])]
             pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
 
@@ -700,39 +695,32 @@ class MAISREnvVec(gym.Env):
         search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
         self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
 
-        #self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
         self.NW_quad_button.is_latched = self.button_latch_dict['NW']
         self.NW_quad_button.color = self.gameplan_button_color
         self.NW_quad_button.draw(self.window)
 
-        #self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width, 60+80+10+10+50, self.gameplan_button_width, self.quadrant_button_height)
         self.NE_quad_button.is_latched = self.button_latch_dict['NE']
         self.NE_quad_button.color = self.gameplan_button_color
         self.NE_quad_button.draw(self.window)
 
-        #self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
         self.SW_quad_button.is_latched = self.button_latch_dict['SW']
         self.SW_quad_button.color = self.gameplan_button_color
         self.SW_quad_button.draw(self.window)
 
-        #self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width, 50+2*(self.quadrant_button_height)+50, self.gameplan_button_width, self.quadrant_button_height)
         self.SE_quad_button.is_latched = self.button_latch_dict['SE']
         self.SE_quad_button.color = self.gameplan_button_color
         self.SE_quad_button.draw(self.window)
 
-        #self.full_quad_button = Button("Full", self.right_pane_edge+200-35-10, 60+2*(80+10)+20-35+5+50, 100, 100)
         self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
         self.full_quad_button.is_latched = self.button_latch_dict['full']
         self.full_quad_button.draw(self.window)
 
         pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
-        #self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
         self.waypoint_button.color = self.gameplan_button_color
         self.waypoint_button.draw(self.window)
 
-        #self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3*(self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
         self.hold_button.is_latched = self.button_latch_dict['hold']
         self.hold_button.color = self.gameplan_button_color
         self.hold_button.draw(self.window)
@@ -743,19 +731,6 @@ class MAISREnvVec(gym.Env):
         self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
         self.autonomous_button.color = (50, 180, 180)
         self.autonomous_button.draw(self.window)
-
-        # Advanced gameplans currently removed
-        # self.regroup_button.is_latched = self.regroup_clicked
-        # self.regroup_button.color = self.gameplan_button_color
-        # self.regroup_button.draw(self.window)
-
-        # self.tag_team_button.is_latched = self.button_latch_dict['tag_team']
-        # self.tag_team_button.color = self.gameplan_button_color
-        # self.tag_team_button.draw(self.window)
-
-        # self.fan_out_button.is_latched = self.button_latch_dict['fan_out']
-        # self.fan_out_button.color = self.gameplan_button_color
-        # self.fan_out_button.draw(self.window)
 
         # Draw Comm Log
         pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
