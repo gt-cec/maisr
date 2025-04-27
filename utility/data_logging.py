@@ -52,8 +52,8 @@ class GameLogger:
                 'game_state': {
                     'score': env.score,
                     'time': round(env.display_time/1000,0),
-                    'identified_targets': env.identified_targets,
-                    'identified_threat_types': env.identified_threat_types,
+                    'identified_lowQ': float(env.low_quality_identified),
+                    'identified_highQ': float(env.high_quality_identified),
                     'agent_health': env.agents[env.agent_idx].health_points,
                     'human_health': env.agents[env.human_idx].health_points,
                     'ships': [],
@@ -84,6 +84,8 @@ class GameLogger:
 
                     state_data['game_state']['aircraft'].append(aircraft_data)
 
+            print('State data: \n')
+            print(state_data)
             self._write_log_entry(state_data)
             #print('Game state logged')
             self.last_state_log_time = current_time

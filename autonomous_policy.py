@@ -7,8 +7,8 @@ class AutonomousPolicy:
         self.env = env
         self.aircraft_id = aircraft_id
 
-
         self.target_point = (0,0)
+        self.action = None
 
         # For displaying on agent status window
         self.low_level_rationale = ''  # Identify unknown target, identify unknown WEZ, or evade threat
@@ -70,7 +70,7 @@ class AutonomousPolicy:
             self.ticks_since_update += 1
 
 
-        self.action = self.target_point
+        self.action = (self.target_point[0], self.target_point[1], 0)
         return self.action
 
 

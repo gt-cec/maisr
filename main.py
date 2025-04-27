@@ -158,7 +158,7 @@ if __name__ == "__main__":
             for event in ev:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F1:
-                        if log_data: game_logger.final_log(button_handler.gameplan_command_history, env)
+                        #if log_data: game_logger.final_log(button_handler.gameplan_command_history, env) (TODO Add back)
                         pygame.quit()
                     if event.key == pygame.K_SPACE:
                         env.pause(pygame.MOUSEBUTTONDOWN)
@@ -170,26 +170,26 @@ if __name__ == "__main__":
                     agent0_action_override, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
 
                     if human_waypoint is not None:
-                        human_action = [human_waypoint[0], human_waypoint[1]]
+                        human_action = (human_waypoint[0], human_waypoint[1], 0)
                         actions.append((env.human_idx, human_action))
                         agent1_waypoint = human_action
 
                     if agent0_action_override: # If human overrode agent's waypoint, replace it in the queue
-                        agent0_policy.receive_command(agent0_action_override)
+                        agent0_policy.receive_command(agent0_action_override) # TODO
                         agent_action = agent0_action_override
                         #actions.append((env.aircraft_ids[0], agent_action))
                         agent_overridden = True
 
 
+            # TODO make sure actions always go in as an array
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-        if not agent_overridden:
-            #agent_action = env.action_space.sample()
-            agent_action = agent0_policy.act()  # Calculate agent's action
+            if not agent_overridden:
 
-            #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
-            actions.append((env.aircraft_ids[0], agent_action))
-            agent_overridden = False
+                agent_action = agent0_policy.act()  # Calculate agent's action. Must have three elements (x,y, id_method)
 
+                #print(f'MAIN: AI: {env.aircraft_ids[0], agent_action}')
+                actions.append((env.aircraft_ids[0], agent_action))
+                agent_overridden = False
 
             if env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
@@ -198,27 +198,34 @@ if __name__ == "__main__":
             if env.render_mode == 'human': env.render()
 
             agent_log_info = {
-                'waypoint': agent_action, 'search type': agent0_policy.search_type,
+                'waypoint': agent_action,
+                'search type': agent0_policy.search_type,
                 'search area': agent0_policy.search_quadrant,
                 'priority mode': 'hold' if agent0_policy.hold_commanded else 'waypoint override' if agent0_policy.waypoint_override else 'manual' if
-                env.button_latch_dict['manual_priorities'] else 'auto', }
+                env.button_latch_dict['manual_priorities'] else 'auto',
+            }
 
-            if log_data:
-                game_logger.log_state(env, env.display_time, agent1_waypoint, agent_log_info)
-                if env.new_target_id:
-                    game_logger.log_target_id(env.new_target_id[0], env.new_target_id[1], env.new_target_id[2],env.display_time)
-                    env.new_target_id = None
-
-                if env.new_weapon_id:
-                    game_logger.log_target_id(env.new_weapon_id[0], env.new_weapon_id[1], env.new_weapon_id[2],env.display_time)
-                    env.new_weapon_id = None
+            # if log_data: # (TODO Add back)
+            #     game_logger.log_state(env, env.display_time, agent1_waypoint, agent_log_info)
+            #
+            #     # Process new identifications from info dictionary
+            #     if 'new_identifications' in info and info['new_identifications']:
+            #         for identification in info['new_identifications']:
+            #             if identification['type'] == 'target_identified' or identification[
+            #                 'type'] == 'weapon_identified':
+            #                 game_logger.log_target_id(
+            #                     identification['aircraft'],
+            #                     identification['type'],
+            #                     identification['target_id'],
+            #                     identification['time']
+            #                 )
 
 
         if terminated or truncated:
             done_time = pygame.time.get_ticks()
-            if log_data:
-                game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
-                game_logger.final_log(button_handler.get_command_history(), env)
+            # if log_data: (TODO Add back)
+            #     game_logger.log_state(env, env.display_time,agent1_waypoint,agent_log_info)
+            #     game_logger.final_log(button_handler.get_command_history(), env)
 
             if env.render_mode == 'human':
                 waiting_for_key = True
@@ -230,8 +237,8 @@ if __name__ == "__main__":
                                 waiting_for_key = False
                                 break
                         elif event.type == pygame.QUIT:
-                            if log_data:
-                                game_logger.final_log(button_handler.get_command_history(), env)
+                            # if log_data: # (TODO ADD BACK)
+                            #     game_logger.final_log(button_handler.get_command_history(), env)
                             pygame.quit()
                             sys.exit()
 
