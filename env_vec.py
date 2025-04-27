@@ -66,9 +66,7 @@ class MAISREnvVec(gym.Env):
 
         # determine the number of ships
         self.num_targets = self.config['num ships']
-        self.total_targets = self.num_targets
-
-
+        #self.total_targets = self.num_targets
 
         if self.action_type == 'continuous':
             self.action_space = gym.spaces.Box(
@@ -227,25 +225,12 @@ class MAISREnvVec(gym.Env):
             #agents.Ship(self)  # create the agent, will add itself to the env
 
         # create the aircraft
-        # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        print('Num targets: ', self.num_targets)
-        print(range(self.config['num aircraft']))
         for i in range(self.config['num aircraft']):
-            print(i)
-            agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
-
-            #self.agents[self.num_targets+i].x, self.agents[self.num_targets+i].y = self.config['agent start location']
+            agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location']
-
-        #agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Human
-        #self.agents[self.human_idx].x, self.agents[self.human_idx].y = self.config['human start location']
-        #if self.config['num aircraft'] == 1: self.agents[self.agent_idx].is_visible = False # Do not draw the agent during solo training runs
 
         self.agent_idx = self.aircraft_ids[0]
         self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
-
-        print('Agents in the environment now:')
-        print(self.agents)
 
         return self.get_observation()
 
@@ -262,8 +247,6 @@ class MAISREnvVec(gym.Env):
         new_score = 0
 
         for action in actions:
-            #print(f'Action in queue is {action}')
-            #print(f'Passing {action[1]} to agent waypoint override')
             self.agents[action[0]].waypoint_override = action[1]
 
         # move the agents and check for gameplay updates
@@ -610,29 +593,23 @@ class MAISREnvVec(gym.Env):
 
         SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
-        #SHIP_REGULAR_LOWQ =
-        ##SHIP_REGULAR_HIGHQ
-        #SHIP_HIGHVAL_LOWQ
-        #SHIP_HIGHVAL_HIGHQ
-        #self.AGENT_COLOR_OBSERVED = (128, 0, 128)  # purple
-        #self.AGENT_COLOR_THREAT = (255, 0, 0)  # red
 
-        # color_list = [  # color_list[value][info level]
-        #     ['regular-unknown', 'regular-lowQ', 'regular-highQ'],
-        #     ['highval-unknown', 'highval-lowQ', 'highval-highQ'], ]
+        SHIP_REGULAR_LOWQ = (0, 130, 210)
+        SHIP_HIGHVAL_LOWQ = (0, 150, 255)
+
+        SHIP_REGULAR_HIGHQ = (0, 255, 210)
+        SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
 
         color_list = [  # color_list[value][info level]
-            [SHIP_REGULAR_UNOBSERVED, 'regular-lowQ', 'regular-highQ'],
-            [SHIP_HIGHVAL_UNOBSERVED, 'highval-lowQ', 'highval-highQ'], ]
+            [SHIP_REGULAR_UNOBSERVED, SHIP_REGULAR_LOWQ, SHIP_REGULAR_HIGHQ],
+            [SHIP_HIGHVAL_UNOBSERVED, SHIP_HIGHVAL_LOWQ, SHIP_HIGHVAL_HIGHQ]]
 
         # TODO fix get_observation to use self.targets?
 
         for target in self.targets:
             target_width = 5 if target[1] == 0 else 10
             target_color = color_list[int(target[1])][int(target[2])]
-            print('################')
-            print(target[3],target[4])
-            pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width) # TODO center msut be a pair of numbers
+            pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
 
         # Draw green lines and black crossbars
         self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2)  # inner box
@@ -1023,8 +1000,8 @@ class MAISREnvVec(gym.Env):
         # Create stats text surfaces
         stats_items = [
             f"Final Score: {round(self.score,0)}",
-            f"Targets Identified: {self.identified_targets} / {self.total_targets}",
-            f"Threat Levels Observed: {self.identified_threat_types} / {self.total_targets}",
+            f"Targets Identified: {self.identified_targets} / {self.num_targets}",
+            f"Threat Levels Observed: {self.identified_threat_types} / {self.num_targets}",
             f"Human Status: {human_status}",
             f"Agent Status: {agent_status}"]
 
