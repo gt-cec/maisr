@@ -124,8 +124,10 @@ class MAISREnvVec(gym.Env):
         self.human_hp_remaining_points = 70
         self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
         self.human_dead_points = -400  # Points subtracted for human dying
-        self.steps_for_lowqual_info = 100 # TODO tune this
-        self.steps_for_highqual_info = 300 # TODO tune this
+
+        self.steps_for_lowqual_info = 3*60 # TODO tune this
+        self.steps_for_highqual_info = 7*60 # TODO tune this. Currently 7 seconds
+        self.prob_detect = 0.00333333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
 
         if not agent_training:
             self.window = window
@@ -234,7 +236,7 @@ class MAISREnvVec(gym.Env):
 
         # create the aircraft
         for i in range(self.config['num aircraft']):
-            agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
+            agents.Aircraft(self, 0,prob_detect=self.prob_detect,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location']
 
         self.agent_idx = self.aircraft_ids[0]
@@ -267,19 +269,15 @@ class MAISREnvVec(gym.Env):
 
         for action in actions:
             id, action_value  = action
+            #if isinstance(action_value, np.ndarray): print(f"Action is a NumPy array with shape {action_value.shape} and dtype {action_value.dtype}")
+            #else: print(f"Action is NOT a NumPy array, it's a {type(action_value)}")
 
-            if isinstance(action_value, np.ndarray): print(f"Action is a NumPy array with shape {action_value.shape} and dtype {action_value.dtype}")
-            else: print(f"Action is NOT a NumPy array, it's a {type(action_value)}")
-
-            if self.action_type == 'discrete':
-                # Convert first two values from 0-100 range to x,y coordinates on gameboard
+            if self.action_type == 'discrete': # Convert first two values from 0-100 range to x,y coordinates on gameboard
                 x_coord = float(action_value[0]) * (self.config["gameboard size"] / 100)
                 y_coord = float(action_value[1]) * (self.config["gameboard size"] / 100)
                 waypoint = (x_coord, y_coord)
-
                 id_method = min([0, 50, 100], key=lambda x: abs(x - action_value[2])) # Round to 0, 50, or 100 (TODO ID_method not added yet)
-            else:
-                # For continuous actions, use as provided
+            else: # For continuous actions, use as provided
                 waypoint = (action_value[0], action_value[1])
                 id_method = action_value[2]
 
@@ -287,52 +285,23 @@ class MAISREnvVec(gym.Env):
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-
             aircraft.move() # First, move using the waypoint override set above
-            aircraft_pos = np.array([aircraft.x, aircraft.y]) # Get aircraft position
 
             # Calculate distances to all targets
+            aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             target_positions = self.targets[:, 3:5]  # x,y coordinates
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
 
             # Find targets within ISR range (for identification)
-            isr_range = self.AIRCRAFT_ISR_RADIUS
+            isr_range = self.AIRCRAFT_ENGAGEMENT_RADIUS
             in_isr_range = distances <= isr_range
-
-            #print(f"Aircraft at ({aircraft.x:.1f}, {aircraft.y:.1f}), ISR range: {isr_range}")
-            print(f"Targets in ISR range: {np.where(in_isr_range)[0].tolist()}. Target timers: {self.target_timers[np.where(in_isr_range)[0].tolist()]}")
 
             # Process newly identified targets (TODO below should be a fix but untested)
             for target_idx in range(self.num_targets):
                 if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0: # If target is in range and not fully identified
                     self.target_timers[target_idx] += 1  # Increment timer for this target
 
-                    if self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[ # High quality ID after e.g. 300 steps (check this first)
-                        target_idx, 2] < 1.0:
-                        # If reaching high quality, update from whatever the previous level was to full identification
-                        if self.targets[target_idx, 2] < 1.0:  # Only update if not already at high quality
-                            # If we were previously at low quality, only add the difference in points
-                            if self.targets[target_idx, 2] >= 0.5:  # Was already at low quality
-                                new_score += self.high_qual_points
-                            else:  # Was at no quality, add both low and high quality points
-                                new_score += self.low_qual_points + self.high_qual_points
-
-                            # Set to high quality
-                            self.targets[target_idx, 2] = 1.0
-
-                            # Log which aircraft identified the high quality info
-                            if self.gather_info:
-                                info["new_identifications"].append({
-                                    "type": "high quality info gathered",
-                                    "target_id": int(self.targets[target_idx, 0]),
-                                    "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
-                                    "time": self.display_time
-                                })
-
-                    # Low quality ID after e.g. 100 steps (check this after high quality)
-                    elif self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[
-                        target_idx, 2] < 0.5:
-                        # Only update if not already at low quality
+                    if self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[target_idx, 2] < 0.5:
                         self.targets[target_idx, 2] = 0.5
                         new_score += self.low_qual_points
 
@@ -344,51 +313,25 @@ class MAISREnvVec(gym.Env):
                                 "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
                                 "time": self.display_time
                             })
-            # for target_idx in range(self.num_targets):
-            #     # If target is in range and not fully identified
-            #     if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0:
-            #         self.target_timers[target_idx] += 1 # Increment timer for this target
-            #
-            #         # Low quality ID after 100 steps
-            #         if self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[target_idx, 2] < 0.5:
-            #             self.targets[target_idx, 2] = 0.5
-            #             #self.identified_targets += 1 # TODO probably can remove
-            #
-            #             new_score += self.low_qual_points
-            #             if self.gather_info: info["score_breakdown"]["target_points"] += self.low_qual_points
-            #
-            #             # Log which aircraft identified the target
-            #             if self.gather_info:
-            #                 info["new_identifications"].append({
-            #                     "type": "low quality info gathered",
-            #                     "target_id": int(self.targets[target_idx, 0]),
-            #                     "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
-            #                     "time": self.display_time
-            #                 })
-            #
-            #         # High quality ID after 300 steps
-            #         if self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[target_idx, 2] < 1.0:
-            #             self.targets[target_idx, 2] = 1.0
-            #             #self.num_lowq_gathered += 1
-            #             #self.num_highq_gathered += 1
-            #             new_score += self.high_qual_points
-            #
-            #             # Log which aircraft identified the threat
-            #             if self.gather_info:
-            #                 info["new_identifications"].append({
-            #                     "type": "high quality info gathered",
-            #                     "target_id": int(self.targets[target_idx, 0]),
-            #                     "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
-            #                     "time": self.display_time
-            #                 })
+
+                    elif self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[target_idx, 2] < 1.0:
+                        self.targets[target_idx, 2] = 1.0
+                        new_score += self.high_qual_points
+
+                        if self.gather_info:
+                            info["new_identifications"].append({
+                                "type": "high quality info gathered",
+                                "target_id": int(self.targets[target_idx, 0]),
+                                "aircraft": 'human' if aircraft.agent_idx == self.human_idx else 'AI',
+                                "time": self.display_time
+                            })
 
                     # Check if this is a high-value target that can detect us
                     if self.targets[target_idx, 1] == 1.0 and np.random.random() < aircraft.prob_detect:
-                        # High value target detected us
-                        self.detections += 1
+                        self.detections += 1 # High value target detected us
                         if self.gather_info: info["detections"] = self.detections
 
-                        aircraft.health_points -= 1 # Apply damage to aircraft (TODO probably going to remove damage, just penalize with detections)
+                        #aircraft.health_points -= 1 # Apply damage to aircraft (TODO probably going to remove damage, just penalize with detections)
 
                         if self.render_mode == 'human' and pygame.get_init():
                             self.agent_damage_flash_start = pygame.time.get_ticks()
@@ -396,11 +339,11 @@ class MAISREnvVec(gym.Env):
                 #else:
                     #self.target_timers[target_idx] = 0 # Reset timer if target is out of range (TODO might remove this. Can be cumulative
 
-            # Check if aircraft is destroyed
-            if aircraft.health_points <= 0 and not self.config['infinite health']:
-                if self.gather_info: info["aircraft_destroyed"].append(aircraft.agent_idx) # TODO this key needs to lead to a list
-                aircraft.alive = False
-                print(f'Agent {aircraft.agent_idx} destroyed')
+            # # Check if aircraft is destroyed
+            # if aircraft.health_points <= 0 and not self.config['infinite health']:
+            #     if self.gather_info: info["aircraft_destroyed"].append(aircraft.agent_idx)
+            #     aircraft.alive = False
+            #     print(f'Agent {aircraft.agent_idx} destroyed')
 
         # Check if the agent is recently deceased (RIP)
         # if not self.agents[self.aircraft_ids[0]].alive and not self.agent0_dead:
@@ -411,11 +354,12 @@ class MAISREnvVec(gym.Env):
 
         # Check termination conditions # TODO make this more configurable. Either AI, human or both need to be alive
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
-        self.low_quality_identified = np.sum(self.targets[:, 2] > 0.5) # Count targets with at least low-quality ID (value > 0.5)
+        self.low_quality_identified = np.sum(self.targets[:, 2] == 0.5) # Count targets with at least low-quality ID (value > 0.5)
         self.high_quality_identified = np.sum(self.targets[:, 2] == 1.0) # Count targets with high-quality ID (value = 1.0)
+        print(f'Low Q {self.low_quality_identified} | high q {self.high_quality_identified}')
 
         if self.verbose:
-            print("   Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
+            print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
         self.terminated = self.all_targets_identified or (not self.agents[self.aircraft_ids[0]].alive and not self.config['infinite health'] and not self.human_training)
         self.truncated = (self.display_time / 1000 >= self.time_limit)
@@ -437,7 +381,9 @@ class MAISREnvVec(gym.Env):
         self.score += new_score
         observation = self.get_observation() # Get observation
 
-        if self.agent_training: self.display_time = self.display_time + (1000/60)
+        # Advance time
+        if self.agent_training:
+            self.display_time = self.display_time + (1000/60)
 
         elif not self.paused:
             current_time = pygame.time.get_ticks()
@@ -445,70 +391,6 @@ class MAISREnvVec(gym.Env):
 
         return observation, reward, self.terminated, self.truncated, info
 
-    # TODO Old step loop, delete once new version is verified
-    # for idx in newly_identified_indices:
-    #     # Update target info level to 0.5 (identified but threat unknown)
-    #     self.targets[idx, 2] = 0.5
-    #     self.identified_targets += 1
-    #     new_score += self.target_points
-    #
-    #     # Log which aircraft identified the target
-    #     self.new_target_id = [
-    #         'human' if aircraft.agent_idx == self.human_idx else 'AI',
-    #         'target_identified',
-    #         int(self.targets[idx, 0])  # Target ID
-    #     ]
-    #
-    #     # If target is non-valuable (value=0), automatically ID threat too
-    #     if self.targets[idx, 1] == 0:
-    #         self.targets[idx, 2] = 1.0  # Fully identified
-    #         self.num_identified_ships += 1
-    #         self.identified_threat_types += 1
-    #         new_score += self.threat_points
-    #
-    # # Find targets within engagement range (for threat identification)
-    # engagement_range = self.AIRCRAFT_ENGAGEMENT_RADIUS
-    # in_engagement_range = distances <= engagement_range
-    #
-    # # Find partially identified targets within engagement range
-    # partially_identified_in_range = in_engagement_range & (self.targets[:, 2] == 0.5)
-    # newly_threat_identified_indices = np.where(partially_identified_in_range)[0]
-    #
-    # # Process newly threat-identified targets
-    # for idx in newly_threat_identified_indices:
-    #     # Update target info level to 1.0 (fully identified)
-    #     self.targets[idx, 2] = 1.0
-    #     self.num_identified_ships += 1
-    #     self.identified_threat_types += 1
-    #     new_score += self.threat_points
-    #
-    #     # Log which aircraft identified the threat
-    #     self.new_weapon_id = [
-    #         'human' if aircraft.agent_idx == self.human_idx else 'AI',
-    #         'weapon_identified',
-    #         int(self.targets[idx, 0])  # Target ID
-    #     ]
-    #
-    # # Process damage to aircraft from high-value targets
-    # # Find high-value targets that can damage aircraft
-    # high_value_targets = self.targets[:, 1] == 1  # Value of 1 indicates high-value/threat
-    #
-    # # Calculate threat range for these targets (using column 1 as threat level)
-    # # For simplicity, I'm using threat level 2 for all high-value targets
-    # threat_level = 2
-    # threat_range = self.AGENT_BASE_DRAW_WIDTH * self.AGENT_THREAT_RADIUS[threat_level]
-    #
-    # # Find high-value targets within threat range
-    # in_threat_range = distances <= threat_range
-    # threatening_targets = in_threat_range & high_value_targets
-    #
-    # # Apply damage from threatening targets
-    # if np.any(threatening_targets) and np.random.random() < aircraft.prob_detect:
-    #     aircraft.health_points -= 1
-    #
-    #     if self.render_mode == 'human' and pygame.get_init():
-    #         self.agent_damage_flash_start = pygame.time.get_ticks()
-    #         self.agent_damage_flash_alpha = 255
 
     def get_reward(self, new_score):
         if self.reward_type == 'balanced-sparse': # Considers all the points
@@ -630,23 +512,6 @@ class MAISREnvVec(gym.Env):
                 0.0
             )
 
-            # self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)
-            # target_idx = 0
-            # for agent_idx, agent in enumerate(self.agents):
-            #     if agent.agent_class == "ship":
-            #         # Normalized position
-            #         self.target_data[target_idx, 0] = agent.x / self.config["gameboard size"]
-            #         self.target_data[target_idx, 1] = agent.y / self.config["gameboard size"]
-            #         # One-hot encoding of target identity
-            #         self.target_data[target_idx, 2] = 1.0 if not agent.observed else 0.0  # unknown
-            #         self.target_data[target_idx, 3] = 1.0 if agent.observed and agent.threat == 0 else 0.0  # friendly
-            #         self.target_data[target_idx, 4] = 1.0 if agent.observed and agent.threat > 0 else 0.0  # hostile
-            #         # Threat status
-            #         self.target_data[target_idx, 5] = 0.0 if agent.observed_threat else 1.0  # threat unknown
-            #         # Normalized threat level
-            #         self.target_data[target_idx, 6] = agent.threat / 3.0 if agent.observed_threat else 0.0
-            #         target_idx += 1
-
             target_start_idx = 13
             self.observation[target_start_idx:target_start_idx + self.num_targets * 7] = self.target_data.flatten()         # Copy target data into observation vector
 
@@ -716,24 +581,20 @@ class MAISREnvVec(gym.Env):
             agent.draw(self.window)
 
         # Draw the targets
-        SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
+        #SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
 
         SHIP_REGULAR_LOWQ = (130, 0, 210)
-        SHIP_HIGHVAL_LOWQ = (150, 0, 255)
+        #SHIP_HIGHVAL_LOWQ = (150, 0, 255)
 
         SHIP_REGULAR_HIGHQ = (0, 255, 210)
-        SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
-
-        color_list = [  # color_list[value][info level]
-            [SHIP_REGULAR_UNOBSERVED, SHIP_REGULAR_LOWQ, SHIP_REGULAR_HIGHQ],
-            [SHIP_HIGHVAL_UNOBSERVED, SHIP_HIGHVAL_LOWQ, SHIP_HIGHVAL_HIGHQ]]
+        #SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
 
         # TODO fix get_observation to use self.targets?
-
         for target in self.targets:
             target_width = 7 if target[1] == 0 else 10
-            target_color = color_list[int(target[1])][int(target[2])]
+            target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[2] == 0.5 else SHIP_REGULAR_UNOBSERVED
+            #target_color = color_list[int(target[1])][int(target[2])]
             pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
 
         # Draw green lines and black crossbars

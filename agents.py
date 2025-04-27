@@ -87,8 +87,6 @@ class Aircraft(Agent):
             return
 
         if self.is_visible:
-
-
             # draw the aircraft
             nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
             tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
@@ -106,13 +104,13 @@ class Aircraft(Agent):
             pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
             # draw the engagement radius
             if not self.regroup_clicked: pygame.draw.circle(window, self.color, (self.x, self.y), self.env.AIRCRAFT_ENGAGEMENT_RADIUS, 2)
-            # draw the ISR radius
-            if not self.regroup_clicked:
-                target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
-                shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
-                semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
-                pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
-                window.blit(shape_surf, target_rect)
+            # draw the ISR radius (TODO temporarily removed)
+            # if not self.regroup_clicked:
+            #     target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
+            #     shape_surf = pygame.Surface(target_rect.size, pygame.SRCALPHA)
+            #     semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90+10, 10)]
+            #     pygame.draw.polygon(shape_surf, self.color + (30,), semicircle_points)
+            #     window.blit(shape_surf, target_rect)
 
 
             if self.target_point is not None:
