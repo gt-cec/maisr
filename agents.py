@@ -86,6 +86,8 @@ class Aircraft(Agent):
         if not self.alive:
             return
 
+        #surface = window if window is not None else self.env.window
+
         if self.is_visible:
             # draw the aircraft
             nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)

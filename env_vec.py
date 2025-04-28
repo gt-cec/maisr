@@ -29,7 +29,7 @@ class MAISREnvVec(gym.Env):
         """
         super().__init__()
 
-        if obs_type not in ['vector', 'cnn']: raise ValueError(f"obs_type must be one of 'vector,'cnn, got '{obs_type}'")
+        if obs_type not in ['vector', 'pixel']: raise ValueError(f"obs_type must be one of 'vector,'pixel', got '{obs_type}'")
         if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
         if reward_type not in ['balanced-sparse']: raise ValueError('reward_type must be normal. Others coming soon')
 
@@ -91,8 +91,24 @@ class MAISREnvVec(gym.Env):
 
             self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
             self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)  # For target features
+        elif self.obs_type == 'pixel':
+            # Define pixel observation space
+            pixel_height = self.config["gameboard size"]
+            pixel_width = self.config["gameboard size"]
+            channels = 3  # RGB
+
+            # You might want to resize for performance (optional)
+            self.resize_factor = 2  # e.g., resize to half resolution
+            pixel_height = pixel_height // self.resize_factor
+            pixel_width = pixel_width // self.resize_factor
+
+            self.observation_space = gym.spaces.Box(
+                low=0, high=1,
+                shape=(pixel_height, pixel_width, channels),
+                dtype=np.float32
+            )
         else:
-            raise ValueError("Obs type CNN not supported yet")
+            raise ValueError("Obs type not recognized")
 
 
         # constants
@@ -540,7 +556,21 @@ class MAISREnvVec(gym.Env):
                 print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
                 print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
 
-        elif self.obs_type == 'cnn': raise ValueError('CNN Obs type not supported yet')
+        elif self.obs_type == 'pixel':
+            pixel_obs = self.get_pixel_observation()
+
+            if hasattr(self, 'resize_factor') and self.resize_factor > 1:
+                import cv2
+                pixel_obs = cv2.resize(
+                    pixel_obs,
+                    (self.config["gameboard size"] // self.resize_factor,
+                     self.config["gameboard size"] // self.resize_factor),
+                    interpolation=cv2.INTER_AREA
+                )
+            return pixel_obs
+
+        else:
+            raise ValueError('Unknown obs type')
 
         return self.observation
 
@@ -853,12 +883,13 @@ class MAISREnvVec(gym.Env):
         return state
 
     # utility function for drawing a square box
-    def __render_box__(self, distance_from_edge, color=(0,0,0), width=2):
-        pygame.draw.line(self.window, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard size"] - distance_from_edge), width)
-        pygame.draw.line(self.window, color, (distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), width)
-        pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, distance_from_edge), width)
-        pygame.draw.line(self.window, color, (self.config["gameboard size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
-
+    def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
+        """Utility function for drawing a square box"""
+        surface = surface if surface is not None else self.window
+        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard size"] - distance_from_edge, self.config["gameboard size"] - distance_from_edge), (self.config["gameboard size"] - distance_from_edge, distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
     def pause(self, unpause_key):
         print('Game paused')
@@ -1033,3 +1064,44 @@ class MAISREnvVec(gym.Env):
 
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
+
+    def get_pixel_observation(self):
+        # TODO test
+            # If not working, need to add draw_to_surface to agent(aircraft)
+            # https://claude.ai/chat/a6720cec-c858-4c3f-89d7-1a169f1530f8
+        """
+        Captures the current game screen as a pixel array for RL observation.
+        Returns the pixel array in shape (height, width, channels)
+        """
+        if self.window is None:
+            # If running in headless mode, create a temporary surface
+            temp_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]))
+            temp_surface.fill((255, 255, 255))  # Fill with white background
+
+            # Draw essential game elements on the temp surface
+            self.__render_box__(1, (0, 0, 0), 3, surface=temp_surface)  # outer box
+            self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2,
+                                surface=temp_surface)  # inner box
+
+            # Draw game elements (aircraft and ships)
+            for agent in self.agents:
+                if hasattr(agent, 'draw_to_surface'):
+                    agent.draw_to_surface(temp_surface)
+
+            # Convert surface to pixel array
+            pixel_array = pygame.surfarray.array3d(temp_surface)
+        else:
+            # If window exists, use it to get the pixel array
+            # Capture only the gameboard area, not the UI panels
+            gameboard_rect = pygame.Rect(0, 0, self.config["gameboard size"], self.config["gameboard size"])
+            gameboard_surface = pygame.Surface((gameboard_rect.width, gameboard_rect.height))
+            gameboard_surface.blit(self.window, (0, 0), gameboard_rect)
+            pixel_array = pygame.surfarray.array3d(gameboard_surface)
+
+        # Transpose to get the right format (height, width, channels)
+        pixel_array = pixel_array.transpose((1, 0, 2))
+
+        # Normalize to [0, 1] range
+        pixel_array = pixel_array.astype(np.float32) / 255.0
+
+        return pixel_array
