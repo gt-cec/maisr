@@ -31,7 +31,7 @@ class MAISREnvVec(gym.Env):
         if obs_type not in ['vector', 'pixel']: raise ValueError(f"obs_type must be one of 'vector,'pixel', got '{obs_type}'")
         if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
         if reward_type not in ['balanced-sparse']: raise ValueError('reward_type must be normal. Others coming soon')
-
+        if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
 
         self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
@@ -299,7 +299,7 @@ class MAISREnvVec(gym.Env):
             info = {}
 
         if isinstance(actions, list): # Action is passed in as a list of (agent_id, action) tuples
-            print('Action is a [id, action] list, executing normal mode')
+            #print('Action is a [id, action] list, executing normal mode')
             for action in actions:
                 agent_id, action_value  = action
                 waypoint, id_method = self.denormalize_action(action_value)
@@ -307,6 +307,7 @@ class MAISREnvVec(gym.Env):
 
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
             action_value = actions
+            #print(action_value)
             waypoint, id_method = self.denormalize_action(action_value)
             self.agents[0].waypoint_override = waypoint
 
@@ -377,7 +378,7 @@ class MAISREnvVec(gym.Env):
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
         self.low_quality_identified = np.sum(self.targets[:, 2] == 0.5) # Count targets with at least low-quality ID (value > 0.5)
         self.high_quality_identified = np.sum(self.targets[:, 2] == 1.0) # Count targets with high-quality ID (value = 1.0)
-        print(f'Low Q {self.low_quality_identified} | high q {self.high_quality_identified}')
+        #print(f'Low Q {self.low_quality_identified} | high q {self.high_quality_identified}')
 
         if self.verbose:
             print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
