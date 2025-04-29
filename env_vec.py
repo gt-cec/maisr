@@ -37,7 +37,7 @@ class MAISREnvVec(gym.Env):
         self.render_mode = render_mode
         self.gather_info = self.render_mode == 'human' # Only populate the info dict if playing with humans
 
-        self.config['num aircraft'] = 1 # TODO temp override
+        #self.config['num aircraft'] = 1 # TODO temp override
 
         self.obs_type = obs_type
         self.action_type = action_type
@@ -68,12 +68,12 @@ class MAISREnvVec(gym.Env):
         else: print("Note: no 'seed' specified in the env config.")
 
         # determine the number of ships
-        self.num_targets = self.config['num ships']
-        #self.total_targets = self.num_targets
+        self.max_targets = 30
+        self.num_targets = min(30, self.config['num ships']) # If more than 30 targets specified, overwrite to 30
 
         if self.action_type == 'continuous':
             self.action_space = gym.spaces.Box(
-                low=np.array([0, 0, 0], dtype=np.float32),
+                low=np.array([-1, -1, -1], dtype=np.float32),
                 high=np.array([1, 1, 1], dtype=np.float32),
                 dtype=np.float32)
         elif self.action_type == 'discrete':
@@ -81,16 +81,17 @@ class MAISREnvVec(gym.Env):
         else:
             raise ValueError("Action type must be continuous or discrete")
 
-        self.num_obs_features = 13 + 11 + 7 * self.num_targets
+        self.obs_size = 9 + 5 * 30
 
         if self.obs_type == 'vector':
             self.observation_space = gym.spaces.Box(
                 low=0, high=1,
-                shape=(self.num_obs_features,),  # Wrap in tuple to make it iterable
+                shape=(self.obs_size,),  # Wrap in tuple to make it iterable
                 dtype=np.float32)
 
-            self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
-            self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)  # For target features
+            self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+            #self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)  # For target features
         elif self.obs_type == 'pixel':
             # Define pixel observation space
             pixel_height = self.config["gameboard size"]
@@ -133,7 +134,15 @@ class MAISREnvVec(gym.Env):
 
         self.show_agent_waypoint = self.config['show agent waypoint']
 
-        # Set point quantities for each event
+        # Set reward quantities for each event (agent only)
+        self.lowqual_regulartarget_reward = 0.25  # Reward earned for gathering low quality info about a regular target
+        self.lowqual_highvaltarget_reward = 0.5  # Reward earned for gathering low quality info about a high value target
+        self.highqual_regulartarget_reward = 0.5 # Reward earned for gathering high quality info about a regular value target
+        self.highqual_highvaltarget_reward = 1.0 # Reward earned for gathering high quality info about a high value target
+        self.detections_reward = -1.0
+        self.time_reward = 0.1  # Reward earned for every second early. 0.1 translates to 1.0 per 10 seconds
+
+        # Set point quantities for each event (human only)
         self.score = 0
         self.all_targets_points = 0  # All targets ID'd
         self.low_qual_points = 10  # Points earned for gathering low quality info about a target
@@ -215,7 +224,7 @@ class MAISREnvVec(gym.Env):
         self.reset()
 
 
-    def reset(self):
+    def reset(self, seed = None):
         self.agents = []
         self.aircraft_ids = []  # indexes of the aircraft agents
         self.damage = 0  # total damage from all agents
@@ -251,8 +260,9 @@ class MAISREnvVec(gym.Env):
         if self.config['num aircraft'] == 2:
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
-
-        return self.get_observation()
+        self.observation = self.get_observation()
+        info = None
+        return self.observation, info
 
 
     def step(self, actions:list):
@@ -263,8 +273,16 @@ class MAISREnvVec(gym.Env):
         returns:
         """
 
+        # Track events that give reward. Will be passed to get_reward at end of step
+        new_reward = {'detections': 0,
+                      'low qual regular': 0,
+                      'high qual regular': 0,
+                      'low qual high value': 0,
+                      'high qual high value': 0,
+                      'early finish': 0}
 
-        new_score = 0
+        new_score = 0 # For tracking human-understandable reward
+
         if self.gather_info:
             info = {
                 "new_identifications": [],  # List to track newly identified targets/threats
@@ -278,7 +296,7 @@ class MAISREnvVec(gym.Env):
             }
 
         for action in actions:
-            id, action_value  = action
+            agent_id, action_value  = action
             #if isinstance(action_value, np.ndarray): print(f"Action is a NumPy array with shape {action_value.shape} and dtype {action_value.dtype}")
             #else: print(f"Action is NOT a NumPy array, it's a {type(action_value)}")
 
@@ -286,12 +304,23 @@ class MAISREnvVec(gym.Env):
                 x_coord = float(action_value[0]) * (self.config["gameboard size"] / 100)
                 y_coord = float(action_value[1]) * (self.config["gameboard size"] / 100)
                 waypoint = (x_coord, y_coord)
-                id_method = min([0, 50, 100], key=lambda x: abs(x - action_value[2])) # Round to 0, 50, or 100 (TODO ID_method not added yet)
-            else: # For continuous actions, use as provided
-                waypoint = (action_value[0], action_value[1])
-                id_method = action_value[2]
+                id_method = min([0, 50, 100], key=lambda x: abs(x - action_value[2]))
 
-            self.agents[id].waypoint_override = waypoint
+            else:
+                # For continuous actions, convert from -1 to 1 range to 0 to gameboard_size
+                normalized_x = (action_value[0] + 1) / 2 # Convert to 0,1 range
+                normalized_y = (action_value[1] + 1) / 2 # Convert to 0,1 range
+
+                # Scale to gameboard size
+                x_coord = normalized_x * self.config["gameboard size"]
+                y_coord = normalized_y * self.config["gameboard size"]
+                waypoint = (x_coord, y_coord)
+
+                # If id_method is also in -1 to 1 range, convert it similarly
+                normalized_id = (action_value[2] + 1) / 2  # Convert from -1,1 to 0,1
+                id_method = normalized_id  # Or map to your desired range
+
+            self.agents[agent_id].waypoint_override = waypoint
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
@@ -314,6 +343,8 @@ class MAISREnvVec(gym.Env):
                     if self.target_timers[target_idx] >= self.steps_for_lowqual_info and self.targets[target_idx, 2] < 0.5:
                         self.targets[target_idx, 2] = 0.5
                         new_score += self.low_qual_points
+                        if self.targets[target_idx, 1] == 0.0: new_reward['low qual regular'] += 1
+                        elif self.targets[target_idx, 1] == 1.0: new_reward['low qual high value'] += 1
 
                         if self.gather_info:
                             info["score_breakdown"]["target_points"] += self.low_qual_points
@@ -327,6 +358,8 @@ class MAISREnvVec(gym.Env):
                     elif self.target_timers[target_idx] >= self.steps_for_highqual_info and self.targets[target_idx, 2] < 1.0:
                         self.targets[target_idx, 2] = 1.0
                         new_score += self.high_qual_points
+                        if self.targets[target_idx, 1] == 0.0: new_reward['high qual regular'] += 1
+                        elif self.targets[target_idx, 1] == 1.0: new_reward['high qual high value'] += 1
 
                         if self.gather_info:
                             info["new_identifications"].append({
@@ -339,15 +372,14 @@ class MAISREnvVec(gym.Env):
                     # Check if this is a high-value target that can detect us
                     if self.targets[target_idx, 1] == 1.0 and np.random.random() < aircraft.prob_detect:
                         self.detections += 1 # High value target detected us
-                        if self.gather_info: info["detections"] = self.detections
+                        new_reward['detections'] += 1
 
-                        #aircraft.health_points -= 1 # Apply damage to aircraft (TODO probably going to remove damage, just penalize with detections)
+                        if self.gather_info:
+                            info["detections"] = self.detections
 
                         if self.render_mode == 'human' and pygame.get_init():
                             self.agent_damage_flash_start = pygame.time.get_ticks()
                             self.agent_damage_flash_alpha = 255
-                #else:
-                    #self.target_timers[target_idx] = 0 # Reset timer if target is out of range (TODO might remove this. Can be cumulative
 
 
         # Check termination conditions # TODO make this more configurable. Either AI, human or both need to be alive
@@ -359,15 +391,14 @@ class MAISREnvVec(gym.Env):
         if self.verbose:
             print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
-        self.terminated = self.all_targets_identified or (not self.agents[self.aircraft_ids[0]].alive and not self.config['infinite health'] and not self.human_training)
-        self.truncated = (self.display_time / 1000 >= self.time_limit)
+        self.terminated = self.all_targets_identified or self.detections >= 5 or self.display_time / 1000 >= self.time_limit
+        # self.truncated = (TODO: No current use for truncated
         if self.terminated or self.truncated:
             if self.all_targets_identified: # Add points for finishing early
-                new_score += self.all_targets_points
+                new_score += self.all_targets_points # Left this but it doesn't go into reward
                 new_score += (self.time_limit - self.display_time/1000)*self.time_points
+                new_reward['early finish'] = (self.time_limit - self.display_time/1000)
 
-            # elif not self.agents[self.human_idx].alive: # TODO temporarily removed
-            #     new_score += self.human_dead_points
 
             print(f'\n FINAL SCORE {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.agents[self.aircraft_ids[0]].health_points} AI HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
@@ -375,33 +406,37 @@ class MAISREnvVec(gym.Env):
                 pygame.time.wait(50)
 
         # Calculate reward
-        reward = self.get_reward(new_score)
-        self.score += new_score
+        reward = self.get_reward(new_reward) # For agent
+        self.score += new_score # For human
         observation = self.get_observation() # Get observation
 
         # Advance time
         if self.render_mode == 'headless':
-            self.display_time = self.display_time + (1000/60) # Each step is 1/60th of a second
+            self.display_time = self.display_time + (1000/60) # If agent training, each step is 1/60th of a second
 
         elif not self.paused:
             self.display_time = pygame.time.get_ticks() - self.total_pause_time
 
-        if self.init:
-            self.init = False
+        if self.init: self.init = False
 
         return observation, reward, self.terminated, self.truncated, info
 
 
-    def get_reward(self, new_score):
-        if self.reward_type == 'balanced-sparse': # Considers all the points
-            reward = new_score
-        else: raise ValueError('Unknown reward type')
+    def get_reward(self, new_reward):
+        if self.reward_type == 'balanced-sparse': # Default reward function
+            reward = (new_reward['low qual regular'] * self.lowqual_regulartarget_reward) + \
+                     (new_reward['high qual regular'] * self.highqual_regulartarget_reward) + \
+                     (new_reward['low qual high value'] * self.lowqual_highvaltarget_reward) + \
+                     (new_reward['high qual high value'] * self.highqual_highvaltarget_reward) + \
+                     (new_reward['early finish'] * self.time_reward)
+        else:
+            raise ValueError('Unknown reward type')
 
         return reward
 
     def get_observation(self):
         """
-        State will include the following features (current count is 444):
+        State will include the following features (current count is 309):
             # Agent and basic game info (8 features):
             0 agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
             1 agent_y,             # (0-1)
@@ -415,18 +450,19 @@ class MAISREnvVec(gym.Env):
             7 time_remaining       # (0-1)
             8 num detections       # (0 to 1) Normalized using self.num_detections / 5. When num_detections = 5, this hits 1 and the episode is terminated
 
-            # Target data (the following are repeated for all 60 targets) (7*60 = 420 features):
+            # Target data (the following are repeated for all targets, for a max of 5*30 = 150 features)
             9+i target_exists        # Used to allow configurable numbers of targets. 0 if the target does not exist (for num_targets < 60), 1 if it does
             10+i target_value         # 0 for regular, 1 for high value
             11+i info_level           # 0 for no info, 0.5 for low quality info, 1.0 for full info
             12+i target_x,            # (0-1)
             13+i target_y,            # (0-1)
 
+
             # Handcrafted features, TBD (TODO)
         """
 
         if self.obs_type == 'vector':
-            self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
+            self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
             self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
             self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"] # Agent y
@@ -450,10 +486,10 @@ class MAISREnvVec(gym.Env):
             self.observation[8] = self.detections
 
             # Process target data
-            max_targets = 60
+            #max_targets = 60 self.max_targets
             targets_per_entry = 5  # Each target has 5 features in the observation
 
-            target_features = np.zeros((max_targets, targets_per_entry), dtype=np.float32)
+            target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
             target_features[:self.num_targets, 0] = 1.0 # Set the target_exists flag to 1 for all actual targets
 
             if self.num_targets > 0: # For actual targets, copy the relevant data
@@ -463,7 +499,8 @@ class MAISREnvVec(gym.Env):
                 target_features[:self.num_targets, 4] = self.targets[:, 4] / self.config["gameboard size"]  # y position
 
             target_start_idx = 9 # Insert all target features into the observation vector
-            self.observation[target_start_idx:target_start_idx + max_targets * targets_per_entry] = target_features.flatten()
+            self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
+
 
             if self.init:
                 print("Observation vector explanation:")
@@ -478,8 +515,7 @@ class MAISREnvVec(gym.Env):
                 print(f"[7] Time remaining normalized: {self.observation[7]}")
                 print(f"[8] Normalized detections: {self.observation[8]}")
 
-                # Print some target data examples
-                for i in range(min(3, self.num_targets)):
+                for i in range(min(3, self.num_targets)): # Print some target data examples
                     base_idx = 9 + i * targets_per_entry
                     print(f"\nTarget {i} data:")
                     print(f"[{base_idx}] Target exists: {self.observation[base_idx]}")
@@ -489,20 +525,19 @@ class MAISREnvVec(gym.Env):
                     print(f"[{base_idx + 4}] Target y position: {self.observation[base_idx + 4]}")
 
         elif self.obs_type == 'pixel':
-            pixel_obs = self.get_pixel_observation()
+            frame = self.render()
 
             if hasattr(self, 'resize_factor') and self.resize_factor > 1:
                 import cv2
-                pixel_obs = cv2.resize(
-                    pixel_obs,
+                frame = cv2.resize(
+                    frame,
                     (self.config["gameboard size"] // self.resize_factor,
                      self.config["gameboard size"] // self.resize_factor),
-                    interpolation=cv2.INTER_AREA
-                )
-            return pixel_obs
+                    interpolation=cv2.INTER_AREA)
 
-        else:
-            raise ValueError('Unknown obs type')
+            self.observation = frame
+
+        else: raise ValueError('Unknown obs type')
 
         return self.observation
 
@@ -515,9 +550,11 @@ class MAISREnvVec(gym.Env):
         if len(self.comm_messages) > self.max_messages:
             self.comm_messages.pop(0)
 
-    def render(self, close=False):
-        if self.render_mode == 'headless': # Do not render if in headless mode
+    def render(self):
+        # TODO modify to return a pixel frame if obs_type is pixel
+        if (self.render_mode == 'headless'): # and (not self.obs_type == 'pixel'): # Do not render if in headless mode
             pass
+
 
         window_width, window_height = self.config['window size'][0], self.config['window size'][0]
         game_width = self.config["gameboard size"]
@@ -784,6 +821,10 @@ class MAISREnvVec(gym.Env):
         pygame.display.update()
         self.clock.tick(60)
 
+    def close(self):
+        if self.render_mode == 'human' and pygame.get_init():
+            pygame.quit()
+
     # convert the environment into a state dictionary
     def get_state(self):
         state = {
@@ -992,44 +1033,3 @@ class MAISREnvVec(gym.Env):
 
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
-
-    def get_pixel_observation(self):
-        # TODO test
-            # If not working, need to add draw_to_surface to agent(aircraft)
-            # https://claude.ai/chat/a6720cec-c858-4c3f-89d7-1a169f1530f8
-        """
-        Captures the current game screen as a pixel array for RL observation.
-        Returns the pixel array in shape (height, width, channels)
-        """
-        if self.window is None:
-            # If running in headless mode, create a temporary surface
-            temp_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]))
-            temp_surface.fill((255, 255, 255))  # Fill with white background
-
-            # Draw essential game elements on the temp surface
-            self.__render_box__(1, (0, 0, 0), 3, surface=temp_surface)  # outer box
-            self.__render_box__(self.config["gameboard border margin"], (0, 128, 0), 2,
-                                surface=temp_surface)  # inner box
-
-            # Draw game elements (aircraft and ships)
-            for agent in self.agents:
-                if hasattr(agent, 'draw_to_surface'):
-                    agent.draw_to_surface(temp_surface)
-
-            # Convert surface to pixel array
-            pixel_array = pygame.surfarray.array3d(temp_surface)
-        else:
-            # If window exists, use it to get the pixel array
-            # Capture only the gameboard area, not the UI panels
-            gameboard_rect = pygame.Rect(0, 0, self.config["gameboard size"], self.config["gameboard size"])
-            gameboard_surface = pygame.Surface((gameboard_rect.width, gameboard_rect.height))
-            gameboard_surface.blit(self.window, (0, 0), gameboard_rect)
-            pixel_array = pygame.surfarray.array3d(gameboard_surface)
-
-        # Transpose to get the right format (height, width, channels)
-        pixel_array = pixel_array.transpose((1, 0, 2))
-
-        # Normalize to [0, 1] range
-        pixel_array = pixel_array.astype(np.float32) / 255.0
-
-        return pixel_array

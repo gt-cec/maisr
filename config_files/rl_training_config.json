@@ -6,7 +6,7 @@
 	"gameplay color": "white",
 	"motion iteration": "F",
 	"search pattern": "ladder",
-	"num ships":10,
+	"num ships":30,
 	"verbose": false,
 	"infinite health": false,
 	"time limit": 245,
