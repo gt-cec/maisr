@@ -153,7 +153,6 @@ if __name__ == "__main__":
 
             actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
 
-
             # Handle human actions (mouse clicks)
             ev = pygame.event.get()
             for event in ev:

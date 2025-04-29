@@ -14,7 +14,7 @@ class MAISREnvVec(gym.Env):
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
-                 subject_id='99',user_group='99',round_number='99'):
+                 subject_id='999',user_group='99',round_number='99'):
         """
         args:
             time_scale: How much to scale time by
@@ -31,6 +31,7 @@ class MAISREnvVec(gym.Env):
         if obs_type not in ['vector', 'pixel']: raise ValueError(f"obs_type must be one of 'vector,'pixel', got '{obs_type}'")
         if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
         if reward_type not in ['balanced-sparse']: raise ValueError('reward_type must be normal. Others coming soon')
+
 
         self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
@@ -261,7 +262,7 @@ class MAISREnvVec(gym.Env):
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         self.observation = self.get_observation()
-        info = None
+        info = {}
         return self.observation, info
 
 
@@ -294,33 +295,23 @@ class MAISREnvVec(gym.Env):
                     "completion_points": 0,
                     "penalty_points": 0}
             }
+        else:
+            info = {}
 
-        for action in actions:
-            agent_id, action_value  = action
-            #if isinstance(action_value, np.ndarray): print(f"Action is a NumPy array with shape {action_value.shape} and dtype {action_value.dtype}")
-            #else: print(f"Action is NOT a NumPy array, it's a {type(action_value)}")
+        if isinstance(actions, list): # Action is passed in as a list of (agent_id, action) tuples
+            print('Action is a [id, action] list, executing normal mode')
+            for action in actions:
+                agent_id, action_value  = action
+                waypoint, id_method = self.denormalize_action(action_value)
+                self.agents[agent_id].waypoint_override = waypoint
 
-            if self.action_type == 'discrete': # Convert first two values from 0-100 range to x,y coordinates on gameboard
-                x_coord = float(action_value[0]) * (self.config["gameboard size"] / 100)
-                y_coord = float(action_value[1]) * (self.config["gameboard size"] / 100)
-                waypoint = (x_coord, y_coord)
-                id_method = min([0, 50, 100], key=lambda x: abs(x - action_value[2]))
+        elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
+            action_value = actions
+            waypoint, id_method = self.denormalize_action(action_value)
+            self.agents[0].waypoint_override = waypoint
 
-            else:
-                # For continuous actions, convert from -1 to 1 range to 0 to gameboard_size
-                normalized_x = (action_value[0] + 1) / 2 # Convert to 0,1 range
-                normalized_y = (action_value[1] + 1) / 2 # Convert to 0,1 range
+        else: raise ValueError('Actions input is an unknown type')
 
-                # Scale to gameboard size
-                x_coord = normalized_x * self.config["gameboard size"]
-                y_coord = normalized_y * self.config["gameboard size"]
-                waypoint = (x_coord, y_coord)
-
-                # If id_method is also in -1 to 1 range, convert it similarly
-                normalized_id = (action_value[2] + 1) / 2  # Convert from -1,1 to 0,1
-                id_method = normalized_id  # Or map to your desired range
-
-            self.agents[agent_id].waypoint_override = waypoint
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
@@ -423,12 +414,14 @@ class MAISREnvVec(gym.Env):
 
 
     def get_reward(self, new_reward):
+
         if self.reward_type == 'balanced-sparse': # Default reward function
             reward = (new_reward['low qual regular'] * self.lowqual_regulartarget_reward) + \
                      (new_reward['high qual regular'] * self.highqual_regulartarget_reward) + \
                      (new_reward['low qual high value'] * self.lowqual_highvaltarget_reward) + \
                      (new_reward['high qual high value'] * self.highqual_highvaltarget_reward) + \
                      (new_reward['early finish'] * self.time_reward)
+
         else:
             raise ValueError('Unknown reward type')
 
@@ -502,27 +495,27 @@ class MAISREnvVec(gym.Env):
             self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
 
-            if self.init:
-                print("Observation vector explanation:")
-                print(f"[0] Agent x position: {self.observation[0]}")
-                print(f"[1] Agent y position: {self.observation[1]}")
-                print(f"[2] Teammate exists: {self.observation[2]}")
-                print(f"[3] Teammate x position: {self.observation[3]}")
-                print(f"[4] Teammate y position: {self.observation[4]}")
-                print(f"[5] Teammate waypoint x: {self.observation[5]}")
-                print(f"[6] Teammate waypoint y: {self.observation[6]}")
-
-                print(f"[7] Time remaining normalized: {self.observation[7]}")
-                print(f"[8] Normalized detections: {self.observation[8]}")
-
-                for i in range(min(3, self.num_targets)): # Print some target data examples
-                    base_idx = 9 + i * targets_per_entry
-                    print(f"\nTarget {i} data:")
-                    print(f"[{base_idx}] Target exists: {self.observation[base_idx]}")
-                    print(f"[{base_idx + 1}] Target value: {self.observation[base_idx + 1]}")
-                    print(f"[{base_idx + 2}] Info level: {self.observation[base_idx + 2]}")
-                    print(f"[{base_idx + 3}] Target x position: {self.observation[base_idx + 3]}")
-                    print(f"[{base_idx + 4}] Target y position: {self.observation[base_idx + 4]}")
+            # if self.init:
+            #     print("Observation vector explanation:")
+            #     print(f"[0] Agent x position: {self.observation[0]}")
+            #     print(f"[1] Agent y position: {self.observation[1]}")
+            #     print(f"[2] Teammate exists: {self.observation[2]}")
+            #     print(f"[3] Teammate x position: {self.observation[3]}")
+            #     print(f"[4] Teammate y position: {self.observation[4]}")
+            #     print(f"[5] Teammate waypoint x: {self.observation[5]}")
+            #     print(f"[6] Teammate waypoint y: {self.observation[6]}")
+            #
+            #     print(f"[7] Time remaining normalized: {self.observation[7]}")
+            #     print(f"[8] Normalized detections: {self.observation[8]}")
+            #
+            #     for i in range(min(3, self.num_targets)): # Print some target data examples
+            #         base_idx = 9 + i * targets_per_entry
+            #         print(f"\nTarget {i} data:")
+            #         print(f"[{base_idx}] Target exists: {self.observation[base_idx]}")
+            #         print(f"[{base_idx + 1}] Target value: {self.observation[base_idx + 1]}")
+            #         print(f"[{base_idx + 2}] Info level: {self.observation[base_idx + 2]}")
+            #         print(f"[{base_idx + 3}] Target x position: {self.observation[base_idx + 3]}")
+            #         print(f"[{base_idx + 4}] Target y position: {self.observation[base_idx + 4]}")
 
         elif self.obs_type == 'pixel':
             frame = self.render()
@@ -1033,3 +1026,37 @@ class MAISREnvVec(gym.Env):
 
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
+
+    def denormalize_action(self, action):
+        """
+
+        Args:
+            action (ndarray, size 3): Agent action to normalize. Should be in the form ndarray(waypoint_x, waypoint_y, id_method), all with range [-1, +1]
+
+        Returns:
+            waypoint (tuple, size 2): (x,y) waypoint with range [0, 1000]
+            id_method (float): Value in range [0, 1]
+
+        """
+
+        if self.action_type == 'discrete':  # Convert first two values from 0-100 range to x,y coordinates on gameboard
+            x_coord = float(action[0]) * (self.config["gameboard size"] / 100)
+            y_coord = float(action[1]) * (self.config["gameboard size"] / 100)
+            waypoint = (x_coord, y_coord)
+            id_method = min([0, 50, 100], key=lambda x: abs(x - action[2]))
+
+        elif self.action_type == 'continuous':
+            normalized_x = (action[0] + 1) / 2  # Convert to 0,1 range
+            normalized_y = (action[1] + 1) / 2  # Convert to 0,1 range
+            x_coord = normalized_x * self.config["gameboard size"]
+            y_coord = normalized_y * self.config["gameboard size"]
+            waypoint = (x_coord, y_coord)
+
+            #normalized_id = (action_value[2] + 1) / 2  # Convert from -1,1 to 0,1
+            #id_method = normalized_id  # Or map to your desired range
+            id_method = action[2]
+
+        else:
+            raise ValueError('Error in denormalize action: action type not recognized')
+
+        return waypoint, id_method
