@@ -55,6 +55,7 @@ if __name__ == "__main__":
         print('No args specified, loading parameters from config.py')
         from config import subject_id, user_group, log_data, x, y, round_number
 
+
     elif len(sys.argv) < 5:
         print("Missing args, run as: python main.py subject_id user_group starting_round_number log_data")
         sys.exit()
@@ -168,6 +169,8 @@ if __name__ == "__main__":
                     time_sec = float(env.display_time) / 1000
 
                     agent0_action_override, human_waypoint = button_handler.handle_mouse_click(mouse_position, time_sec)
+                    target_point_unscaled = (human_waypoint[0] / env.config['gameboard size'], human_waypoint[1] / env.config['gameboard size'])
+                    human_waypoint  = ((2 * target_point_unscaled[0]) - 1, (2 * target_point_unscaled[1]) - 1)
 
                     if human_waypoint is not None:
                         human_action = (human_waypoint[0], human_waypoint[1], 0)

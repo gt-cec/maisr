@@ -12,7 +12,7 @@ surveys_enabled = False # TODO Should add this to the run.bat args too
 times = [65.0, 125.0, 185.0]
 
 # Set whether to log data (run data will be saved to a json file in ./experiment_data)
-log_data = 'y' # 'y' or 'n' (string)
+log_data = 'n' # 'y' or 'n' (string)
 
 # Modify pygame render window parameters if needed
 x = 235 #1680+235    # Pixel location of right edge of the pygame window. Default = 235 (renders in center of a 1920x1080 screen if gameboard is configured to 1450px)
