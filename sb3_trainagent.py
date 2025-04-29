@@ -7,13 +7,42 @@ from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO, A2C, DQN
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.utils import set_random_seed
+
+import multiprocessing
 
 from env_vec import MAISREnvVec
 from utility.data_logging import load_env_config
 from agents import *
+
+
+def make_env(env_config, rank, seed=0):
+    """
+    Utility function for multiprocessed env.
+
+    :param env_config: Configuration dictionary for the environment
+    :param rank: Index of the subprocess
+    :param seed: Random seed for reproducibility
+    :return: Function to create and initialize an environment
+    """
+
+    def _init():
+        env = MAISREnvVec(
+            config=env_config,
+            render_mode='headless',
+            reward_type='balanced-sparse',
+            obs_type='vector',
+            action_type='continuous',
+        )
+        env.reset(seed=seed + rank)
+        return env
+
+    set_random_seed(seed)
+    return _init
 
 
 def main(save_dir, load_dir, load_existing):
@@ -25,7 +54,7 @@ def main(save_dir, load_dir, load_existing):
     os.makedirs(log_dir, exist_ok=True)
 
     run = wandb.init(
-        project="maisr-training",
+        project="maisr-rl",
         config={
             "algorithm": 'PPO',
             "policy_type": "MlpPolicy",
@@ -34,9 +63,15 @@ def main(save_dir, load_dir, load_existing):
             "env_config": config
         },
         sync_tensorboard=True,  # Auto-upload SB3's tensorboard metrics to wandb
+        monitor_gym = True,
     )
 
     vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
+
+    # Create vectorized environment for training using SubprocVecEnv
+    env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
+    vec_env = SubprocVecEnv(env_fns)
+    vec_env = VecMonitor(vec_env, filename=os.path.join(log_dir, "vec_env"))
 
     eval_env = MAISREnvVec(
         env_config,
@@ -75,7 +110,16 @@ def main(save_dir, load_dir, load_existing):
 
     # Choose algorithm
     if algo == "PPO":
-        model = PPO("MlpPolicy", vec_env, verbose=1, tensorboard_log=log_dir)
+        model = PPO(
+            "MlpPolicy",
+            vec_env,
+            verbose=1,
+            tensorboard_log=f"runs/{run.id}",  # Match tensorboard directory to wandb run.id
+            batch_size=64 * n_envs,  # Scale batch size with number of environments
+            n_steps=2048 // n_envs,  # Adjust steps per environment
+            learning_rate=3e-4,
+            seed=seed
+        )
     elif algo == "A2C":
         model = A2C("MlpPolicy", vec_env, verbose=1, tensorboard_log=log_dir)
     elif algo == "DQN":
@@ -90,22 +134,22 @@ def main(save_dir, load_dir, load_existing):
         print(f"Loading checkpoint: {latest_checkpoint}")
         model = model.__class__.load(latest_checkpoint, env=vec_env)
         print("Checkpoint loaded successfully!")
-    #
-    # if load_existing:
-    #     print(f'Loading model from {load_dir}/')
-    #     model = PPO.load(load_dir)
-    #     model.set_env(vec_env)
 
     else:
         print('Training new model')
         model = PPO("MlpPolicy", vec_env, verbose=1)
 
+
+
     print('Beginning agent training...')
+    wandb.log({"test_metric": 1.0})
     model.learn(
         total_timesteps=num_timesteps,
         callback=[checkpoint_callback, eval_callback, wandb_callback],
         reset_num_timesteps=False,  # Set to False when resuming training
     )
+
+
 
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final")
@@ -127,7 +171,7 @@ def main(save_dir, load_dir, load_existing):
 if __name__ == "__main__":
     save_dir = "/trained_models/"
     load_existing = False
-    load_dir = "/trained_models/agent_test" # Where to load trained model from
+    load_dir = None# "/trained_models/agent_test" # Where to load trained model from
     log_dir = "logs/" # Where to save logs
     algo = 'PPO'
 
@@ -135,5 +179,11 @@ if __name__ == "__main__":
     save_freq = 14400
     n_eval_episodes = 5
 
+    # Number of parallel environments (should not exceed number of CPU cores)
+    n_envs = min(8, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
+    print(f"Training with {n_envs} environments in parallel")
+
+    # Set seed for reproducibility
+    seed = 42
 
     main(save_dir, load_dir, load_existing)
