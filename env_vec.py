@@ -12,14 +12,13 @@ import math
 class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
-    def __init__(self, config={}, window=None, clock=None, render_mode='none',
-                 agent_training=False,
+    def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
                  subject_id='99',user_group='99',round_number='99'):
         """
         args:
             time_scale: How much to scale time by
-            render_mode: 'none', 'human'
+            render_mode: 'headless' for no-render agent training, 'human' for playing with humans
             reward_type:
                 balanced-sparse: Points for IDing targets, weapons, and finishing early
                 balanced-dense: Variant 1 + penalty for damage + others
@@ -35,14 +34,15 @@ class MAISREnvVec(gym.Env):
 
         self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
-        self.gather_info = True if render_mode == 'human' else False
+        self.render_mode = render_mode
+        self.gather_info = self.render_mode == 'human' # Only populate the info dict if playing with humans
 
         self.config['num aircraft'] = 1 # TODO temp override
 
         self.obs_type = obs_type
         self.action_type = action_type
         self.reward_type = reward_type
-        self.agent_training = agent_training
+
 
         self.subject_id = subject_id
         self.round_number = round_number
@@ -147,7 +147,7 @@ class MAISREnvVec(gym.Env):
         self.steps_for_highqual_info = 7*60 # TODO tune this. Currently 7 seconds
         self.prob_detect = 0.00333333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
 
-        if not agent_training:
+        if render_mode == 'human':
             self.window = window
             self.clock = clock
             self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
@@ -156,8 +156,7 @@ class MAISREnvVec(gym.Env):
             self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
             self.window_x = self.config["window size"][0]
             self.window_y = self.config["window size"][1]
-            if render_mode == 'human':
-                self.window = pygame.display.set_mode((self.window_x, self.window_y))
+            self.window = pygame.display.set_mode((self.window_x, self.window_y))
 
             self.right_pane_edge = self.config['gameboard size'] + 20  # Left edge of gameplan button windows
             self.comm_pane_edge = self.right_pane_edge
@@ -168,8 +167,8 @@ class MAISREnvVec(gym.Env):
             # Initialize buttons
             self.gameplan_button_color = (255, 120, 80)
             self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
-            self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)  # (255, 120, 80))
-            self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)  # 15 pixel gap b/w buttons
+            self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)
+            self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)
             self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
             self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
             self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
@@ -188,16 +187,10 @@ class MAISREnvVec(gym.Env):
             self.ai_color = self.AIRCRAFT_COLORS[0]
             self.human_color = self.AIRCRAFT_COLORS[1]
 
-            # Target tally
-            #self.identified_targets = 0
-            #self.identified_threat_types = 0
-            #self.tally_font = pygame.font.SysFont(None,28)
-
             self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
             self.pause_start_time = 0
             self.total_pause_time = 0
             self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
-            self.render_mode = render_mode
             self.pause_font = pygame.font.SysFont(None, 74)
             self.pause_subtitle_font = pygame.font.SysFont(None, 40)
 
@@ -208,9 +201,6 @@ class MAISREnvVec(gym.Env):
             self.agent_damage_flash_start = 0
             self.agent_damage_flash_alpha = 0
             self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
-
-            # Situational-awareness based agent transparency config
-            self.agent_priorities = 'placeholder'
 
             # Calculate required height of agent status info
             self.agent_info_height_req = 0
@@ -272,6 +262,7 @@ class MAISREnvVec(gym.Env):
 
         returns:
         """
+
 
         new_score = 0
         if self.gather_info:
@@ -389,12 +380,14 @@ class MAISREnvVec(gym.Env):
         observation = self.get_observation() # Get observation
 
         # Advance time
-        if self.agent_training:
-            self.display_time = self.display_time + (1000/60)
+        if self.render_mode == 'headless':
+            self.display_time = self.display_time + (1000/60) # Each step is 1/60th of a second
 
         elif not self.paused:
-            current_time = pygame.time.get_ticks()
-            self.display_time = current_time - self.total_pause_time
+            self.display_time = pygame.time.get_ticks() - self.total_pause_time
+
+        if self.init:
+            self.init = False
 
         return observation, reward, self.terminated, self.truncated, info
 
@@ -409,152 +402,91 @@ class MAISREnvVec(gym.Env):
     def get_observation(self):
         """
         State will include the following features (current count is 444):
-            # Agent and basic game info (13 features):
-            agent_health,        # (0-1)
-            agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
-            agent_y,             # (0-1)
-            agent_alive,         # (0 or 1)
-            agent_waypoint_x     # (0-1) x coordinate of agent's current waypoint
-            agent_waypoint_y     # (0-1) y coordinate of agent's current waypoint
-            teammate_health,     # (0-1)
-            teammate_x,          # (0-1)
-            teammate_y,          # (0-1)
-            teammate_waypoint_x  # (0-1) x coordinate of current waypoint
-            teammate_waypoint_y  # (0-1) y coordinate of current waypoint
-            teammate_alive,      # (0 or 1)
-            time_remaining       # (0-1)
+            # Agent and basic game info (8 features):
+            0 agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
+            1 agent_y,             # (0-1)
+
+            2 teammate_exists      # 0 (does not exist), 1 (does exist)
+            3 teammate_x,          # (0-1)
+            4 teammate_y,          # (0-1)
+            5 teammate_waypoint_x  # (0-1) x coordinate of current waypoint
+            6 teammate_waypoint_y  # (0-1) y coordinate of current waypoint
+
+            7 time_remaining       # (0-1)
+            8 num detections       # (0 to 1) Normalized using self.num_detections / 5. When num_detections = 5, this hits 1 and the episode is terminated
 
             # Target data (the following are repeated for all 60 targets) (7*60 = 420 features):
-            target_x,            # (0-1)
-            target_y,            # (0-1)
-            id_unknown,          # one-hot (0 or 1)
-            id_friendly,         # one-hot (0 or 1)
-            id_hostile,          # one-hot (0 or 1)
-            threat_known,        # (0 or 1)
-            threat_level         # (0.33, 0.66, 1.0) for small/med/large weapon
+            9+i target_exists        # Used to allow configurable numbers of targets. 0 if the target does not exist (for num_targets < 60), 1 if it does
+            10+i target_value         # 0 for regular, 1 for high value
+            11+i info_level           # 0 for no info, 0.5 for low quality info, 1.0 for full info
+            12+i target_x,            # (0-1)
+            13+i target_y,            # (0-1)
 
-            # Handcrafted features (11 features): TODO Not currently implemented
-            unknown_targets_NW      # count normalized (0-1)
-            unknown_targets_NE      # count normalized (0-1)
-            unknown_targets_SW      # count normalized (0-1)
-            unknown_targets_SE      # count normalized (0-1)
-            nearest_target_dist     # (0-1)
-            nearest_hostile_dist    # (0-1)
-            agent_in_weapon_range,     # (0 or 1)
-            teammate_in_weapon_range,  # (0 or 1)
-            last_25_seconds,        # (0 or 1)
-            targets_remaining,      # normalized (0-1)
-            threats_remaining       # normalized (0-1)
+            # Handcrafted features, TBD (TODO)
         """
-
-        # TODO Add handcrafted features
-            # Update human's quadrant
-            # if self.agents[self.human_idx].x < (self.config['gameboard size'] / 2):
-            #     if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
-            #         self.human_quadrant = 'NW'
-            #     else:
-            #         self.human_quadrant = 'SW'
-            # else:
-            #     if self.agents[self.human_idx].y < (self.config['gameboard size'] / 2):
-            #         self.human_quadrant = 'NE'
-            #     else:
-            #         self.human_quadrant = 'SE'
 
         if self.obs_type == 'vector':
             self.observation = np.zeros(self.num_obs_features, dtype=np.float32)
 
-            self.observation[0] = self.agents[self.aircraft_ids[0]].health_points / 10.0  # Agent health
-            self.observation[1] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
-            self.observation[2] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"] # Agent y
-            self.observation[3] = 1.0 if self.agents[self.aircraft_ids[0]].alive else 0.0  # Agent alive status
-
-            if self.agents[self.aircraft_ids[0]].target_point is not None:
-                self.observation[4] = self.agents[self.aircraft_ids[0]].target_point[0] / self.config["gameboard size"]
-                self.observation[5] = self.agents[self.aircraft_ids[0]].target_point[1] / self.config["gameboard size"]
-            else:
-                self.observation[4] = self.observation[1]  # Default to current position
-                self.observation[5] = self.observation[2]
+            self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
+            self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"] # Agent y
 
             if self.config['num aircraft'] == 2:
-                self.observation[6] = self.agents[self.aircraft_ids[1]].health_points / 10.0  # Teammate health
-                self.observation[7] = self.agents[self.aircraft_ids[1]].x / self.config["gameboard size"]  # Teammate x
-                self.observation[8] = self.agents[self.aircraft_ids[1]].y / self.config["gameboard size"]  # Teammate y
+                self.observation[2] = 1 # Teammate_exists
+                self.observation[3] = self.agents[self.aircraft_ids[1]].x / self.config["gameboard size"]  # Teammate x
+                self.observation[4] = self.agents[self.aircraft_ids[1]].y / self.config["gameboard size"]  # Teammate y
 
-                # Teammate waypoint
-                if self.agents[self.aircraft_ids[1]].target_point is not None:
-                    self.observation[9] = self.agents[self.aircraft_ids[1]].target_point[0] / self.config["gameboard size"]
-                    self.observation[10] = self.agents[self.aircraft_ids[1]].target_point[1] / self.config["gameboard size"]
+                if self.agents[self.aircraft_ids[1]].target_point is not None: # Teammate waypoint
+                    self.observation[5] = self.agents[self.aircraft_ids[1]].target_point[0] / self.config["gameboard size"] # Teammate waypoint x
+                    self.observation[6] = self.agents[self.aircraft_ids[1]].target_point[1] / self.config["gameboard size"] # Teammate waypoint y
                 else:
-                    self.observation[9] = self.observation[7]  # Default to current position
-                    self.observation[10] = self.observation[8]
+                    self.observation[5] = self.observation[4]  # Default to current position
+                    self.observation[6] = self.observation[5]
 
-                self.observation[11] = 1.0 if self.agents[self.aircraft_ids[1]].alive else 0.0  # Teammate alive status
-                self.observation[12] = (self.time_limit - self.display_time / 1000) / self.time_limit  # Time remaining
+            else: # Teammate does not exist
+                self.observation[2:7] = 0
 
-            else:
-                self.observation[6] = 0
-                self.observation[7] = 0
-                self.observation[8] = 0
-                self.observation[9] = 0
-                self.observation[10] = 0
-                self.observation[11] = 0
-                self.observation[12] = 0
+            self.observation[7] = (self.time_limit - self.display_time / 1000) / self.time_limit  # Time remaining
+            self.observation[8] = self.detections
 
-            # Process all target data (7 features per target)
-            # Create an array to hold target data
-            self.target_data = np.zeros((self.num_targets, 7), dtype=np.float32)
+            # Process target data
+            max_targets = 60
+            targets_per_entry = 5  # Each target has 5 features in the observation
 
-            # Normalized positions (columns 0-1 of target_data)
-            self.target_data[:, 0] = self.targets[:, 3] / self.config["gameboard size"]  # x position
-            self.target_data[:, 1] = self.targets[:, 4] / self.config["gameboard size"]  # y position
+            target_features = np.zeros((max_targets, targets_per_entry), dtype=np.float32)
+            target_features[:self.num_targets, 0] = 1.0 # Set the target_exists flag to 1 for all actual targets
 
-            # Get info levels and target values
-            info_levels = self.targets[:, 2]
-            target_values = self.targets[:, 1]
+            if self.num_targets > 0: # For actual targets, copy the relevant data
+                target_features[:self.num_targets, 1] = self.targets[:, 1] # Copy target values (0=regular, 1=high-value)
+                target_features[:self.num_targets, 2] = self.targets[:, 2] # Copy info levels (0=unknown, 0.5=low quality, 1.0=high quality)
+                target_features[:self.num_targets, 3] = self.targets[:, 3] / self.config["gameboard size"]  # x position
+                target_features[:self.num_targets, 4] = self.targets[:, 4] / self.config["gameboard size"]  # y position
 
-            # One-hot encoding of target identity (columns 2-4 of target_data)
-            self.target_data[:, 2] = (info_levels == 0).astype(np.float32)  # unknown
-            self.target_data[:, 3] = ((info_levels > 0) & (target_values == 0)).astype(np.float32)  # friendly
-            self.target_data[:, 4] = ((info_levels > 0) & (target_values == 1)).astype(np.float32)  # hostile
+            target_start_idx = 9 # Insert all target features into the observation vector
+            self.observation[target_start_idx:target_start_idx + max_targets * targets_per_entry] = target_features.flatten()
 
-            # Threat status (column 5 of target_data)
-            self.target_data[:, 5] = (info_levels < 1.0).astype(np.float32)  # threat unknown
+            if self.init:
+                print("Observation vector explanation:")
+                print(f"[0] Agent x position: {self.observation[0]}")
+                print(f"[1] Agent y position: {self.observation[1]}")
+                print(f"[2] Teammate exists: {self.observation[2]}")
+                print(f"[3] Teammate x position: {self.observation[3]}")
+                print(f"[4] Teammate y position: {self.observation[4]}")
+                print(f"[5] Teammate waypoint x: {self.observation[5]}")
+                print(f"[6] Teammate waypoint y: {self.observation[6]}")
 
-            # Normalized threat level (column 6 of target_data)
-            # For high-value targets (1), we'll use threat level 2/3
-            # For regular targets (0), we'll use threat level 0
-            self.target_data[:, 6] = np.where(info_levels >= 1.0, (2.0 / 3.0) * target_values, 0.0)
+                print(f"[7] Time remaining normalized: {self.observation[7]}")
+                print(f"[8] Normalized detections: {self.observation[8]}")
 
-            target_start_idx = 13
-            self.observation[target_start_idx:target_start_idx + self.num_targets * 7] = self.target_data.flatten()         # Copy target data into observation vector
-
-        if self.init:
-            print("Observation vector explanation:")
-            print(f"[0] Agent health: {self.observation[0]}")
-            print(f"[1] Agent x position: {self.observation[1]}")
-            print(f"[2] Agent y position: {self.observation[2]}")
-            print(f"[3] Agent alive status: {self.observation[3]}")
-            print(f"[4] Agent waypoint x: {self.observation[4]}")
-            print(f"[5] Agent waypoint y: {self.observation[5]}")
-            print(f"[6] Teammate health: {self.observation[6]}")
-            print(f"[7] Teammate x position: {self.observation[7]}")
-            print(f"[8] Teammate y position: {self.observation[8]}")
-            print(f"[9] Teammate waypoint x: {self.observation[9]}")
-            print(f"[10] Teammate waypoint y: {self.observation[10]}")
-            print(f"[11] Teammate alive status: {self.observation[11]}")
-            print(f"[12] Time remaining normalized: {self.observation[12]}")
-
-            # Print target data
-            for i in range(1):
-                base_idx = 13 + i * 7
-                print(f"\nTarget {i} data:")
-                print(f"[{base_idx}] Target x position: {self.observation[base_idx]}")
-                print(f"[{base_idx + 1}] Target y position: {self.observation[base_idx + 1]}")
-                print(f"[{base_idx + 2}] Target ID unknown: {self.observation[base_idx + 2]}")
-                print(f"[{base_idx + 3}] Target ID friendly: {self.observation[base_idx + 3]}")
-                print(f"[{base_idx + 4}] Target ID hostile: {self.observation[base_idx + 4]}")
-                print(f"[{base_idx + 5}] Target threat unknown: {self.observation[base_idx + 5]}")
-                print(f"[{base_idx + 6}] Target threat level: {self.observation[base_idx + 6]}")
+                # Print some target data examples
+                for i in range(min(3, self.num_targets)):
+                    base_idx = 9 + i * targets_per_entry
+                    print(f"\nTarget {i} data:")
+                    print(f"[{base_idx}] Target exists: {self.observation[base_idx]}")
+                    print(f"[{base_idx + 1}] Target value: {self.observation[base_idx + 1]}")
+                    print(f"[{base_idx + 2}] Info level: {self.observation[base_idx + 2]}")
+                    print(f"[{base_idx + 3}] Target x position: {self.observation[base_idx + 3]}")
+                    print(f"[{base_idx + 4}] Target y position: {self.observation[base_idx + 4]}")
 
         elif self.obs_type == 'pixel':
             pixel_obs = self.get_pixel_observation()
@@ -583,9 +515,9 @@ class MAISREnvVec(gym.Env):
         if len(self.comm_messages) > self.max_messages:
             self.comm_messages.pop(0)
 
-    def render(self, mode='human', close=False):
-        if mode == 'none': # TODO replace this with something cleaner
-            return
+    def render(self, close=False):
+        if self.render_mode == 'headless': # Do not render if in headless mode
+            pass
 
         window_width, window_height = self.config['window size'][0], self.config['window size'][0]
         game_width = self.config["gameboard size"]
@@ -603,20 +535,16 @@ class MAISREnvVec(gym.Env):
         current_time = pygame.time.get_ticks()
 
         # Draw the aircraft
-        for agent in self.agents:
-            agent.draw(self.window)
+        for agent in self.agents: agent.draw(self.window)
 
         # Draw the targets
         #SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
-
         SHIP_REGULAR_LOWQ = (130, 0, 210)
         #SHIP_HIGHVAL_LOWQ = (150, 0, 255)
-
         SHIP_REGULAR_HIGHQ = (0, 255, 210)
         #SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
 
-        # TODO fix get_observation to use self.targets?
         for target in self.targets:
             target_width = 7 if target[1] == 0 else 10
             target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[2] == 0.5 else SHIP_REGULAR_UNOBSERVED

@@ -191,10 +191,10 @@ if __name__ == "__main__":
                 actions.append((env.aircraft_ids[0], agent_action))
                 agent_overridden = False
 
-            if env.init or pygame.time.get_ticks() > env.start_countdown_time:
+            if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
-            if env.init: env.init = False
+            #if env.init: env.init = False (TODO removed, can add back if having issues)
             if env.render_mode == 'human': env.render()
 
             agent_log_info = {
