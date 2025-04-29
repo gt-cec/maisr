@@ -159,7 +159,7 @@ if __name__ == "__main__":
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_F1:
                         #if log_data: game_logger.final_log(button_handler.gameplan_command_history, env) (TODO Add back)
-                        pygame.quit()
+                        env.close()
                     if event.key == pygame.K_SPACE:
                         env.pause(pygame.MOUSEBUTTONDOWN)
 
@@ -238,13 +238,13 @@ if __name__ == "__main__":
                         elif event.type == pygame.QUIT:
                             # if log_data: # (TODO ADD BACK)
                             #     game_logger.final_log(button_handler.get_command_history(), env)
-                            pygame.quit()
+                            env.close()
                             sys.exit()
 
         round_number += 1
         if env.render_mode == 'human':
             print("Game complete:", game_count)
-            pygame.quit()
+            env.close()
 
     print("ALL GAMES COMPLETE")
 
