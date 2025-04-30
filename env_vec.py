@@ -155,7 +155,7 @@ class MAISREnvVec(gym.Env):
 
         self.steps_for_lowqual_info = 3*60 # TODO tune this
         self.steps_for_highqual_info = 7*60 # TODO tune this. Currently 7 seconds
-        self.prob_detect = 0.00333333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
+        self.prob_detect = 0.00133333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
 
         if render_mode == 'human':
             self.window = window
@@ -239,6 +239,7 @@ class MAISREnvVec(gym.Env):
         self.num_lowq_gathered = 0
         self.num_highq_gathered = 0
         self.init = True
+        self.action_history = []
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
@@ -305,6 +306,7 @@ class MAISREnvVec(gym.Env):
                 waypoint, id_method = self.denormalize_action(action_value)
                 self.agents[agent_id].waypoint_override = waypoint
 
+
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
             action_value = actions
             #print(action_value)
@@ -313,6 +315,9 @@ class MAISREnvVec(gym.Env):
 
         else: raise ValueError('Actions input is an unknown type')
 
+        self.action_history.append(self.agents[0].waypoint_override)
+
+        #print(f'Waypoint {waypoint}, id method {id_method}')
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
@@ -386,6 +391,8 @@ class MAISREnvVec(gym.Env):
         self.terminated = self.all_targets_identified or self.detections >= 5 or self.display_time / 1000 >= self.time_limit
         # self.truncated = (TODO: No current use for truncated
         if self.terminated or self.truncated:
+            print('Random sample of action history: ')
+            print(random.sample(self.action_history, 50))
             if self.all_targets_identified: # Add points for finishing early
                 new_score += self.all_targets_points # Left this but it doesn't go into reward
                 new_score += (self.time_limit - self.display_time/1000)*self.time_points

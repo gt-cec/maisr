@@ -62,8 +62,8 @@ def main(save_dir, load_dir, load_existing):
             "env_name": "MAISREnvVec",
             "env_config": config
         },
-        sync_tensorboard=True,  # Auto-upload SB3's tensorboard metrics to wandb
-        monitor_gym = True,
+        sync_tensorboard=True,
+        monitor_gym=True,  # This is important for gym environment monitoring
     )
 
     vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
@@ -100,10 +100,11 @@ def main(save_dir, load_dir, load_existing):
         n_eval_episodes=n_eval_episodes,
         deterministic=True,
         render=False,
+        verbose=1,  # Set to 1 to see more output
     )
 
     wandb_callback = WandbCallback(
-        gradient_save_freq=0,  # Don't save gradients to WandB
+        gradient_save_freq=0,
         model_save_path=f"{save_dir}/wandb/{run.id}",
         verbose=2,
     )
