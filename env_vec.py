@@ -404,7 +404,7 @@ class MAISREnvVec(gym.Env):
 
 
             #print()
-            print(f'\n FINAL SCORE {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.agents[self.aircraft_ids[0]].health_points} AI HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
+
 
             if self.render_mode == 'human':
                 pygame.time.wait(50)
@@ -418,7 +418,7 @@ class MAISREnvVec(gym.Env):
         info['episode'] = {'r': self.ep_reward, 'l': self.ep_len}
 
         if self.terminated or self.truncated:
-            print(info['episode'])
+            print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['r']}, score {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.detections} detetions | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
         # Advance time
         if self.render_mode == 'headless':

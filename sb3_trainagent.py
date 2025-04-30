@@ -37,21 +37,23 @@ class EnhancedWandbCallback(BaseCallback):
                     self.run.log({
                         "train/episode_reward": info["episode"]["r"],
                         "train/episode_length": info["episode"]["l"]
-                    }, step=self.num_timesteps) # TODO shouldn't this be the current timestep, not the max?
+                    }, step=self.num_timesteps)
 
         # Periodically evaluate and log evaluation metrics
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
-            print(f'Evaluating on eval env (step: {self.num_timesteps}')
+            print(f'#################################################\nEVALUATING (step: {self.num_timesteps})')
             mean_reward, std_reward = evaluate_policy(
                 self.model,
                 self.eval_env,
                 n_eval_episodes=self.n_eval_episodes
             )
-            print(f'Eval results: mean reward {mean_reward}, std{std_reward}')
+
             self.run.log({
                 "eval/mean_reward": mean_reward,
                 "eval/std_reward": std_reward
-            }, step=self.num_timesteps) # TODO shouldn't this be the current timestep, not the max?
+            }, step=self.num_timesteps)
+            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std{std_reward}')
+            print('#################################################\nReturning to training...')
 
         return True
 
@@ -97,7 +99,16 @@ def main(save_dir, load_dir, load_existing):
 
     # Create vectorized environment for training using SubprocVecEnv
     env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
-    vec_env = SubprocVecEnv(env_fns)
+    #vec_env = SubprocVecEnv(env_fns) # (TODO commented out to test non-vectorized env
+    vec_env = MAISREnvVec(
+        env_config,
+        None,
+        render_mode='headless',
+        reward_type='balanced-sparse',
+        obs_type='vector',
+        action_type='continuous',
+    )
+    vec_env = Monitor(vec_env)
 
     eval_env = MAISREnvVec(
         env_config,
