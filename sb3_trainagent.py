@@ -4,7 +4,6 @@ import numpy as np
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO, A2C, DQN
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
@@ -130,16 +129,16 @@ def main(save_dir, load_dir, load_existing):
         save_vecnormalize=True,
     )
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=f"{save_dir}/best_model",
-        log_path=log_dir,
-        eval_freq=eval_freq,
-        n_eval_episodes=n_eval_episodes,
-        deterministic=True,
-        render=False,
-        verbose=1,  # Set to 1 to see more output
-    )
+    # eval_callback = EvalCallback( # TODO temporarily removed. May be redundant with wandb callback
+    #     eval_env,
+    #     best_model_save_path=f"{save_dir}/best_model",
+    #     log_path=log_dir,
+    #     eval_freq=eval_freq,
+    #     n_eval_episodes=n_eval_episodes,
+    #     deterministic=True,
+    #     render=False,
+    #     verbose=1,  # Set to 1 to see more output
+    # )
 
     wandb_callback = WandbCallback(
         gradient_save_freq=0,
@@ -161,17 +160,11 @@ def main(save_dir, load_dir, load_existing):
             vec_env,
             verbose=1,
             tensorboard_log=f"runs/{run.id}",  # Match tensorboard directory to wandb run.id
-            batch_size=64 * n_envs,  # Scale batch size with number of environments
-            n_steps=2048 // n_envs,  # Adjust steps per environment
+            batch_size=batch_size, # * n_envs,  # Scale batch size with number of environments
+            n_steps= steps_per_episode, #2048 // n_envs,  # Adjust steps per environment
             learning_rate=3e-4,
             seed=seed
         )
-    elif algo == "A2C":
-        model = A2C("MlpPolicy", vec_env, verbose=1, tensorboard_log=log_dir)
-    elif algo == "DQN":
-        model = DQN("MlpPolicy", vec_env, verbose=1, tensorboard_log=log_dir)
-    else:
-        raise ValueError(f"Unknown algorithm: {algo}")
 
     # Check if there's a checkpoint to load
     checkpoints = sorted([f for f in os.listdir(load_dir) if f.startswith(f"{algo}_maisr_") and f.endswith(".zip")])
@@ -193,7 +186,7 @@ def main(save_dir, load_dir, load_existing):
 
     model.learn(
         total_timesteps=num_timesteps,
-        callback=[checkpoint_callback, eval_callback, wandb_callback, enhanced_wandb_callback],
+        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback
         reset_num_timesteps=False,  # Set to False when resuming training
     )
 
@@ -224,9 +217,12 @@ if __name__ == "__main__":
     log_dir = "logs/" # Where to save logs
     algo = 'PPO'
 
-    num_timesteps = 500000
-    save_freq = 14400
-    eval_freq = 14400
+    batch_size = 64
+    steps_per_episode = 14500 # Slightly higher than the max 14,400
+    num_timesteps = 500000 # Total num timesteps to train
+
+    save_freq = 14400 # How often to save checkpoints
+    eval_freq = 14400 * 3 # How often to evaluate
     n_eval_episodes = 5
 
     # Number of parallel environments (should not exceed number of CPU cores)
