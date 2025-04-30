@@ -41,12 +41,13 @@ class EnhancedWandbCallback(BaseCallback):
 
         # Periodically evaluate and log evaluation metrics
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
-            print('Evaluating on eval env')
+            print(f'Evaluating on eval env (step: {self.num_timesteps}')
             mean_reward, std_reward = evaluate_policy(
                 self.model,
                 self.eval_env,
                 n_eval_episodes=self.n_eval_episodes
             )
+            print(f'Eval results: mean reward {mean_reward}, std{std_reward}')
             self.run.log({
                 "eval/mean_reward": mean_reward,
                 "eval/std_reward": std_reward
