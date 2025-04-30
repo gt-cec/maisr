@@ -21,33 +21,54 @@ from utility.data_logging import load_env_config
 from agents import *
 
 
-class WandbLoggingCallback(BaseCallback):
-    def __init__(self, verbose=0):
-        super(WandbLoggingCallback, self).__init__(verbose)
+class EnhancedWandbCallback(BaseCallback):
+    def __init__(self, verbose=0, eval_env=None, eval_freq=1000, n_eval_episodes=5, run=None):
+        super(EnhancedWandbCallback, self).__init__(verbose)
+        self.eval_env = eval_env
+        self.eval_freq = eval_freq
+        self.n_eval_episodes = n_eval_episodes
+        self.run = run
 
     def _on_step(self):
-        # Log metrics every step
+        # Log training metrics
         if self.locals.get("infos") and len(self.locals["infos"]) > 0:
             for info in self.locals["infos"]:
                 if "episode" in info:
-                    wandb.log({
+                    self.run.log({
                         "train/episode_reward": info["episode"]["r"],
                         "train/episode_length": info["episode"]["l"]
-                    }, step=self.num_timesteps)
+                    }, step=self.num_timesteps) # TODO shouldn't this be the current timestep, not the max?
+
+        # Periodically evaluate and log evaluation metrics
+        if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
+            print('Evaluating on eval env')
+            mean_reward, std_reward = evaluate_policy(
+                self.model,
+                self.eval_env,
+                n_eval_episodes=self.n_eval_episodes
+            )
+            self.run.log({
+                "eval/mean_reward": mean_reward,
+                "eval/std_reward": std_reward
+            }, step=self.num_timesteps) # TODO shouldn't this be the current timestep, not the max?
+
         return True
 
 
-def make_env(env_config, rank, seed=0):
-    env = MAISREnvVec(
-		config=env_config,
-		render_mode='headless',
-		reward_type='balanced-sparse',
-		obs_type='vector',
-		action_type='continuous',
-	)
-    env = Monitor(env)
-    env.reset(seed=seed + rank)
-    return env
+def make_env(env_config, rank, seed):
+    def _init():
+        env = MAISREnvVec(
+            config=env_config,
+            render_mode='headless',
+            reward_type='balanced-sparse',
+            obs_type='vector',
+            action_type='continuous',
+        )
+        env = Monitor(env)  # record stats such as returns
+        env.reset(seed=seed + rank)
+        return env
+
+    return _init  # Return the function, not the environment instance
 
 
 def main(save_dir, load_dir, load_existing):
@@ -76,7 +97,6 @@ def main(save_dir, load_dir, load_existing):
     # Create vectorized environment for training using SubprocVecEnv
     env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
     vec_env = SubprocVecEnv(env_fns)
-    #vec_env = VecMonitor(vec_env, filename=os.path.join(log_dir, "vec_env"))
 
     eval_env = MAISREnvVec(
         env_config,
@@ -114,6 +134,13 @@ def main(save_dir, load_dir, load_existing):
         verbose=2,
     )
 
+    enhanced_wandb_callback = EnhancedWandbCallback(
+        eval_env=eval_env,
+        eval_freq=save_freq,
+        n_eval_episodes=n_eval_episodes,
+        run = run
+    )
+
     # Choose algorithm
     if algo == "PPO":
         model = PPO(
@@ -148,13 +175,12 @@ def main(save_dir, load_dir, load_existing):
 
 
     print('Beginning agent training...')
-    wandb.log({"test_metric": 1.0})
+    run.log({"test_metric": 1.0})
 
-    custom_wandb_callback = WandbLoggingCallback()
 
     model.learn(
         total_timesteps=num_timesteps,
-        callback=[checkpoint_callback, eval_callback, wandb_callback, custom_wandb_callback],
+        callback=[checkpoint_callback, eval_callback, wandb_callback, enhanced_wandb_callback],
         reset_num_timesteps=False,  # Set to False when resuming training
     )
 
@@ -170,10 +196,11 @@ def main(save_dir, load_dir, load_existing):
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
-    wandb.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
+    #wandb.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
+    run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
 
     # Close wandb run
-    wandb.finish()
+    run.finish()
 
 
 
@@ -185,7 +212,7 @@ if __name__ == "__main__":
     algo = 'PPO'
 
     num_timesteps = 500000
-    save_freq = 14400
+    save_freq = 1000 #14400
     n_eval_episodes = 5
 
     # Number of parallel environments (should not exceed number of CPU cores)
@@ -196,3 +223,18 @@ if __name__ == "__main__":
     seed = 42
 
     main(save_dir, load_dir, load_existing)
+
+
+
+# def make_env(env_config, rank, seed):
+#     #env_config = load_env_config(env_config)
+#     env = MAISREnvVec(
+#                     config=env_config,
+#                     render_mode='headless',
+#                     reward_type='balanced-sparse',
+#                     obs_type='vector',
+#                     action_type='continuous',
+#                 )
+#     env = Monitor(env)  # record stats such as returns
+#     env.reset(seed=seed + rank)
+#     return env

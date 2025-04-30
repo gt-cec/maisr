@@ -36,7 +36,7 @@ class MAISREnvVec(gym.Env):
         self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
-        self.gather_info = self.render_mode == 'human' # Only populate the info dict if playing with humans
+        self.gather_info = True #self.render_mode == 'human' # Only populate the info dict if playing with humans
 
         #self.config['num aircraft'] = 1 # TODO temp override
 
@@ -263,6 +263,9 @@ class MAISREnvVec(gym.Env):
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         self.observation = self.get_observation()
+        self.ep_len = 0
+        self.ep_reward = 0
+
         info = {}
         return self.observation, info
 
@@ -274,6 +277,7 @@ class MAISREnvVec(gym.Env):
 
         returns:
         """
+        self.ep_len += 1
 
         # Track events that give reward. Will be passed to get_reward at end of step
         new_reward = {'detections': 0,
@@ -391,14 +395,15 @@ class MAISREnvVec(gym.Env):
         self.terminated = self.all_targets_identified or self.detections >= 5 or self.display_time / 1000 >= self.time_limit
         # self.truncated = (TODO: No current use for truncated
         if self.terminated or self.truncated:
-            print('Random sample of action history: ')
-            print(random.sample(self.action_history, 50))
+            #print('Random sample of action history: ')
+            #print(random.sample(self.action_history, 50))
             if self.all_targets_identified: # Add points for finishing early
                 new_score += self.all_targets_points # Left this but it doesn't go into reward
                 new_score += (self.time_limit - self.display_time/1000)*self.time_points
                 new_reward['early finish'] = (self.time_limit - self.display_time/1000)
 
 
+            #print()
             print(f'\n FINAL SCORE {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.agents[self.aircraft_ids[0]].health_points} AI HP left | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
             if self.render_mode == 'human':
@@ -408,6 +413,12 @@ class MAISREnvVec(gym.Env):
         reward = self.get_reward(new_reward) # For agent
         self.score += new_score # For human
         observation = self.get_observation() # Get observation
+        self.ep_reward += reward
+
+        info['episode'] = {'r': self.ep_reward, 'l': self.ep_len}
+
+        if self.terminated or self.truncated:
+            print(info['episode'])
 
         # Advance time
         if self.render_mode == 'headless':
