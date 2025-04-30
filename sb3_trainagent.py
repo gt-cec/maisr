@@ -12,12 +12,29 @@ from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import BaseCallback
 
 import multiprocessing
 
 from env_vec import MAISREnvVec
 from utility.data_logging import load_env_config
 from agents import *
+
+
+class WandbLoggingCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(WandbLoggingCallback, self).__init__(verbose)
+
+    def _on_step(self):
+        # Log metrics every step
+        if self.locals.get("infos") and len(self.locals["infos"]) > 0:
+            for info in self.locals["infos"]:
+                if "episode" in info:
+                    wandb.log({
+                        "train/episode_reward": info["episode"]["r"],
+                        "train/episode_length": info["episode"]["l"]
+                    }, step=self.num_timesteps)
+        return True
 
 
 def make_env(env_config, rank, seed=0):
@@ -66,7 +83,7 @@ def main(save_dir, load_dir, load_existing):
         monitor_gym=True,  # This is important for gym environment monitoring
     )
 
-    vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
+    #vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
 
     # Create vectorized environment for training using SubprocVecEnv
     env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
@@ -144,9 +161,12 @@ def main(save_dir, load_dir, load_existing):
 
     print('Beginning agent training...')
     wandb.log({"test_metric": 1.0})
+
+    custom_wandb_callback = WandbLoggingCallback()
+
     model.learn(
         total_timesteps=num_timesteps,
-        callback=[checkpoint_callback, eval_callback, wandb_callback],
+        callback=[checkpoint_callback, eval_callback, wandb_callback, custom_wandb_callback],
         reset_num_timesteps=False,  # Set to False when resuming training
     )
 
