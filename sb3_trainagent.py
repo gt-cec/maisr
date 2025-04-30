@@ -38,17 +38,16 @@ class WandbLoggingCallback(BaseCallback):
 
 
 def make_env(env_config, rank, seed=0):
-
-	env = MAISREnvVec(
+    env = MAISREnvVec(
 		config=env_config,
 		render_mode='headless',
 		reward_type='balanced-sparse',
 		obs_type='vector',
 		action_type='continuous',
 	)
-	env = Monitor(env)
-	env.reset(seed=seed + rank)
-	return env
+    env = Monitor(env)
+    env.reset(seed=seed + rank)
+    return env
 
 
 def main(save_dir, load_dir, load_existing):
