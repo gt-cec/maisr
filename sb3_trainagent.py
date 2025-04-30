@@ -98,7 +98,7 @@ def main(save_dir, load_dir, load_existing):
     #vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
 
     # Create vectorized environment for training using SubprocVecEnv
-    env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
+    #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
     #vec_env = SubprocVecEnv(env_fns) # (TODO commented out to test non-vectorized env
     vec_env = MAISREnvVec(
         env_config,
@@ -211,18 +211,18 @@ def main(save_dir, load_dir, load_existing):
 
 
 if __name__ == "__main__":
-    save_dir = "/trained_models/"
+    save_dir = "./trained_models/"
     load_existing = False
     load_dir = None# "/trained_models/agent_test" # Where to load trained model from
-    log_dir = "logs/" # Where to save logs
+    log_dir = "./logs/" # Where to save logs
     algo = 'PPO'
 
     batch_size = 64
-    steps_per_episode = 14500 # Slightly higher than the max 14,400
-    num_timesteps = 500000 # Total num timesteps to train
+    steps_per_episode = 1000#14500 # Slightly higher than the max 14,400
+    num_timesteps = 5000#500000 # Total num timesteps to train
 
-    save_freq = 14400 # How often to save checkpoints
-    eval_freq = 14400 * 3 # How often to evaluate
+    save_freq = 1000#14400 # How often to save checkpoints
+    eval_freq = 1000*2#14400 * 3 # How often to evaluate
     n_eval_episodes = 5
 
     # Number of parallel environments (should not exceed number of CPU cores)
@@ -233,18 +233,3 @@ if __name__ == "__main__":
     seed = 42
 
     main(save_dir, load_dir, load_existing)
-
-
-
-# def make_env(env_config, rank, seed):
-#     #env_config = load_env_config(env_config)
-#     env = MAISREnvVec(
-#                     config=env_config,
-#                     render_mode='headless',
-#                     reward_type='balanced-sparse',
-#                     obs_type='vector',
-#                     action_type='continuous',
-#                 )
-#     env = Monitor(env)  # record stats such as returns
-#     env.reset(seed=seed + rank)
-#     return env
