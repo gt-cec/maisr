@@ -418,7 +418,7 @@ class MAISREnvVec(gym.Env):
         info['episode'] = {'r': self.ep_reward, 'l': self.ep_len}
 
         if self.terminated or self.truncated:
-            print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['r']}, score {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.detections} detetions | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['r']}, score {self.score} | {self.low_quality_identified} low quality | {self.high_quality_identified} high quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
         # Advance time
         if self.render_mode == 'headless':

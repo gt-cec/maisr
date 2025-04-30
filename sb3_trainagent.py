@@ -22,7 +22,7 @@ from agents import *
 
 
 class EnhancedWandbCallback(BaseCallback):
-    def __init__(self, verbose=0, eval_env=None, eval_freq=1000, n_eval_episodes=5, run=None):
+    def __init__(self, verbose=0, eval_env=None, eval_freq=14400, n_eval_episodes=5, run=None):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = eval_freq
@@ -41,7 +41,8 @@ class EnhancedWandbCallback(BaseCallback):
 
         # Periodically evaluate and log evaluation metrics
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
-            print(f'#################################################\nEVALUATING (step: {self.num_timesteps})')
+            print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
+
             mean_reward, std_reward = evaluate_policy(
                 self.model,
                 self.eval_env,
@@ -52,8 +53,8 @@ class EnhancedWandbCallback(BaseCallback):
                 "eval/mean_reward": mean_reward,
                 "eval/std_reward": std_reward
             }, step=self.num_timesteps)
-            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std{std_reward}')
-            print('#################################################\nReturning to training...')
+            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward,2)}')
+            print('#################################################\n\nReturning to training...')
 
         return True
 
@@ -133,7 +134,7 @@ def main(save_dir, load_dir, load_existing):
         eval_env,
         best_model_save_path=f"{save_dir}/best_model",
         log_path=log_dir,
-        eval_freq=save_freq,
+        eval_freq=eval_freq,
         n_eval_episodes=n_eval_episodes,
         deterministic=True,
         render=False,
@@ -148,7 +149,7 @@ def main(save_dir, load_dir, load_existing):
 
     enhanced_wandb_callback = EnhancedWandbCallback(
         eval_env=eval_env,
-        eval_freq=save_freq,
+        eval_freq=eval_freq,
         n_eval_episodes=n_eval_episodes,
         run = run
     )
@@ -186,7 +187,7 @@ def main(save_dir, load_dir, load_existing):
 
 
 
-    print('Beginning agent training...')
+    print('Beginning agent training...\n#################################################')
     run.log({"test_metric": 1.0})
 
 
@@ -224,7 +225,8 @@ if __name__ == "__main__":
     algo = 'PPO'
 
     num_timesteps = 500000
-    save_freq = 1000 #14400
+    save_freq = 14400
+    eval_freq = 14400
     n_eval_episodes = 5
 
     # Number of parallel environments (should not exceed number of CPU cores)
