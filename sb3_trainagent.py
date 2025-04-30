@@ -38,28 +38,17 @@ class WandbLoggingCallback(BaseCallback):
 
 
 def make_env(env_config, rank, seed=0):
-    """
-    Utility function for multiprocessed env.
 
-    :param env_config: Configuration dictionary for the environment
-    :param rank: Index of the subprocess
-    :param seed: Random seed for reproducibility
-    :return: Function to create and initialize an environment
-    """
-
-    def _init():
-        env = MAISREnvVec(
-            config=env_config,
-            render_mode='headless',
-            reward_type='balanced-sparse',
-            obs_type='vector',
-            action_type='continuous',
-        )
-        env.reset(seed=seed + rank)
-        return env
-
-    set_random_seed(seed)
-    return _init
+	env = MAISREnvVec(
+		config=env_config,
+		render_mode='headless',
+		reward_type='balanced-sparse',
+		obs_type='vector',
+		action_type='continuous',
+	)
+	env = Monitor(env)
+	env.reset(seed=seed + rank)
+	return env
 
 
 def main(save_dir, load_dir, load_existing):
@@ -88,7 +77,7 @@ def main(save_dir, load_dir, load_existing):
     # Create vectorized environment for training using SubprocVecEnv
     env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
     vec_env = SubprocVecEnv(env_fns)
-    vec_env = VecMonitor(vec_env, filename=os.path.join(log_dir, "vec_env"))
+    #vec_env = VecMonitor(vec_env, filename=os.path.join(log_dir, "vec_env"))
 
     eval_env = MAISREnvVec(
         env_config,
