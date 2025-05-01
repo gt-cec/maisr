@@ -1,3 +1,5 @@
+from multiprocessing.managers import Value
+
 import gymnasium as gym
 from gymnasium.spaces import MultiDiscrete
 import numpy as np
@@ -283,6 +285,7 @@ class MAISREnvVec(gym.Env):
 
         returns:
         """
+
         self.ep_len += 1
         new_reward = {'detections': 0, 'low qual regular': 0, 'high qual regular': 0, 'low qual high value': 0, 'high qual high value': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -566,15 +569,13 @@ class MAISREnvVec(gym.Env):
         current_time = pygame.time.get_ticks()
 
         # Draw the aircraft
-        for agent in self.agents: agent.draw(self.window)
+        for agent in self.agents:
+            agent.draw(self.window)
 
         # Draw the targets
-        #SHIP_HIGHVAL_UNOBSERVED = (225, 185, 0)  # gold
         SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
         SHIP_REGULAR_LOWQ = (130, 0, 210)
-        #SHIP_HIGHVAL_LOWQ = (150, 0, 255)
         SHIP_REGULAR_HIGHQ = (0, 255, 210)
-        #SHIP_HIGHVAL_HIGHQ = (0, 240, 210)
 
         for target in self.targets:
             target_width = 7 if target[1] == 0 else 10
@@ -1040,6 +1041,7 @@ class MAISREnvVec(gym.Env):
 
         """
 
+
         if self.action_type == 'discrete':  # Convert first two values from 0-100 range to x,y coordinates on gameboard
             x_coord = float(action[0]) * (self.config["gameboard size"])
             y_coord = float(action[1]) * (self.config["gameboard size"])
@@ -1048,6 +1050,9 @@ class MAISREnvVec(gym.Env):
 
 
         elif self.action_type == 'continuous':
+            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
             normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
             normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
 

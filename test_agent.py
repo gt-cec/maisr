@@ -57,7 +57,7 @@ if __name__ == "__main__":
         terminated, truncated = False, False
         observation, info = env.reset()
         actions = {0: None, 1: None}  # use agent policies to get actions as a dict {agent_id: action}
-        human_waypoint = np.array([0.5, 0.5])  # Set default to half the gameboard until human overrides
+        human_waypoint = np.array([0.0, 0.0])  # Set default to half the gameboard until human overrides
 
         while not (terminated or truncated):  # main game loop
 
@@ -65,11 +65,9 @@ if __name__ == "__main__":
             ev = pygame.event.get()
             for event in ev:
                 if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_F1:
+                    if event.key == pygame.K_F1: env.close()
                         #if log_data: game_logger.final_log(button_handler.gameplan_command_history, env) (TODO Add back)
-                        env.close()
-                    if event.key == pygame.K_SPACE:
-                        env.pause(pygame.MOUSEBUTTONDOWN)
+                    if event.key == pygame.K_SPACE: env.pause(pygame.MOUSEBUTTONDOWN)
 
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_position = pygame.mouse.get_pos()
@@ -88,7 +86,6 @@ if __name__ == "__main__":
             agent_action, _ = model.predict(observation)
             print(f'Agent took action {(agent_action[0], agent_action[1])}')
             actions[0] = agent_action
-
 
             if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
