@@ -217,12 +217,12 @@ if __name__ == "__main__":
     log_dir = "./logs/" # Where to save logs
     algo = 'PPO'
 
-    batch_size = 64
-    steps_per_episode = 1000#14500 # Slightly higher than the max 14,400
-    num_timesteps = 5000#500000 # Total num timesteps to train
+    batch_size = 128
+    steps_per_episode = 14500 # Slightly higher than the max 14,400
+    num_timesteps = 5e6 #500000 # Total num timesteps to train
 
-    save_freq = 1000#14400 # How often to save checkpoints
-    eval_freq = 1000*2#14400 * 3 # How often to evaluate
+    save_freq = 14400 # How often to save checkpoints
+    eval_freq = 14400 * 3 # How often to evaluate
     n_eval_episodes = 5
 
     # Number of parallel environments (should not exceed number of CPU cores)
