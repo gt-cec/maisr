@@ -13,9 +13,11 @@ from stable_baselines3 import PPO
 
 if __name__ == "__main__":
 
-    if len(sys.argv) == 1:
-        print('No args specified, loading parameters from config.py')
-        from config import subject_id, user_group, log_data, x, y, round_number
+    from config import subject_id, user_group, log_data, x, y, round_number
+
+    round_number = 0
+
+
 
 
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")
@@ -42,7 +44,7 @@ if __name__ == "__main__":
                        reward_type=reward_type, obs_type='vector', action_type='continuous',
                        subject_id=subject_id,user_group=user_group,round_number=round_number)
 
-        model = PPO.load('./trained_models/test_agent.pth', env=env)
+        model = PPO.load('./trained_models/PPO_maisr_1915200_steps.zip', env=env)
 
         agent0_id = env.aircraft_ids[0]  # Hack to dynamically get agent IDs
         agent0_policy = None # TODO
@@ -53,7 +55,7 @@ if __name__ == "__main__":
         terminated, truncated = False, False  # flag for when the run is complete
         agent1_waypoint = (0, 0)
 
-        observation = env.reset()  # reset the environment
+        observation, info = env.reset()  # reset the environment
 
         while not (terminated or truncated):  # main game loop
 
@@ -85,7 +87,8 @@ if __name__ == "__main__":
 
 
             # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
-            agent_action = model(observation)
+            agent_action, _ = model.predict(observation)
+            print(f'Agent took action {(agent_action[0], agent_action[1])}')
             actions.append((env.aircraft_ids[0], agent_action))
 
             if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:

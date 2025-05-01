@@ -315,7 +315,7 @@ class MAISREnvVec(gym.Env):
             action_value = actions
             #print(action_value)
             waypoint, id_method = self.denormalize_action(action_value)
-            self.agents[0].waypoint_override = waypoint
+            self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
         else: raise ValueError('Actions input is an unknown type')
 
@@ -1059,21 +1059,22 @@ class MAISREnvVec(gym.Env):
         """
 
         if self.action_type == 'discrete':  # Convert first two values from 0-100 range to x,y coordinates on gameboard
-            x_coord = float(action[0]) * (self.config["gameboard size"] / 100)
-            y_coord = float(action[1]) * (self.config["gameboard size"] / 100)
-            waypoint = (x_coord, y_coord)
+            x_coord = float(action[0]) * (self.config["gameboard size"])
+            y_coord = float(action[1]) * (self.config["gameboard size"])
+            waypoint = (float(x_coord), float(y_coord))
             id_method = min([0, 50, 100], key=lambda x: abs(x - action[2]))
 
+
         elif self.action_type == 'continuous':
-            normalized_x = (action[0] + 1) / 2  # Convert to 0,1 range
-            normalized_y = (action[1] + 1) / 2  # Convert to 0,1 range
+            normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
+            normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
+
             x_coord = normalized_x * self.config["gameboard size"]
             y_coord = normalized_y * self.config["gameboard size"]
-            waypoint = (x_coord, y_coord)
 
-            #normalized_id = (action_value[2] + 1) / 2  # Convert from -1,1 to 0,1
-            #id_method = normalized_id  # Or map to your desired range
-            id_method = action[2]
+            waypoint = (float(x_coord), float(y_coord))
+            print(f'Action denormalized as {waypoint}')
+            id_method = float(action[2])
 
         else:
             raise ValueError('Error in denormalize action: action type not recognized')
