@@ -321,8 +321,7 @@ class MAISREnvVec(gym.Env):
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
 
             # Find targets within ISR range (for identification)
-            isr_range = self.AIRCRAFT_ENGAGEMENT_RADIUS
-            in_isr_range = distances <= isr_range
+            in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
 
             # Process newly identified targets (TODO below should be a fix but untested)
             for target_idx in range(self.num_targets):

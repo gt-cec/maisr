@@ -12,13 +12,8 @@ import webbrowser
 from stable_baselines3 import PPO
 
 if __name__ == "__main__":
-
     from config import subject_id, user_group, log_data, x, y, round_number
-
     round_number = 0
-
-
-
 
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")
 
@@ -55,7 +50,9 @@ if __name__ == "__main__":
 
         game_count += 1
         terminated, truncated = False, False
+
         observation, info = env.reset()
+
         actions = {0: None, 1: None}  # use agent policies to get actions as a dict {agent_id: action}
         human_waypoint = np.array([0.0, 0.0])  # Set default to half the gameboard until human overrides
 
