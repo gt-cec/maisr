@@ -178,15 +178,13 @@ def main(save_dir, load_dir, load_existing):
         print('Training new model')
         model = PPO("MlpPolicy", vec_env, verbose=1)
 
-
-
     print('Beginning agent training...\n#################################################')
     run.log({"test_metric": 1.0})
 
 
     model.learn(
-        total_timesteps=num_timesteps,
-        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback
+        total_timesteps=int(num_timesteps),
+        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback,
         reset_num_timesteps=False,  # Set to False when resuming training
     )
 
