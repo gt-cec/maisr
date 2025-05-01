@@ -1,5 +1,8 @@
 import gymnasium as gym
 import os
+
+from sympy.physics.units import action
+
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
@@ -14,11 +17,10 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 import multiprocessing
 
-from env_vec import MAISREnvVec
 from utility.data_logging import load_env_config
 
 class EnhancedWandbCallback(BaseCallback):
-    def __init__(self, verbose=0, eval_env=None, eval_freq=14400, n_eval_episodes=5, run=None):
+    def __init__(self, verbose=0, eval_env=None, eval_freq=14400, n_eval_episodes=8, run=None):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = eval_freq
@@ -55,14 +57,19 @@ class EnhancedWandbCallback(BaseCallback):
         return True
 
 
-def make_env(env_config, rank, seed):
+def make_env(use_simple,env_config,rank, seed):
     def _init():
+        if use_simple:
+            from env_vec_simple import MAISREnvVec
+        else:
+            from env_vec import MAISREnvVec
+
         env = MAISREnvVec(
             config=env_config,
             render_mode='headless',
-            reward_type='balanced-sparse',
-            obs_type='vector',
-            action_type='continuous',
+            reward_type='proximity and target',
+            obs_type='absolute',
+            action_type='continuous-normalized',
         )
         env = Monitor(env)  # record stats such as returns
         env.reset(seed=seed + rank)
@@ -71,54 +78,96 @@ def make_env(env_config, rank, seed):
     return _init  # Return the function, not the environment instance
 
 
-def main():
-    # Instantiate the env
-    config = './config_files/rl_training_config.json'
-    env_config = load_env_config(config)
+def train(
+        use_simple,
+        reward_type, # Must be 'proximity', 'waypoint-on-nearest'
+        action_type, # Must be 'continuous-normalized' or 'discrete-downsampled'
+        obs_type, # Must be "absolute" or "relative"
+        save_dir = "./trained_models/",
+        load_dir= None,
+        log_dir = "./logs/",
+        algo='PPO',
+        policy_type = "MlpPolicy",
+        lr=3e-4,
+        batch_size=128,
+        steps_per_episode=14600,
+        num_timesteps=20e6,
+        save_freq=14600*3,
+        eval_freq=14600*2,
+        n_eval_episodes = 8,
+        env_config_filename = './config_files/rl_training_config.json',
+        n_envs = 1,
+        seed=42
+    ):
+
+    if use_simple: from env_vec_simple import MAISREnvVec
+    else: from env_vec import MAISREnvVec
+
+    # Load env config
+    env_config = load_env_config(env_config_filename)
 
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
+    train_config = {
+        "env_type": "simple_v1" if use_simple else "normal",
+        "reward_type": reward_type,
+        "action_type": action_type,
+        "obs_type": obs_type,
+        "algorithm": algo,
+        "policy_type": policy_type,
+        "lr": lr,
+        "batch_size": 128,
+        "steps_per_episode": steps_per_episode,
+        "num_timesteps": num_timesteps,
+        "save_freq": save_freq,
+        "checkpoint_freq": eval_freq,
+        "n_eval_episodes": n_eval_episodes,
+        "env_config": env_config,
+        "n_envs": n_envs,
+        "seed": seed,
+        "env_name": "MAISREnvVec",
+        },
+
     run = wandb.init(
         project="maisr-rl",
-        config={
-            "algorithm": 'PPO',
-            "policy_type": "MlpPolicy",
-            "total_timesteps": num_timesteps,
-            "env_name": "MAISREnvVec",
-            "env_config": config
-        },
+        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'lr'+str(lr)+'batchsize'+str(batch_size),
+        config=train_config,
         sync_tensorboard=True,
-        monitor_gym=True,  # This is important for gym environment monitoring
+        monitor_gym=True,
     )
 
-    #vec_env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
+    if n_envs > 1: # TODO implement multiprocessing
+        raise ValueError('Multiprocessing not supported yet')
+        #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
+        #print(f"Training with {n_envs} environments in parallel")
+        #env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
+        #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
+        #env = SubprocVecEnv(env_fns)
 
-    # Create vectorized environment for training using SubprocVecEnv
-    #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
-    #vec_env = SubprocVecEnv(env_fns) # (TODO commented out to test non-vectorized env
-
-    vec_env = MAISREnvVec(
-        env_config,
-        None,
-        render_mode='headless',
-        reward_type='balanced-sparse',
-        obs_type='vector',
-        action_type='continuous',
-    )
-    vec_env = Monitor(vec_env)
+    else:
+        env = MAISREnvVec(
+            env_config,
+            None,
+            render_mode='headless',
+            reward_type=reward_type,
+            obs_type=action_type,
+            action_type=action_type,
+        )
+        env = Monitor(env)
 
     eval_env = MAISREnvVec(
         env_config,
         None,
         render_mode='headless',
-        reward_type='balanced-sparse',
-        obs_type='vector',
-        action_type='continuous',
+        reward_type=reward_type,
+        obs_type=action_type,
+        action_type=action_type,
     )
     eval_env = Monitor(eval_env)
 
-    # Setup callbacks
+
+    ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq,
         save_path=save_dir,
@@ -153,32 +202,28 @@ def main():
 
     model = PPO(
         "MlpPolicy",
-        vec_env,
+        env,
         verbose=1,
         tensorboard_log=f"runs/{run.id}",  # Match tensorboard directory to wandb run.id
         batch_size=batch_size, # * n_envs,  # Scale batch size with number of environments
         n_steps= steps_per_episode, #2048 // n_envs,  # Adjust steps per environment
-        learning_rate=3e-4,
+        learning_rate=lr,
         seed=seed
     )
 
     # Check if there's a checkpoint to load
-    if load_dir:
-        model = model.__class__.load(load_dir, env=vec_env)
+    if load_dir: model = model.__class__.load(load_dir, env=env)
+    else: print('Training new model')
 
-    else:
-        print('Training new model')
-        #model = PPO("MlpPolicy", vec_env, verbose=1)
 
-    print('Beginning agent training...\n#################################################')
-    #run.log({"test_metric": 1.0})
-
+    print('####################################### Beginning agent training... #########################################\n')
     model.learn(
         total_timesteps=int(num_timesteps),
         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
-        reset_num_timesteps=False,  # Set to False when resuming training
+        reset_num_timesteps=True,  # Set to False when resuming training
     )
 
+    print('####################################### TRAINING COMPLETE #########################################\n')
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final")
     model.save(final_model_path)
@@ -189,36 +234,26 @@ def main():
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
-    #wandb.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
     run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
-
     run.finish()
 
 
 if __name__ == "__main__":
-    global save_dir, load_dir, log_dir, algo
-    global batch_size, steps_per_episode, num_timesteps
-    global save_freq, eval_freq, n_eval_episodes
-    global n_envs, seed
 
-    save_dir = "./trained_models/"
-    load_dir = None# "/trained_models/agent_test" # Where to load trained model from
-    log_dir = "./logs/" # Where to save logs
-    algo = 'PPO'
+    # use_simple = True
+    # reward_type = 'proximity and target'
+    # action_type = 'continuous'
+    # obs_type = 'absolute'
 
-    batch_size = 128
-    steps_per_episode = 14500 # Slightly higher than the max 14,400
-    num_timesteps = 45e6 #500000 # Total num timesteps to train
+    for use_simple in [True]:
+        for reward_type in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']:
+            for action_type in ['continuous-normalized', 'discrete-downsampled']:
+                for obs_type in ['absolute', 'relative']:
 
-    save_freq = 14400 # How often to save checkpoints
-    eval_freq = 14400 * 3 # How often to evaluate
-    n_eval_episodes = 5
-
-    # Number of parallel environments (should not exceed number of CPU cores)
-    n_envs = min(8, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
-    print(f"Training with {n_envs} environments in parallel")
-
-    # Set seed for reproducibility
-    seed = 42
-
-    main()
+                    train(
+                        use_simple,
+                        reward_type,
+                        action_type,
+                        obs_type,
+                        num_timesteps=15000
+                    )

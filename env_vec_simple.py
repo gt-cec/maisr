@@ -13,7 +13,7 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
+                 obs_type = 'vector', action_type = 'continuous', reward_type = 'proximity',
                  num_agents = 1,
                  subject_id='999',user_group='99',round_number='99'):
         """
@@ -21,17 +21,15 @@ class MAISREnvVec(gym.Env):
             time_scale: How much to scale time by
             render_mode: 'headless' for no-render agent training, 'human' for playing with humans
             reward_type:
-                balanced-sparse: Points for IDing targets, weapons, and finishing early
-                balanced-dense: Variant 1 + penalty for damage + others
-                cautious-sparse: BS but very low reward for IDing weapons
-                aggressive-sparse: BS but very high reward for IDing weapons
+
 
         """
         super().__init__()
 
-        if obs_type not in ['vector', 'pixel']: raise ValueError(f"obs_type must be one of 'vector,'pixel', got '{obs_type}'")
-        if action_type not in ['discrete', 'continuous']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
-        if reward_type not in ['balanced-sparse']: raise ValueError('reward_type must be normal. Others coming soon')
+        if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type must be one of 'absolute,'relative', got '{obs_type}'")
+        if action_type not in ['discrete-downsampled', 'continuous-normalized']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
+        if reward_type not in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
+
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
 
         self.config = config
@@ -63,22 +61,38 @@ class MAISREnvVec(gym.Env):
         self.num_targets = min(10, self.config['num ships']) # If more than 30 targets specified, overwrite to 30
         print(f'Spawning {self.num_targets} targets')
 
-        if self.action_type == 'continuous':
+
+        if self.action_type == 'continuous-normalized':
             self.action_space = gym.spaces.Box(
                 low=np.array([-1, -1], dtype=np.float32),
                 high=np.array([1, 1], dtype=np.float32),
                 dtype=np.float32)
+
+        elif self.action_type == 'discrete-downsampled':
+            self.grid_size = 15 # 15x15 grid
+            self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
+
+            raise NotImplementedError('Need to implement discrete-downsampled')
+
         else:
             raise ValueError("Action type must be continuous or discrete")
 
-        self.obs_size = 2 + 3 * self.max_targets
 
-        if self.obs_type == 'vector':
+        self.obs_size = 2 + 3 * self.max_targets
+        if self.obs_type == 'absolute':
             self.observation_space = gym.spaces.Box(
                 low=0, high=1,
                 shape=(self.obs_size,),  # Wrap in tuple to make it iterable
                 dtype=np.float32)
 
+            self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+
+        elif self.obs_type == 'relative':
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),  # Same size as the absolute observation
+                dtype=np.float32)
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
         else:
@@ -279,19 +293,18 @@ class MAISREnvVec(gym.Env):
             "detections": self.detections,  # Current detection count
             "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
-
+        # Process actions
         if isinstance(actions, dict): # Action is passed in as a dict {agent_id: action}
-            #print('Action is dict {agent_id: action}')
             for agent_id, action_value in actions.items():
-                waypoint = self.denormalize_action(action_value)
+                waypoint = self.process_action(action_value)
                 self.agents[agent_id].waypoint_override = waypoint
 
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
-            action_value = actions
-            waypoint = self.denormalize_action(action_value)
+            waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
-        else: raise ValueError('Actions input is an unknown type')
+        else:
+            raise ValueError('Actions input is an unknown type')
 
         self.action_history.append(self.agents[0].waypoint_override)
         #print(f'Waypoint {waypoint}, id method {id_method}')
@@ -304,7 +317,6 @@ class MAISREnvVec(gym.Env):
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             target_positions = self.targets[:, 3:5]  # x,y coordinates
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
-
 
 
             # Create a mask for unidentified targets (info_level < 1.0)
@@ -320,8 +332,18 @@ class MAISREnvVec(gym.Env):
 
                     unidentified_indices = np.where(unidentified_mask)[0]
                     nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
-                    #print(f'Nearest unknown target is {nearest_unidentified_idx} ({nearest_unidentified_distance} away)')
-                    #print(f'Distance improvement: {self.previous_nearest_distance} - {nearest_unidentified_distance} = {self.previous_nearest_distance - nearest_unidentified_distance}')
+
+
+                    # Check if waypoint is within 30 px of nearest unknown target
+                    nearest_target_location = target_positions[nearest_unidentified_idx]
+                    current_waypoint = self.agents[0].waypoint_override
+                    waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
+                    if waypoint_to_target_distance <= 40:
+                        new_reward['waypoint-to-nearest'] = 2.0
+
+                    else:
+                        new_reward['waypoint-to-nearest'] = 0.0
+
 
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
                     if distance_improvement > 0:
@@ -355,7 +377,6 @@ class MAISREnvVec(gym.Env):
                     })
 
 
-
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
         if self.all_targets_identified:
             print(self.all_targets_identified)
@@ -370,7 +391,7 @@ class MAISREnvVec(gym.Env):
             new_reward['early finish'] = (self.time_limit - self.display_time / 1000)
 
         if self.display_time / 1000 >= self.time_limit:
-            print('TERMINATED: TIME UP')
+            #print('TERMINATED: TIME UP')
             self.terminated = True
 
         # Calculate reward
@@ -401,10 +422,24 @@ class MAISREnvVec(gym.Env):
 
 
     def get_reward(self, new_reward):
-        # TODO
-        reward = (new_reward['target id'] * self.target_id_reward) + \
-                 (new_reward['proximity']) + \
-                 (new_reward['early finish'] * self.time_reward)
+
+        if self.reward_type == 'proximity and target':
+            reward = (new_reward['target id'] * self.target_id_reward) + \
+                     (new_reward['proximity']) + \
+                     (new_reward['early finish'] * self.time_reward)
+
+        elif self.reward_type == 'waypoint-on-nearest': # TODO
+            reward = (new_reward['target id'] * self.target_id_reward) + \
+                     (new_reward)['waypoint-to-nearest'] + \
+                     (new_reward['early finish'] * self.time_reward)
+
+        elif self.reward_type == 'proximity and waypoint-on-nearest':
+            reward = (new_reward['target id'] * self.target_id_reward) + \
+                     (new_reward)['waypoint-to-nearest'] + \
+                     (new_reward['proximity']) + \
+                     (new_reward['early finish'] * self.time_reward)
+
+        else: raise ValueError('Unknown reward type')
 
         return reward
 
@@ -424,7 +459,7 @@ class MAISREnvVec(gym.Env):
             # Handcrafted features, TBD (TODO)
         """
 
-        if self.obs_type == 'vector':
+        if self.obs_type == 'absolute':
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
             self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
@@ -439,6 +474,46 @@ class MAISREnvVec(gym.Env):
             target_features[:self.num_targets, 2] = self.targets[:, 4] / self.config["gameboard size"]  # y position
 
             target_start_idx = 2 # Insert all target features into the observation vector
+            self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
+
+
+        elif self.obs_type == 'relative':
+            self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+            # Get agent position (normalized)
+            agent_x_norm = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"]
+            agent_y_norm = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"]
+
+            # Store agent's absolute position
+            self.observation[0] = agent_x_norm
+            self.observation[1] = agent_y_norm
+
+            # Process target data with relative positions
+            targets_per_entry = 3  # Each target has 3 features in the observation
+            target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
+
+            # Copy info levels
+            target_features[:self.num_targets, 0] = self.targets[:, 2]
+
+            # Calculate relative positions (normalized to [-1, 1])
+            for i in range(self.num_targets):
+                # Get target normalized position
+                target_x_norm = self.targets[i, 3] / self.config["gameboard size"]
+                target_y_norm = self.targets[i, 4] / self.config["gameboard size"]
+
+                # Calculate relative position (range from -1 to 1)
+                # This represents the vector from agent to target
+                rel_x = (target_x_norm - agent_x_norm) * 2  # Scale to [-1, 1]
+                rel_y = (target_y_norm - agent_y_norm) * 2  # Scale to [-1, 1]
+
+                # Clip to ensure within range
+                rel_x = np.clip(rel_x, -1.0, 1.0)
+                rel_y = np.clip(rel_y, -1.0, 1.0)
+                target_features[i, 1] = rel_x
+                target_features[i, 2] = rel_y
+
+
+            target_start_idx = 2  # Insert all target features into the observation vector
             self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         else: raise ValueError('Unknown obs type')
@@ -940,8 +1015,10 @@ class MAISREnvVec(gym.Env):
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
 
-    def denormalize_action(self, action):
+    def process_action(self, action):
         """
+        If the action is continuous-normalized, this denormalizes it from -1, +1 to [0, 1000] in both axes
+        If the action is discrete-downsampled, this converts it to the 1000x1000 continuous grid, placing the waypoint in the center of the selected grid square
 
         Args:
             action (ndarray, size 3): Agent action to normalize. Should be in the form ndarray(waypoint_x, waypoint_y, id_method), all with range [-1, +1]
@@ -952,29 +1029,64 @@ class MAISREnvVec(gym.Env):
 
         """
 
+        if self.action_type == 'discrete-downsampled':
+            # Convert discrete grid coordinates to actual gameboard coordinates
+            # For a 10x10 grid on a 1000x1000 board, each grid cell is 100x100 pixels
+            # We place the waypoint at the center of the grid cell
 
-        if self.action_type == 'discrete':  # Convert first two values from 0-100 range to x,y coordinates on gameboard
-            x_coord = float(action[0]) * (self.config["gameboard size"])
-            y_coord = float(action[1]) * (self.config["gameboard size"])
+            # Ensure action values are within grid bounds
+            x_grid = min(max(int(action[0]), 0), self.grid_size - 1)
+            y_grid = min(max(int(action[1]), 0), self.grid_size - 1)
+
+            # Convert to gameboard coordinates (center of grid cell)
+            cell_size = self.config["gameboard size"] / self.grid_size
+            x_coord = (x_grid + 0.5) * cell_size  # +0.5 to get to center of cell
+            y_coord = (y_grid + 0.5) * cell_size
+
             waypoint = (float(x_coord), float(y_coord))
-            #id_method = min([0, 50, 100], key=lambda x: abs(x - action[2]))
 
 
-        elif self.action_type == 'continuous':
+        elif self.action_type == 'continuous-normalized':
             if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
                 raise ValueError('ERROR: Actions are not normalized to -1, +1')
 
-            normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
-            normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
+            if self.obs_type == 'absolute':
+                # Original absolute coordinate conversion
+                normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
+                normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
 
-            x_coord = normalized_x * self.config["gameboard size"]
-            y_coord = normalized_y * self.config["gameboard size"]
+                x_coord = normalized_x * self.config["gameboard size"]
+                y_coord = normalized_y * self.config["gameboard size"]
+
+            elif self.obs_type == 'relative':
+                # Interpret action as a displacement vector
+                # Scale from [-1,1] to a proportion of the map size
+                max_displacement = self.config["gameboard size"] * 0.25  # Maximum movement is 25% of map size
+
+                dx = action[0] * max_displacement
+                dy = action[1] * max_displacement
+
+                # Apply displacement to current position
+                current_x = self.agents[self.aircraft_ids[0]].x
+                current_y = self.agents[self.aircraft_ids[0]].y
+
+                # Calculate new waypoint
+                x_coord = np.clip(current_x + dx, 0, self.config["gameboard size"])
+                y_coord = np.clip(current_y + dy, 0, self.config["gameboard size"])
 
             waypoint = (float(x_coord), float(y_coord))
-            #print(f'Action denormalized as {waypoint}')
-            #id_method = float(action[2])
+
+            # normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
+            # normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
+            #
+            # x_coord = normalized_x * self.config["gameboard size"]
+            # y_coord = normalized_y * self.config["gameboard size"]
+            #
+            # waypoint = (float(x_coord), float(y_coord))
+            # #print(f'Action denormalized as {waypoint}')
+            # #id_method = float(action[2])
 
         else:
-            raise ValueError('Error in denormalize action: action type not recognized')
+            raise ValueError('Error in process_action: action type not recognized')
 
         return waypoint#, id_method
