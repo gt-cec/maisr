@@ -154,6 +154,7 @@ def train(
             obs_type=obs_type,
             action_type=action_type,
             reward_type=reward_type,
+            tag='train'
         )
         env = Monitor(env)
 
@@ -164,6 +165,7 @@ def train(
         obs_type=obs_type,
         action_type=action_type,
         reward_type=reward_type,
+        tag='eval'
     )
     eval_env = Monitor(eval_env)
 
@@ -232,7 +234,7 @@ def train(
     print(f"Training completed! Final model saved to {final_model_path}")
 
     # Run a final evaluation
-    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=3)
+    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=n_eval_episodes)
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
@@ -253,7 +255,7 @@ if __name__ == "__main__":
                 for action_type in ['continuous-normalized', 'discrete-downsampled']:
                     for obs_type in ['absolute', 'relative']:
 
-                        print('################################################################################')
+                        print('\n################################################################################')
                         print('################################################################################')
                         print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, reward_type {reward_type}, lr {lr}')
                         print('################################################################################')
@@ -265,6 +267,7 @@ if __name__ == "__main__":
                             obs_type,
                             action_type,
                             reward_type,
-                            num_timesteps=10000,
+                            num_timesteps=150000,
+                            n_eval_episodes=8,
                             lr = lr
                         )

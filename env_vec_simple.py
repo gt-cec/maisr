@@ -15,6 +15,7 @@ class MAISREnvVec(gym.Env):
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
                  num_agents = 1,
+                 tag='none',
                  subject_id='999',user_group='99',round_number='99'):
         """
         args:
@@ -33,6 +34,7 @@ class MAISREnvVec(gym.Env):
 
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
 
+        self.tag = tag
         self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
@@ -210,6 +212,8 @@ class MAISREnvVec(gym.Env):
 
             self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
+        self.episode_counter = -1
+
         self.reset()
 
 
@@ -218,6 +222,8 @@ class MAISREnvVec(gym.Env):
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
+
+        self.episode_counter += 1
 
         self.agents = [] # List of names of all current agents. Typically integers
         self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
@@ -306,7 +312,8 @@ class MAISREnvVec(gym.Env):
         else:
             raise ValueError('Actions input is an unknown type')
 
-        self.action_history.append(self.agents[0].waypoint_override)
+        if self.ep_len % 60 == 0:
+            self.action_history.append(self.agents[0].waypoint_override)
         #print(f'Waypoint {waypoint}, id method {id_method}')
 
         # move the agents and check for gameplay updates
@@ -409,6 +416,10 @@ class MAISREnvVec(gym.Env):
             #print('terminated' if self.terminated else 'truncated' if self.truncated else 'unknown')
             #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+
+            if (self.tag == 'train' and self.episode_counter % 5 == 0) or (self.tag == 'eval'):
+                self.save_action_history_plot()
+
             if self.render_mode == 'human': pygame.time.wait(50)
 
         # Advance time
@@ -1092,3 +1103,70 @@ class MAISREnvVec(gym.Env):
             raise ValueError('Error in process_action: action type not recognized')
 
         return waypoint#, id_method
+
+    def save_action_history_plot(self):
+        """
+        Saves a 2D scatter plot of agent's action history to a PNG file.
+        This function is called when an episode terminates.
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib
+            matplotlib.use('Agg')  # Use non-interactive backend
+            import datetime
+
+            # Extract x and y coordinates from action history
+            x_coords = [action[0] for action in self.action_history]
+            y_coords = [action[1] for action in self.action_history]
+
+            # Create a new figure
+            plt.figure(figsize=(10, 10))
+
+            # Set up the plot with correct scale
+            plt.xlim(0, self.config["gameboard size"])
+            plt.ylim(0, self.config["gameboard size"])
+
+            # Plot targets
+            for i in range(self.num_targets):
+                target_x = self.targets[i, 3]
+                target_y = self.targets[i, 4]
+                marker_size = 100 if self.targets[i, 1] == 1 else 50  # High value targets are larger
+                color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
+                plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
+
+            # Plot agent trajectory (action history) as a line with points
+            plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1)
+            plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)), cmap='cool',
+                        alpha=0.8, marker='x', label='Agent Actions')
+
+            # Add a colorbar to show time progression
+            cbar = plt.colorbar()
+            cbar.set_label('Timestep')
+
+            # Add starting point with a different marker
+            if x_coords and y_coords:
+                plt.scatter(x_coords[0], y_coords[0], s=100, color='blue', marker='*', label='Start')
+                plt.scatter(x_coords[-1], y_coords[-1], s=100, color='green', marker='*', label='End')
+
+            # Add grid lines
+            plt.grid(True, alpha=0.3)
+
+            # Add labels and title
+            plt.xlabel('X Coordinate')
+            plt.ylabel('Y Coordinate')
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            plt.title(f'{self.tag} - Agent Action History (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})')
+
+            # Add a legend
+            plt.legend(loc='upper right')
+
+            # Save the figure with a timestamp
+            filename = f'./action_histories/action_history_{self.obs_type}_{self.action_type}_{self.reward_type}_{timestamp}.png'
+            plt.savefig(filename, dpi=75, bbox_inches='tight')
+            plt.close()
+
+            print(f"Action history plot saved to {filename}")
+        except ImportError as e:
+            print(f"Could not save action history plot: {e}")
+        except Exception as e:
+            print(f"Error saving action history plot: {e}")
