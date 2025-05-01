@@ -417,7 +417,7 @@ class MAISREnvVec(gym.Env):
             #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
-            if (self.tag == 'train' and self.episode_counter % 5 == 0) or (self.tag == 'eval'):
+            if (self.episode_counter == 0) or (self.tag == 'train' and  self.episode_counter % 5 == 0) or (self.tag == 'eval'):
                 self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)

@@ -269,5 +269,6 @@ if __name__ == "__main__":
                             reward_type,
                             num_timesteps=150000,
                             n_eval_episodes=8,
-                            lr = lr
+                            lr = lr,
+                            eval_freq=14500*3
                         )
