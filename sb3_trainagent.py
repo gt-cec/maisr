@@ -80,9 +80,10 @@ def make_env(use_simple,env_config,rank, seed):
 
 def train(
         use_simple,
-        reward_type, # Must be 'proximity', 'waypoint-on-nearest'
-        action_type, # Must be 'continuous-normalized' or 'discrete-downsampled'
         obs_type, # Must be "absolute" or "relative"
+        action_type, # Must be 'continuous-normalized' or 'discrete-downsampled'
+        reward_type, # Must be 'proximity', 'waypoint-on-nearest'
+
         save_dir = "./trained_models/",
         load_dir= None,
         log_dir = "./logs/",
@@ -126,12 +127,12 @@ def train(
         "env_config": env_config,
         "n_envs": n_envs,
         "seed": seed,
-        "env_name": "MAISREnvVec",
-        },
+        "env_name": "MAISREnvVec"
+        }
 
     run = wandb.init(
         project="maisr-rl",
-        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'lr'+str(lr)+'batchsize'+str(batch_size),
+        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_rew'+str(reward_type)+'_act'+str(action_type)+'_obs'+str(obs_type)+'lr'+str(lr)+'batchsize'+str(batch_size),
         config=train_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -150,9 +151,9 @@ def train(
             env_config,
             None,
             render_mode='headless',
-            reward_type=reward_type,
-            obs_type=action_type,
+            obs_type=obs_type,
             action_type=action_type,
+            reward_type=reward_type,
         )
         env = Monitor(env)
 
@@ -160,9 +161,9 @@ def train(
         env_config,
         None,
         render_mode='headless',
-        reward_type=reward_type,
-        obs_type=action_type,
+        obs_type=obs_type,
         action_type=action_type,
+        reward_type=reward_type,
     )
     eval_env = Monitor(eval_env)
 
@@ -245,15 +246,17 @@ if __name__ == "__main__":
     # action_type = 'continuous'
     # obs_type = 'absolute'
 
-    for use_simple in [True]:
-        for reward_type in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']:
-            for action_type in ['continuous-normalized', 'discrete-downsampled']:
-                for obs_type in ['absolute', 'relative']:
+    for lr in [1e-5, 1e-4, 1e-3]:
+        for use_simple in [True]:
+            for reward_type in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']:
+                for action_type in ['continuous-normalized', 'discrete-downsampled']:
+                    for obs_type in ['absolute', 'relative']:
 
-                    train(
-                        use_simple,
-                        reward_type,
-                        action_type,
-                        obs_type,
-                        num_timesteps=15000
-                    )
+                        train(
+                            use_simple,
+                            obs_type,
+                            action_type,
+                            reward_type,
+                            num_timesteps=10000,
+                            lr = lr
+                        )

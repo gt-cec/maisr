@@ -13,7 +13,7 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'vector', action_type = 'continuous', reward_type = 'proximity',
+                 obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
                  num_agents = 1,
                  subject_id='999',user_group='99',round_number='99'):
         """
