@@ -325,7 +325,7 @@ class MAISREnvVec(gym.Env):
 
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
                     if distance_improvement > 0:
-                        proximity_reward = distance_improvement * 0.1
+                        proximity_reward = distance_improvement * 0.005
                         #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
                         #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
                         new_reward['proximity'] = proximity_reward
