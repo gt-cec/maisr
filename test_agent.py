@@ -2,7 +2,7 @@ from agents import *
 import sys
 import os
 import ctypes
-
+import numpy as np
 from env_vec import MAISREnvVec
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
@@ -40,26 +40,26 @@ if __name__ == "__main__":
         window_width, window_height = env_config['window size'][0], env_config['window size'][1]
         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
         window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
+
         env = MAISREnvVec(env_config, window, clock=clock, render_mode='human',
                        reward_type=reward_type, obs_type='vector', action_type='continuous',
+                       num_agents=2,
                        subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         model = PPO.load('./trained_models/PPO_maisr_1915200_steps.zip', env=env)
 
-        agent0_id = env.aircraft_ids[0]  # Hack to dynamically get agent IDs
+        #agent0_id = env.aircraft_ids[0]  # Hack to dynamically get agent IDs
         agent0_policy = None # TODO
 
         button_handler = ButtonHandler(env, agent0_policy, log_data=False)
 
         game_count += 1
-        terminated, truncated = False, False  # flag for when the run is complete
-        agent1_waypoint = (0, 0)
-
-        observation, info = env.reset()  # reset the environment
+        terminated, truncated = False, False
+        observation, info = env.reset()
+        actions = {0: None, 1: None}  # use agent policies to get actions as a dict {agent_id: action}
+        human_waypoint = np.array([0.5, 0.5])  # Set default to half the gameboard until human overrides
 
         while not (terminated or truncated):  # main game loop
-
-            actions = []  # use agent policies to get actions as a list of tuple [(agent index, waypoint)]
 
             # Handle human actions (mouse clicks)
             ev = pygame.event.get()
@@ -79,22 +79,23 @@ if __name__ == "__main__":
                     target_point_unscaled = (human_waypoint[0] / env.config['gameboard size'], human_waypoint[1] / env.config['gameboard size'])
                     human_waypoint  = ((2 * target_point_unscaled[0]) - 1, (2 * target_point_unscaled[1]) - 1)
 
-                    if human_waypoint is not None:
-                        human_action = (human_waypoint[0], human_waypoint[1], 0)
-                        actions.append((env.human_idx, human_action))
-                        agent1_waypoint = human_action
 
+            if human_waypoint is not None:
+                actions[1] = np.array([human_waypoint[0], human_waypoint[1], 0])
+            else:
+                actions[1] = np.array([human_waypoint[0], human_waypoint[1], 0])
 
-
-            # actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
             agent_action, _ = model.predict(observation)
             print(f'Agent took action {(agent_action[0], agent_action[1])}')
-            actions.append((env.aircraft_ids[0], agent_action))
+            actions[0] = agent_action
+
 
             if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
                 observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
 
-            if env.render_mode == 'human': env.render()
+            if env.render_mode == 'human':
+                env.render()
+
 
         if terminated or truncated:
             done_time = pygame.time.get_ticks()

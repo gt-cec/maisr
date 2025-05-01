@@ -14,6 +14,7 @@ class MAISREnvVec(gym.Env):
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  obs_type = 'vector', action_type = 'continuous', reward_type = 'balanced-sparse',
+                 num_agents = 1,
                  subject_id='999',user_group='99',round_number='99'):
         """
         args:
@@ -43,7 +44,7 @@ class MAISREnvVec(gym.Env):
         self.obs_type = obs_type
         self.action_type = action_type
         self.reward_type = reward_type
-
+        self.num_agents = num_agents
 
         self.subject_id = subject_id
         self.round_number = round_number
@@ -53,20 +54,16 @@ class MAISREnvVec(gym.Env):
         self.init = True # Used to render static windows the first time
         self.paused = False
         self.unpause_countdown = False
+
         #self.new_target_id = None  # Used to check if a new target has been ID'd so the data logger in main.py can log it
         #self.new_weapon_id = None
-
-        self.agent0_dead = False  # Used at end of loop to check if agent recently deceased.
-        self.agent1_dead = False
+        # self.agent0_dead = False  # Used at end of loop to check if agent recently deceased.
+        # self.agent1_dead = False
 
         self.terminated = False
         self.truncated = False
 
         self.time_limit = self.config['time limit']
-
-        # set the random seed
-        #if "seed" in config: random.seed(config["seed"])
-        #else: print("Note: no 'seed' specified in the env config.")
 
         # determine the number of ships
         self.max_targets = 30
@@ -225,24 +222,30 @@ class MAISREnvVec(gym.Env):
         self.reset()
 
 
-    def reset(self, seed = None):
+    def reset(self, seed=None):
 
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
 
-        self.agents = []
+        self.agents = [] # List of names of all current agents. Typically integers
+        self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
+        self.max_num_agents = 2
+
         self.aircraft_ids = []  # indexes of the aircraft agents
-        self.damage = 0  # total damage from all agents
-        #self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
-        self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
-        self.pause_start_time = 0
-        self.total_pause_time = 0
+
         self.score = 0
         self.num_lowq_gathered = 0
         self.num_highq_gathered = 0
+
+        self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
+        self.pause_start_time = 0
+        self.total_pause_time = 0
         self.init = True
         self.action_history = []
+
+        # self.damage = 0  # total damage from all agents
+        # self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
@@ -256,12 +259,12 @@ class MAISREnvVec(gym.Env):
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
 
         # create the aircraft
-        for i in range(self.config['num aircraft']):
+        for i in range(self.num_agents):
             agents.Aircraft(self, 0,prob_detect=self.prob_detect,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location']
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location'] # TODO make random based on seed
 
-        self.agent_idx = self.aircraft_ids[0]
-        if self.config['num aircraft'] == 2:
+        #self.agent_idx = self.aircraft_ids[0]
+        if self.num_agents == 2: # TODO Delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         self.observation = self.get_observation()
@@ -272,57 +275,37 @@ class MAISREnvVec(gym.Env):
         return self.observation, info
 
 
-    def step(self, actions:list):
+    def step(self, actions:dict):
         """
         args:
-            actions: List of (agent_id, action) tuples, where action = dict('waypoint': (x,y), 'id_method': 0, 1, or 2')
+            actions: (Option 1) Dictionary of {agent_id: action(ndarray)}.
+                     (Option 2) A single ndarray
 
         returns:
         """
         self.ep_len += 1
-
-        # Track events that give reward. Will be passed to get_reward at end of step
-        new_reward = {'detections': 0,
-                      'low qual regular': 0,
-                      'high qual regular': 0,
-                      'low qual high value': 0,
-                      'high qual high value': 0,
-                      'early finish': 0}
-
+        new_reward = {'detections': 0, 'low qual regular': 0, 'high qual regular': 0, 'low qual high value': 0, 'high qual high value': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
+        info = {
+            "new_identifications": [],  # List to track newly identified targets/threats
+            "detections": self.detections,  # Current detection count
+            "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
-        if self.gather_info:
-            info = {
-                "new_identifications": [],  # List to track newly identified targets/threats
-                "detections": self.detections,  # Current detection count
-                "score_breakdown": {
-                    "target_points": 0,
-                    "threat_points": 0,
-                    "time_points": 0,
-                    "completion_points": 0,
-                    "penalty_points": 0}
-            }
-        else:
-            info = {}
 
-        if isinstance(actions, list): # Action is passed in as a list of (agent_id, action) tuples
-            #print('Action is a [id, action] list, executing normal mode')
-            for action in actions:
-                agent_id, action_value  = action
+        if isinstance(actions, dict): # Action is passed in as a dict {agent_id: action}
+            print('Action is dict {agent_id: action}')
+            for agent_id, action_value in actions.items():
                 waypoint, id_method = self.denormalize_action(action_value)
                 self.agents[agent_id].waypoint_override = waypoint
 
-
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
             action_value = actions
-            #print(action_value)
             waypoint, id_method = self.denormalize_action(action_value)
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
         else: raise ValueError('Actions input is an unknown type')
 
         self.action_history.append(self.agents[0].waypoint_override)
-
         #print(f'Waypoint {waypoint}, id method {id_method}')
 
         # move the agents and check for gameplay updates
@@ -364,21 +347,18 @@ class MAISREnvVec(gym.Env):
                         if self.targets[target_idx, 1] == 0.0: new_reward['high qual regular'] += 1
                         elif self.targets[target_idx, 1] == 1.0: new_reward['high qual high value'] += 1
 
-                        if self.gather_info:
-                            info["new_identifications"].append({
-                                "type": "high quality info gathered",
-                                "target_id": int(self.targets[target_idx, 0]),
-                                "aircraft": aircraft.agent_idx,
-                                "time": self.display_time
-                            })
+                        info["new_identifications"].append({
+                            "type": "high quality info gathered",
+                            "target_id": int(self.targets[target_idx, 0]),
+                            "aircraft": aircraft.agent_idx,
+                            "time": self.display_time
+                        })
 
                     # Check if this is a high-value target that can detect us
                     if self.targets[target_idx, 1] == 1.0 and np.random.random() < aircraft.prob_detect:
                         self.detections += 1 # High value target detected us
                         new_reward['detections'] += 1
-
-                        if self.gather_info:
-                            info["detections"] = self.detections
+                        info["detections"] = self.detections
 
                         if self.render_mode == 'human' and pygame.get_init():
                             self.agent_damage_flash_start = pygame.time.get_ticks()
@@ -450,7 +430,7 @@ class MAISREnvVec(gym.Env):
 
     def get_observation(self):
         """
-        State will include the following features (current count is 309):
+        State will include the following features (current count is ):
             # Agent and basic game info (8 features):
             0 agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
             1 agent_y,             # (0-1)
@@ -481,7 +461,7 @@ class MAISREnvVec(gym.Env):
             self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard size"] # Agent x
             self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard size"] # Agent y
 
-            if self.config['num aircraft'] == 2:
+            if self.num_agents == 2:
                 self.observation[2] = 1 # Teammate_exists
                 self.observation[3] = self.agents[self.aircraft_ids[1]].x / self.config["gameboard size"]  # Teammate x
                 self.observation[4] = self.agents[self.aircraft_ids[1]].y / self.config["gameboard size"]  # Teammate y
@@ -643,17 +623,17 @@ class MAISREnvVec(gym.Env):
             self.config["gameboard size"]))  # Right border
             self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-        elif self.config['num aircraft'] > 1:
-            if self.agents[self.human_idx].health_points <= 3:
-                alpha = int(155)
-                border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
-                border_width = 35
-                border_color = (255, 0, 0, alpha)  # Red with calculated alpha
-                pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard size"], border_width))  # Top border
-                pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"],border_width))  # Bottom border
-                pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard size"]))  # Left border
-                pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width,self.config["gameboard size"]))  # Right border
-                self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+        # elif self.config['num aircraft'] > 1:
+        #     if self.agents[self.human_idx].health_points <= 3:
+        #         alpha = int(155)
+        #         border_surface = pygame.Surface((self.config["gameboard size"], self.config["gameboard size"]),pygame.SRCALPHA)
+        #         border_width = 35
+        #         border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+        #         pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard size"], border_width))  # Top border
+        #         pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard size"] - border_width, self.config["gameboard size"],border_width))  # Bottom border
+        #         pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard size"]))  # Left border
+        #         pygame.draw.rect(border_surface, border_color, (self.config["gameboard size"] - border_width, 0, border_width,self.config["gameboard size"]))  # Right border
+        #         self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
         # Draw Agent Gameplan sub-window
         self.quadrant_button_height = 120
@@ -751,10 +731,10 @@ class MAISREnvVec(gym.Env):
         agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
         agent0_health_window.draw(self.window)
 
-        if self.config['num aircraft'] > 1:
-            agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
-            agent1_health_window.update(self.agents[self.human_idx].health_points)
-            agent1_health_window.draw(self.window)
+        # if self.config['num aircraft'] > 1:
+        #     agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
+        #     agent1_health_window.update(self.agents[self.human_idx].health_points)
+        #     agent1_health_window.draw(self.window)
 
         current_time = pygame.time.get_ticks()
 
@@ -844,7 +824,7 @@ class MAISREnvVec(gym.Env):
         state = {
             "aircrafts": {},
             "ships": {},
-            "damage": self.damage,
+            "detections": self.detections,
             "num lowQ": self.low_quality_identified,
             "num highQ": self.high_quality_identified
         }
@@ -962,8 +942,8 @@ class MAISREnvVec(gym.Env):
 
         # Render title
         if self.config['num aircraft'] > 1:
-            if not self.agents[self.human_idx].alive:
-                title_surface = title_font.render('GAME OVER', True, (0, 0, 0))
+            if self.detections >= 5:
+                title_surface = title_font.render('GAME OVER (>5 DETECTIONS)', True, (0, 0, 0))
         elif self.display_time/1000 >= self.time_limit:
             title_surface = title_font.render('GAME COMPLETE: TIME UP', True, (0, 0, 0))
         else:
