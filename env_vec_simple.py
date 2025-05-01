@@ -1,5 +1,3 @@
-from multiprocessing.managers import Value
-
 import gymnasium as gym
 from gymnasium.spaces import MultiDiscrete
 import numpy as np
@@ -70,8 +68,6 @@ class MAISREnvVec(gym.Env):
                 low=np.array([-1, -1], dtype=np.float32),
                 high=np.array([1, 1], dtype=np.float32),
                 dtype=np.float32)
-        # elif self.action_type == 'discrete':
-        #     self.action_space = MultiDiscrete([101, 101, 101])
         else:
             raise ValueError("Action type must be continuous or discrete")
 
@@ -116,7 +112,9 @@ class MAISREnvVec(gym.Env):
         self.lowqual_highvaltarget_reward = 0.5  # Reward earned for gathering low quality info about a high value target
         self.highqual_regulartarget_reward = 0.5 # Reward earned for gathering high quality info about a regular value target
         self.highqual_highvaltarget_reward = 1.0 # Reward earned for gathering high quality info about a high value target
-        self.detections_reward = -1.0
+        self.target_id_reward = 1.0
+
+        self.detections_reward = 0 # -1.0 (# TODO temporarily removed for simplified env
         self.time_reward = 0.1  # Reward earned for every second early. 0.1 translates to 1.0 per 10 seconds
 
         # Set point quantities for each event (human only)
@@ -252,7 +250,11 @@ class MAISREnvVec(gym.Env):
 
         #self.previous_nearest_distance = float('inf') # TODO adding shaping reward
         self.targets_identified = 0
-        self.target_id_reward = 1.0 # TODO should move
+
+        self.all_targets_identified = False
+
+        self.terminated = False
+        self.truncated = False
 
         info = {}
         return self.observation, info
@@ -266,6 +268,8 @@ class MAISREnvVec(gym.Env):
 
         returns:
         """
+        #print("Target info levels at start of step:", self.targets[:, 2])
+
 
         self.ep_len += 1
         new_reward = {'target id':0, 'proximity':0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
@@ -304,7 +308,7 @@ class MAISREnvVec(gym.Env):
 
 
             # Create a mask for unidentified targets (info_level < 1.0)
-            proximity_reward = 0
+            #proximity_reward = 0
             if aircraft.agent_idx == 0:
                 unidentified_mask = self.targets[:, 2] < 1.0
                 if np.any(unidentified_mask):
@@ -324,15 +328,15 @@ class MAISREnvVec(gym.Env):
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
                     proximity_reward = distance_improvement * 0.1
                     #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
-                    print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
+                    #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
 
                     self.previous_nearest_distance = nearest_unidentified_distance
 
-                else:
-                    proximity_reward = 0
-                    print('No unidentified targets left')
-                    nearest_unidentified_distance = float('inf')
-                    nearest_unidentified_idx = -1
+                # else:
+                #     proximity_reward = 0
+                #     #print('No unidentified targets left')
+                #     nearest_unidentified_distance = float('inf')
+                #     nearest_unidentified_idx = -1
 
 
             # Find targets within ISR range (for identification)
@@ -358,8 +362,9 @@ class MAISREnvVec(gym.Env):
 
 
 
-        # Check termination conditions # TODO make this more configurable. Either AI, human or both need to be alive
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
+        if self.all_targets_identified:
+            print(self.all_targets_identified)
 
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
@@ -382,7 +387,10 @@ class MAISREnvVec(gym.Env):
 
         info['episode'] = {'r': self.ep_reward, 'l': self.ep_len}
 
-        if self.terminated or self.truncated:
+
+        if (self.terminated or self.truncated):
+            print('terminated' if self.terminated else 'truncated' if self.truncated else 'unknown')
+            #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.render_mode == 'human': pygame.time.wait(50)
 
@@ -441,9 +449,9 @@ class MAISREnvVec(gym.Env):
 
         else: raise ValueError('Unknown obs type')
 
-        if self.init:
-            print(f'OBS: Agent (x,y) = {self.observation[0], self.observation[1]}')
-            print(f'Target 1 info level {self.observation[2]}, x {self.observation[3]}, y {self.observation[4]}')
+        #if self.init:
+            #print(f'OBS: Agent (x,y) = {self.observation[0], self.observation[1]}')
+            #print(f'Target 1 info level {self.observation[2]}, x {self.observation[3]}, y {self.observation[4]}')
 
         return self.observation
 
