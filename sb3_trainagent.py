@@ -1,6 +1,5 @@
 import gymnasium as gym
 import os
-import numpy as np
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
@@ -17,21 +16,6 @@ import multiprocessing
 
 from env_vec import MAISREnvVec
 from utility.data_logging import load_env_config
-from agents import *
-
-save_dir = None
-load_dir = None
-log_dir = None
-algo = None
-batch_size = None
-steps_per_episode = None
-num_timesteps = None
-save_freq = None
-eval_freq = None
-n_eval_episodes = None
-n_envs = None
-seed = None
-
 
 class EnhancedWandbCallback(BaseCallback):
     def __init__(self, verbose=0, eval_env=None, eval_freq=14400, n_eval_episodes=5, run=None):
@@ -113,6 +97,7 @@ def main():
     # Create vectorized environment for training using SubprocVecEnv
     #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
     #vec_env = SubprocVecEnv(env_fns) # (TODO commented out to test non-vectorized env
+
     vec_env = MAISREnvVec(
         env_config,
         None,
@@ -166,43 +151,33 @@ def main():
         run = run
     )
 
-    # Choose algorithm
-    if algo == "PPO":
-        model = PPO(
-            "MlpPolicy",
-            vec_env,
-            verbose=1,
-            tensorboard_log=f"runs/{run.id}",  # Match tensorboard directory to wandb run.id
-            batch_size=batch_size, # * n_envs,  # Scale batch size with number of environments
-            n_steps= steps_per_episode, #2048 // n_envs,  # Adjust steps per environment
-            learning_rate=3e-4,
-            seed=seed
-        )
+    model = PPO(
+        "MlpPolicy",
+        vec_env,
+        verbose=1,
+        tensorboard_log=f"runs/{run.id}",  # Match tensorboard directory to wandb run.id
+        batch_size=batch_size, # * n_envs,  # Scale batch size with number of environments
+        n_steps= steps_per_episode, #2048 // n_envs,  # Adjust steps per environment
+        learning_rate=3e-4,
+        seed=seed
+    )
 
     # Check if there's a checkpoint to load
     if load_dir:
-        checkpoints = sorted([f for f in os.listdir(load_dir) if f.startswith(f"{algo}_maisr_") and f.endswith(".zip")])
-        if checkpoints:
-            latest_checkpoint = os.path.join(load_dir, checkpoints[-1])
-            print(f"Loading checkpoint: {latest_checkpoint}")
-            model = model.__class__.load(latest_checkpoint, env=vec_env)
-            print("Checkpoint loaded successfully!")
+        model = model.__class__.load(load_dir, env=vec_env)
 
     else:
         print('Training new model')
-        model = PPO("MlpPolicy", vec_env, verbose=1)
+        #model = PPO("MlpPolicy", vec_env, verbose=1)
 
     print('Beginning agent training...\n#################################################')
-    run.log({"test_metric": 1.0})
-
+    #run.log({"test_metric": 1.0})
 
     model.learn(
         total_timesteps=int(num_timesteps),
         callback=[checkpoint_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
         reset_num_timesteps=False,  # Set to False when resuming training
     )
-
-
 
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final")
@@ -217,9 +192,7 @@ def main():
     #wandb.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
     run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward})
 
-    # Close wandb run
     run.finish()
-
 
 
 if __name__ == "__main__":
@@ -248,4 +221,4 @@ if __name__ == "__main__":
     # Set seed for reproducibility
     seed = 42
 
-    main(save_dir, load_dir)
+    main()
