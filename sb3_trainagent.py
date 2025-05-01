@@ -82,7 +82,7 @@ def train(
         use_simple,
         obs_type, # Must be "absolute" or "relative"
         action_type, # Must be 'continuous-normalized' or 'discrete-downsampled'
-        reward_type, # Must be 'proximity', 'waypoint-on-nearest'
+        reward_type, # Must be 'proximity', 'waypoint-to-nearest'
 
         save_dir = "./trained_models/",
         load_dir= None,
@@ -209,7 +209,8 @@ def train(
         batch_size=batch_size, # * n_envs,  # Scale batch size with number of environments
         n_steps= steps_per_episode, #2048 // n_envs,  # Adjust steps per environment
         learning_rate=lr,
-        seed=seed
+        seed=seed,
+        device='cpu'
     )
 
     # Check if there's a checkpoint to load
@@ -231,7 +232,7 @@ def train(
     print(f"Training completed! Final model saved to {final_model_path}")
 
     # Run a final evaluation
-    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=10)
+    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=3)
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
@@ -248,7 +249,7 @@ if __name__ == "__main__":
 
     for lr in [1e-5, 1e-4, 1e-3]:
         for use_simple in [True]:
-            for reward_type in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']:
+            for reward_type in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
                 for action_type in ['continuous-normalized', 'discrete-downsampled']:
                     for obs_type in ['absolute', 'relative']:
 

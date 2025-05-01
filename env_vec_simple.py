@@ -29,7 +29,7 @@ class MAISREnvVec(gym.Env):
 
         if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type must be one of 'absolute,'relative', got '{obs_type}'")
         if action_type not in ['discrete-downsampled', 'continuous-normalized']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
-        if reward_type not in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
+        if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
 
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
 
@@ -60,7 +60,7 @@ class MAISREnvVec(gym.Env):
         # determine the number of ships
         self.max_targets = 10
         self.num_targets = min(10, self.config['num ships']) # If more than 30 targets specified, overwrite to 30
-        print(f'Spawning {self.num_targets} targets')
+        #print(f'Spawning {self.num_targets} targets')
 
 
         if self.action_type == 'continuous-normalized':
@@ -70,10 +70,9 @@ class MAISREnvVec(gym.Env):
                 dtype=np.float32)
 
         elif self.action_type == 'discrete-downsampled':
-            self.grid_size = 15 # 15x15 grid
+            self.grid_size = 20 # 15x15 grid
             self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
 
-            raise NotImplementedError('Need to implement discrete-downsampled')
 
         else:
             raise ValueError("Action type must be continuous or discrete")
@@ -287,7 +286,7 @@ class MAISREnvVec(gym.Env):
 
 
         self.ep_len += 1
-        new_reward = {'target id':0, 'proximity':0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
+        new_reward = {'target id':0, 'proximity':0, 'early finish': 0, 'waypoint-to-nearest':0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
         info = {
             "new_identifications": [],  # List to track newly identified targets/threats
@@ -340,8 +339,9 @@ class MAISREnvVec(gym.Env):
                         nearest_target_location = target_positions[nearest_unidentified_idx]
 
                         waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
+                        #print(f'Waypoint to target distance: {waypoint_to_target_distance}')
                         if waypoint_to_target_distance <= 40:
-                            new_reward['waypoint-to-nearest'] = 2.0
+                            new_reward['waypoint-to-nearest'] = 0.1
 
                         else:
                             new_reward['waypoint-to-nearest'] = 0.0
@@ -430,12 +430,12 @@ class MAISREnvVec(gym.Env):
                      (new_reward['proximity']) + \
                      (new_reward['early finish'] * self.time_reward)
 
-        elif self.reward_type == 'waypoint-on-nearest': # TODO
+        elif self.reward_type == 'waypoint-to-nearest': # TODO
             reward = (new_reward['target id'] * self.target_id_reward) + \
-                     (new_reward)['waypoint-to-nearest'] + \
+                     (new_reward['waypoint-to-nearest']) + \
                      (new_reward['early finish'] * self.time_reward)
 
-        elif self.reward_type == 'proximity and waypoint-on-nearest':
+        elif self.reward_type == 'proximity and waypoint-to-nearest':
             reward = (new_reward['target id'] * self.target_id_reward) + \
                      (new_reward)['waypoint-to-nearest'] + \
                      (new_reward['proximity']) + \
