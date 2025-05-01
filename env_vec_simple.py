@@ -25,6 +25,7 @@ class MAISREnvVec(gym.Env):
 
         """
         super().__init__()
+        print('%%%%%%%%%%% ENV INIT %%%%%%%%%%%')
 
         if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type must be one of 'absolute,'relative', got '{obs_type}'")
         if action_type not in ['discrete-downsampled', 'continuous-normalized']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
@@ -333,16 +334,17 @@ class MAISREnvVec(gym.Env):
                     unidentified_indices = np.where(unidentified_mask)[0]
                     nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
 
-
-                    # Check if waypoint is within 30 px of nearest unknown target
-                    nearest_target_location = target_positions[nearest_unidentified_idx]
                     current_waypoint = self.agents[0].waypoint_override
-                    waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
-                    if waypoint_to_target_distance <= 40:
-                        new_reward['waypoint-to-nearest'] = 2.0
+                    if current_waypoint is not None:
+                        # Check if waypoint is within 30 px of nearest unknown target
+                        nearest_target_location = target_positions[nearest_unidentified_idx]
 
-                    else:
-                        new_reward['waypoint-to-nearest'] = 0.0
+                        waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
+                        if waypoint_to_target_distance <= 40:
+                            new_reward['waypoint-to-nearest'] = 2.0
+
+                        else:
+                            new_reward['waypoint-to-nearest'] = 0.0
 
 
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
@@ -404,7 +406,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print('terminated' if self.terminated else 'truncated' if self.truncated else 'unknown')
+            #print('terminated' if self.terminated else 'truncated' if self.truncated else 'unknown')
             #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.render_mode == 'human': pygame.time.wait(50)

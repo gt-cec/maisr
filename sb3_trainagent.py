@@ -132,7 +132,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_rew'+str(reward_type)+'_act'+str(action_type)+'_obs'+str(obs_type)+'lr'+str(lr)+'batchsize'+str(batch_size),
+        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_rew'+str(reward_type)+'_act'+str(action_type)+'_obs'+str(obs_type)+'_lr'+str(lr)+'_batchsize'+str(batch_size),
         config=train_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -251,6 +251,13 @@ if __name__ == "__main__":
             for reward_type in ['proximity and target', 'waypoint-on-nearest', 'proximity and waypoint-on-nearest']:
                 for action_type in ['continuous-normalized', 'discrete-downsampled']:
                     for obs_type in ['absolute', 'relative']:
+
+                        print('################################################################################')
+                        print('################################################################################')
+                        print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, reward_type {reward_type}, lr {lr}')
+                        print('################################################################################')
+                        print('################################################################################')
+
 
                         train(
                             use_simple,
