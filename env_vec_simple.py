@@ -321,22 +321,16 @@ class MAISREnvVec(gym.Env):
                     unidentified_indices = np.where(unidentified_mask)[0]
                     nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
                     #print(f'Nearest unknown target is {nearest_unidentified_idx} ({nearest_unidentified_distance} away)')
-
                     #print(f'Distance improvement: {self.previous_nearest_distance} - {nearest_unidentified_distance} = {self.previous_nearest_distance - nearest_unidentified_distance}')
 
-                    #if nearest_unidentified_distance < self.previous_nearest_distance:
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
-                    proximity_reward = distance_improvement * 0.1
-                    #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
-                    #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
+                    if distance_improvement > 0:
+                        proximity_reward = distance_improvement * 0.1
+                        #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
+                        #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
+                        new_reward['proximity'] = proximity_reward
 
                     self.previous_nearest_distance = nearest_unidentified_distance
-
-                # else:
-                #     proximity_reward = 0
-                #     #print('No unidentified targets left')
-                #     nearest_unidentified_distance = float('inf')
-                #     nearest_unidentified_idx = -1
 
 
             # Find targets within ISR range (for identification)
