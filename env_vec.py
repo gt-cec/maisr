@@ -1073,7 +1073,7 @@ class MAISREnvVec(gym.Env):
             y_coord = normalized_y * self.config["gameboard size"]
 
             waypoint = (float(x_coord), float(y_coord))
-            print(f'Action denormalized as {waypoint}')
+            #print(f'Action denormalized as {waypoint}')
             id_method = float(action[2])
 
         else:
