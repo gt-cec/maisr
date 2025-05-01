@@ -112,9 +112,7 @@ class Aircraft(Agent):
         semicircle_points = [(self.env.AIRCRAFT_ISR_RADIUS + math.cos(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS, self.env.AIRCRAFT_ISR_RADIUS + math.sin(self.direction + math.pi * i / 180) * self.env.AIRCRAFT_ISR_RADIUS) for i in range(-90, 90 + 10, 10)]
         pygame.draw.polygon(shape_surf, (255,0,0), semicircle_points)
 
-    # check the waypoints and flight path
     def move(self):
-
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
