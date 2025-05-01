@@ -65,8 +65,8 @@ class MAISREnvVec(gym.Env):
         self.time_limit = self.config['time limit']
 
         # set the random seed
-        if "seed" in config: random.seed(config["seed"])
-        else: print("Note: no 'seed' specified in the env config.")
+        #if "seed" in config: random.seed(config["seed"])
+        #else: print("Note: no 'seed' specified in the env config.")
 
         # determine the number of ships
         self.max_targets = 30
@@ -226,6 +226,11 @@ class MAISREnvVec(gym.Env):
 
 
     def reset(self, seed = None):
+
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+
         self.agents = []
         self.aircraft_ids = []  # indexes of the aircraft agents
         self.damage = 0  # total damage from all agents
@@ -234,8 +239,6 @@ class MAISREnvVec(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.score = 0
-        #self.identified_targets = 0
-        #self.identified_threat_types = 0
         self.num_lowq_gathered = 0
         self.num_highq_gathered = 0
         self.init = True
@@ -251,7 +254,6 @@ class MAISREnvVec(gym.Env):
 
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
-
 
         # create the aircraft
         for i in range(self.config['num aircraft']):

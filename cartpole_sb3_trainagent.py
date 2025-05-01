@@ -19,18 +19,18 @@ from env_vec import MAISREnvVec
 from utility.data_logging import load_env_config
 from agents import *
 
-save_dir = None
-load_dir = None
-log_dir = None
-algo = None
-batch_size = None
-steps_per_episode = None
-num_timesteps = None
-save_freq = None
-eval_freq = None
-n_eval_episodes = None
-n_envs = None
-seed = None
+# save_dir = None
+# load_dir = None
+# log_dir = None
+# algo = None
+# batch_size = None
+# steps_per_episode = None
+# num_timesteps = None
+# save_freq = None
+# eval_freq = None
+# n_eval_episodes = None
+# n_envs = None
+# seed = None
 
 
 class EnhancedWandbCallback(BaseCallback):
@@ -101,7 +101,7 @@ def main():
             "algorithm": 'PPO',
             "policy_type": "MlpPolicy",
             "total_timesteps": num_timesteps,
-            "env_name": "MAISREnvVec",
+            "env_name": "cartpole",
             "env_config": config
         },
         sync_tensorboard=True,
@@ -113,31 +113,17 @@ def main():
     # Create vectorized environment for training using SubprocVecEnv
     #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
     #vec_env = SubprocVecEnv(env_fns) # (TODO commented out to test non-vectorized env
-    vec_env = MAISREnvVec(
-        env_config,
-        None,
-        render_mode='headless',
-        reward_type='balanced-sparse',
-        obs_type='vector',
-        action_type='continuous',
-    )
+    vec_env = gym.make('CartPole-v1')
     vec_env = Monitor(vec_env)
 
-    eval_env = MAISREnvVec(
-        env_config,
-        None,
-        render_mode='headless',
-        reward_type='balanced-sparse',
-        obs_type='vector',
-        action_type='continuous',
-    )
+    eval_env = gym.make('CartPole-v1')
     eval_env = Monitor(eval_env)
 
     # Setup callbacks
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq,
         save_path=save_dir,
-        name_prefix=f"checkpoint{algo}_maisr",
+        name_prefix=f"checkpoint{algo}_cartpole",
         save_replay_buffer=True,
         save_vecnormalize=True,
     )
@@ -203,7 +189,6 @@ def main():
     )
 
 
-
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final")
     model.save(final_model_path)
@@ -248,4 +233,4 @@ if __name__ == "__main__":
     # Set seed for reproducibility
     seed = 42
 
-    main(save_dir, load_dir)
+    main()
