@@ -138,11 +138,11 @@ def main():
     #     verbose=1,  # Set to 1 to see more output
     # )
 
-    # wandb_callback = WandbCallback( # TODO Add back if having issues logging
-    #     gradient_save_freq=0,
-    #     model_save_path=f"{save_dir}/wandb/{run.id}",
-    #     verbose=2,
-    # )
+    wandb_callback = WandbCallback( # TODO Add back if having issues logging
+        gradient_save_freq=0,
+        model_save_path=f"{save_dir}/wandb/{run.id}",
+        verbose=2,
+    )
 
     enhanced_wandb_callback = EnhancedWandbCallback(
         eval_env=eval_env,
@@ -175,7 +175,7 @@ def main():
 
     model.learn(
         total_timesteps=int(num_timesteps),
-        callback=[checkpoint_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
+        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
         reset_num_timesteps=False,  # Set to False when resuming training
     )
 
@@ -208,7 +208,7 @@ if __name__ == "__main__":
 
     batch_size = 128
     steps_per_episode = 14500 # Slightly higher than the max 14,400
-    num_timesteps = 25e6 #500000 # Total num timesteps to train
+    num_timesteps = 45e6 #500000 # Total num timesteps to train
 
     save_freq = 14400 # How often to save checkpoints
     eval_freq = 14400 * 3 # How often to evaluate
