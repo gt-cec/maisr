@@ -95,7 +95,7 @@ def train(
         policy_type = "MlpPolicy",
         lr=3e-4,
         batch_size=128,
-        steps_per_episode=14600,
+        steps_per_episode=14703,
         num_timesteps=20e6,
         save_freq=14600*3,
         eval_freq=14600*2,
@@ -103,6 +103,7 @@ def train(
         env_config_filename = './config_files/rl_training_config.json',
         n_envs = 1,
         seed=42,
+        force_seed = False,
         use_curriculum=False
     ):
 
@@ -137,7 +138,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_act'+str(action_type)+'_obs'+str(obs_type)+'_lr'+str(lr)+'_batchsize'+str(batch_size),
+        name=str(algo)+'_'+'forceseed'+str(force_seed)+str('_simpleV1' if use_simple else 'normal')+'_act'+str(action_type)+'_obs'+str(obs_type)+'_lr'+str(lr)+'_batchSize'+str(batch_size),
         config=train_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -161,7 +162,7 @@ def train(
             action_type=action_type,
             #reward_type=reward_type,
             tag='train',
-            seed = 42, # TODO currently forcing this seed
+            seed = 42 if force_seed else None, # TODO currently forcing this seed
         )
         env = Monitor(env)
 
@@ -173,7 +174,7 @@ def train(
         action_type=action_type,
         #reward_type=reward_type,
         tag='eval',
-        seed = 42,
+        seed = 42 if force_seed else None, # TODO currently forcing this seed
     )
     eval_env = Monitor(eval_env)
 
@@ -314,21 +315,23 @@ if __name__ == "__main__":
         for obs_type in ['relative', 'absolute']:
             for action_type in ['direct-control', 'continuous-normalized', 'discrete-downsampled']:
                 for lr in [1e-5, 1e-4, 1e-3]:
+                    for force_seed in [True, False]:
 
-                    print('\n################################################################################')
-                    print('################################################################################')
-                    print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
-                    print('################################################################################')
-                    print('################################################################################')
+                        print('\n################################################################################')
+                        print('################################################################################')
+                        print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
+                        print('################################################################################')
+                        print('################################################################################')
 
-                    train(
-                        use_simple,
-                        obs_type,
-                        action_type,
-                        #reward_type,
-                        num_timesteps=40e6,
-                        n_eval_episodes=5,
-                        lr = lr,
-                        eval_freq=14703*50,
-                        use_curriculum=False,
-                    )
+                        train(
+                            use_simple,
+                            obs_type,
+                            action_type,
+                            #reward_type,
+                            num_timesteps=30e6,
+                            n_eval_episodes=8,
+                            lr = lr,
+                            eval_freq=14703*50,
+                            use_curriculum=False,
+                            force_seed=force_seed,
+                        )

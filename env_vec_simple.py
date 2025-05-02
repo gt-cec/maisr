@@ -227,13 +227,23 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None):
 
-        if self.seed is not None:
-            np.random.seed(self.seed)
-            random.seed(self.seed)
+        if self.seed is not None: # TODO temp to cycle through a few seeds
+            # Define a list of 5 seeds to cycle through
+            seed_list = [42, 123, 456, 789, 101]
+            # Use the episode counter to cycle through the seeds
+            current_seed_index = self.episode_counter % len(seed_list)
+            current_seed = seed_list[current_seed_index]
+            # Set the random seeds
+            np.random.seed(current_seed)
+            random.seed(current_seed)
 
-        elif seed is not None:
-            np.random.seed(seed)
-            random.seed(seed)
+        # if self.seed is not None:
+        #     np.random.seed(self.seed)
+        #     random.seed(self.seed)
+        #
+        # elif seed is not None:
+        #     np.random.seed(seed)
+        #     random.seed(seed)
 
 
         self.episode_counter += 1
@@ -1273,7 +1283,7 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
+            filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_forceSeed{'True' if self.seed else 'False'}_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
