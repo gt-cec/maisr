@@ -1,5 +1,6 @@
 import gymnasium as gym
 import os
+import numpy as np
 
 from sympy.physics.units import action
 
@@ -16,6 +17,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import BaseCallback
 
 import multiprocessing
+from typing import Dict, List, Tuple, Any
 
 from utility.data_logging import load_env_config
 
@@ -84,7 +86,7 @@ def train(
         use_simple,
         obs_type, # Must be "absolute" or "relative"
         action_type, # Must be 'continuous-normalized' or 'discrete-downsampled'
-        reward_type, # Must be 'proximity', 'waypoint-to-nearest'
+        #reward_type, # Must be 'proximity', 'waypoint-to-nearest'
 
         save_dir = "./trained_models/",
         load_dir= None,
@@ -100,7 +102,8 @@ def train(
         n_eval_episodes = 8,
         env_config_filename = './config_files/rl_training_config.json',
         n_envs = 1,
-        seed=42
+        seed=42,
+        use_curriculum=False
     ):
 
     if use_simple: from env_vec_simple import MAISREnvVec
@@ -114,7 +117,7 @@ def train(
 
     train_config = {
         "env_type": "simple_v1" if use_simple else "normal",
-        "reward_type": reward_type,
+        #"reward_type": reward_type,
         "action_type": action_type,
         "obs_type": obs_type,
         "algorithm": algo,
@@ -134,7 +137,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_rew'+str(reward_type)+'_act'+str(action_type)+'_obs'+str(obs_type)+'_lr'+str(lr)+'_batchsize'+str(batch_size),
+        name=str(algo)+'_'+str('simple_v1' if use_simple else 'normal')+'_act'+str(action_type)+'_obs'+str(obs_type)+'_lr'+str(lr)+'_batchsize'+str(batch_size),
         config=train_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -156,8 +159,9 @@ def train(
             render_mode='headless',
             obs_type=obs_type,
             action_type=action_type,
-            reward_type=reward_type,
-            tag='train'
+            #reward_type=reward_type,
+            tag='train',
+            seed = 42, # TODO currently forcing this seed
         )
         env = Monitor(env)
 
@@ -167,8 +171,9 @@ def train(
         render_mode='headless',
         obs_type=obs_type,
         action_type=action_type,
-        reward_type=reward_type,
-        tag='eval'
+        #reward_type=reward_type,
+        tag='eval',
+        seed = 42,
     )
     eval_env = Monitor(eval_env)
 
@@ -193,7 +198,7 @@ def train(
     #     verbose=1,  # Set to 1 to see more output
     # )
 
-    wandb_callback = WandbCallback( # TODO Add back if having issues logging
+    wandb_callback = WandbCallback(
         gradient_save_freq=0,
         model_save_path=f"{save_dir}/wandb/{run.id}",
         verbose=2,
@@ -224,11 +229,62 @@ def train(
 
 
     print('####################################### Beginning agent training... #########################################\n')
-    model.learn(
-        total_timesteps=int(num_timesteps),
-        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
-        reset_num_timesteps=True,  # Set to False when resuming training
-    )
+
+    if use_curriculum:
+        raise ValueError('Curriculum learning not set up yet')
+        # phase_configs = [
+        #     './config_files/rl_phase1',
+        #     './config_files/rl_phase2',
+        #     './config_files/rl_phase3',
+        #     './config_files/rl_phase4',
+        # ]
+        # current_phase = 1
+        # while current_phase <= 4:
+        #     print(f"Training on phase {current_phase}")
+        #     model.learn(
+        #         total_timesteps=int(num_timesteps),
+        #         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
+        #         reset_num_timesteps=True,  # Set to False when resuming training
+        #     )
+        #
+        #     if current_phase < 4:
+        #         current_phase += 1
+        #
+        #         env_config = load_env_config(phase_configs[current_phase])
+        #         env = MAISREnvVec(
+        #             env_config,
+        #             None,
+        #             render_mode='headless',
+        #             obs_type=obs_type,
+        #             action_type=action_type,
+        #             # reward_type=reward_type,
+        #             tag='train'
+        #         )
+        #         env = Monitor(env)
+        #
+        #         eval_env = MAISREnvVec(
+        #             env_config,
+        #             None,
+        #             render_mode='headless',
+        #             obs_type=obs_type,
+        #             action_type=action_type,
+        #             # reward_type=reward_type,
+        #             tag='eval'
+        #         )
+        #         eval_env = Monitor(eval_env)
+        #
+        #         model.set_env(create_env(phase_configs[current_phase]))
+        #         print(f"Advancing to phase {current_phase}")
+        #     else:
+        #         print("Curriculum completed!")
+        #         break
+
+    else:
+        model.learn(
+            total_timesteps=int(num_timesteps),
+            callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback], # Removed eval_callback, wandb_callback
+            reset_num_timesteps=True,  # Set to False when resuming training
+        )
 
     print('####################################### TRAINING COMPLETE #########################################\n')
     # Save the final model
@@ -254,24 +310,24 @@ if __name__ == "__main__":
 
     for lr in [1e-5, 1e-4, 1e-3]:
         for use_simple in [True]:
-            for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
-                for obs_type in ['relative', 'absolute']:
-                    for action_type in ['direct-control']:#, 'continuous-normalized', 'discrete-downsampled']:
+            #for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
+            for obs_type in ['relative', 'absolute']:
+                for action_type in ['direct-control', 'continuous-normalized', 'discrete-downsampled']:
 
-                        print('\n################################################################################')
-                        print('################################################################################')
-                        print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, reward_type {reward_type}, lr {lr}')
-                        print('################################################################################')
-                        print('################################################################################')
+                    print('\n################################################################################')
+                    print('################################################################################')
+                    print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
+                    print('################################################################################')
+                    print('################################################################################')
 
-
-                        train(
-                            use_simple,
-                            obs_type,
-                            action_type,
-                            reward_type,
-                            num_timesteps=2e6,
-                            n_eval_episodes=5,
-                            lr = lr,
-                            eval_freq=14500*1
-                        )
+                    train(
+                        use_simple,
+                        obs_type,
+                        action_type,
+                        #reward_type,
+                        num_timesteps=40e6,
+                        n_eval_episodes=5,
+                        lr = lr,
+                        eval_freq=14500*50,
+                        use_curriculum=False,
+                    )

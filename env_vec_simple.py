@@ -13,9 +13,10 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
+                 obs_type = 'absolute', action_type = 'continuous-normalized', #reward_type = 'proximity',
                  num_agents = 1,
                  tag='none',
+                 seed=None,
                  subject_id='999',user_group='99',round_number='99'):
         """
         args:
@@ -27,6 +28,14 @@ class MAISREnvVec(gym.Env):
         """
         super().__init__()
 
+        self.config = config
+        self.seed = seed
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            random.seed(self.seed)
+
+        reward_type = self.config['reward type']
+
         if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{obs_type}'")
         if action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{action_type}'")
         if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
@@ -35,7 +44,6 @@ class MAISREnvVec(gym.Env):
         print(f'%% ENV INIT: {tag}, {obs_type} observations, {action_type} actions, {reward_type} rewards')
 
         self.tag = tag
-        self.config = config
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
         self.gather_info = True #self.render_mode == 'human' # Only populate the info dict if playing with humans
@@ -60,8 +68,8 @@ class MAISREnvVec(gym.Env):
         self.time_limit = self.config['time limit']
 
         # determine the number of ships
-        self.max_targets = 10
-        self.num_targets = min(10, self.config['num ships']) # If more than 30 targets specified, overwrite to 30
+        self.max_targets = 30
+        self.num_targets = min(30, self.config['num targets']) # If more than 30 targets specified, overwrite to 30
 
 
         # Set up action space
@@ -219,9 +227,14 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None):
 
-        if seed is not None:
+        if self.seed is not None:
+            np.random.seed(self.seed)
+            random.seed(self.seed)
+
+        elif seed is not None:
             np.random.seed(seed)
             random.seed(seed)
+
 
         self.episode_counter += 1
 
@@ -349,7 +362,7 @@ class MAISREnvVec(gym.Env):
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-            if not self.action_type == 'direct-control': # TODO testing
+            if not self.action_type == 'direct-control':
                 aircraft.move() # First, move using the waypoint override set above
 
             # Calculate distances to all targets
@@ -450,11 +463,11 @@ class MAISREnvVec(gym.Env):
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             print(f'Action history: {self.direct_action_history}')
 
-            self.save_action_history_plot() # TODO temp
-            if self.tag == 'train' and self.episode_counter in [0, 1, 10, 20, 50]:
+            #self.save_action_history_plot()
+            if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400]:
                 self.save_action_history_plot()
-            if self.tag == 'eval' and self.episode_counter % 5 == 0:
-                self.save_action_history_plot()
+            # if self.tag == 'eval' and self.episode_counter % 5 == 0:
+            #     self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)
 
@@ -477,7 +490,7 @@ class MAISREnvVec(gym.Env):
                      (new_reward['proximity']) + \
                      (new_reward['early finish'] * self.time_reward)
 
-        elif self.reward_type == 'waypoint-to-nearest': # TODO
+        elif self.reward_type == 'waypoint-to-nearest':
             reward = (new_reward['target id'] * self.target_id_reward) + \
                      (new_reward['waypoint-to-nearest']) + \
                      (new_reward['early finish'] * self.time_reward)
@@ -505,7 +518,7 @@ class MAISREnvVec(gym.Env):
             4+i target_y,            # (0-1)
 
 
-            # Handcrafted features, TBD (TODO)
+            # Handcrafted features, TBD
         """
 
         if self.obs_type == 'absolute':
