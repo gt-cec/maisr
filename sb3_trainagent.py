@@ -35,8 +35,8 @@ class EnhancedWandbCallback(BaseCallback):
                     self.run.log({
                         "train/episode_reward": info["episode"]["r"],
                         "train/episode_length": info["episode"]["l"],
-                        "train/target_ids":info["episode"]["target_ids"],
-                        "train/detections": info["episode"]["detections"],
+                        "train/target_ids":info["target_ids"],
+                        "train/detections": info["detections"],
                     }, step=self.num_timesteps)
 
         # Periodically evaluate and log evaluation metrics
@@ -256,7 +256,7 @@ if __name__ == "__main__":
         for use_simple in [True]:
             for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
                 for action_type in ['continuous-normalized', 'discrete-downsampled']:
-                    for obs_type in ['absolute']:#, 'relative']:
+                    for obs_type in ['absolute', 'relative']:
 
                         print('\n################################################################################')
                         print('################################################################################')

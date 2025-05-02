@@ -299,7 +299,8 @@ class MAISREnvVec(gym.Env):
         info = {
             "new_identifications": [],  # List to track newly identified targets/threats
             "detections": self.detections,  # Current detection count
-            "episode":{},
+            "target_ids": 0,
+            'episode': {'r': 0, 'l': self.ep_len},
             "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
         # Process actions
@@ -414,7 +415,9 @@ class MAISREnvVec(gym.Env):
         observation = self.get_observation() # Get observation
         self.ep_reward += reward
 
-        info['episode'] = {'r': self.ep_reward, 'l': self.ep_len}
+        info['episode'] = {'r': self.ep_reward, 'l': self.ep_len, }
+        info['detections'] = self.detections
+        info["target_ids"] =self.targets_identified
 
 
         if (self.terminated or self.truncated):
@@ -422,13 +425,11 @@ class MAISREnvVec(gym.Env):
             #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
-            info["episode"]["target_ids"] = self.targets_identified
-            info["episode"]["detections"] = self.detections
 
 
             if self.tag == 'train' and self.episode_counter in [0, 1, 10, 20, 50]:
                 self.save_action_history_plot()
-            if self.tag == 'eval':
+            if self.tag == 'eval' and self.episode_counter % 5 == 0:
                 self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)
@@ -1082,19 +1083,29 @@ class MAISREnvVec(gym.Env):
                 x_coord = normalized_x * self.config["gameboard size"]
                 y_coord = normalized_y * self.config["gameboard size"]
 
+
             elif self.obs_type == 'relative':
-                # Interpret action as a displacement vector
-                # Scale from [-1,1] to a proportion of the map size
-                max_displacement = self.config["gameboard size"] * 0.25  # Maximum movement is 25% of map size
-
-                dx = action[0] * max_displacement
-                dy = action[1] * max_displacement
-
-                # Apply displacement to current position
+                # Get current position
                 current_x = self.agents[self.aircraft_ids[0]].x
                 current_y = self.agents[self.aircraft_ids[0]].y
 
-                # Calculate new waypoint
+                # Calculate the distance to farthest map edge from current position
+                distance_to_right = self.config["gameboard size"] - current_x
+                distance_to_left = current_x
+                distance_to_bottom = self.config["gameboard size"] - current_y
+                distance_to_top = current_y
+
+                # Set max displacement as the greater of:
+                # 1. A percentage of map size (e.g., 50%)
+                # 2. Distance to farthest edge to ensure agent can reach map boundaries
+                max_displacement_x = max(self.config["gameboard size"] * 0.5,max(distance_to_right, distance_to_left))
+                max_displacement_y = max(self.config["gameboard size"] * 0.5,max(distance_to_bottom, distance_to_top))
+
+                # Scale action to displacement
+                dx = action[0] * max_displacement_x
+                dy = action[1] * max_displacement_y
+
+                # Calculate new waypoint (with boundary clipping)
                 x_coord = np.clip(current_x + dx, 0, self.config["gameboard size"])
                 y_coord = np.clip(current_y + dy, 0, self.config["gameboard size"])
 
