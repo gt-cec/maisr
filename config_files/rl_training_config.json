@@ -1,5 +1,5 @@
 {
-	"gameboard size": 250,
+	"gameboard size": 300,
 	"window size": [1450,1080],
 	"num aircraft": 2,
 	"num targets":10,
@@ -8,7 +8,7 @@
 	"game speed": 0.07,
 	"agent speed": 2.8,
 	"human speed": 2.8,
-	"agent start location": [125,125],
+	"agent start location": [150,150],
 	"human start location": [100,450],
 	"reward type": "proximity and waypoint-to-nearest",
 	"time to id": 0,
