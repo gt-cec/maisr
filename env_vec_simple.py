@@ -26,15 +26,13 @@ class MAISREnvVec(gym.Env):
 
         """
         super().__init__()
-        print('%%%%%%%%%%% ENV INIT %%%%%%%%%%%')
-
-
 
         if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{obs_type}'")
         if action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{action_type}'")
         if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
-
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
+
+        print(f'%% ENV INIT: {tag}, {obs_type} observations, {action_type} actions, {reward_type} rewards')
 
         self.tag = tag
         self.config = config
@@ -64,9 +62,9 @@ class MAISREnvVec(gym.Env):
         # determine the number of ships
         self.max_targets = 10
         self.num_targets = min(10, self.config['num ships']) # If more than 30 targets specified, overwrite to 30
-        #print(f'Spawning {self.num_targets} targets')
 
 
+        # Set up action space
         if self.action_type == 'continuous-normalized':
             self.action_space = gym.spaces.Box(
                 low=np.array([-1, -1], dtype=np.float32),
@@ -77,16 +75,13 @@ class MAISREnvVec(gym.Env):
             self.grid_size = 20 # 15x15 grid
             self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
 
-
         elif self.action_type == 'direct-control':
-            # 8 directions: up, up-right, right, down-right, down, down-left, left, up-left
-            self.action_space = gym.spaces.Discrete(8)
+            self.action_space = gym.spaces.Discrete(8) # 8 directions: up, up-right, right, down-right, down, down-left, left, up-left
+
+        else: raise ValueError("Action type must be continuous or discrete")
 
 
-        else:
-            raise ValueError("Action type must be continuous or discrete")
-
-
+        # Set up observation space
         self.obs_size = 2 + 3 * self.max_targets
         if self.obs_type == 'absolute':
             self.observation_space = gym.spaces.Box(
@@ -96,7 +91,6 @@ class MAISREnvVec(gym.Env):
 
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-
         elif self.obs_type == 'relative':
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
@@ -104,8 +98,7 @@ class MAISREnvVec(gym.Env):
                 dtype=np.float32)
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-        else:
-            raise ValueError("Obs type not recognized")
+        else: raise ValueError("Obs type not recognized")
 
 
         # constants
@@ -250,17 +243,19 @@ class MAISREnvVec(gym.Env):
         # For plotting
         self.action_history = []
         self.agent_location_history = []
+        self.direct_action_history = [] # Direct control only
 
         # self.damage = 0  # total damage from all agents
         # self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
+        print(f'gameboard size is {self.config["gameboard size"]}')
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
         self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0)
         self.targets[:, 1] = np.random.choice([0, 1], size=self.num_targets, p=[0.67, 0.33]) # Assign values (column 1) - 67% regular (0), 33% high-value (1)
         self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
-        self.targets[:, 3] = np.random.uniform(35, self.config["gameboard size"] - 35, size=self.num_targets) # Randomly place targets on gameboard (columns 3-4)
-        self.targets[:, 4] = np.random.uniform(35, self.config["gameboard size"] - 35, size=self.num_targets)
+        self.targets[:, 3] = np.random.uniform(self.config["gameboard size"] * 0.03, self.config["gameboard size"] * 0.97, size=self.num_targets) # Randomly place targets on gameboard (columns 3-4)
+        self.targets[:, 4] = np.random.uniform(self.config["gameboard size"] * 0.03, self.config["gameboard size"] * 0.97, size=self.num_targets)
 
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
@@ -320,48 +315,36 @@ class MAISREnvVec(gym.Env):
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
+        elif isinstance(actions, np.int64) and self.action_type == 'direct-control':
+            #print(f'Agent selected action {actions}')
+            waypoint = self.process_action(actions)
+            self.agents[0].x = waypoint[0]
+            self.agents[0].y = waypoint[1]
+
+            if hasattr(self.agents[0], 'previous_x'):  # Update direction based on movement
+                dx = self.agents[0].x - self.agents[0].previous_x
+                dy = self.agents[0].y - self.agents[0].previous_y
+                if dx != 0 or dy != 0:
+                    self.agents[0].direction = math.atan2(dy, dx)
+
+            # Store current position for next step
+            self.agents[0].previous_x = self.agents[0].x
+            self.agents[0].previous_y = self.agents[0].y
+
         else:
+            print(f'Action type: {type(actions)}')
             raise ValueError('Actions input is an unknown type')
 
-        # Special handling for direct-control action type
-        if self.action_type == 'direct-control':
-            if isinstance(actions, dict):
-                for agent_id, action_value in actions.items():
-                    if agent_id == self.aircraft_ids[0]:  # Only process for the agent
-                        waypoint = self.process_action(action_value)
-
-                        # Directly update agent position instead of setting waypoint
-                        self.agents[agent_id].x = waypoint[0]
-                        self.agents[agent_id].y = waypoint[1]
-
-                        if hasattr(self.agents[agent_id], 'previous_x'): # Update direction based on movement
-                            dx = self.agents[agent_id].x - self.agents[agent_id].previous_x
-                            dy = self.agents[agent_id].y - self.agents[agent_id].previous_y
-                            if dx != 0 or dy != 0:
-                                self.agents[agent_id].direction = math.atan2(dy, dx)
-
-                        # Store current position for next step
-                        self.agents[agent_id].previous_x = self.agents[agent_id].x
-                        self.agents[agent_id].previous_y = self.agents[agent_id].y
-            else: # Single agent case
-                waypoint = self.process_action(actions)
-                self.agents[0].x = waypoint[0]
-                self.agents[0].y = waypoint[1]
-
-                if hasattr(self.agents[0], 'previous_x'): # Update direction based on movement
-                    dx = self.agents[0].x - self.agents[0].previous_x
-                    dy = self.agents[0].y - self.agents[0].previous_y
-                    if dx != 0 or dy != 0:
-                        self.agents[0].direction = math.atan2(dy, dx)
-
-                # Store current position for next step
-                self.agents[0].previous_x = self.agents[0].x
-                self.agents[0].previous_y = self.agents[0].y
-
-
         if self.ep_len % 60 == 0:
-            self.action_history.append(self.agents[0].waypoint_override)
-            self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
+            if self.action_type == 'direct-control':
+                current_position = (self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y)
+                self.action_history.append(current_position)  # Store current position before movement
+                self.direct_action_history.append(actions)
+                self.agent_location_history.append(current_position)
+
+            else:
+                self.action_history.append(self.agents[0].waypoint_override)
+                self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
 
         # move the agents and check for gameplay updates
@@ -416,7 +399,7 @@ class MAISREnvVec(gym.Env):
             # Find targets within ISR range (for identification)
             in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
 
-            # Process newly identified targets (TODO below should be a fix but untested)
+            # Process newly identified targets
             for target_idx in range(self.num_targets):
                 if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0: # If target is in range and not fully identified
                     #self.target_timers[target_idx] += 1  # Increment timer for this target
@@ -464,12 +447,10 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            #print('terminated' if self.terminated else 'truncated' if self.truncated else 'unknown')
-            #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'Action history: {self.direct_action_history}')
 
-
-
+            self.save_action_history_plot() # TODO temp
             if self.tag == 'train' and self.episode_counter in [0, 1, 10, 20, 50]:
                 self.save_action_history_plot()
             if self.tag == 'eval' and self.episode_counter % 5 == 0:
@@ -1160,7 +1141,7 @@ class MAISREnvVec(gym.Env):
             current_y = self.agents[self.aircraft_ids[0]].y
 
             # Define movement step size
-            move_distance = self.config['game speed'] * self.config['human speed']
+            move_distance = self.config['game speed'] * self.config['human speed'] * 2
 
             # Map discrete action to direction
             direction_mapping = [
@@ -1194,10 +1175,6 @@ class MAISREnvVec(gym.Env):
         return waypoint#, id_method
 
     def save_action_history_plot(self):
-        """
-        Saves a 2D scatter plot of agent's action history to a PNG file.
-        This function is called when an episode terminates.
-        """
         try:
             import matplotlib.pyplot as plt
             import matplotlib
@@ -1207,10 +1184,6 @@ class MAISREnvVec(gym.Env):
 
             # Create directory if it doesn't exist
             os.makedirs('./action_histories', exist_ok=True)
-
-            # Extract x and y coordinates from action history
-            x_coords = [action[0] for action in self.action_history]
-            y_coords = [action[1] for action in self.action_history]
 
             # Extract agent location history
             agent_x_coords = [pos[0] for pos in self.agent_location_history]
@@ -1227,7 +1200,10 @@ class MAISREnvVec(gym.Env):
             for i in range(self.num_targets):
                 target_x = self.targets[i, 3]
                 target_y = self.targets[i, 4]
-                marker_size = 100 if self.targets[i, 1] == 1 else 50  # High value targets are larger
+
+                size_factor = 1000 / self.config["gameboard size"]  # Assuming 1000 was the original reference size
+                marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
+
                 color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 
@@ -1237,26 +1213,31 @@ class MAISREnvVec(gym.Env):
                 plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
                             cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
 
-            # Plot waypoint history (action history) as a line with points
-            if x_coords and y_coords:
-                plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
-                plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
-                            cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
+            # Only plot waypoint history for waypoint-based action types
+            if self.action_type != 'direct-control':
+                # Extract x and y coordinates from action history (waypoints)
+                x_coords = [action[0] for action in self.action_history]
+                y_coords = [action[1] for action in self.action_history]
 
-            # Add a colorbar to show time progression
-            cbar = plt.colorbar()
-            cbar.set_label('Timestep')
+                # Plot waypoint history (action history) as a line with points
+                if x_coords and y_coords:
+                    plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
+                    plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
+                                cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
 
-            # Add starting and ending points with different markers
-            if x_coords and y_coords:
-                plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
-                plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
+                    # Add starting and ending points with different markers
+                    plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
+                    plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
 
             if agent_x_coords and agent_y_coords:
                 plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='darkgreen', marker='*',
                             label='Start Position')
                 plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='lime', marker='*',
                             label='End Position')
+
+            # Add a colorbar to show time progression
+            cbar = plt.colorbar()
+            cbar.set_label('Timestep')
 
             # Add grid lines
             plt.grid(True, alpha=0.3)
@@ -1265,6 +1246,8 @@ class MAISREnvVec(gym.Env):
             plt.xlabel('X Coordinate')
             plt.ylabel('Y Coordinate')
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            action_type_label = 'direct-control' if self.action_type == 'direct-control' else self.action_type
             plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
             plt.title(plot_title)
 
@@ -1285,3 +1268,96 @@ class MAISREnvVec(gym.Env):
             print(f"Could not save action history plot: {e}")
         except Exception as e:
             print(f"Error saving action history plot: {e}")
+
+    # def save_action_history_plot(self):
+    #     """
+    #     Saves a 2D scatter plot of agent's action history to a PNG file.
+    #     This function is called when an episode terminates.
+    #     """
+    #     try:
+    #         import matplotlib.pyplot as plt
+    #         import matplotlib
+    #         matplotlib.use('Agg')  # Use non-interactive backend
+    #         import datetime
+    #         import os
+    #
+    #         # Create directory if it doesn't exist
+    #         os.makedirs('./action_histories', exist_ok=True)
+    #
+    #         # Extract x and y coordinates from action history
+    #         x_coords = [action[0] for action in self.action_history]
+    #         y_coords = [action[1] for action in self.action_history]
+    #
+    #         # Extract agent location history
+    #         agent_x_coords = [pos[0] for pos in self.agent_location_history]
+    #         agent_y_coords = [pos[1] for pos in self.agent_location_history]
+    #
+    #         # Create a new figure
+    #         plt.figure(figsize=(10, 10))
+    #
+    #         # Set up the plot with correct scale
+    #         plt.xlim(0, self.config["gameboard size"])
+    #         plt.ylim(0, self.config["gameboard size"])
+    #
+    #         # Plot targets
+    #         for i in range(self.num_targets):
+    #             target_x = self.targets[i, 3]
+    #             target_y = self.targets[i, 4]
+    #             marker_size = 100 if self.targets[i, 1] == 1 else 50  # High value targets are larger
+    #             color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
+    #             plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
+    #
+    #         # Plot agent trajectory (actual location history) as a line with points
+    #         if agent_x_coords and agent_y_coords:
+    #             plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
+    #             plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
+    #                         cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
+    #
+    #         # Plot waypoint history (action history) as a line with points
+    #         if x_coords and y_coords:
+    #             plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
+    #             plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
+    #                         cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
+    #
+    #         # Add a colorbar to show time progression
+    #         cbar = plt.colorbar()
+    #         cbar.set_label('Timestep')
+    #
+    #         # Add starting and ending points with different markers
+    #         if x_coords and y_coords:
+    #             plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
+    #             plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
+    #
+    #         if agent_x_coords and agent_y_coords:
+    #             plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='darkgreen', marker='*',
+    #                         label='Start Position')
+    #             plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='lime', marker='*',
+    #                         label='End Position')
+    #
+    #         # Add grid lines
+    #         plt.grid(True, alpha=0.3)
+    #
+    #         # Add labels and title
+    #         plt.xlabel('X Coordinate')
+    #         plt.ylabel('Y Coordinate')
+    #         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    #         plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
+    #         plt.title(plot_title)
+    #
+    #         # Add a legend
+    #         plt.legend(loc='upper right')
+    #
+    #         # Add shaded quadrants to make the grid more visible
+    #         plt.axhline(y=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
+    #         plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
+    #
+    #         # Save the figure with a timestamp
+    #         filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
+    #         plt.savefig(filename, dpi=100, bbox_inches='tight')
+    #         plt.close()
+    #
+    #         print(f"Action history plot saved to {filename}")
+    #     except ImportError as e:
+    #         print(f"Could not save action history plot: {e}")
+    #     except Exception as e:
+    #         print(f"Error saving action history plot: {e}")

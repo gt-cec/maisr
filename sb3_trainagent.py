@@ -271,7 +271,7 @@ if __name__ == "__main__":
                             action_type,
                             reward_type,
                             num_timesteps=2e6,
-                            n_eval_episodes=8,
+                            n_eval_episodes=5,
                             lr = lr,
-                            eval_freq=14500*4
+                            eval_freq=14500*1
                         )

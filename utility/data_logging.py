@@ -196,7 +196,7 @@ def load_env_config(json_path=None):
 
         # Validate numeric ranges
         numeric_ranges = {
-            "gameboard size": (100, 2000),
+            "gameboard size": (10, 2000),
             "num aircraft": (1, 2),
             "gameboard border margin": (10, 100),
             "show agent waypoint": (0, 3),

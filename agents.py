@@ -3,6 +3,7 @@
 import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
+import numpy as np
 from autonomous_policy import AutonomousPolicy
 
 
@@ -13,8 +14,10 @@ class Agent:
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
 
-        self.x = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
-        self.y = random.randint(env.config['gameboard border margin'], env.config['gameboard size'] - env.config["gameboard border margin"])
+
+
+        self.x = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
+        self.y = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
 
         self.direction = 0
         self.initial_direction = initial_direction
