@@ -328,6 +328,6 @@ if __name__ == "__main__":
                         num_timesteps=40e6,
                         n_eval_episodes=5,
                         lr = lr,
-                        eval_freq=14500*50,
+                        eval_freq=14703*50,
                         use_curriculum=False,
                     )

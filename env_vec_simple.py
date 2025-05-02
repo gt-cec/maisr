@@ -121,7 +121,7 @@ class MAISREnvVec(gym.Env):
         self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
         self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
         self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
-        self.AIRCRAFT_ENGAGEMENT_RADIUS = 40  # 100  # pixel width of aircraft engagement (to identify WEZ of threats)
+        self.AIRCRAFT_ENGAGEMENT_RADIUS = 30 # TODO temporarily made smaller  # 100  # pixel width of aircraft engagement (to identify WEZ of threats)
         self.AIRCRAFT_ISR_RADIUS = 85  # 170  # pixel width of aircraft scanner (to identify hostile vs benign)
 
         self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
@@ -260,7 +260,7 @@ class MAISREnvVec(gym.Env):
 
         # self.damage = 0  # total damage from all agents
         # self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
-        print(f'gameboard size is {self.config["gameboard size"]}')
+        #print(f'gameboard size is {self.config["gameboard size"]}')
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
@@ -461,7 +461,8 @@ class MAISREnvVec(gym.Env):
 
         if (self.terminated or self.truncated):
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
-            print(f'Action history: {self.direct_action_history}')
+            if self.action_type == 'direct-control':
+                print(f'Action history: {self.direct_action_history}')
 
             #self.save_action_history_plot()
             if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400]:
