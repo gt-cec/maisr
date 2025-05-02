@@ -212,7 +212,7 @@ class MAISREnvVec(gym.Env):
 
             self.time_window = TimeWindow(self.config["gameboard size"] * 0.43, self.config["gameboard size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
-        self.episode_counter = -1
+        self.episode_counter = 0
 
         self.reset()
 
@@ -239,7 +239,10 @@ class MAISREnvVec(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.init = True
+
+        # For plotting
         self.action_history = []
+        self.agent_location_history = []
 
         # self.damage = 0  # total damage from all agents
         # self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
@@ -254,6 +257,7 @@ class MAISREnvVec(gym.Env):
 
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
+        self.targets_identified = 0
 
         # create the aircraft
         for i in range(self.num_agents):
@@ -268,8 +272,6 @@ class MAISREnvVec(gym.Env):
         self.ep_len = 0
         self.ep_reward = 0
 
-        #self.previous_nearest_distance = float('inf') # TODO adding shaping reward
-        self.targets_identified = 0
 
         self.all_targets_identified = False
 
@@ -297,6 +299,7 @@ class MAISREnvVec(gym.Env):
         info = {
             "new_identifications": [],  # List to track newly identified targets/threats
             "detections": self.detections,  # Current detection count
+            "episode":{},
             "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
         # Process actions
@@ -314,6 +317,8 @@ class MAISREnvVec(gym.Env):
 
         if self.ep_len % 60 == 0:
             self.action_history.append(self.agents[0].waypoint_override)
+            self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
+
         #print(f'Waypoint {waypoint}, id method {id_method}')
 
         # move the agents and check for gameplay updates
@@ -348,7 +353,7 @@ class MAISREnvVec(gym.Env):
                         waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
                         #print(f'Waypoint to target distance: {waypoint_to_target_distance}')
                         if waypoint_to_target_distance <= 40:
-                            new_reward['waypoint-to-nearest'] = 0.1
+                            new_reward['waypoint-to-nearest'] = 0.02
 
                         else:
                             new_reward['waypoint-to-nearest'] = 0.0
@@ -417,7 +422,13 @@ class MAISREnvVec(gym.Env):
             #print('TERMINATED: Episode terminated')
             print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
-            if (self.episode_counter == 0) or (self.tag == 'train' and  self.episode_counter % 5 == 0) or (self.tag == 'eval'):
+            info["episode"]["target_ids"] = self.targets_identified
+            info["episode"]["detections"] = self.detections
+
+
+            if self.tag == 'train' and self.episode_counter in [0, 1, 10, 20, 50]:
+                self.save_action_history_plot()
+            if self.tag == 'eval':
                 self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)
@@ -1114,10 +1125,18 @@ class MAISREnvVec(gym.Env):
             import matplotlib
             matplotlib.use('Agg')  # Use non-interactive backend
             import datetime
+            import os
+
+            # Create directory if it doesn't exist
+            os.makedirs('./action_histories', exist_ok=True)
 
             # Extract x and y coordinates from action history
             x_coords = [action[0] for action in self.action_history]
             y_coords = [action[1] for action in self.action_history]
+
+            # Extract agent location history
+            agent_x_coords = [pos[0] for pos in self.agent_location_history]
+            agent_y_coords = [pos[1] for pos in self.agent_location_history]
 
             # Create a new figure
             plt.figure(figsize=(10, 10))
@@ -1134,19 +1153,32 @@ class MAISREnvVec(gym.Env):
                 color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 
-            # Plot agent trajectory (action history) as a line with points
-            plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1)
-            plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)), cmap='cool',
-                        alpha=0.8, marker='x', label='Agent Actions')
+            # Plot agent trajectory (actual location history) as a line with points
+            if agent_x_coords and agent_y_coords:
+                plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.5, linewidth=1.5)
+                plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
+                            cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
+
+            # Plot waypoint history (action history) as a line with points
+            if x_coords and y_coords:
+                plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1)
+                plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
+                            cmap='Blues', alpha=0.8, marker='x', label='Agent Waypoints')
 
             # Add a colorbar to show time progression
             cbar = plt.colorbar()
             cbar.set_label('Timestep')
 
-            # Add starting point with a different marker
+            # Add starting and ending points with different markers
             if x_coords and y_coords:
-                plt.scatter(x_coords[0], y_coords[0], s=100, color='blue', marker='*', label='Start')
-                plt.scatter(x_coords[-1], y_coords[-1], s=100, color='green', marker='*', label='End')
+                plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
+                plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
+
+            if agent_x_coords and agent_y_coords:
+                plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='darkgreen', marker='*',
+                            label='Start Position')
+                plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='lime', marker='*',
+                            label='End Position')
 
             # Add grid lines
             plt.grid(True, alpha=0.3)
@@ -1155,14 +1187,19 @@ class MAISREnvVec(gym.Env):
             plt.xlabel('X Coordinate')
             plt.ylabel('Y Coordinate')
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            plt.title(f'{self.tag} - Agent Action History (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})')
+            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
+            plt.title(plot_title)
 
             # Add a legend
             plt.legend(loc='upper right')
 
+            # Add shaded quadrants to make the grid more visible
+            plt.axhline(y=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
+            plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
+
             # Save the figure with a timestamp
-            filename = f'./action_histories/action_history_{self.obs_type}_{self.action_type}_{self.reward_type}_{timestamp}.png'
-            plt.savefig(filename, dpi=75, bbox_inches='tight')
+            filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
+            plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
             print(f"Action history plot saved to {filename}")

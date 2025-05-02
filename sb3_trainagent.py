@@ -34,7 +34,9 @@ class EnhancedWandbCallback(BaseCallback):
                 if "episode" in info:
                     self.run.log({
                         "train/episode_reward": info["episode"]["r"],
-                        "train/episode_length": info["episode"]["l"]
+                        "train/episode_length": info["episode"]["l"],
+                        "train/target_ids":info["episode"]["target_ids"],
+                        "train/detections": info["episode"]["detections"],
                     }, step=self.num_timesteps)
 
         # Periodically evaluate and log evaluation metrics
@@ -145,6 +147,7 @@ def train(
         #env = make_vec_env(MAISREnvVec, n_envs=1, env_kwargs=dict(config=env_config, render_mode='headless', reward_type='balanced-sparse', obs_type='vector', action_type='continuous'), monitor_dir=log_dir)
         #env_fns = [make_env(env_config, i, seed) for i in range(n_envs)]
         #env = SubprocVecEnv(env_fns)
+        #env = VecMonitor(env)
 
     else:
         env = MAISREnvVec(
@@ -251,9 +254,9 @@ if __name__ == "__main__":
 
     for lr in [1e-5, 1e-4, 1e-3]:
         for use_simple in [True]:
-            for reward_type in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
+            for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
                 for action_type in ['continuous-normalized', 'discrete-downsampled']:
-                    for obs_type in ['absolute', 'relative']:
+                    for obs_type in ['absolute']:#, 'relative']:
 
                         print('\n################################################################################')
                         print('################################################################################')
@@ -267,8 +270,8 @@ if __name__ == "__main__":
                             obs_type,
                             action_type,
                             reward_type,
-                            num_timesteps=150000,
+                            num_timesteps=2e6,
                             n_eval_episodes=8,
                             lr = lr,
-                            eval_freq=14500*3
+                            eval_freq=14500*4
                         )
