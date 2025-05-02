@@ -28,8 +28,10 @@ class MAISREnvVec(gym.Env):
         super().__init__()
         print('%%%%%%%%%%% ENV INIT %%%%%%%%%%%')
 
-        if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type must be one of 'absolute,'relative', got '{obs_type}'")
-        if action_type not in ['discrete-downsampled', 'continuous-normalized']: raise ValueError(f"action_type must be one of 'discrete,'continuous, got '{action_type}'")
+
+
+        if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{obs_type}'")
+        if action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{action_type}'")
         if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
 
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
@@ -74,6 +76,11 @@ class MAISREnvVec(gym.Env):
         elif self.action_type == 'discrete-downsampled':
             self.grid_size = 20 # 15x15 grid
             self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
+
+
+        elif self.action_type == 'direct-control':
+            # 8 directions: up, up-right, right, down-right, down, down-left, left, up-left
+            self.action_space = gym.spaces.Discrete(8)
 
 
         else:
@@ -316,15 +323,51 @@ class MAISREnvVec(gym.Env):
         else:
             raise ValueError('Actions input is an unknown type')
 
+        # Special handling for direct-control action type
+        if self.action_type == 'direct-control':
+            if isinstance(actions, dict):
+                for agent_id, action_value in actions.items():
+                    if agent_id == self.aircraft_ids[0]:  # Only process for the agent
+                        waypoint = self.process_action(action_value)
+
+                        # Directly update agent position instead of setting waypoint
+                        self.agents[agent_id].x = waypoint[0]
+                        self.agents[agent_id].y = waypoint[1]
+
+                        if hasattr(self.agents[agent_id], 'previous_x'): # Update direction based on movement
+                            dx = self.agents[agent_id].x - self.agents[agent_id].previous_x
+                            dy = self.agents[agent_id].y - self.agents[agent_id].previous_y
+                            if dx != 0 or dy != 0:
+                                self.agents[agent_id].direction = math.atan2(dy, dx)
+
+                        # Store current position for next step
+                        self.agents[agent_id].previous_x = self.agents[agent_id].x
+                        self.agents[agent_id].previous_y = self.agents[agent_id].y
+            else: # Single agent case
+                waypoint = self.process_action(actions)
+                self.agents[0].x = waypoint[0]
+                self.agents[0].y = waypoint[1]
+
+                if hasattr(self.agents[0], 'previous_x'): # Update direction based on movement
+                    dx = self.agents[0].x - self.agents[0].previous_x
+                    dy = self.agents[0].y - self.agents[0].previous_y
+                    if dx != 0 or dy != 0:
+                        self.agents[0].direction = math.atan2(dy, dx)
+
+                # Store current position for next step
+                self.agents[0].previous_x = self.agents[0].x
+                self.agents[0].previous_y = self.agents[0].y
+
+
         if self.ep_len % 60 == 0:
             self.action_history.append(self.agents[0].waypoint_override)
             self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
-        #print(f'Waypoint {waypoint}, id method {id_method}')
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-            aircraft.move() # First, move using the waypoint override set above
+            if not self.action_type == 'direct-control': # TODO testing
+                aircraft.move() # First, move using the waypoint override set above
 
             # Calculate distances to all targets
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
@@ -1111,15 +1154,39 @@ class MAISREnvVec(gym.Env):
 
             waypoint = (float(x_coord), float(y_coord))
 
-            # normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
-            # normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
-            #
-            # x_coord = normalized_x * self.config["gameboard size"]
-            # y_coord = normalized_y * self.config["gameboard size"]
-            #
-            # waypoint = (float(x_coord), float(y_coord))
-            # #print(f'Action denormalized as {waypoint}')
-            # #id_method = float(action[2])
+        elif self.action_type == 'direct-control':
+            # Get current position
+            current_x = self.agents[self.aircraft_ids[0]].x
+            current_y = self.agents[self.aircraft_ids[0]].y
+
+            # Define movement step size
+            move_distance = self.config['game speed'] * self.config['human speed']
+
+            # Map discrete action to direction
+            direction_mapping = [
+                (0, -1),  # up
+                (0.7, -0.7),  # up-right
+                (1, 0),  # right
+                (0.7, 0.7),  # down-right
+                (0, 1),  # down
+                (-0.7, 0.7),  # down-left
+                (-1, 0),  # left
+                (-0.7, -0.7)  # up-left
+            ]
+
+            dx, dy = direction_mapping[action]
+
+            # Calculate new position
+            new_x = current_x + dx * move_distance
+            new_y = current_y + dy * move_distance
+
+            # Clip to ensure within boundaries
+            new_x = np.clip(new_x, 0, self.config["gameboard size"])
+            new_y = np.clip(new_y, 0, self.config["gameboard size"])
+
+            # No waypoint is needed, we'll directly update the agent's position
+            # But we still return a waypoint to be consistent with the interface
+            waypoint = (float(new_x), float(new_y))
 
         else:
             raise ValueError('Error in process_action: action type not recognized')
@@ -1166,15 +1233,15 @@ class MAISREnvVec(gym.Env):
 
             # Plot agent trajectory (actual location history) as a line with points
             if agent_x_coords and agent_y_coords:
-                plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.5, linewidth=1.5)
+                plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
                 plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
                             cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
 
             # Plot waypoint history (action history) as a line with points
             if x_coords and y_coords:
-                plt.plot(x_coords, y_coords, 'b-', alpha=0.5, linewidth=1)
+                plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
                 plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
-                            cmap='Blues', alpha=0.8, marker='x', label='Agent Waypoints')
+                            cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
 
             # Add a colorbar to show time progression
             cbar = plt.colorbar()

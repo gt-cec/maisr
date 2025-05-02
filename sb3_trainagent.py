@@ -255,8 +255,8 @@ if __name__ == "__main__":
     for lr in [1e-5, 1e-4, 1e-3]:
         for use_simple in [True]:
             for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
-                for action_type in ['continuous-normalized', 'discrete-downsampled']:
-                    for obs_type in ['absolute', 'relative']:
+                for obs_type in ['relative', 'absolute']:
+                    for action_type in ['direct-control']:#, 'continuous-normalized', 'discrete-downsampled']:
 
                         print('\n################################################################################')
                         print('################################################################################')
