@@ -13,19 +13,13 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'absolute', action_type = 'continuous-normalized', #reward_type = 'proximity',
+                 obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
                  num_agents = 1,
                  tag='none',
                  seed=None,
+                 difficulty=0, # Used for curriculum learning (TODO not used yet)
                  subject_id='999',user_group='99',round_number='99'):
-        """
-        args:
-            time_scale: How much to scale time by
-            render_mode: 'headless' for no-render agent training, 'human' for playing with humans
-            reward_type:
 
-
-        """
         super().__init__()
 
         self.config = config
@@ -33,6 +27,9 @@ class MAISREnvVec(gym.Env):
         if self.seed is not None:
             np.random.seed(self.seed)
             random.seed(self.seed)
+
+        self.use_beginner_levels = self.config['use beginner levels'] # If true, the agent only sees 5 beginner levels to make early training easier
+        self.difficulty = difficulty
 
         reward_type = self.config['reward type']
 
@@ -227,7 +224,7 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None):
 
-        if self.seed is not None: # TODO temp to cycle through a few seeds
+        if self.use_beginner_levels:
             # Define a list of 5 seeds to cycle through
             seed_list = [42, 123, 456, 789, 101]
             # Use the episode counter to cycle through the seeds
@@ -237,21 +234,10 @@ class MAISREnvVec(gym.Env):
             np.random.seed(current_seed)
             random.seed(current_seed)
 
-        # if self.seed is not None:
-        #     np.random.seed(self.seed)
-        #     random.seed(self.seed)
-        #
-        # elif seed is not None:
-        #     np.random.seed(seed)
-        #     random.seed(seed)
-
-
         self.episode_counter += 1
-
         self.agents = [] # List of names of all current agents. Typically integers
         self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
         self.max_num_agents = 2
-
         self.aircraft_ids = []  # indexes of the aircraft agents
 
         self.score = 0
