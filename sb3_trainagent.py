@@ -454,7 +454,7 @@ def train(
         batch_size=128,
         steps_per_episode=14703,
         num_timesteps=30e6,
-        n_steps=14703,
+        ppo_update_steps=14703,
         save_freq=14703*3,
         eval_freq=14703*2,
         n_eval_episodes = 8,
@@ -571,7 +571,7 @@ def train(
         verbose=1,
         tensorboard_log=f"runs/{run.id}",
         batch_size=batch_size * n_envs,  # Scale batch size with number of environments
-        n_steps=n_steps, # // n_envs,  # Adjust steps per environment
+        n_steps=ppo_update_steps, # // n_envs,  # Adjust steps per environment
         learning_rate=lr,
         seed=seed,
         device='cpu'  # You can change to 'cuda' if you have a GPU
@@ -672,7 +672,7 @@ if __name__ == "__main__":
                         obs_type,
                         action_type,
                         #reward_type,
-                        num_timesteps=20e6,
+                        num_timesteps=20e6, # Total timesteps to train
                         batch_size=batch_size,
                         n_eval_episodes=8,
                         lr = lr,
@@ -680,5 +680,5 @@ if __name__ == "__main__":
                         use_curriculum=False,
                         seed = 42,
                         n_envs=6,
-                        n_steps=14703
+                        ppo_update_steps=14703
                     )
