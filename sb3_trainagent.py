@@ -152,9 +152,9 @@ class EnhancedWandbCallback(BaseCallback):
         return True
 
 
-def make_env(env_config, rank, seed, obs_type, action_type, difficulty=0):
+def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, difficulty=0):
     def _init():
-        from env_vec_simple import MAISREnvVec  # TODO combine non-simple env into this one
+        from env_vec_simple_framestack import MAISREnvVec  # TODO combine non-simple env into this one
 
         env = MAISREnvVec(
             config=env_config,
@@ -164,7 +164,8 @@ def make_env(env_config, rank, seed, obs_type, action_type, difficulty=0):
             tag=f'train_mp{rank}',
             action_type=action_type,
             seed=seed + rank,
-            difficulty=difficulty  # Add difficulty parameter
+            difficulty=difficulty,  # Add difficulty parameter
+            frame_skip = frame_skip
         )
         env = Monitor(env)
         env.reset()
@@ -194,11 +195,12 @@ def train(
         env_config_filename='./config_files/rl_cl_phase1.json',
         n_envs=1,
         seed=42,
+        frame_skip = 1,
         use_curriculum=False,
         min_target_ids_to_advance=8,
         max_difficulty_level=5
 ):
-    from env_vec_simple import MAISREnvVec
+    from env_vec_simple_framestack import MAISREnvVec
 
     # Load env config
     env_config = load_env_config(env_config_filename)
@@ -234,7 +236,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name='tr8_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(
+        name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(
             batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
         config=train_config,
         sync_tensorboard=True,
@@ -262,7 +264,7 @@ def train(
             env.close()
 
             # Create environment creation functions for each process with new difficulty
-            env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, difficulty=current_difficulty)
+            env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, difficulty=current_difficulty)
                        for i in range(n_envs)]
 
             # Create new vectorized environment
@@ -308,7 +310,7 @@ def train(
         print(f"Training with {n_envs} environments in parallel")
 
         # Create environment creation functions for each process
-        env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, difficulty=current_difficulty)
+        env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, difficulty=current_difficulty)
                    for i in range(n_envs)]
 
         # Create vectorized environment
@@ -325,7 +327,8 @@ def train(
             # reward_type=reward_type,
             tag='train',
             seed=seed,
-            difficulty=current_difficulty
+            difficulty=current_difficulty,
+            frame_skip = frame_skip
         )
         env = Monitor(env)
 
@@ -338,7 +341,8 @@ def train(
         # reward_type=reward_type,
         tag='eval',
         seed=seed,
-        difficulty=current_difficulty
+        difficulty=current_difficulty,
+        frame_skip=frame_skip
     )
     eval_env = Monitor(eval_env)
 
@@ -438,5 +442,6 @@ if __name__ == "__main__":
                                     use_curriculum=False,
                                     seed = 42,
                                     n_envs=n_envs,
-                                    ppo_update_steps=ppo_update_steps
+                                    ppo_update_steps=ppo_update_steps,
+                                    frame_skip = 30
                                 )

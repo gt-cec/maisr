@@ -285,6 +285,8 @@ class MAISREnvVec(gym.Env):
         self.ep_len = 0
         self.ep_reward = 0
 
+        self.outer_step_count = 0 # Counts the outer steps (4 inner steps)
+
 
         self.all_targets_identified = False
 
@@ -299,6 +301,7 @@ class MAISREnvVec(gym.Env):
         total_reward = 0
         info = None
 
+
         # Skip frames by repeating the action multiple times
         for frame in range(self.frame_skip):
             observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
@@ -307,6 +310,8 @@ class MAISREnvVec(gym.Env):
             # Break early if the episode is done to avoid unnecessary computation
             if self.terminated or self.truncated:
                 break
+
+        self.outer_step_count += 1
 
         return observation, total_reward, self.terminated, self.truncated, info
 
@@ -474,7 +479,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'\n Round complete, reward {info['episode']['r']}, timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'\n Round complete, reward {info['episode']['r']}, outer steps {self.outer_step_count}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
