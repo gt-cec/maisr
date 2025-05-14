@@ -200,7 +200,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name='tr7_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(
+        name='tr8_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(
             batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
         config=train_config,
         sync_tensorboard=True,
@@ -339,7 +339,7 @@ def train(
         verbose=1,
         tensorboard_log=f"runs/{run.id}",
         batch_size=batch_size * n_envs,  # Scale batch size with number of environments
-        n_steps=steps_per_episode,# // n_envs,  # Adjust steps per environment
+        n_steps=ppo_update_steps // n_envs,  # Adjust steps per environment
         learning_rate=lr,
         seed=seed,
         device='cpu'  # You can change to 'cuda' if you have a GPU
@@ -382,28 +382,27 @@ if __name__ == "__main__":
     #for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
     for obs_type in ['relative', 'absolute']:
         for action_type in ['continuous-normalized']:#, 'discrete-downsampled']:
-            for lr in [5e-5]:
-                for batch_size in [64, 128, 256]:
-                    for ppo_update_steps in [2048, 14703, 14703*2]:
-                        for n_envs in [1,6]:
+            for n_envs in [1, 6]:
+                for lr in [5e-5]:
+                    for batch_size in [128, 64, 256]:
+                        for ppo_update_steps in [2048, 14703, 14703*2]:
+                                print('\n################################################################################')
+                                print('################################################################################')
+                                print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
+                                print('################################################################################')
+                                print('################################################################################')
 
-                            print('\n################################################################################')
-                            print('################################################################################')
-                            print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
-                            print('################################################################################')
-                            print('################################################################################')
-
-                            train(
-                                obs_type,
-                                action_type,
-                                #reward_type,
-                                num_timesteps=20e6, # Total timesteps to train
-                                batch_size=batch_size,
-                                n_eval_episodes=8,
-                                lr = lr,
-                                eval_freq=14703*15,
-                                use_curriculum=False,
-                                seed = 42,
-                                n_envs=n_envs,
-                                ppo_update_steps=ppo_update_steps
-                            )
+                                train(
+                                    obs_type,
+                                    action_type,
+                                    #reward_type,
+                                    num_timesteps=20e6, # Total timesteps to train
+                                    batch_size=batch_size,
+                                    n_eval_episodes=8,
+                                    lr = lr,
+                                    eval_freq=14703*15,
+                                    use_curriculum=False,
+                                    seed = 42,
+                                    n_envs=n_envs,
+                                    ppo_update_steps=ppo_update_steps
+                                )
