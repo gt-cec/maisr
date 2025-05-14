@@ -150,7 +150,7 @@ class MAISREnvVec(gym.Env):
 
         self.steps_for_lowqual_info = 3*60 # TODO tune this
         self.steps_for_highqual_info = 7*60 # TODO tune this. Currently 7 seconds
-        self.prob_detect = 0.00133333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
+        self.prob_detect = self.config['prob detect'] #0.00133333333 # Probability of being detected on each step. Probability per second = prob_detect * 60 (TODO tune)
 
         if render_mode == 'human':
             self.window = window

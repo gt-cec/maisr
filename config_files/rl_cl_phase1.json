@@ -5,7 +5,7 @@
 	"num targets":10,
 	"agent start location": [150,150],
 	"human start location": [100,450],
-	"use beginner levels": true,
+	"use beginner levels": false,
 	"verbose": false,
 	"time limit": 245,
 	"game speed": 0.07,
@@ -13,6 +13,6 @@
 	"human speed": 2.8,
 	"reward type": "proximity and waypoint-to-nearest",
 	"time to id": 0,
-	"detect prob": 0,
+	"prob detect": 0,
 	"difficulty": 0
 }
