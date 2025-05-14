@@ -34,32 +34,66 @@ class EnhancedWandbCallback(BaseCallback):
         self.current_difficulty = 0
 
     def _on_step(self):
-        # Log training metrics
-        if self.locals.get("infos") and len(self.locals["infos"]) > 0:
-            # For vectorized environments, infos is a list of dicts, one for each env
+
+        if self.locals.get("infos") and len(self.locals["infos"]) > 0: # TODO modified version here, trying to sync up steps with PPO
+            # First, gather all data we want to log
+            log_data = {}
+            rewards = []
+            lengths = []
+
+            # Process data from all environments
             for env_idx, info in enumerate(self.locals["infos"]):
                 if "episode" in info:
-                    # Log each environment's episode metrics
-                    self.run.log({
-                        f"train/env{env_idx}/episode_reward": info["episode"]["r"],
-                        f"train/env{env_idx}/episode_length": info["episode"]["l"],
-                    }, step=self.num_timesteps)
+                    # Collect the data but don't log yet
+                    rewards.append(info["episode"]["r"])
+                    lengths.append(info["episode"]["l"])
 
-                    # Also log target_ids and detections if available
+                    # Add individual env data (optional)
+                    log_data[f"train/env{env_idx}/episode_reward"] = info["episode"]["r"]
+                    log_data[f"train/env{env_idx}/episode_length"] = info["episode"]["l"]
+
+                    # Add target_ids and detections if available
                     if "target_ids" in info:
-                        self.run.log({f"train/env{env_idx}/target_ids": info["target_ids"]}, step=self.num_timesteps)
+                        log_data[f"train/env{env_idx}/target_ids"] = info["target_ids"]
                     if "detections" in info:
-                        self.run.log({f"train/env{env_idx}/detections": info["detections"]}, step=self.num_timesteps)
+                        log_data[f"train/env{env_idx}/detections"] = info["detections"]
 
-                    # Log overall average across environments
-                    if env_idx == 0:  # Only log this once per step
-                        rewards = [info["episode"]["r"] for info in self.locals["infos"] if "episode" in info]
-                        lengths = [info["episode"]["l"] for info in self.locals["infos"] if "episode" in info]
-                        if rewards:
-                            self.run.log({
-                                "train/mean_episode_reward": np.mean(rewards),
-                                "train/mean_episode_length": np.mean(lengths),
-                            }, step=self.num_timesteps)
+            # Add overall average metrics
+            if rewards:
+                log_data["train/mean_episode_reward"] = np.mean(rewards)
+                log_data["train/mean_episode_length"] = np.mean(lengths)
+
+            # Log all the data at once - explicitly use self.num_timesteps // n_envs as step
+            # to correctly align with PPO's step count
+            if log_data:
+                self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs) # TODO check the div by num_envs here
+
+        # # Log training metrics
+        # if self.locals.get("infos") and len(self.locals["infos"]) > 0:
+        #     # For vectorized environments, infos is a list of dicts, one for each env
+        #     for env_idx, info in enumerate(self.locals["infos"]):
+        #         if "episode" in info:
+        #             # Log each environment's episode metrics
+        #             self.run.log({
+        #                 f"train/env{env_idx}/episode_reward": info["episode"]["r"],
+        #                 f"train/env{env_idx}/episode_length": info["episode"]["l"],
+        #             }, step=self.num_timesteps)
+        #
+        #             # Also log target_ids and detections if available
+        #             if "target_ids" in info:
+        #                 self.run.log({f"train/env{env_idx}/target_ids": info["target_ids"]}, step=self.num_timesteps)
+        #             if "detections" in info:
+        #                 self.run.log({f"train/env{env_idx}/detections": info["detections"]}, step=self.num_timesteps)
+        #
+        #             # Log overall average across environments
+        #             if env_idx == 0:  # Only log this once per step
+        #                 rewards = [info["episode"]["r"] for info in self.locals["infos"] if "episode" in info]
+        #                 lengths = [info["episode"]["l"] for info in self.locals["infos"] if "episode" in info]
+        #                 if rewards:
+        #                     self.run.log({
+        #                         "train/mean_episode_reward": np.mean(rewards),
+        #                         "train/mean_episode_length": np.mean(lengths),
+        #                     }, step=self.num_timesteps)
 
         # Periodically evaluate and log evaluation metrics
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
