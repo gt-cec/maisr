@@ -215,7 +215,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl-CLtest",
-        name='cl_test_3 (no subproc scaling)',
+        name='cl_test_4 (reward tweaked, no subproc scaling)',
         #name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
         config=train_config,
         sync_tensorboard=True,
@@ -337,7 +337,7 @@ if __name__ == "__main__":
             for n_envs in [8, 1]:
                 for lr in [5e-5]:
                     for ppo_update_steps in [2048, 1024]:
-                        for batch_size in [64, 128, 256]:
+                        for batch_size in [128, 64, 256]:
                             print('\n################################################################################')
                             print('################################################################################')
                             print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
