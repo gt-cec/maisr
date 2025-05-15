@@ -112,13 +112,13 @@ class EnhancedWandbCallback(BaseCallback):
             if self.use_curriculum:
                 print('CURRICULUM: Checking if we should increase difficulty')
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
-                if avg_target_ids >= self.min_target_ids_to_advance:
+                if True:#avg_target_ids >= self.min_target_ids_to_advance:
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
                     # Call the set_difficulty method on all environments
                     self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-                    self.eval_env.set_difficulty(self.current_difficulty)
+                    self.eval_env.unwrapped.set_difficulty(self.current_difficulty)
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
 
                 else:
