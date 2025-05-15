@@ -290,8 +290,8 @@ def train(
         env,
         verbose=1,
         tensorboard_log=f"runs/{run.id}",
-        batch_size=batch_size * n_envs,  # Scale batch size with number of environments
-        n_steps=ppo_update_steps // n_envs,  # Adjust steps per environment
+        batch_size=batch_size,# * n_envs,  # Scale batch size with number of environments TODO testing
+        n_steps=ppo_update_steps,# // n_envs,  # Adjust steps per environment TODO testing
         learning_rate=lr,
         seed=seed,
         device='cpu'
