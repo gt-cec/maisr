@@ -108,12 +108,12 @@ class MAISREnvVec(gym.Env):
         # Set reward quantities for each event (agent only)
         #self.lowqual_regulartarget_reward = 0.25  # Reward earned for gathering low quality info about a regular target
         #self.lowqual_highvaltarget_reward = 0.5  # Reward earned for gathering low quality info about a high value target
-        self.highqual_regulartarget_reward = 1.0 # Reward earned for gathering high quality info about a regular value target
-        self.highqual_highvaltarget_reward = 2.0 # Reward earned for gathering high quality info about a high value target
+        self.highqual_regulartarget_reward = 2.0 # Reward earned for gathering high quality info about a regular value target
+        self.highqual_highvaltarget_reward = 3.0 # Reward earned for gathering high quality info about a high value target
         #self.target_id_reward = 1.0
 
         self.detections_reward = 0 # -1.0 (# TODO temporarily removed for simplified env
-        self.time_reward = 0.1  # Reward earned for every second early. 0.1 translates to 1.0 per 10 seconds
+        self.time_reward = 0.3  # Reward earned for every second early. 0.1 translates to 1.0 per 10 seconds
 
 
         ################################################# HUMAN THINGS #################################################

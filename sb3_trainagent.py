@@ -215,7 +215,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl-CLtest",
-        name='cl_test_2',
+        name='cl_test_3 (no subproc scaling)',
         #name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
         config=train_config,
         sync_tensorboard=True,
