@@ -1308,14 +1308,18 @@ class MAISREnvVec(gym.Env):
             filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_forceSeed{'True' if self.seed else 'False'}_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
-
             print(f"Action history plot saved to {filename}")
-        except ImportError as e:
-            print(f"Could not save action history plot: {e}")
-        except Exception as e:
-            print(f"Error saving action history plot: {e}")
+
+        except ImportError as e: print(f"Could not save action history plot: {e}")
+        except Exception as e: print(f"Error saving action history plot: {e}")
+
+    def set_difficulty(self, difficulty):
+        """Method to change difficulty level from an external method (i.e. a training loop"""
+        self.difficulty = difficulty
+        print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
     def load_difficulty(self):
+        """Method to update env parameters using the current difficulty setting"""
         if self.difficulty == 0:
             self.config['gameboard size'] = 300
             self.config['num targets'] = 10
@@ -1364,4 +1368,4 @@ class MAISREnvVec(gym.Env):
             self.highval_target_ratio = 0.3
 
         print(
-            f'DIFFICULTY {self.difficulty}: board size {self.config["gameboard size"]}, targets {self.config['num targets']}')
+            f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard size"]}, targets {self.config['num targets']}')
