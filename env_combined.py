@@ -22,7 +22,7 @@ class MAISREnvVec(gym.Env):
                  num_agents = 1,
                  tag='none',
                  seed=None,
-                 difficulty=0, # Used for curriculum learning (TODO not used yet)
+                 difficulty=0, # Used for curriculum learning
                  frame_skip = 1,
                  use_curriculum = False,
                  subject_id='999',user_group='99',round_number='99'):
@@ -230,7 +230,7 @@ class MAISREnvVec(gym.Env):
     def reset(self, seed=None):
 
         if self.use_curriculum:
-            self.update_difficulty()
+            self.load_difficulty()
 
         if self.use_beginner_levels:
             seed_list = [42, 123, 456, 789, 101] # List of seeds to cycle through
@@ -1315,13 +1315,14 @@ class MAISREnvVec(gym.Env):
         except Exception as e:
             print(f"Error saving action history plot: {e}")
 
-    def update_difficulty(self):
+    def load_difficulty(self):
         if self.difficulty == 0:
             self.config['gameboard size'] = 300
             self.config['num targets'] = 10
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+
 
         if self.difficulty == 1:
             self.config['gameboard size'] = 400
@@ -1330,12 +1331,14 @@ class MAISREnvVec(gym.Env):
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
 
+
         if self.difficulty == 2:
             self.config['gameboard size'] = 400
             self.config['num targets'] = 15
             self.prob_detect = 0.00167
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+
 
         if self.difficulty == 3:
             self.config['gameboard size'] = 600
@@ -1344,6 +1347,7 @@ class MAISREnvVec(gym.Env):
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
 
+
         if self.difficulty == 4:
             self.config['gameboard size'] = 600
             self.config['num targets'] = 20
@@ -1351,9 +1355,13 @@ class MAISREnvVec(gym.Env):
             self.reward_type = 'sparse'
             self.highval_target_ratio = 0
 
+
         if self.difficulty == 5:
             self.config['gameboard size'] = 600
             self.config['num targets'] = 20
             self.prob_detect = 0.00167
             self.reward_type = 'sparse'
             self.highval_target_ratio = 0.3
+
+        print(
+            f'DIFFICULTY {self.difficulty}: board size {self.config["gameboard size"]}, targets {self.config['num targets']}')
