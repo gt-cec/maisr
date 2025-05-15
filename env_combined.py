@@ -549,6 +549,7 @@ class MAISREnvVec(gym.Env):
             2+i info_level           # 0 for no info, 0.5 for low quality info, 1.0 for full info
             3+i target_x,            # (0-1)
             4+i target_y,            # (0-1)
+            # TODO: Add binary flag for target_exists
 
 
             # Handcrafted features, TBD
