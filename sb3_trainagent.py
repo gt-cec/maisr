@@ -152,7 +152,7 @@ class EnhancedWandbCallback(BaseCallback):
         return True
 
 
-def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, difficulty=0):
+def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, use_curriculum, difficulty=0):
     def _init():
         from env_vec_simple_framestack import MAISREnvVec  # TODO combine non-simple env into this one
 
@@ -165,6 +165,7 @@ def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, difficul
             action_type=action_type,
             seed=seed + rank,
             difficulty=difficulty,  # Add difficulty parameter
+            use_curriculum=use_curriculum,
             frame_skip = frame_skip
         )
         env = Monitor(env)
@@ -264,7 +265,7 @@ def train(
             env.close()
 
             # Create environment creation functions for each process with new difficulty
-            env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, difficulty=current_difficulty)
+            env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, use_curriculum, difficulty=current_difficulty)
                        for i in range(n_envs)]
 
             # Create new vectorized environment
@@ -282,7 +283,8 @@ def train(
                 action_type=action_type,
                 tag='train',
                 seed=seed,
-                difficulty=current_difficulty
+                difficulty=current_difficulty,
+                use_curriculum=use_curriculum,
             )
             env = Monitor(env)
 
@@ -296,7 +298,8 @@ def train(
             action_type=action_type,
             tag='eval',
             seed=seed,
-            difficulty=current_difficulty
+            difficulty=current_difficulty,
+            use_curriculum=use_curriculum,
         )
         eval_env = Monitor(eval_env)
 
@@ -310,7 +313,7 @@ def train(
         print(f"Training with {n_envs} environments in parallel")
 
         # Create environment creation functions for each process
-        env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, difficulty=current_difficulty)
+        env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, use_curriculum, difficulty=current_difficulty)
                    for i in range(n_envs)]
 
         # Create vectorized environment
@@ -328,7 +331,8 @@ def train(
             tag='train',
             seed=seed,
             difficulty=current_difficulty,
-            frame_skip = frame_skip
+            frame_skip = frame_skip,
+            use_curriculum=use_curriculum,
         )
         env = Monitor(env)
 
@@ -342,7 +346,8 @@ def train(
         tag='eval',
         seed=seed,
         difficulty=current_difficulty,
-        frame_skip=frame_skip
+        frame_skip=frame_skip,
+        use_curriculum=use_curriculum,
     )
     eval_env = Monitor(eval_env)
 
