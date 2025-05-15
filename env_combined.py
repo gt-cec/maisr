@@ -264,10 +264,10 @@ class MAISREnvVec(gym.Env):
         #print(f'gameboard size is {self.config["gameboard size"]}')
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
-        self.num_targets = min(30, self.config['num targets'])  # If more than 30 targets specified, overwrite to 30
+        self.num_targets = min(self.max_targets, self.config['num targets'])  # If more than 30 targets specified, overwrite to 30
 
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
-        self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0)
+        self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
         self.targets[:, 1] = np.random.choice([0, 1], size=self.num_targets, p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
         self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
         self.targets[:, 3] = np.random.uniform(self.config["gameboard size"] * 0.03, self.config["gameboard size"] * 0.97, size=self.num_targets) # Randomly place targets on gameboard (columns 3-4)
@@ -1330,7 +1330,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 1:
             self.config['gameboard size'] = 400
-            self.config['num targets'] = 15
+            self.config['num targets'] = 10
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
@@ -1338,7 +1338,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 2:
             self.config['gameboard size'] = 400
-            self.config['num targets'] = 15
+            self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
@@ -1346,7 +1346,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 3:
             self.config['gameboard size'] = 600
-            self.config['num targets'] = 20
+            self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
@@ -1354,7 +1354,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 4:
             self.config['gameboard size'] = 600
-            self.config['num targets'] = 20
+            self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'sparse'
             self.highval_target_ratio = 0
@@ -1362,7 +1362,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 5:
             self.config['gameboard size'] = 600
-            self.config['num targets'] = 20
+            self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'sparse'
             self.highval_target_ratio = 0.3
