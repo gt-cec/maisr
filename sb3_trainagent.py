@@ -423,7 +423,7 @@ if __name__ == "__main__":
             for n_envs in [1, 6]:
                 for lr in [5e-5]:
                     for batch_size in [128, 64, 256]:
-                        for ppo_update_steps in [2048, 14703, 14703*2]:
+                        for ppo_update_steps in [2048, 1024]:
                                 print('\n################################################################################')
                                 print('################################################################################')
                                 print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
@@ -434,11 +434,11 @@ if __name__ == "__main__":
                                     obs_type,
                                     action_type,
                                     #reward_type,
-                                    num_timesteps=20e6, # Total timesteps to train
+                                    num_timesteps=7e6, # Total timesteps to train
                                     batch_size=batch_size,
                                     n_eval_episodes=8,
                                     lr = lr,
-                                    eval_freq=14703*15,
+                                    eval_freq=490*15,
                                     use_curriculum=False,
                                     seed = 42,
                                     n_envs=n_envs,
