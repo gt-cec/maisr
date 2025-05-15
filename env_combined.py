@@ -1044,8 +1044,8 @@ class MAISREnvVec(gym.Env):
         # Create stats text surfaces
         stats_items = [
             f"Final Score: {round(self.score,0)}",
-            f"Targets Identified: {self.identified_targets} / {self.num_targets}",
-            f"Threat Levels Observed: {self.identified_threat_types} / {self.num_targets}",
+            f"Targets Identified: {self.targets_identified} / {self.num_targets}",
+            #f"Threat Levels Observed: {self.identified_threat_types} / {self.num_targets}",
             #f"Human Status: {human_status}",
             f"Agent Status: {agent_status}"]
 
