@@ -420,28 +420,29 @@ if __name__ == "__main__":
     #for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
     for obs_type in ['relative', 'absolute']:
         for action_type in ['continuous-normalized']:#, 'discrete-downsampled']:
-            for n_envs in [1, 6]:
-                for lr in [5e-5]:
-                    for batch_size in [128, 64, 256]:
-                        for ppo_update_steps in [2048, 1024]:
-                                print('\n################################################################################')
-                                print('################################################################################')
-                                print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
-                                print('################################################################################')
-                                print('################################################################################')
 
-                                train(
-                                    obs_type,
-                                    action_type,
-                                    #reward_type,
-                                    num_timesteps=7e6, # Total timesteps to train
-                                    batch_size=batch_size,
-                                    n_eval_episodes=8,
-                                    lr = lr,
-                                    eval_freq=490*15,
-                                    use_curriculum=False,
-                                    seed = 42,
-                                    n_envs=n_envs,
-                                    ppo_update_steps=ppo_update_steps,
-                                    frame_skip = 30
-                                )
+            for lr in [5e-5]:
+                for batch_size in [128, 64, 256]:
+                    for ppo_update_steps in [2048, 1024]:
+                        for n_envs in [6, 1]:
+                            print('\n################################################################################')
+                            print('################################################################################')
+                            print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
+                            print('################################################################################')
+                            print('################################################################################')
+
+                            train(
+                                obs_type,
+                                action_type,
+                                #reward_type,
+                                num_timesteps=7e6, # Total timesteps to train
+                                batch_size=batch_size,
+                                n_eval_episodes=8,
+                                lr = lr,
+                                eval_freq=490*15,
+                                use_curriculum=False,
+                                seed = 42,
+                                n_envs=n_envs,
+                                ppo_update_steps=ppo_update_steps,
+                                frame_skip = 30
+                            )
