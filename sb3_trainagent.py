@@ -271,15 +271,10 @@ def train(
         save_freq=save_freq // n_envs,  # Adjust for number of environments
         save_path=save_dir,
         name_prefix=f"checkpoint{algo}_maisr",
-        save_replay_buffer=True,
-        save_vecnormalize=True,
+        save_replay_buffer=True, save_vecnormalize=True,
     )
 
-    wandb_callback = WandbCallback(
-        gradient_save_freq=0,
-        model_save_path=f"{save_dir}/wandb/{run.id}",
-        verbose=2,
-    )
+    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}", verbose=2,)
 
     enhanced_wandb_callback = EnhancedWandbCallback(
         eval_env=eval_env,
@@ -299,7 +294,7 @@ def train(
         n_steps=ppo_update_steps // n_envs,  # Adjust steps per environment
         learning_rate=lr,
         seed=seed,
-        device='cpu'  # You can change to 'cuda' if you have a GPU
+        device='cpu'
     )
 
     # Check if there's a checkpoint to load
@@ -307,6 +302,7 @@ def train(
     else: print('Training new model')
 
     print('####################################### Beginning agent training... #########################################\n')
+
     # Log initial difficulty
     run.log({"curriculum/difficulty_level": 0}, step=0)
     print(f'Starting with difficulty level {0}')
@@ -320,6 +316,7 @@ def train(
     print('####################################### TRAINING COMPLETE #########################################\n')
     env.close()
     eval_env.close()
+
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final_diff")
     model.save(final_model_path)
@@ -330,10 +327,7 @@ def train(
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
-    run.log({
-        "final/mean_reward": mean_reward,
-        "final/std_reward": std_reward,
-    })
+    run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward,})
     run.finish()
 
 if __name__ == "__main__":
