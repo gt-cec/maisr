@@ -318,6 +318,8 @@ def train(
     )
 
     print('####################################### TRAINING COMPLETE #########################################\n')
+    env.close()
+    eval_env.close()
     # Save the final model
     final_model_path = os.path.join(save_dir, f"{algo}_maisr_final_diff")
     model.save(final_model_path)
@@ -341,7 +343,7 @@ if __name__ == "__main__":
             for n_envs in [8, 1]:
                 for lr in [5e-5]:
                     for ppo_update_steps in [2048, 1024]:
-                        for batch_size in [128, 64, 256]:
+                        for batch_size in [64, 128, 256]:
                             print('\n################################################################################')
                             print('################################################################################')
                             print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
