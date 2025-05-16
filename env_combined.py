@@ -468,6 +468,7 @@ class MAISREnvVec(gym.Env):
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
         if self.all_targets_identified:
             print(self.all_targets_identified)
+            print(f'DEBUG: self.all_targets_identified = {self.all_targets_identified}; self.targets_identified = {self.targets_identified}')
 
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
