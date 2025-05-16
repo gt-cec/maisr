@@ -66,6 +66,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
+        self.max_ep_len_to_advance = 10000 # TODO make configurable
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0  # Tracks how many evals in a row that the agent scores above the threshold to advance to next curriculum level. If >= 3, difficutly is updated. Resets if the agent scores less than 8
@@ -113,6 +114,7 @@ class EnhancedWandbCallback(BaseCallback):
             # Run evaluation
             target_ids_list = []
             mean_reward, std_reward = 0, 0
+            eval_lengths = []
 
             for i in range(self.n_eval_episodes):
                 obs, _ = self.eval_env.reset()
@@ -131,6 +133,8 @@ class EnhancedWandbCallback(BaseCallback):
 
                 mean_reward += ep_reward / self.n_eval_episodes
 
+                eval_lengths.append(info["episode"]["l"])
+
             # Calculate standard deviation
             std_reward = np.std(target_ids_list) if target_ids_list else 0
 
@@ -139,6 +143,7 @@ class EnhancedWandbCallback(BaseCallback):
                 "eval/mean_reward": mean_reward,
                 "eval/std_reward": std_reward,
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+                "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }, step=self.num_timesteps)
 
@@ -149,7 +154,9 @@ class EnhancedWandbCallback(BaseCallback):
             if self.use_curriculum:
                 print('CURRICULUM: Checking if we should increase difficulty')
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
-                if avg_target_ids >= self.min_target_ids_to_advance:
+                avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
+
+                if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
                     self.above_threshold_counter += 1
                 else:
                     self.above_threshold_counter = 0
@@ -229,7 +236,7 @@ def train(
     # Generate run name (To be consistent between WandB, model saving, and action history plots
     run_name = generate_run_name(env_config)
 
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs('./action_histories/'+run_name, exist_ok=True)
 
@@ -274,7 +281,7 @@ def train(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,  # Adjust for number of environments
-        save_path=save_dir,
+        save_path=f"{save_dir}/{run_name}",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -339,12 +346,14 @@ def train(
 
 
 if __name__ == "__main__":
-    config_list= [
+
+    config_list = [
         './config_files/rl_training_default.json',
         './config_files/rl_training_timepenalty.json'
         './config_files/rl_training_less_shaping.json',
         './config_files/rl_training_less_shaping_timepenalty.json',
     ]
+
     print('\n################################################################################')
     print('################################################################################')
     print(f'################## STARTING TRAINING RUN ##################')
@@ -352,7 +361,8 @@ if __name__ == "__main__":
     print('################################################################################')
 
     n_envs = multiprocessing.cpu_count()
-    for config_filename in [ ]:
+    for config_filename in config_list:
+
         train(
             config_filename,
             n_envs,
