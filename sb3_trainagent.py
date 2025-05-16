@@ -39,8 +39,9 @@ def generate_run_name(config):
         f"fs-{config.get('frame skip', 1)}",
         f"ppoupdates-{config['ppo update steps']}",
         f"curriculum-{config['use curriculum']}"
-        f"rew-wtn-{config['rew-shaping_coeff_wtn']}",
-        f"rew-prox-{config['rew-shaping_coeff_prox']}",
+        f"rew-wtn-{config['shaping_coeff_wtn']}",
+        f"rew-prox-{config['shaping_coeff_prox']}",
+        #f"rew-shapedecay-{config['shaping_decay_rate']}",
     ])
 
     # Add a run identifier (could be auto-incremented or timestamp-based)

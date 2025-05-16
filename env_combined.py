@@ -18,50 +18,56 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
-                 num_agents = 1,
+                 num_agents=1,
                  tag='none',
+                 run_name='no name',
                  seed=None,
-                 difficulty=0, # Used for curriculum learning
-                 frame_skip = 1,
-                 use_curriculum = False,
-                 subject_id='999',user_group='99',round_number='99'):
+                 difficulty=0,  # Used for curriculum learning (TODO not used yet)
+                 subject_id='999', user_group='99', round_number='99'):
 
         super().__init__()
 
-        print(f'%% ENV INIT: {tag}, {obs_type} observations, {action_type} actions, {reward_type} rewards')
+
 
         self.config = config
-        self.use_curriculum = use_curriculum
+        self.run_name = run_name
 
         self.seed = seed
         if self.seed is not None:
             np.random.seed(self.seed)
             random.seed(self.seed)
 
-        self.use_beginner_levels = self.config['use beginner levels'] # If true, the agent only sees 5 beginner levels to make early training easier
+        self.use_beginner_levels = self.config[
+            'use beginner levels']  # If true, the agent only sees 5 beginner levels to make early training easier
         self.difficulty = difficulty
-        self.frame_skip = frame_skip
 
-        reward_type = self.config['reward type']
+        self.tag = tag
+        self.verbose = True if self.config['verbose'] == 'true' else False
+        self.render_mode = render_mode
+        self.gather_info = True  # self.render_mode == 'human' # Only populate the info dict if playing with humans
 
-        if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{obs_type}'")
-        if action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{action_type}'")
-        if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
+        self.obs_type = self.config['obs type']
+        self.action_type = self.config['action type']
+        # reward_type = self.config['reward type']
+
+        self.shaping_decay_rate = self.config['shaping_decay_rate']
+        self.shaping_coeff_wtn = self.config['shaping_coeff_wtn']
+        self.shaping_coeff_prox = self.config['shaping_coeff_prox']
+        self.shaping_coeff_earlyfinish = self.config['shaping_coeff_earlyfinish']
+
+        if self.obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
+        if self.action_type not in ['discrete-downsampled', 'continuous-normalized','direct-control']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
+        # if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
         if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
+
+        print(f'%% ENV INIT: {tag}, {self.obs_type} observations, {self.action_type} actions')
+
+        self.num_agents = num_agents
 
         self.tag = tag
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
         self.gather_info = True #self.render_mode == 'human' # Only populate the info dict if playing with humans
-
-        self.obs_type = obs_type
-        self.action_type = action_type
-        self.reward_type = reward_type
-        self.num_agents = num_agents
-
-        #self.terminated = False
-        #self.truncated = False
 
         #self.time_limit = self.config['time limit'] # MOVED
         self.max_targets = 30
@@ -229,7 +235,7 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None):
 
-        if self.use_curriculum:
+        if self.config['use curriculum'] == True:
             self.load_difficulty()
 
         if self.use_beginner_levels:
@@ -277,6 +283,10 @@ class MAISREnvVec(gym.Env):
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
 
+        # Adjust shaping reward magnitudes
+        self.shaping_coeff_wtn = self.shaping_coeff_wtn * self.shaping_decay_rate
+        self.shaping_coeff_prox = self.shaping_coeff_prox * self.shaping_decay_rate
+
         # create the aircraft
         for i in range(self.num_agents):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
@@ -305,7 +315,7 @@ class MAISREnvVec(gym.Env):
         info = None
 
         # Skip frames by repeating the action multiple times
-        for frame in range(self.frame_skip):
+        for frame in range(self.config['frame skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
             total_reward += reward
 
@@ -406,19 +416,14 @@ class MAISREnvVec(gym.Env):
                         nearest_target_location = target_positions[nearest_unidentified_idx]
 
                         waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
-                        #print(f'Waypoint to target distance: {waypoint_to_target_distance}')
                         if waypoint_to_target_distance <= 40:
-                            new_reward['waypoint-to-nearest'] = 0.02
-
+                            new_reward['waypoint-to-nearest'] = 1.0
                         else:
                             new_reward['waypoint-to-nearest'] = 0.0
 
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
                     if distance_improvement > 0:
-                        proximity_reward = distance_improvement * 0.005
-                        #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
-                        #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
-                        new_reward['proximity'] = proximity_reward
+                        new_reward['proximity'] = distance_improvement
 
                     self.previous_nearest_distance = nearest_unidentified_distance
 
@@ -507,34 +512,31 @@ class MAISREnvVec(gym.Env):
 
         return observation, reward, self.terminated, self.truncated, info
 
-
     def get_reward(self, new_reward):
 
-        if self.reward_type == 'sparse':
-            reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
-                     (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                     (new_reward['early finish'] * self.time_reward)
+        reward = (new_reward['high val target id'] * self.highqual_regulartarget_reward) + \
+                 (new_reward['regular val target id'] * self.highqual_highvaltarget_reward) + \
+                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \
+                 (new_reward['proximity'] * self.shaping_coeff_prox) + \
+                 (new_reward['early finish'] * self.time_reward)
 
-        elif self.reward_type == 'proximity and target':
-            reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
-                     (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                     (new_reward['proximity']) + \
-                     (new_reward['early finish'] * self.time_reward)
-
-        elif self.reward_type == 'waypoint-to-nearest':
-            reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
-                     (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                     (new_reward['waypoint-to-nearest']) + \
-                     (new_reward['early finish'] * self.time_reward)
-
-        elif self.reward_type == 'proximity and waypoint-to-nearest':
-            reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
-                     (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                     (new_reward)['waypoint-to-nearest'] + \
-                     (new_reward['proximity']) + \
-                     (new_reward['early finish'] * self.time_reward)
-
-        else: raise ValueError('Unknown reward type')
+        # if self.reward_type == 'proximity and target':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward['proximity']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # elif self.reward_type == 'waypoint-to-nearest':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward['waypoint-to-nearest']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # elif self.reward_type == 'proximity and waypoint-to-nearest':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward)['waypoint-to-nearest'] + \
+        #              (new_reward['proximity']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # else: raise ValueError('Unknown reward type')
 
         return reward
 
@@ -630,7 +632,6 @@ class MAISREnvVec(gym.Env):
             self.comm_messages.pop(0)
 
     def render(self):
-        # TODO modify to return a pixel frame if obs_type is pixel
         if (self.render_mode == 'headless'): # and (not self.obs_type == 'pixel'): # Do not render if in headless mode
             pass
 
@@ -1295,7 +1296,7 @@ class MAISREnvVec(gym.Env):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
             action_type_label = 'direct-control' if self.action_type == 'direct-control' else self.action_type
-            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.step_count_inner})'
+            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
             plt.title(plot_title)
 
             # Add a legend
@@ -1306,13 +1307,15 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_forceSeed{'True' if self.seed else 'False'}_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
+            filename = f'./action_histories/{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
-            print(f"Action history plot saved to {filename}")
 
-        except ImportError as e: print(f"Could not save action history plot: {e}")
-        except Exception as e: print(f"Error saving action history plot: {e}")
+            print(f"Action history plot saved to {filename}")
+        except ImportError as e:
+            print(f"Could not save action history plot: {e}")
+        except Exception as e:
+            print(f"Error saving action history plot: {e}")
 
     def set_difficulty(self, difficulty):
         """Method to change difficulty level from an external method (i.e. a training loop"""

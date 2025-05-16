@@ -232,12 +232,9 @@ class MAISREnvVec(gym.Env):
     def reset(self, seed=None):
 
         if self.use_beginner_levels:
-            # Define a list of 5 seeds to cycle through
             seed_list = [42, 123, 456, 789, 101]
-            # Use the episode counter to cycle through the seeds
             current_seed_index = self.episode_counter % len(seed_list)
             current_seed = seed_list[current_seed_index]
-            # Set the random seeds
             np.random.seed(current_seed)
             random.seed(current_seed)
 
@@ -283,8 +280,8 @@ class MAISREnvVec(gym.Env):
 
         # create the aircraft
         for i in range(self.num_agents):
-            agents.Aircraft(self, 0,prob_detect=self.prob_detect,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location'] # TODO make random based on seed
+            agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game speed'] * self.config['human speed'],flight_pattern=self.config["search pattern"])
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location']  # TODO make random based on seed
 
         #self.agent_idx = self.aircraft_ids[0]
         if self.num_agents == 2: # TODO Delete
@@ -294,9 +291,7 @@ class MAISREnvVec(gym.Env):
         self.ep_len = 0
         self.ep_reward = 0
 
-
         self.all_targets_identified = False
-
         self.terminated = False
         self.truncated = False
 
@@ -420,7 +415,7 @@ class MAISREnvVec(gym.Env):
                     self.targets_identified += 1
 
                     self.targets[target_idx, 2] = 1.0
-                    new_score += self.target_id_reward
+                    new_score += 1
                     new_reward['target id'] += 1
 
                     info["score_breakdown"]["target_points"] += self.target_id_reward
