@@ -206,6 +206,7 @@ def train(
         save_dir="./trained_models/",
         load_path=None,
         log_dir="./logs/",
+        machine_name='machine'
         #algo='PPO',
         #policy_type="MlpPolicy",
         #run_name='no name',
@@ -244,7 +245,7 @@ def train(
 
     run = wandb.init(
         project="maisr-rl",
-        name=f'home_{n_envs}envs'+run_name,
+        name=f'{machine_name}_{n_envs}envs'+run_name,
         config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -372,5 +373,6 @@ if __name__ == "__main__":
         train(
             config_filename,
             n_envs,
-            load_path = load_path # Replace with absolute path to the checkpoint to load
+            load_path = load_path, # Replace with absolute path to the checkpoint to load
+            machine_name = 'home'
         )

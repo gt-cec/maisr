@@ -494,7 +494,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'Round complete, reward {info['episode']['r']}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'Round complete, reward {round(info['episode']['r'],3)}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
