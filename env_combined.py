@@ -494,12 +494,12 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'\n Round complete, reward {info['episode']['r']}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'Round complete, reward {info['episode']['r']}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
             #self.save_action_history_plot()
-            if self.tag in ['eval' 'train_mp0']:
+            if self.tag in ['eval', 'train_mp0']:
                 if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
                         self.save_action_history_plot()
                 elif self.episode_counter % 500 == 0:
@@ -522,24 +522,6 @@ class MAISREnvVec(gym.Env):
                  (new_reward['proximity'] * self.shaping_coeff_prox) + \
                  (new_reward['early finish'] * self.time_reward) + \
                  (self.shaping_time_penalty)
-
-        # if self.reward_type == 'proximity and target':
-        #     reward = (new_reward['target id'] * self.target_id_reward) + \
-        #              (new_reward['proximity']) + \
-        #              (new_reward['early finish'] * self.time_reward)
-        #
-        # elif self.reward_type == 'waypoint-to-nearest':
-        #     reward = (new_reward['target id'] * self.target_id_reward) + \
-        #              (new_reward['waypoint-to-nearest']) + \
-        #              (new_reward['early finish'] * self.time_reward)
-        #
-        # elif self.reward_type == 'proximity and waypoint-to-nearest':
-        #     reward = (new_reward['target id'] * self.target_id_reward) + \
-        #              (new_reward)['waypoint-to-nearest'] + \
-        #              (new_reward['proximity']) + \
-        #              (new_reward['early finish'] * self.time_reward)
-        #
-        # else: raise ValueError('Unknown reward type')
 
         return reward
 
