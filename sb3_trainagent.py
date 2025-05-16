@@ -117,16 +117,16 @@ class EnhancedWandbCallback(BaseCallback):
             eval_lengths = []
 
             for i in range(self.n_eval_episodes):
-                #obs, _ = self.eval_env.reset()
-                obs = self.eval_env.reset() # TODO TESTING
+                obs, _ = self.eval_env.reset()
+                #obs = self.eval_env.reset() # TODO TESTING
                 terminated = False
                 truncated = False
                 ep_reward = 0
 
                 while not (terminated or truncated):
                     action, _ = self.model.predict(obs, deterministic=True)
-                    #obs, reward, terminated, truncated, info = self.eval_env.step(action)
-                    obs, rewards, dones, infos = self.eval_env.step(action)
+                    obs, reward, terminated, truncated, info = self.eval_env.step(action)
+                    #obs, rewards, dones, infos = self.eval_env.step(action)
                     ep_reward += rewards
 
                 # Collect target_ids from the info dict
@@ -277,7 +277,7 @@ def train(
         run_name=run_name,
     )
     eval_env = Monitor(eval_env)
-    eval_env = DummyVecEnv([lambda: eval_env])  # Add this line
+    #eval_env = DummyVecEnv([lambda: eval_env])  # Add this line
 
     print('Envs created')
 
