@@ -127,7 +127,7 @@ class EnhancedWandbCallback(BaseCallback):
                     action, _ = self.model.predict(obs, deterministic=True)
                     obs, reward, terminated, truncated, info = self.eval_env.step(action)
                     #obs, rewards, dones, infos = self.eval_env.step(action)
-                    ep_reward += rewards
+                    ep_reward += reward
 
                 # Collect target_ids from the info dict
                 if "target_ids" in info:

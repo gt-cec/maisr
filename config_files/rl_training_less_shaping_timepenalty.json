@@ -37,7 +37,7 @@
 	"num_timesteps": 7e6,
 	"save_freq": 4900,
 	"n_eval_episodes": 8,
-	"eval_freq": 4900,
+	"eval_freq": 9800,
 	"seed": 42,
 
 	"use_curriculum":true,
