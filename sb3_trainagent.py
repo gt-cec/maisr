@@ -275,6 +275,7 @@ def train(
         run_name=run_name,
     )
     eval_env = Monitor(eval_env)
+    eval_env = DummyVecEnv([lambda: eval_env])  # Add this line
 
     print('Envs created')
 
