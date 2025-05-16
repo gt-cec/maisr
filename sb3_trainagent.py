@@ -309,6 +309,7 @@ def train(
 
     # Check if there's a checkpoint to load
     if load_path:
+        print(f'LOADING FROM {load_path}')
         model = model.__class__.load(load_path, env=env)
     else:
         print('Training new model')
@@ -354,6 +355,8 @@ if __name__ == "__main__":
         './config_files/rl_training_less_shaping_timepenalty.json',
     ]
 
+    load_path = None #'./trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
+
     print('\n################################################################################')
     print('################################################################################')
     print(f'################## STARTING TRAINING RUN ##################')
@@ -366,5 +369,5 @@ if __name__ == "__main__":
         train(
             config_filename,
             n_envs,
-            load_path = None # Replace with absolute path to the checkpoint to load
+            load_path = load_path # Replace with absolute path to the checkpoint to load
         )
