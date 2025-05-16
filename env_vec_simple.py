@@ -13,9 +13,9 @@ class MAISREnvVec(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
-                 obs_type = 'absolute', action_type = 'continuous-normalized', reward_type = 'proximity',
                  num_agents = 1,
                  tag='none',
+                 run_name='no name',
                  seed=None,
                  difficulty=0, # Used for curriculum learning (TODO not used yet)
                  subject_id='999',user_group='99',round_number='99'):
@@ -23,6 +23,8 @@ class MAISREnvVec(gym.Env):
         super().__init__()
 
         self.config = config
+        self.run_name = run_name
+
         self.seed = seed
         if self.seed is not None:
             np.random.seed(self.seed)
@@ -31,23 +33,28 @@ class MAISREnvVec(gym.Env):
         self.use_beginner_levels = self.config['use beginner levels'] # If true, the agent only sees 5 beginner levels to make early training easier
         self.difficulty = difficulty
 
-        reward_type = self.config['reward type']
-
-        if obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{obs_type}'")
-        if action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{action_type}'")
-        if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
-        if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
-
-        print(f'%% ENV INIT: {tag}, {obs_type} observations, {action_type} actions, {reward_type} rewards')
-
         self.tag = tag
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
         self.gather_info = True #self.render_mode == 'human' # Only populate the info dict if playing with humans
 
-        self.obs_type = obs_type
-        self.action_type = action_type
-        self.reward_type = reward_type
+        self.obs_type = self.config['obs type']
+        self.action_type = self.config['action type']
+        #reward_type = self.config['reward type']
+
+        self.shaping_decay_rate = self.config['shaping_decay_rate']
+        self.shaping_coeff_wtn = self.config['shaping_coeff_wtn']
+        self.shaping_coeff_prox = self.config['shaping_coeff_prox']
+        self.shaping_coeff_earlyfinish = self.config['shaping_coeff_earlyfinish']
+
+        if self.obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
+        if self.action_type not in ['discrete-downsampled', 'continuous-normalized', 'direct-control']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
+        #if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
+        if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
+
+        print(f'%% ENV INIT: {tag}, {self.obs_type} observations, {self.action_type} actions')
+
+        #self.reward_type = reward_type
         self.num_agents = num_agents
 
         self.subject_id = subject_id
@@ -270,6 +277,10 @@ class MAISREnvVec(gym.Env):
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
 
+        # Adjust shaping reward magnitudes
+        self.shaping_coeff_wtn = self.shaping_coeff_wtn * self.shaping_decay_rate
+        self.shaping_coeff_prox = self.shaping_coeff_prox * self.shaping_decay_rate
+
         # create the aircraft
         for i in range(self.num_agents):
             agents.Aircraft(self, 0,prob_detect=self.prob_detect,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"])
@@ -387,20 +398,14 @@ class MAISREnvVec(gym.Env):
                         nearest_target_location = target_positions[nearest_unidentified_idx]
 
                         waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
-                        #print(f'Waypoint to target distance: {waypoint_to_target_distance}')
                         if waypoint_to_target_distance <= 40:
-                            new_reward['waypoint-to-nearest'] = 0.02
-
+                            new_reward['waypoint-to-nearest'] = 1.0
                         else:
                             new_reward['waypoint-to-nearest'] = 0.0
 
-
                     distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
                     if distance_improvement > 0:
-                        proximity_reward = distance_improvement * 0.005
-                        #print(f'Earned {proximity_reward} for getting closer to target {nearest_unidentified_idx}\n')
-                        #print(f'PROXIMITY (+{round(proximity_reward,3)}) for approaching target {nearest_unidentified_idx}\n')
-                        new_reward['proximity'] = proximity_reward
+                        new_reward['proximity'] = distance_improvement
 
                     self.previous_nearest_distance = nearest_unidentified_distance
 
@@ -460,11 +465,10 @@ class MAISREnvVec(gym.Env):
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
-            #self.save_action_history_plot()
             if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400]:
                 self.save_action_history_plot()
-            # if self.tag == 'eval' and self.episode_counter % 5 == 0:
-            #     self.save_action_history_plot()
+            elif self.episode_counter % 500 == 0:
+                self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)
 
@@ -482,23 +486,28 @@ class MAISREnvVec(gym.Env):
 
     def get_reward(self, new_reward):
 
-        if self.reward_type == 'proximity and target':
-            reward = (new_reward['target id'] * self.target_id_reward) + \
-                     (new_reward['proximity']) + \
-                     (new_reward['early finish'] * self.time_reward)
+        reward = (new_reward['target id'] * self.target_id_reward) + \
+                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \
+                 (new_reward['proximity'] * self.shaping_coeff_prox) + \
+                 (new_reward['early finish'] * self.time_reward)
 
-        elif self.reward_type == 'waypoint-to-nearest':
-            reward = (new_reward['target id'] * self.target_id_reward) + \
-                     (new_reward['waypoint-to-nearest']) + \
-                     (new_reward['early finish'] * self.time_reward)
-
-        elif self.reward_type == 'proximity and waypoint-to-nearest':
-            reward = (new_reward['target id'] * self.target_id_reward) + \
-                     (new_reward)['waypoint-to-nearest'] + \
-                     (new_reward['proximity']) + \
-                     (new_reward['early finish'] * self.time_reward)
-
-        else: raise ValueError('Unknown reward type')
+        # if self.reward_type == 'proximity and target':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward['proximity']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # elif self.reward_type == 'waypoint-to-nearest':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward['waypoint-to-nearest']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # elif self.reward_type == 'proximity and waypoint-to-nearest':
+        #     reward = (new_reward['target id'] * self.target_id_reward) + \
+        #              (new_reward)['waypoint-to-nearest'] + \
+        #              (new_reward['proximity']) + \
+        #              (new_reward['early finish'] * self.time_reward)
+        #
+        # else: raise ValueError('Unknown reward type')
 
         return reward
 
@@ -1269,7 +1278,7 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_forceSeed{'True' if self.seed else 'False'}_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
+            filename = f'./action_histories/{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
@@ -1278,96 +1287,3 @@ class MAISREnvVec(gym.Env):
             print(f"Could not save action history plot: {e}")
         except Exception as e:
             print(f"Error saving action history plot: {e}")
-
-    # def save_action_history_plot(self):
-    #     """
-    #     Saves a 2D scatter plot of agent's action history to a PNG file.
-    #     This function is called when an episode terminates.
-    #     """
-    #     try:
-    #         import matplotlib.pyplot as plt
-    #         import matplotlib
-    #         matplotlib.use('Agg')  # Use non-interactive backend
-    #         import datetime
-    #         import os
-    #
-    #         # Create directory if it doesn't exist
-    #         os.makedirs('./action_histories', exist_ok=True)
-    #
-    #         # Extract x and y coordinates from action history
-    #         x_coords = [action[0] for action in self.action_history]
-    #         y_coords = [action[1] for action in self.action_history]
-    #
-    #         # Extract agent location history
-    #         agent_x_coords = [pos[0] for pos in self.agent_location_history]
-    #         agent_y_coords = [pos[1] for pos in self.agent_location_history]
-    #
-    #         # Create a new figure
-    #         plt.figure(figsize=(10, 10))
-    #
-    #         # Set up the plot with correct scale
-    #         plt.xlim(0, self.config["gameboard size"])
-    #         plt.ylim(0, self.config["gameboard size"])
-    #
-    #         # Plot targets
-    #         for i in range(self.num_targets):
-    #             target_x = self.targets[i, 3]
-    #             target_y = self.targets[i, 4]
-    #             marker_size = 100 if self.targets[i, 1] == 1 else 50  # High value targets are larger
-    #             color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
-    #             plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
-    #
-    #         # Plot agent trajectory (actual location history) as a line with points
-    #         if agent_x_coords and agent_y_coords:
-    #             plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
-    #             plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
-    #                         cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
-    #
-    #         # Plot waypoint history (action history) as a line with points
-    #         if x_coords and y_coords:
-    #             plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
-    #             plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
-    #                         cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
-    #
-    #         # Add a colorbar to show time progression
-    #         cbar = plt.colorbar()
-    #         cbar.set_label('Timestep')
-    #
-    #         # Add starting and ending points with different markers
-    #         if x_coords and y_coords:
-    #             plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
-    #             plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
-    #
-    #         if agent_x_coords and agent_y_coords:
-    #             plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='darkgreen', marker='*',
-    #                         label='Start Position')
-    #             plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='lime', marker='*',
-    #                         label='End Position')
-    #
-    #         # Add grid lines
-    #         plt.grid(True, alpha=0.3)
-    #
-    #         # Add labels and title
-    #         plt.xlabel('X Coordinate')
-    #         plt.ylabel('Y Coordinate')
-    #         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    #         plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
-    #         plt.title(plot_title)
-    #
-    #         # Add a legend
-    #         plt.legend(loc='upper right')
-    #
-    #         # Add shaded quadrants to make the grid more visible
-    #         plt.axhline(y=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
-    #         plt.axvline(x=self.config["gameboard size"] / 2, color='black', linestyle='-', alpha=0.3)
-    #
-    #         # Save the figure with a timestamp
-    #         filename = f'./action_histories/{self.tag}_episode_{self.episode_counter}_action_history_obs-{self.obs_type}_actions-{self.action_type}_reward-{self.reward_type}_{timestamp}.png'
-    #         plt.savefig(filename, dpi=100, bbox_inches='tight')
-    #         plt.close()
-    #
-    #         print(f"Action history plot saved to {filename}")
-    #     except ImportError as e:
-    #         print(f"Could not save action history plot: {e}")
-    #     except Exception as e:
-    #         print(f"Error saving action history plot: {e}")

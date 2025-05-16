@@ -287,7 +287,6 @@ class MAISREnvVec(gym.Env):
 
         self.outer_step_count = 0 # Counts the outer steps (4 inner steps)
 
-
         self.all_targets_identified = False
 
         self.terminated = False

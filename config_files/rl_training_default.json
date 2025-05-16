@@ -1,0 +1,45 @@
+{
+	"gameboard size": 300,
+	"window size": [1450,1080],
+	"num aircraft": 1,
+	"num targets":10,
+	"agent start location": [150,150],
+	"human start location": [100,450],
+	"time limit": 245,
+	"game speed": 0.07,
+	"agent speed": 2.8,
+	"human speed": 2.8,
+	"time to id": 0,
+	"prob detect": 0,
+	"difficulty": 0,
+
+	"reward type": "proximity and waypoint-to-nearest",
+	"obs type": "relative",
+	"action type": "continuous-normalized",
+
+	"shaping_decay_rate":0.9995,
+	"shaping_coeff_wtn": 0.02,
+	"shaping_coeff_prox": 0.005,
+	"shaping_coeff_earlyfinish": 1.0,
+
+	"use beginner levels": false,
+	"verbose": false,
+	"algo": "PPO",
+	"policy type": "MLPPolicy",
+	"lr": 5e-5,
+	"batch size": 128,
+	"gamma": 0.998,
+	"frame skip": 30,
+	"ppo update steps": 2048,
+
+	"steps_per_episode": 500,
+	"num_timesteps": 7e6,
+	"save_freq": 4900,
+	"n_eval_episodes": 8,
+	"seed": 42,
+
+	"use curriculum":true,
+	"min_target_ids_to_advance": 8,
+	"initial_difficulty": 0,
+	"max_difficulty_level": 5
+}

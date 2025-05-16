@@ -18,21 +18,55 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from utility.data_logging import load_env_config
 
-wandb.login(key='abbb7aa38dc7eff8e8dfe325c75b2e0d428030f6')
+def generate_run_name(config):
+    """Generate a standardized run name from configuration."""
+    # Core components that should always be included
+
+    # name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
+    # Things to add as args: n_envs, ppo_update_steps, use_curriculum
+
+    components = [
+        f"{n_envs}envs",
+        f"obs-{config['obs type']}",
+        f"act-{config['action type']}",
+    ]
+
+    # Add critical hyperparameters
+    components.extend([
+        f"lr-{config['lr']}",
+        f"bs-{config['batch size']}",
+        f"g-{config['gamma']}",
+        f"fs-{config.get('frame skip', 1)}",
+        f"ppoupdates-{config['ppo update steps']}",
+        f"curriculum-{config['use curriculum']}"
+        f"rew-wtn-{config['rew-shaping_coeff_wtn']}",
+        f"rew-prox-{config['rew-shaping_coeff_prox']}",
+    ])
+
+    # Add a run identifier (could be auto-incremented or timestamp-based)
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%m%d_%H%M")
+
+    # Combine all components
+    run_name = "_".join(components) + f"_{timestamp}"
+
+    return run_name
 
 # New callback with difficulty
 class EnhancedWandbCallback(BaseCallback):
-    def __init__(self, verbose=0, eval_env=None, eval_freq=14400, n_eval_episodes=8, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8):
+    def __init__(self, env_config, verbose=0, eval_env=None, run=None,
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name = 'no_name'):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
-        self.eval_freq = eval_freq
-        self.n_eval_episodes = n_eval_episodes
+        self.eval_freq = env_config['eval_freq']
+        self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
-        self.use_curriculum = use_curriculum
-        self.min_target_ids_to_advance = min_target_ids_to_advance
-        #self.difficulty_increase_callback = difficulty_increase_callback
+
+        self.use_curriculum = env_config['use_curriculum']
+        self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
+
         self.current_difficulty = 0
+        self.above_threshold_counter = 0  # Tracks how many evals in a row that the agent scores above the threshold to advance to next curriculum level. If >= 3, difficutly is updated. Resets if the agent scores less than 8
 
     def _on_step(self):
 
@@ -67,7 +101,8 @@ class EnhancedWandbCallback(BaseCallback):
             # Log all the data at once - explicitly use self.num_timesteps // n_envs as step
             # to correctly align with PPO's step count
             if log_data:
-                self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs) # TODO check the div by num_envs here
+                self.run.log(log_data,
+                             step=self.num_timesteps // self.model.get_env().num_envs)  # TODO check the div by num_envs here
 
         # Periodically evaluate and log evaluation metrics
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
@@ -113,6 +148,12 @@ class EnhancedWandbCallback(BaseCallback):
                 print('CURRICULUM: Checking if we should increase difficulty')
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
                 if avg_target_ids >= self.min_target_ids_to_advance:
+                    self.above_threshold_counter += 1
+                else:
+                    self.above_threshold_counter = 0
+
+                if self.above_threshold_counter >= 5:
+                    self.above_threshold_counter = 0
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
@@ -130,21 +171,16 @@ class EnhancedWandbCallback(BaseCallback):
         return True
 
 
-def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, use_curriculum, difficulty=0):
+def make_env(env_config, rank, seed, run_name='no_name'):
     def _init():
         from env_combined import MAISREnvVec  # TODO combine non-simple env into this one
 
         env = MAISREnvVec(
             config=env_config,
             render_mode='headless',
-            reward_type=env_config['reward type'],
-            obs_type=obs_type,
+            run_name=run_name,
             tag=f'train_mp{rank}',
-            action_type=action_type,
             seed=seed + rank,
-            difficulty=difficulty,  # Add difficulty parameter
-            use_curriculum=use_curriculum,
-            frame_skip = frame_skip
         )
         env = Monitor(env)
         env.reset()
@@ -154,83 +190,58 @@ def make_env(env_config, rank, seed, obs_type, action_type, frame_skip, use_curr
 
 
 def train(
-        obs_type,  # Must be "absolute" or "relative"
-        action_type,  # Must be 'continuous-normalized' or 'discrete-downsampled'
-        # reward_type, # Must be 'proximity', 'waypoint-to-nearest'
-
         save_dir="./trained_models/",
         load_dir=None,
         log_dir="./logs/",
-        algo='PPO',
-        policy_type="MlpPolicy",
-        lr=3e-4,
-        batch_size=128,
-        steps_per_episode=14703,
-        ppo_update_steps=14703,
-        num_timesteps=30e6,
-        save_freq=14600 * 3,
-        eval_freq=14600 * 2,
-        n_eval_episodes=8,
-        env_config_filename='./config_files/rl_cl_phase1.json',
+        #algo='PPO',
+        #policy_type="MlpPolicy",
+        #run_name='no name',
+        #lr=3e-4,
+        #batch_size=128,
+        #steps_per_episode=14703,
+        #ppo_update_steps=14703,
+        #num_timesteps=30e6,
+        #save_freq=14600 * 3,
+        #eval_freq=14600 * 2,
+        #n_eval_episodes=8,
+        env_config_filename='./config_files/rl_training_default.json',
         n_envs=1,
-        seed=42,
-        frame_skip = 1,
-        use_curriculum=False,
-        min_target_ids_to_advance=8,
-        max_difficulty_level=5
+        #seed=42,
+        #frame_skip=1,
+        #use_curriculum=False,
+        #min_target_ids_to_advance=8,
+        #max_difficulty_level=5,
+        #gamma=0.998
 ):
     from env_combined import MAISREnvVec
 
     # Load env config
     env_config = load_env_config(env_config_filename)
 
+    n_envs = min(n_envs, multiprocessing.cpu_count())
+    env_config['n_envs'] = n_envs
+    env_config['config filename'] = env_config_filename
+
+    # Generate run name (To be consistent between WandB, model saving, and action history plots
+    run_name = generate_run_name(env_config)
+
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
 
-    train_config = {
-        "env_type": "simple_v1",  # if use_simple else "normal",
-        # "reward_type": reward_type,
-        "action_type": action_type,
-        "obs_type": obs_type,
-        "algorithm": algo,
-        "policy_type": policy_type,
-        "lr": lr,
-        "batch_size": batch_size,
-        "steps_per_episode": steps_per_episode,
-        "num_timesteps": num_timesteps,
-        "ppo_update_steps":ppo_update_steps,
-
-        "save_freq": save_freq,
-        "checkpoint_freq": eval_freq,
-        "n_eval_episodes": n_eval_episodes,
-        "env_config": env_config,
-        "n_envs": n_envs,
-        "seed": seed,
-        "env_name": "MAISREnvVec",
-        "use_curriculum": use_curriculum,
-        "min_target_ids_to_advance": min_target_ids_to_advance,
-        "max_difficulty_level": max_difficulty_level,
-        "initial_difficulty": 0
-    }
-
     run = wandb.init(
-        project="maisr-rl-CLtest",
-        name='cl_test_4 (reward tweaked, no subproc scaling)',
-        #name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
-        config=train_config,
+        project="maisr-rl-pace",
+        name=f'home_{n_envs}envs'+run_name,
+        config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
     )
 
     if n_envs > 1:
-        n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
+        #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
         print(f"Training with {n_envs} environments in parallel")
 
         # Create environment creation functions for each process
-        env_fns = [make_env(env_config, i, seed + i, obs_type, action_type, frame_skip, use_curriculum, difficulty=0)
-                   for i in range(n_envs)]
-
-        # Create vectorized environment
+        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
 
@@ -239,14 +250,8 @@ def train(
             env_config,
             None,
             render_mode='headless',
-            obs_type=obs_type,
-            action_type=action_type,
-            # reward_type=reward_type,
             tag='train',
-            seed=seed,
-            difficulty=0,
-            frame_skip = frame_skip,
-            use_curriculum=use_curriculum,
+            run_name=run_name,
         )
         env = Monitor(env)
 
@@ -254,52 +259,48 @@ def train(
         env_config,
         None,
         render_mode='headless',
-        obs_type=obs_type,
-        action_type=action_type,
-        # reward_type=reward_type,
         tag='eval',
-        seed=seed,
-        difficulty=0,
-        frame_skip=frame_skip,
-        use_curriculum=use_curriculum,
+        run_name=run_name,
     )
     eval_env = Monitor(eval_env)
 
+    print('Envs created')
+
     ################################################# Setup callbacks #################################################
-    print('about to setup callbacks')
     checkpoint_callback = CheckpointCallback(
-        save_freq=save_freq // n_envs,  # Adjust for number of environments
+        save_freq=env_config['save_freq'] // n_envs,  # Adjust for number of environments
         save_path=save_dir,
-        name_prefix=f"checkpoint{algo}_maisr",
+        name_prefix=f"checkpoint{env_config['algo']}_maisr",
         save_replay_buffer=True, save_vecnormalize=True,
     )
 
-    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}", verbose=2,)
+    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}", verbose=2)
 
-    enhanced_wandb_callback = EnhancedWandbCallback(
-        eval_env=eval_env,
-        eval_freq=eval_freq // n_envs,  # Adjust for number of environments
-        n_eval_episodes=n_eval_episodes,
-        run=run,
-        use_curriculum=use_curriculum,
-        min_target_ids_to_advance=min_target_ids_to_advance,
-    )
+    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run)
+
+    print('Callbacks created')
 
     model = PPO(
         "MlpPolicy",
         env,
         verbose=1,
         tensorboard_log=f"runs/{run.id}",
-        batch_size=batch_size,# * n_envs,  # Scale batch size with number of environments TODO testing
-        n_steps=ppo_update_steps,# // n_envs,  # Adjust steps per environment TODO testing
-        learning_rate=lr,
-        seed=seed,
-        device='cpu'
+        batch_size=env_config['batch_size'],  # * n_envs,  # Scale batch size with number of environments TODO testing
+        n_steps=env_config['ppo_update_steps'],  # // n_envs,  # Adjust steps per environment TODO testing
+        learning_rate=env_config['lr'],
+        seed=env_config['seed'],
+        device='cpu',
+        gamma=env_config['gamma']
     )
 
+    print('Model instantiated')
+
     # Check if there's a checkpoint to load
-    if load_dir: model = model.__class__.load(load_dir, env=env)
-    else: print('Training new model')
+    if load_dir:
+        model = model.__class__.load(load_dir, env=env)
+    else:
+        print('Training new model')
+
 
     print('####################################### Beginning agent training... #########################################\n')
 
@@ -308,54 +309,47 @@ def train(
     print(f'Starting with difficulty level {0}')
 
     model.learn(
-        total_timesteps=int(num_timesteps),
+        total_timesteps=int(env_config['num_timesteps']),
         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
         reset_num_timesteps=True,  # Set to False when resuming training
     )
+
 
     print('####################################### TRAINING COMPLETE #########################################\n')
     env.close()
     eval_env.close()
 
     # Save the final model
-    final_model_path = os.path.join(save_dir, f"{algo}_maisr_final_diff")
+    final_model_path = os.path.join(save_dir, f"{env_config['algo']}_maisr_final_diff")
     model.save(final_model_path)
     print(f"Training completed! Final model saved to {final_model_path}")
 
     # Run a final evaluation
-    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=n_eval_episodes)
+    mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=env_config['n_eval_episodes'])
     print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
-    run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward,})
+    run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward, })
     run.finish()
 
-if __name__ == "__main__":
-    #for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
-    for obs_type in ['relative', 'absolute']:
-        for action_type in ['continuous-normalized']:#, 'discrete-downsampled']:
-            for n_envs in [8, 1]:
-                for lr in [5e-5]:
-                    for ppo_update_steps in [2048, 1024]:
-                        for batch_size in [128, 64, 256]:
-                            print('\n################################################################################')
-                            print('################################################################################')
-                            print(f'STARTING TRAINING RUN: obs type {obs_type}, action_type {action_type}, lr {lr}')
-                            print('################################################################################')
-                            print('################################################################################')
 
-                            train(
-                                obs_type,
-                                action_type,
-                                #reward_type,
-                                num_timesteps=7e6, # Total timesteps to train
-                                batch_size=batch_size,
-                                n_eval_episodes=8,
-                                lr = lr,
-                                eval_freq=490*30,
-                                use_curriculum=True,
-                                seed = 42,
-                                n_envs=n_envs,
-                                ppo_update_steps=ppo_update_steps,
-                                frame_skip = 30,
-                            )
+if __name__ == "__main__":
+    # for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
+    #for obs_type in ['relative', 'absolute']:
+        #for action_type in ['continuous-normalized']:  # , 'discrete-downsampled']:
+            #for n_envs in [24]:
+                #for lr in [5e-5]:
+                    #for ppo_update_steps in [2048, 1024]:
+                        #for batch_size in [128]:
+                            #for gamma in [0.998]:
+    print('\n################################################################################')
+    print('################################################################################')
+    print(f'################## STARTING TRAINING RUN ##################')
+    print('################################################################################')
+    print('################################################################################')
+
+    n_envs = 24
+
+    train(
+        n_envs=n_envs,
+    )
