@@ -3,7 +3,7 @@ import sys
 import os
 import ctypes
 import numpy as np
-from env_vec_simple import MAISREnvVec
+from env_combined import MAISREnvVec
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order, surveys_enabled, times
@@ -18,14 +18,15 @@ if __name__ == "__main__":
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")
 
     render = "headless" not in sys.argv
-    reward_type = 'balanced-sparse' # TODO move into a config file
+    reward_type = 'sparse' # TODO move into a config file
 
     config_list = config_dict[user_group]
     total_games = 5 # Number of games to run
     game_count = 0 # Used to track how many games have been completed so far
 
     while round_number < total_games:
-        config = config_list[round_number]
+        #config = config_list[round_number]
+        config = './config_files/rl_cl_phase1.json'
         env_config = load_env_config(config)
 
         print("Starting in PyGame mode")
@@ -37,8 +38,10 @@ if __name__ == "__main__":
         window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
 
         env = MAISREnvVec(env_config, window, clock=clock, render_mode='human',
-                       reward_type=reward_type, obs_type='vector', action_type='continuous',
+                       reward_type=reward_type, obs_type='relative', action_type='continuous-normalized',
                        num_agents=2,
+                       difficulty = 5,
+                       use_curriculum=True,
                        subject_id=subject_id,user_group=user_group,round_number=round_number)
 
         #model = PPO.load('./trained_models/PPO_maisr_1915200_steps.zip', env=env)

@@ -10,7 +10,8 @@ dependencies:
   - pytorch
   - matplotlib
   - pygame
-  - json
+  - wandb
+  - tensorboard
   - pandas
   - stable-baselines3
   - pip:

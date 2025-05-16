@@ -16,8 +16,8 @@ class Agent:
 
 
 
-        self.x = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
-        self.y = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
+        self.x = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
+        self.y = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
 
         self.direction = 0
         self.initial_direction = initial_direction
@@ -65,10 +65,9 @@ class Agent:
 
 # aircraft agent class
 class Aircraft(Agent):
-    def __init__(self, env, direction, color, speed=1, scale=1, prob_detect=0.1,max_health=10, flight_pattern="none", policy=None,is_visible=True):
+    def __init__(self, env, direction, color, speed=1, scale=1,max_health=10, flight_pattern="none", policy=None,is_visible=True):
         super().__init__(env, direction, color, scale, speed, agent_class="aircraft")
         #self.damage = 0  # damage taken by the aircraft
-        self.prob_detect = prob_detect # Probability of taking damage on a given timestep if inside a threat radius
         self.max_health = max_health
         self.health_points = max_health
         self.speed = speed
