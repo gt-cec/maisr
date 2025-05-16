@@ -41,6 +41,7 @@ def generate_run_name(config):
         f"curriculum-{config['use_curriculum']}"
         f"rew-wtn-{config['shaping_coeff_wtn']}",
         f"rew-prox-{config['shaping_coeff_prox']}",
+        f"rew-timepenalty-{config['shaping_time_penalty']}",
         #f"rew-shapedecay-{config['shaping_decay_rate']}",
     ])
 
@@ -191,8 +192,10 @@ def make_env(env_config, rank, seed, run_name='no_name'):
 
 
 def train(
+        env_config_filename,
+        n_envs,
         save_dir="./trained_models/",
-        load_dir=None,
+        load_path=None,
         log_dir="./logs/",
         #algo='PPO',
         #policy_type="MlpPolicy",
@@ -205,8 +208,8 @@ def train(
         #save_freq=14600 * 3,
         #eval_freq=14600 * 2,
         #n_eval_episodes=8,
-        env_config_filename='./config_files/rl_training_default.json',
-        n_envs=1,
+
+
         #seed=42,
         #frame_skip=1,
         #use_curriculum=False,
@@ -228,9 +231,10 @@ def train(
 
     os.makedirs(save_dir, exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
+    os.makedirs('./action_histories/'+run_name, exist_ok=True)
 
     run = wandb.init(
-        project="maisr-rl-pace",
+        project="maisr-rl",
         name=f'home_{n_envs}envs'+run_name,
         config=env_config,
         sync_tensorboard=True,
@@ -271,7 +275,7 @@ def train(
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,  # Adjust for number of environments
         save_path=save_dir,
-        name_prefix=f"checkpoint{env_config['algo']}_maisr",
+        name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
 
@@ -297,8 +301,8 @@ def train(
     print('Model instantiated')
 
     # Check if there's a checkpoint to load
-    if load_dir:
-        model = model.__class__.load(load_dir, env=env)
+    if load_path:
+        model = model.__class__.load(load_path, env=env)
     else:
         print('Training new model')
 
@@ -335,22 +339,22 @@ def train(
 
 
 if __name__ == "__main__":
-    # for reward_type in ['proximity and waypoint-to-nearest']:#['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']:
-    #for obs_type in ['relative', 'absolute']:
-        #for action_type in ['continuous-normalized']:  # , 'discrete-downsampled']:
-            #for n_envs in [24]:
-                #for lr in [5e-5]:
-                    #for ppo_update_steps in [2048, 1024]:
-                        #for batch_size in [128]:
-                            #for gamma in [0.998]:
+    config_list= [
+        './config_files/rl_training_default.json',
+        './config_files/rl_training_timepenalty.json'
+        './config_files/rl_training_less_shaping.json',
+        './config_files/rl_training_less_shaping_timepenalty.json',
+    ]
     print('\n################################################################################')
     print('################################################################################')
     print(f'################## STARTING TRAINING RUN ##################')
     print('################################################################################')
     print('################################################################################')
 
-    n_envs = 24
-
-    train(
-        n_envs=n_envs,
-    )
+    n_envs = multiprocessing.cpu_count()
+    for config_filename in [ ]:
+        train(
+            config_filename,
+            n_envs,
+            load_path = None # Replace with absolute path to the checkpoint to load
+        )

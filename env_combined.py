@@ -54,6 +54,7 @@ class MAISREnvVec(gym.Env):
         self.shaping_coeff_wtn = self.config['shaping_coeff_wtn']
         self.shaping_coeff_prox = self.config['shaping_coeff_prox']
         self.shaping_coeff_earlyfinish = self.config['shaping_coeff_earlyfinish']
+        self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         if self.obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
         if self.action_type not in ['discrete-downsampled', 'continuous-normalized','direct-control']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
@@ -498,10 +499,11 @@ class MAISREnvVec(gym.Env):
                 print(f'Action history: {self.direct_action_history}')
 
             #self.save_action_history_plot()
-            if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
-                self.save_action_history_plot()
-            elif self.episode_counter % 500 == 0:
-                self.save_action_history_plot()
+            if self.tag == 'eval' or 'train_mp0':
+                if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
+                        self.save_action_history_plot()
+                elif self.episode_counter % 500 == 0:
+                    self.save_action_history_plot()
 
             if self.render_mode == 'human': pygame.time.wait(50)
 
@@ -518,7 +520,8 @@ class MAISREnvVec(gym.Env):
                  (new_reward['regular val target id'] * self.highqual_highvaltarget_reward) + \
                  (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \
                  (new_reward['proximity'] * self.shaping_coeff_prox) + \
-                 (new_reward['early finish'] * self.time_reward)
+                 (new_reward['early finish'] * self.time_reward) + \
+                 (self.shaping_time_penalty)
 
         # if self.reward_type == 'proximity and target':
         #     reward = (new_reward['target id'] * self.target_id_reward) + \
@@ -1296,7 +1299,7 @@ class MAISREnvVec(gym.Env):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
             action_type_label = 'direct-control' if self.action_type == 'direct-control' else self.action_type
-            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.ep_len})'
+            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.step_count_outer})'
             plt.title(plot_title)
 
             # Add a legend
@@ -1307,7 +1310,7 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard_size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories/{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
+            filename = f'./action_histories//{self.run_name}/{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
@@ -1316,6 +1319,7 @@ class MAISREnvVec(gym.Env):
             print(f"Could not save action history plot: {e}")
         except Exception as e:
             print(f"Error saving action history plot: {e}")
+
 
     def set_difficulty(self, difficulty):
         """Method to change difficulty level from an external method (i.e. a training loop"""
@@ -1371,5 +1375,4 @@ class MAISREnvVec(gym.Env):
             self.reward_type = 'sparse'
             self.highval_target_ratio = 0.3
 
-        print(
-            f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard_size"]}, targets {self.config['num targets']}')
+        #print(f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard_size"]}, targets {self.config['num targets']}')
