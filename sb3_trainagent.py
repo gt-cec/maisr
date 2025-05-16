@@ -117,15 +117,17 @@ class EnhancedWandbCallback(BaseCallback):
             eval_lengths = []
 
             for i in range(self.n_eval_episodes):
-                obs, _ = self.eval_env.reset()
+                #obs, _ = self.eval_env.reset()
+                obs = self.eval_env.reset() # TODO TESTING
                 terminated = False
                 truncated = False
                 ep_reward = 0
 
                 while not (terminated or truncated):
                     action, _ = self.model.predict(obs, deterministic=True)
-                    obs, reward, terminated, truncated, info = self.eval_env.step(action)
-                    ep_reward += reward
+                    #obs, reward, terminated, truncated, info = self.eval_env.step(action)
+                    obs, rewards, dones, infos = self.eval_env.step(action)
+                    ep_reward += rewards
 
                 # Collect target_ids from the info dict
                 if "target_ids" in info:
