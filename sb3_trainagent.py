@@ -27,18 +27,18 @@ def generate_run_name(config):
 
     components = [
         f"{n_envs}envs",
-        f"obs-{config['obs type']}",
-        f"act-{config['action type']}",
+        f"obs-{config['obs_type']}",
+        f"act-{config['action_type']}",
     ]
 
     # Add critical hyperparameters
     components.extend([
         f"lr-{config['lr']}",
-        f"bs-{config['batch size']}",
+        f"bs-{config['batch_size']}",
         f"g-{config['gamma']}",
         f"fs-{config.get('frame skip', 1)}",
-        f"ppoupdates-{config['ppo update steps']}",
-        f"curriculum-{config['use curriculum']}"
+        f"ppoupdates-{config['ppo_update_steps']}",
+        f"curriculum-{config['use_curriculum']}"
         f"rew-wtn-{config['shaping_coeff_wtn']}",
         f"rew-prox-{config['shaping_coeff_prox']}",
         #f"rew-shapedecay-{config['shaping_decay_rate']}",
@@ -221,7 +221,7 @@ def train(
 
     n_envs = min(n_envs, multiprocessing.cpu_count())
     env_config['n_envs'] = n_envs
-    env_config['config filename'] = env_config_filename
+    env_config['config_filename'] = env_config_filename
 
     # Generate run name (To be consistent between WandB, model saving, and action history plots
     run_name = generate_run_name(env_config)

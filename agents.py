@@ -16,8 +16,8 @@ class Agent:
 
 
 
-        self.x = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
-        self.y = random.randint(int(np.floor(env.config['gameboard size']*0.03)), int(np.floor(env.config['gameboard size']*0.97)))
+        self.x = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
+        self.y = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
 
         self.direction = 0
         self.initial_direction = initial_direction
