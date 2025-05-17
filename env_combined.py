@@ -288,10 +288,17 @@ class MAISREnvVec(gym.Env):
         self.shaping_coeff_wtn = self.shaping_coeff_wtn * self.shaping_decay_rate
         self.shaping_coeff_prox = self.shaping_coeff_prox * self.shaping_decay_rate
 
+        if self.config['agent_start_location'] == "random":
+            agent_x = np.random.uniform(10, self.config["gameboard_size"] - 10)
+            agent_y = np.random.uniform(10, self.config["gameboard_size"] - 10)
+
+        else:
+            agent_x, agent_y = self.config['agent_start_location']
+
         # create the aircraft
         for i in range(self.num_agents):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['human_speed'], flight_pattern=self.config["search pattern"])
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent_start_location'] # TODO make random based on seed
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         #self.agent_idx = self.aircraft_ids[0]
         if self.num_agents == 2: # TODO Delete
