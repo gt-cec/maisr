@@ -353,10 +353,10 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        './config_files/rl_training_default.json',
-        './config_files/rl_training_timepenalty.json'
         './config_files/rl_training_less_shaping.json',
         './config_files/rl_training_less_shaping_timepenalty.json',
+        './config_files/rl_training_timepenalty.json',
+        './config_files/rl_training_default.json'
     ]
 
     load_path = None #'./trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
