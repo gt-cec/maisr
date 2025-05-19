@@ -158,10 +158,17 @@ class EnhancedWandbCallback(BaseCallback):
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
                 avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
 
-                if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
-                    self.above_threshold_counter += 1
+                if self.model.get_env().get_attr("difficulty")[0] == 0:
+                    if avg_target_ids >= self.min_target_ids_to_advance:
+                        self.above_threshold_counter += 1
+                    else:
+                        self.above_threshold_counter = 0
+
                 else:
-                    self.above_threshold_counter = 0
+                    if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
+                        self.above_threshold_counter += 1
+                    else:
+                        self.above_threshold_counter = 0
 
                 if self.above_threshold_counter >= 5:
                     self.above_threshold_counter = 0

@@ -1324,38 +1324,42 @@ class MAISREnvVec(gym.Env):
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
-
+            self.shaping_time_penalty = 0
 
         if self.difficulty == 1:
-            self.config['gameboard_size'] = 400
+            self.config['gameboard_size'] = 300
             self.config['num targets'] = 10
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
 
         if self.difficulty == 2:
             self.config['gameboard_size'] = 400
             self.config['num targets'] = 10
-            self.prob_detect = 0.00167
+            self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
 
         if self.difficulty == 3:
-            self.config['gameboard_size'] = 600
+            self.config['gameboard_size'] = 400
             self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
 
         if self.difficulty == 4:
             self.config['gameboard_size'] = 600
             self.config['num targets'] = 10
             self.prob_detect = 0.00167
-            self.reward_type = 'sparse'
+            self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
 
         if self.difficulty == 5:
@@ -1363,6 +1367,16 @@ class MAISREnvVec(gym.Env):
             self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'sparse'
+            self.highval_target_ratio = 0
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
+
+
+        if self.difficulty == 6:
+            self.config['gameboard_size'] = 600
+            self.config['num targets'] = 10
+            self.prob_detect = 0.00167
+            self.reward_type = 'sparse'
             self.highval_target_ratio = 0.3
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         #print(f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard_size"]}, targets {self.config['num targets']}')
