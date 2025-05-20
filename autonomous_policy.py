@@ -45,7 +45,7 @@ class AutonomousPolicy:
 
     def act(self):  # Execute policy based on chosen gameplan
         self.aircraft = self.env.agents[self.aircraft_id]
-        print('In self.act')
+        print(f'Agent location {self.aircraft.x, self.aircraft.y}')
         if True: #self.ticks_since_update > self.update_rate:
             self.ticks_since_update = 0
             #self.calculate_risk_level()
@@ -162,7 +162,7 @@ class AutonomousPolicy:
 
         if current_target_distances:  # If there are targets nearby, set waypoint to nearest one
             nearest_target_id = min(current_target_distances, key=current_target_distances.get)
-            print(f'Nearest target ID: {nearest_target_id}')
+            #print(f'Nearest target ID: {nearest_target_id}')
 
             # Find the target with this ID in the targets array
             for target_idx in range(self.env.num_targets):
