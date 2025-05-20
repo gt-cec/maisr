@@ -32,6 +32,8 @@ class MAISREnvVec(gym.Env):
         self.config = config
         self.run_name = run_name
 
+        self.use_buttons = False # TODO make configurable
+
         self.seed = seed
         if self.seed is not None:
             np.random.seed(self.seed)
@@ -40,6 +42,8 @@ class MAISREnvVec(gym.Env):
         self.use_beginner_levels = self.config[
             'use_beginner_levels']  # If true, the agent only sees 5 beginner levels to make early training easier
         self.difficulty = difficulty
+
+        self.highval_target_ratio = 0 # TODO placeholder
 
         self.tag = tag
         self.verbose = True if self.config['verbose'] == 'true' else False
@@ -712,115 +716,116 @@ class MAISREnvVec(gym.Env):
         #         pygame.draw.rect(border_surface, border_color, (self.config["gameboard_size"] - border_width, 0, border_width,self.config["gameboard_size"]))  # Right border
         #         self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-        # Draw Agent Gameplan sub-window
-        self.quadrant_button_height = 120
-        self.gameplan_button_width = 180
+        if self.use_buttons:
+            # Draw Agent Gameplan sub-window
+            self.quadrant_button_height = 120
+            self.gameplan_button_width = 180
 
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
-        gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
-        self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
+            pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
+            gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
+            self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
 
-        #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
-        self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
-        self.manual_priorities_button.color = (50, 180, 180)
-        self.manual_priorities_button.draw(self.window)
+            #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+            self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
+            self.manual_priorities_button.color = (50, 180, 180)
+            self.manual_priorities_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
 
-        type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
-        self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
+            type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
+            self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
 
-        #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
-        self.target_id_button.is_latched = self.button_latch_dict['target_id']
-        self.target_id_button.color = self.gameplan_button_color
-        self.target_id_button.draw(self.window)
+            #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
+            self.target_id_button.is_latched = self.button_latch_dict['target_id']
+            self.target_id_button.color = self.gameplan_button_color
+            self.target_id_button.draw(self.window)
 
-        #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
-        self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
-        self.wez_id_button.color = self.gameplan_button_color
-        self.wez_id_button.draw(self.window)
+            #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
+            self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
+            self.wez_id_button.color = self.gameplan_button_color
+            self.wez_id_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
 
-        search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
-        self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
+            search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
+            self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
 
-        self.NW_quad_button.is_latched = self.button_latch_dict['NW']
-        self.NW_quad_button.color = self.gameplan_button_color
-        self.NW_quad_button.draw(self.window)
+            self.NW_quad_button.is_latched = self.button_latch_dict['NW']
+            self.NW_quad_button.color = self.gameplan_button_color
+            self.NW_quad_button.draw(self.window)
 
-        self.NE_quad_button.is_latched = self.button_latch_dict['NE']
-        self.NE_quad_button.color = self.gameplan_button_color
-        self.NE_quad_button.draw(self.window)
+            self.NE_quad_button.is_latched = self.button_latch_dict['NE']
+            self.NE_quad_button.color = self.gameplan_button_color
+            self.NE_quad_button.draw(self.window)
 
-        self.SW_quad_button.is_latched = self.button_latch_dict['SW']
-        self.SW_quad_button.color = self.gameplan_button_color
-        self.SW_quad_button.draw(self.window)
+            self.SW_quad_button.is_latched = self.button_latch_dict['SW']
+            self.SW_quad_button.color = self.gameplan_button_color
+            self.SW_quad_button.draw(self.window)
 
-        self.SE_quad_button.is_latched = self.button_latch_dict['SE']
-        self.SE_quad_button.color = self.gameplan_button_color
-        self.SE_quad_button.draw(self.window)
+            self.SE_quad_button.is_latched = self.button_latch_dict['SE']
+            self.SE_quad_button.color = self.gameplan_button_color
+            self.SE_quad_button.draw(self.window)
 
-        self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
-        self.full_quad_button.is_latched = self.button_latch_dict['full']
-        self.full_quad_button.draw(self.window)
+            self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
+            self.full_quad_button.is_latched = self.button_latch_dict['full']
+            self.full_quad_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
-        self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
-        self.waypoint_button.color = self.gameplan_button_color
-        self.waypoint_button.draw(self.window)
+            self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
+            self.waypoint_button.color = self.gameplan_button_color
+            self.waypoint_button.draw(self.window)
 
-        self.hold_button.is_latched = self.button_latch_dict['hold']
-        self.hold_button.color = self.gameplan_button_color
-        self.hold_button.draw(self.window)
+            self.hold_button.is_latched = self.button_latch_dict['hold']
+            self.hold_button.color = self.gameplan_button_color
+            self.hold_button.draw(self.window)
 
-        pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
+            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
 
-        self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
-        self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
-        self.autonomous_button.color = (50, 180, 180)
-        self.autonomous_button.draw(self.window)
+            self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
+            self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
+            self.autonomous_button.color = (50, 180, 180)
+            self.autonomous_button.draw(self.window)
 
-        # Draw Comm Log
-        pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
-        pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
-        comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
-        self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
+            # Draw Comm Log
+            pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
+            pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
+            comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
+            self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
 
-        # Draw incoming comm log text
-        y_offset = self.comm_pane_height+50+680
-        for entry in self.comm_messages:
-            message = entry[0]
-            is_ai = entry[1]
-            color = self.ai_color if is_ai else self.human_color
-            message_surface = self.message_font.render(message, True, color)
-            self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
-            y_offset += 30  # Adjust this value to change spacing between messages
+            # Draw incoming comm log text
+            y_offset = self.comm_pane_height+50+680
+            for entry in self.comm_messages:
+                message = entry[0]
+                is_ai = entry[1]
+                color = self.ai_color if is_ai else self.human_color
+                message_surface = self.message_font.render(message, True, color)
+                self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
+                y_offset += 30  # Adjust this value to change spacing between messages
 
-        # Draw health boxes
+            # Draw health boxes
 
-        agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
-        agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
-        agent0_health_window.draw(self.window)
+            agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
+            agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
+            agent0_health_window.draw(self.window)
 
         # if self.config['num aircraft'] > 1:
         #     agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
         #     agent1_health_window.update(self.agents[self.human_idx].health_points)
         #     agent1_health_window.draw(self.window)
 
-        current_time = pygame.time.get_ticks()
-
-        if current_time > self.start_countdown_time:
-            self.time_window.update(self.display_time)
-            self.time_window.draw(self.window)
+        # current_time = pygame.time.get_ticks()
+        #
+        # if current_time > self.start_countdown_time:
+        #     self.time_window.update(self.display_time)
+        #     self.time_window.draw(self.window)
 
         # Draw agent status window
-        if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
+        #if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
         corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
         corner_round_font = pygame.font.SysFont(None, 36)

@@ -1,16 +1,13 @@
 from agents import *
-import sys
 import os
 import ctypes
 import numpy as np
 
 from env_combined import MAISREnvVec
-from autonomous_policy import AutonomousPolicy
+from new_heuristic_policy import AutonomousPolicy
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order, surveys_enabled, times
-import webbrowser
-from stable_baselines3 import PPO
 
 
 if __name__ == "__main__":
@@ -59,9 +56,9 @@ if __name__ == "__main__":
             actions[0] = agent_action
             #actions = np.array(agent_action)
 
-            if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
-                observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
-                reward_list.append(reward)
+            #if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
+            observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment
+            reward_list.append(reward)
 
             if env.render_mode == 'human':
                 env.render()
