@@ -37,14 +37,12 @@ if __name__ == "__main__":
         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
         window = pygame.display.set_mode((window_width, window_height),flags=pygame.NOFRAME)
 
-        env = MAISREnvVec(env_config, window, clock=clock, render_mode='human',
-                       reward_type=reward_type, obs_type='relative', action_type='continuous-normalized',
-                       num_agents=2,
-                       difficulty = 5,
-                       use_curriculum=True,
-                       subject_id=subject_id,user_group=user_group,round_number=round_number)
-
-        #model = PPO.load('./trained_models/PPO_maisr_1915200_steps.zip', env=env)
+        env = MAISREnvVec(
+            config=env_config,
+            render_mode='human',
+            run_name='heuristic_policy_test',
+            tag=f'heuristic_test'
+        )
 
         #agent0_id = env.aircraft_ids[0]  # Hack to dynamically get agent IDs
         agent0_policy = None # TODO

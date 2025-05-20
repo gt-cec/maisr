@@ -660,7 +660,7 @@ class MAISREnvVec(gym.Env):
             pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
 
         # Draw green lines and black crossbars
-        self.__render_box__(self.config["gameboard_border_margin"], (0, 128, 0), 2)  # inner box
+        self.__render_box__(35, (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard_size"] // 2, 0),(self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard_size"] // 2),(self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
 

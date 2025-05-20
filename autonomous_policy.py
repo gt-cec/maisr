@@ -23,8 +23,8 @@ class AutonomousPolicy:
         self.risk_level = ''
 
         # Agent priorities to follow during search (can be overridden by human)
-        self.search_quadrant = '' # Auto-selected by policy unless search_quadrant_override is not 'none'
-        self.search_type = '' # Auto-selected by policy unless search_type_override is not 'none'
+        self.search_quadrant = 'full' # Auto-selected by policy unless search_quadrant_override is not 'none'
+        self.search_type = 'target' # Auto-selected by policy unless search_type_override is not 'none'
 
         # Human overrides for agent priorities
         #self.risk_tolerance = 'medium'  # Override to low/high based on button clicks
@@ -45,9 +45,10 @@ class AutonomousPolicy:
 
     def act(self):  # Execute policy based on chosen gameplan
         self.aircraft = self.env.agents[self.aircraft_id]
-        if self.ticks_since_update > self.update_rate:
+        print('In self.act')
+        if True: #self.ticks_since_update > self.update_rate:
             self.ticks_since_update = 0
-            self.calculate_risk_level()
+            #self.calculate_risk_level()
 
             if self.hold_commanded:
                 self.target_point = self.hold_policy()
@@ -58,34 +59,28 @@ class AutonomousPolicy:
                 self.target_point = self.human_waypoint(self.waypoint_override)
 
             else:
-                self.calculate_priorities()
+                #self.calculate_priorities()
 
-                # normalized_x = (action_value[0] + 1) / 2 # Convert to 0,1 range
-                #                 normalized_y = (action_value[1] + 1) / 2 # Convert to 0,1 range
-                #
-                #                 # Scale to gameboard size
-                #                 x_coord = normalized_x * self.config["gameboard size"]
-                #                 y_coord = normalized_y * self.config["gameboard size"]
-                #                 waypoint = (x_coord, y_coord)
-
-
-                target_point_unscaled, closest_target_distance = self.basic_search()
+                #target_point_unscaled, closest_target_distance = self.basic_search()
+                target_point_unscaled, _ = self.basic_search()
                 target_point_unscaled = (target_point_unscaled[0] / self.env.config['gameboard size'], target_point_unscaled[1] / self.env.config['gameboard size'])
                 target_point_scaled = ((2 * target_point_unscaled[0]) - 1, (2 * target_point_unscaled[1]) - 1)
                 self.target_point = target_point_scaled
 
-                # Populate agent info
-                self.current_target_distance = closest_target_distance
-                if closest_target_distance: self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
-                if self.search_type_override != 'none':
-                    self.high_level_rationale = '(Human command)'
+                print(f'Selected waypoint {self.target_point}')
+
+                # # Populate agent info
+                # self.current_target_distance = closest_target_distance
+                # if closest_target_distance: self.low_level_rationale = f'Identifying target {int(closest_target_distance)} units away'
+                # if self.search_type_override != 'none':
+                #     self.high_level_rationale = '(Human command)'
 
             self.update_agent_info()
         else:
             self.ticks_since_update += 1
 
 
-        self.action = (self.target_point[0], self.target_point[1], 0)
+        self.action = (self.target_point[0], self.target_point[1])
         return self.action
 
     def basic_search(self):
@@ -121,13 +116,14 @@ class AutonomousPolicy:
                 threat_distances[target_id] = dist
 
             # Check if target is in current search quadrant
-            in_quadrant = (
-                    quadrant_bounds[self.search_quadrant][0] <= target_x <= quadrant_bounds[self.search_quadrant][1] and
-                    quadrant_bounds[self.search_quadrant][2] <= target_y <= quadrant_bounds[self.search_quadrant][3]
-            )
-
-            if not in_quadrant:
-                continue
+            in_quadrant = True
+            # in_quadrant = (
+            #         quadrant_bounds[self.search_quadrant][0] <= target_x <= quadrant_bounds[self.search_quadrant][1] and
+            #         quadrant_bounds[self.search_quadrant][2] <= target_y <= quadrant_bounds[self.search_quadrant][3]
+            # )
+            #
+            # if not in_quadrant:
+            #     continue
 
             if self.search_type == 'target':
                 # If set to target ID, only consider unknown targets (info_level = 0)
@@ -147,25 +143,26 @@ class AutonomousPolicy:
                     if closest_distance is None or dist < closest_distance:
                         closest_distance = dist
 
-            elif self.search_type == 'tag team' and hasattr(self.env, 'human_idx'):
-                # Only search targets with low-quality info within 300 pixels of human ship
-                human_aircraft = self.env.agents[self.env.human_idx]
-                ship_to_human = math.hypot(human_aircraft.x - target_x, human_aircraft.y - target_y)
+            # elif self.search_type == 'tag team' and hasattr(self.env, 'human_idx'):
+            #     # Only search targets with low-quality info within 300 pixels of human ship
+            #     human_aircraft = self.env.agents[self.env.human_idx]
+            #     ship_to_human = math.hypot(human_aircraft.x - target_x, human_aircraft.y - target_y)
+            #
+            #     if info_level == 0.5 and ship_to_human < 300:  # Only partially identified and near human
+            #         dist = ship_to_human
+            #         current_target_distances[target_id] = dist
+            #
+            #         if closest_distance is None or dist < closest_distance:
+            #             closest_distance = dist
 
-                if info_level == 0.5 and ship_to_human < 300:  # Only partially identified and near human
-                    dist = ship_to_human
-                    current_target_distances[target_id] = dist
-
-                    if closest_distance is None or dist < closest_distance:
-                        closest_distance = dist
-
-        # Get 2 closest threats for status display
-        sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
-        for threat_id, dist in sorted_threats[:2]:
-            self.nearby_threats.append((threat_id, int(dist)))
+        # # Get 2 closest threats for status display
+        # sorted_threats = sorted(threat_distances.items(), key=lambda x: x[1])
+        # for threat_id, dist in sorted_threats[:2]:
+        #     self.nearby_threats.append((threat_id, int(dist)))
 
         if current_target_distances:  # If there are targets nearby, set waypoint to nearest one
             nearest_target_id = min(current_target_distances, key=current_target_distances.get)
+            print(f'Nearest target ID: {nearest_target_id}')
 
             # Find the target with this ID in the targets array
             for target_idx in range(self.env.num_targets):
@@ -173,16 +170,18 @@ class AutonomousPolicy:
                     target_waypoint = (float(self.env.targets[target_idx][3]), float(self.env.targets[target_idx][4]))
                     break
             else:
+                print('Failed to find nearest target')
                 # Fallback if target not found (shouldn't happen)
                 target_waypoint = self.get_default_waypoint(self.search_quadrant, gameboard_size)
 
-        elif self.search_type == 'tag team' and hasattr(self.env, 'human_idx'):
-            target_waypoint = (self.env.agents[self.env.human_idx].x, self.env.agents[self.env.human_idx].y)
+        # elif self.search_type == 'tag team' and hasattr(self.env, 'human_idx'):
+        #     target_waypoint = (self.env.agents[self.env.human_idx].x, self.env.agents[self.env.human_idx].y)
 
         else:  # If all targets ID'd, loiter in center of board or specified quadrant
             target_waypoint = self.get_default_waypoint(self.search_quadrant, gameboard_size)
 
         return target_waypoint, closest_distance
+
 
     def get_default_waypoint(self, quadrant, gameboard_size):
         """Helper method to get default waypoint positions by quadrant"""
@@ -307,8 +306,9 @@ class AutonomousPolicy:
 
     def calculate_risk_level(self):
         """Calculates how risky the current situation is, as a function of agent health and number of nearby hostile targets"""
+        pass
 
-        hostile_nearby, friendly_nearby, unknown_nearby = self.env.get_nearby_hostiles(self.env.agents[self.env.agent_idx])
+        hostile_nearby, friendly_nearby, unknown_nearby = self.env.get_nearby_hostiles(self.env.agents[self.aircraft_id])
         risk_level_function = 10 * hostile_nearby - self.env.agents[self.env.agent_idx].health_points # TODO tune
         self.risk_level = 'LOW' if risk_level_function <= 30 else 'MEDIUM' if risk_level_function <= 60 else 'HIGH' if risk_level_function <= 80 else 'EXTREME'
 
