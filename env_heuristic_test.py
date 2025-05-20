@@ -23,18 +23,18 @@ if __name__ == "__main__":
     env_config = load_env_config(config)
 
     print("Starting in PyGame mode")
-    pygame.init()
-    clock = pygame.time.Clock()
-    ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
-    window_width, window_height = env_config['window size'][0], env_config['window size'][1]
-    os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
-    window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+    #pygame.init()
+    #clock = pygame.time.Clock()
+    #ctypes.windll.user32.SetProcessDPIAware()  # Disables display scaling so the game fits on small, high-res monitors
+    #window_width, window_height = env_config['window size'][0], env_config['window size'][1]
+    #os.environ['SDL_VIDEO_WINDOW_POS'] = f"{x},{y}"
+    #window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
 
     env = MAISREnvVec(
         config=env_config,
-        clock=clock,
-        window=window,
-        render_mode='human',
+        #clock=clock,
+        #window=window,
+        render_mode='headless',
         run_name='heuristic_policy_test',
         tag=f'heuristic_test'
     )
@@ -46,15 +46,15 @@ if __name__ == "__main__":
         game_count += 1
         terminated, truncated = False, False
         reward_list = []
-        actions = {0: None}  # use agent policies to get actions as a dict {agent_id: action}
+        #actions = {0: None}  # use agent policies to get actions as a dict {agent_id: action}
 
         observation, info = env.reset()
 
         while not (terminated or truncated):  # main game loop
             agent_action = agent0_policy.act()
-            print(f'Agent action: {agent_action}')
-            actions[0] = agent_action
-            #actions = np.array(agent_action)
+            #print(f'Agent action: {agent_action}')
+            #actions[0] = agent_action
+            actions = np.array(agent_action)
 
             #if env.render_mode == 'headless' or env.init or pygame.time.get_ticks() > env.start_countdown_time:
             observation, reward, terminated, truncated, info = env.step(actions)  # step through the environment

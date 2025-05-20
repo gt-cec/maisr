@@ -57,7 +57,10 @@ class AutonomousPolicy:
         Returns:
             tuple: (x, y) coordinates, normalized to [-1, 1]
         """
-        self.aircraft = self.env.agents[self.aircraft_id]
+
+        self.aircraft = self.env.agents[0]
+
+        print(f'Aircraft location {self.aircraft.x, self.aircraft.y}')
 
         if self.ticks_since_update > self.update_rate:
             self.ticks_since_update = 0
@@ -110,6 +113,7 @@ class AutonomousPolicy:
 
         # Return normalized action for the environment
         self.action = (self.target_point[0], self.target_point[1])
+        print(f'Target point {self.action}')
         return self.action
 
     def basic_search(self):

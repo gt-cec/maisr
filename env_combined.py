@@ -305,6 +305,7 @@ class MAISREnvVec(gym.Env):
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         #self.agent_idx = self.aircraft_ids[0]
+        print(f'Aircraft IDs: {self.aircraft_ids}')
         if self.num_agents == 2: # TODO Delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
@@ -363,7 +364,9 @@ class MAISREnvVec(gym.Env):
                 self.agents[agent_id].waypoint_override = waypoint
 
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
+
             waypoint = self.process_action(actions)
+            print(f'Waypoint is {waypoint}')
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
         elif isinstance(actions, np.int64) and self.action_type == 'direct-control':
@@ -401,6 +404,7 @@ class MAISREnvVec(gym.Env):
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
             if not self.action_type == 'direct-control':
+                print('Moving aircraft')
                 aircraft.move() # First, move using the waypoint override set above
 
             # Calculate distances to all targets
