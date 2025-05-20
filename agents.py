@@ -37,12 +37,14 @@ class Agent:
     # move the agent towards the next waypoint
     def move(self):
 
+
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
             self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
+
         self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
 
@@ -50,6 +52,8 @@ class Agent:
             dx, dy = dx / dist, dy / dist
             self.x += dx * self.speed
             self.y += dy * self.speed
+
+
         else:
             self.x = self.target_point[0]
             self.y = self.target_point[1]
@@ -115,12 +119,14 @@ class Aircraft(Agent):
         pygame.draw.polygon(shape_surf, (255,0,0), semicircle_points)
 
     def move(self):
+
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
             self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
+        #print(f'%%% dx, dy = {dx, dy}')
         self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
 
@@ -128,6 +134,7 @@ class Aircraft(Agent):
             dx, dy = dx / dist, dy / dist
             self.x += dx * self.speed
             self.y += dy * self.speed
+            #print(f'Case 2: self.x, self.y += {dx}, {dy}')
         else:
             self.x = self.target_point[0]
             self.y = self.target_point[1]

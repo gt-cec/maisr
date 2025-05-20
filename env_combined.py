@@ -366,7 +366,7 @@ class MAISREnvVec(gym.Env):
         elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
 
             waypoint = self.process_action(actions)
-            print(f'Waypoint is {waypoint}')
+            #print(f'Waypoint is {waypoint}')
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
         elif isinstance(actions, np.int64) and self.action_type == 'direct-control':
@@ -403,8 +403,11 @@ class MAISREnvVec(gym.Env):
 
         # move the agents and check for gameplay updates
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+
             if not self.action_type == 'direct-control':
-                print('Moving aircraft')
+                #print('Moving aircraft')
+                #print(f'Aircraft target_point is {aircraft.target_point}, location is {aircraft.x, aircraft.y}')
+                #print(f'Aircraft waypoint_override is {aircraft.waypoint_override}')
                 aircraft.move() # First, move using the waypoint override set above
 
             # Calculate distances to all targets

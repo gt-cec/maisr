@@ -50,6 +50,43 @@ class AutonomousPolicy:
         # Previous state tracking
         self.previous_nearest_distance = None
 
+    def new_act(self):
+        self.aircraft = self.env.agents[0]
+
+        aircraft_pos = np.array([self.aircraft.x, self.aircraft.y])  # Get aircraft position
+        target_positions = self.env.targets[:, 3:5]  # x,y coordinates
+        distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
+
+        unidentified_mask = self.env.targets[:, 2] < 1.0
+        if np.any(unidentified_mask):
+            unidentified_distances = distances[unidentified_mask]
+            #nearest_unidentified_distance = np.min(unidentified_distances)
+
+            unidentified_indices = np.where(unidentified_mask)[0]
+            nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
+
+            target_point = target_positions[nearest_unidentified_idx]
+        else:
+            target_point = self.target_point
+
+        target_point_normalized = (
+            target_point[0] / self.env.config["gameboard_size"],
+            target_point[1] / self.env.config["gameboard_size"]
+        )
+
+        # Then scale to [-1, 1] for the continuous-normalized action space
+        if self.env.action_type == 'continuous-normalized':
+            self.target_point = (
+                2 * target_point_normalized[0] - 1,
+                2 * target_point_normalized[1] - 1
+            )
+        else: self.target_point = target_point_normalized
+
+        self.action = (self.target_point[0], self.target_point[1])
+        print(f'Target point {self.action}')
+        return self.action
+
+
     def act(self):
         """
         Determine and return the next action for the agent

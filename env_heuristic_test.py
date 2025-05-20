@@ -51,7 +51,7 @@ if __name__ == "__main__":
         observation, info = env.reset()
 
         while not (terminated or truncated):  # main game loop
-            agent_action = agent0_policy.act()
+            agent_action = agent0_policy.new_act()
             #print(f'Agent action: {agent_action}')
             #actions[0] = agent_action
             actions = np.array(agent_action)
