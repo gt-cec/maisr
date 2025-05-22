@@ -56,8 +56,9 @@ if __name__ == "__main__":
             print(f"Error loading {json_file}: {e}")
     print(f"Total PTI sequences loaded: {len(pti_list)}")
 
-
+    run_number = 0
     for pti in pti_list:
+        run_number += 1
         terminated, truncated = False, False
         reward_list = []
 

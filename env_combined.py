@@ -402,6 +402,7 @@ class MAISREnvVec(gym.Env):
             self.agent_location_history.append(current_position)
 
         else:
+            print(f'Agent took action {self.agents[0].waypoint_override}. Location history appended {(self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y)}')
             self.action_history.append(self.agents[0].waypoint_override)
             self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
