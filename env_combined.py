@@ -243,6 +243,10 @@ class MAISREnvVec(gym.Env):
         if self.config['use_curriculum'] == True:
             self.load_difficulty()
 
+        if self.tag == 'pti_test':
+            np.random.seed(42)
+            random.seed(42)
+
         if self.use_beginner_levels:
             seed_list = [42, 123, 456, 789, 101] # List of seeds to cycle through
             current_seed_index = self.episode_counter % len(seed_list)
@@ -517,7 +521,9 @@ class MAISREnvVec(gym.Env):
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
-            #self.save_action_history_plot()
+            if self.tag == 'pti_test':
+                self.save_action_history_plot()
+
             if self.tag in ['eval', 'train_mp0']:
                 if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
                         self.save_action_history_plot()
