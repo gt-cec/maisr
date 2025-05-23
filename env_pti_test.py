@@ -9,7 +9,6 @@ from env_combined import MAISREnvVec
 from new_heuristic_policy import AutonomousPolicy
 from gui import *
 from utility.data_logging import GameLogger, load_env_config
-from config import x, y, config_dict, run_order, surveys_enabled, times
 
 
 if __name__ == "__main__":
