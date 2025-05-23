@@ -402,7 +402,7 @@ class MAISREnvVec(gym.Env):
             self.agent_location_history.append(current_position)
 
         else:
-            print(f'Agent took action {self.agents[0].waypoint_override}. Location history appended {(self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y)}')
+            #print(f'Agent took action {self.agents[0].waypoint_override}. Location history appended {(self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y)}')
             self.action_history.append(self.agents[0].waypoint_override)
             self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
@@ -643,6 +643,7 @@ class MAISREnvVec(gym.Env):
             self.comm_messages.pop(0)
 
     def render(self):
+
         if (self.render_mode == 'headless'): # and (not self.obs_type == 'pixel'): # Do not render if in headless mode
             pass
 
@@ -1234,7 +1235,7 @@ class MAISREnvVec(gym.Env):
 
         return waypoint#, id_method
 
-    def save_action_history_plot(self):
+    def save_action_history_plot(self, note = ''):
         try:
             import matplotlib.pyplot as plt
             import matplotlib
@@ -1246,8 +1247,10 @@ class MAISREnvVec(gym.Env):
             os.makedirs('./action_histories', exist_ok=True)
 
             # Extract agent location history
+            # agent_x_coords = [pos[0] for pos in self.agent_location_history]
+            # agent_y_coords = [pos[1] for pos in self.agent_location_history]
             agent_x_coords = [pos[0] for pos in self.agent_location_history]
-            agent_y_coords = [pos[1] for pos in self.agent_location_history]
+            agent_y_coords = [self.config["gameboard_size"] - pos[1] for pos in self.agent_location_history]  # Flip Y
 
             # Create a new figure
             plt.figure(figsize=(10, 10))
@@ -1258,8 +1261,10 @@ class MAISREnvVec(gym.Env):
 
             # Plot targets
             for i in range(self.num_targets):
+                #target_x = self.targets[i, 3]
+                #target_y = self.targets[i, 4]
                 target_x = self.targets[i, 3]
-                target_y = self.targets[i, 4]
+                target_y = self.config["gameboard_size"] - self.targets[i, 4]  # Flip Y
 
                 size_factor = 1000 / self.config["gameboard_size"]  # Assuming 1000 was the original reference size
                 marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
@@ -1276,8 +1281,10 @@ class MAISREnvVec(gym.Env):
             # Only plot waypoint history for waypoint-based action types
             if self.action_type != 'direct-control':
                 # Extract x and y coordinates from action history (waypoints)
+                #x_coords = [action[0] for action in self.action_history]
+                #y_coords = [action[1] for action in self.action_history]
                 x_coords = [action[0] for action in self.action_history]
-                y_coords = [action[1] for action in self.action_history]
+                y_coords = [self.config["gameboard_size"] - action[1] for action in self.action_history]  # Flip Y
 
                 # Plot waypoint history (action history) as a line with points
                 if x_coords and y_coords:
@@ -1319,7 +1326,7 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard_size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories//{self.run_name}/{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
+            filename = f'./action_histories//{self.run_name}/{note}{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
