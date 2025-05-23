@@ -43,7 +43,7 @@ if __name__ == "__main__":
     agent0_policy = AutonomousPolicy(env, agent0_id)
 
     # Load pti jsons
-    pti_list = []
+    pti_list = [] # TODO convert to a dict so we can name the runs
     pti_folder = './ptis/'
 
     for json_file in glob.glob(os.path.join(pti_folder, '*.json')):
