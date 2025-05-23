@@ -309,7 +309,7 @@ class MAISREnvVec(gym.Env):
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         #self.agent_idx = self.aircraft_ids[0]
-        print(f'Aircraft IDs: {self.aircraft_ids}')
+        #print(f'Aircraft IDs: {self.aircraft_ids}')
         if self.num_agents == 2: # TODO Delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
@@ -489,9 +489,9 @@ class MAISREnvVec(gym.Env):
 
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
-        if self.all_targets_identified:
-            print(self.all_targets_identified)
-            print(f'DEBUG: self.all_targets_identified = {self.all_targets_identified}; self.targets_identified = {self.targets_identified}')
+        #if self.all_targets_identified:
+            #print(self.all_targets_identified)
+            #print(f'DEBUG: self.all_targets_identified = {self.all_targets_identified}; self.targets_identified = {self.targets_identified}')
 
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
@@ -502,7 +502,7 @@ class MAISREnvVec(gym.Env):
             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = (self.time_limit - self.display_time / 1000)
 
-        if self.display_time / 1000 >= self.time_limit:
+        if self.step_count_outer >= 490 or self.display_time / 1000 >= self.time_limit: # TODO: Temporarily hard-coding 490 steps
             #print('TERMINATED: TIME UP')
             self.terminated = True
 
@@ -1350,7 +1350,8 @@ class MAISREnvVec(gym.Env):
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
-            self.shaping_time_penalty = 0
+            #self.shaping_time_penalty = 0 TODO
+            self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         if self.difficulty == 1:
             self.config['gameboard_size'] = 300
