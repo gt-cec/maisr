@@ -61,8 +61,8 @@ if __name__ == "__main__":
     run_number = 0
     for pti_name, pti_sequence in pti_dict.items():
 
-        pti_name = 'pti_greedy' # TODO temp
-        pti_sequence = pti_dict[pti_name]
+        #pti_name = 'pti_circle' # TODO temp
+        #pti_sequence = pti_dict[pti_name]
 
         run_number += 1
         terminated, truncated = False, False
@@ -74,10 +74,8 @@ if __name__ == "__main__":
 
         print(f"Running PTI sequence: {pti_name}")
 
-        init = True
+        init = False
         while not (terminated or truncated) and len(current_sequence) > 0:  # main game loop
-
-
             if pti_name in ['pti_greedy', 'pti_circle']:
                 actions = np.array(current_sequence.pop(0))
             elif pti_name == 'pti_random':
@@ -103,6 +101,8 @@ if __name__ == "__main__":
 
         if len(current_sequence) == 0 and not (terminated or truncated):
             print(f"Warning: Ran out of actions in sequence for {pti_name}")
+            print(
+                f'Out of actions, reward {round(info['episode']['r'], 3)}, outer steps {env.step_count_outer}, inner timesteps {info['episode']['l']}, score {env.score} | {env.targets_identified} low quality | {env.detections} detections | {round(env.time_limit - env.display_time / 1000, 1)} secs left')
 
         env.save_action_history_plot(note=pti_name)
         round_reward = sum(reward_list)

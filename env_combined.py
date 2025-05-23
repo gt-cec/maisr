@@ -684,10 +684,10 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard_size"] // 2),(self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
 
         # Draw white rectangles around outside edge
-        pygame.draw.rect(self.window, (255,255,255),(0,0,game_width,35)) # Top
-        pygame.draw.rect(self.window, (255,255,255), (0, game_width-33, game_width, 33)) # bottom
-        pygame.draw.rect(self.window, (255,255,255), (0, 0, 35, game_width))  # Left
-        pygame.draw.rect(self.window, (255,255,255), (1000-33, 0, 35, game_width-2))  # Right
+        # pygame.draw.rect(self.window, (255,255,255),(0,0,game_width,35)) # Top
+        # pygame.draw.rect(self.window, (255,255,255), (0, game_width-33, game_width, 33)) # bottom
+        # pygame.draw.rect(self.window, (255,255,255), (0, 0, 35, game_width))  # Left
+        # pygame.draw.rect(self.window, (255,255,255), (1000-33, 0, 35, game_width-2))  # Right
 
         # Handle damage flashes when human is damaged
         if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
@@ -906,8 +906,8 @@ class MAISREnvVec(gym.Env):
             self.window.blit(pause_text, text_rect)
             self.window.blit(pause_subtext, pause_sub_rect)
 
-        if self.terminated or self.truncated:
-            self._render_game_complete()
+        #if self.terminated or self.truncated:
+            #self._render_game_complete() TODO temp removed
 
         pygame.display.update()
         self.clock.tick(60)
