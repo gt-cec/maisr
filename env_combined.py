@@ -568,38 +568,42 @@ class MAISREnvVec(gym.Env):
 
     def get_observation(self):
         """
-        State will include the following features (current count is ):
-            # Agent and basic game info (8 features):
-            0 agent_x,             # (0-1) (discretize map into 100x100 grid, then normalize)
-            1 agent_y,             # (0-1)
+        State will include the following features:
+            Absolute mode:
+                0 agent_x,             # (0-1) normalized position
+                1 agent_y,             # (0-1) normalized position
+                2+i*3 info_level       # 0 for no info, 0.5 for low quality info, 1.0 for full info
+                3+i*3 target_x,        # (0-1) normalized position
+                4+i*3 target_y,        # (0-1) normalized position
 
-            # Target data (the following are repeated for all targets, for a max of 5*30 = 150 features)
-            2+i info_level           # 0 for no info, 0.5 for low quality info, 1.0 for full info
-            3+i target_x,            # (0-1)
-            4+i target_y,            # (0-1)
-            # TODO: Add binary flag for target_exists
-
-
-            # Handcrafted features, TBD
+            Relative mode:
+                0 agent_x,             # (0-1) normalized position (for reference)
+                1 agent_y,             # (0-1) normalized position (for reference)
+                2+i*3 info_level       # 0 for no info, 0.5 for low quality info, 1.0 for full info
+                3+i*3 rel_target_x,    # (-1 to 1) relative position from agent to target
+                4+i*3 rel_target_y,    # (-1 to 1) relative position from agent to target
         """
 
         if self.obs_type == 'absolute':
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-            self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"] # Agent x
-            self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"] # Agent y
+            # Agent position (normalized to [0,1])
+            self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
+            self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
 
             # Process target data
-            targets_per_entry = 3  # Each target has 5 features in the observation
+            targets_per_entry = 3  # Each target has 3 features in the observation
             target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
 
-            target_features[:self.num_targets, 0] = self.targets[:, 2] # Copy info levels (0=unknown, 0.5=low quality, 1.0=high quality)
-            target_features[:self.num_targets, 1] = self.targets[:, 3] / self.config["gameboard_size"]  # x position
-            target_features[:self.num_targets, 2] = self.targets[:, 4] / self.config["gameboard_size"]  # y position
+            target_features[:self.num_targets, 0] = self.targets[:, 2]  # info levels
+            target_features[:self.num_targets, 1] = self.targets[:, 3] / self.config[
+                "gameboard_size"]  # x position (normalized)
+            target_features[:self.num_targets, 2] = self.targets[:, 4] / self.config[
+                "gameboard_size"]  # y position (normalized)
 
-            target_start_idx = 2 # Insert all target features into the observation vector
-            self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
-
+            target_start_idx = 2
+            self.observation[
+            target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         elif self.obs_type == 'relative':
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
@@ -608,43 +612,37 @@ class MAISREnvVec(gym.Env):
             agent_x_norm = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
             agent_y_norm = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
 
-            # Store agent's absolute position
+            # Store agent's absolute position for reference (still useful for the agent)
             self.observation[0] = agent_x_norm
             self.observation[1] = agent_y_norm
 
             # Process target data with relative positions
-            targets_per_entry = 3  # Each target has 3 features in the observation
+            targets_per_entry = 3
             target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
 
             # Copy info levels
             target_features[:self.num_targets, 0] = self.targets[:, 2]
 
-            # Calculate relative positions (normalized to [-1, 1])
-            for i in range(self.num_targets):
-                # Get target normalized position
-                target_x_norm = self.targets[i, 3] / self.config["gameboard_size"]
-                target_y_norm = self.targets[i, 4] / self.config["gameboard_size"]
+            # Calculate relative positions for all targets at once (vectorized)
+            if self.num_targets > 0:
+                # Get all target normalized positions
+                target_x_norm = self.targets[:self.num_targets, 3] / self.config["gameboard_size"]
+                target_y_norm = self.targets[:self.num_targets, 4] / self.config["gameboard_size"]
 
-                # Calculate relative position (range from -1 to 1)
-                # This represents the vector from agent to target
-                rel_x = (target_x_norm - agent_x_norm) * 2  # Scale to [-1, 1]
-                rel_y = (target_y_norm - agent_y_norm) * 2  # Scale to [-1, 1]
+                # Calculate relative positions (normalized difference)
+                # This represents the vector from agent to target in normalized space
+                rel_x = target_x_norm - agent_x_norm  # Range: [-1, 1]
+                rel_y = target_y_norm - agent_y_norm  # Range: [-1, 1]
 
-                # Clip to ensure within range
-                rel_x = np.clip(rel_x, -1.0, 1.0)
-                rel_y = np.clip(rel_y, -1.0, 1.0)
-                target_features[i, 1] = rel_x
-                target_features[i, 2] = rel_y
+                target_features[:self.num_targets, 1] = rel_x
+                target_features[:self.num_targets, 2] = rel_y
 
+            target_start_idx = 2
+            self.observation[
+            target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
-            target_start_idx = 2  # Insert all target features into the observation vector
-            self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
-
-        else: raise ValueError('Unknown obs type')
-
-        #if self.init:
-            #print(f'OBS: Agent (x,y) = {self.observation[0], self.observation[1]}')
-            #print(f'Target 1 info level {self.observation[2]}, x {self.observation[3]}, y {self.observation[4]}')
+        else:
+            raise ValueError('Unknown obs type')
 
         return self.observation
 
