@@ -166,4 +166,6 @@ if __name__ == "__main__":
     # convert_json_to_excel('short.json', 'timestep_data.xlsx')
 
     # Enhanced conversion with summary
-    convert_json_to_excel_with_summary('oar_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.998_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.005_rew-prox-0.0015_rew-timepenalty--0.0_0530_1041_ep100.json', 'timestep_data_with_summary.xlsx')
+    convert_json_to_excel_with_summary(
+        'oar_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.998_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.005_rew-prox-0.0015_rew-timepenalty--0.0_0530_1405_ep2.json',
+        'timestep_data_with_summary.xlsx')

@@ -284,7 +284,8 @@ class MAISREnvVec(gym.Env):
         #print(f'gameboard_size is {self.config["gameboard_size"]}')
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
-        self.num_targets = min(self.max_targets, self.config['num targets'])  # If more than 30 targets specified, overwrite to 30
+        self.num_targets = min(self.max_targets, self.config['num_targets'])  # If more than 30 targets specified, overwrite to 30
+        print(f'Reseting env with {self.num_targets} targets')
 
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
         self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
@@ -1199,39 +1200,39 @@ class MAISREnvVec(gym.Env):
 
             waypoint = (float(x_coord), float(y_coord))
 
-        elif self.action_type == 'direct-control':
-            # Get current position
-            current_x = self.agents[self.aircraft_ids[0]].x
-            current_y = self.agents[self.aircraft_ids[0]].y
-
-            # Define movement step size
-            move_distance = self.config['game speed'] * self.config['human speed'] * 2
-
-            # Map discrete action to direction
-            direction_mapping = [
-                (0, -1),  # up
-                (0.7, -0.7),  # up-right
-                (1, 0),  # right
-                (0.7, 0.7),  # down-right
-                (0, 1),  # down
-                (-0.7, 0.7),  # down-left
-                (-1, 0),  # left
-                (-0.7, -0.7)  # up-left
-            ]
-
-            dx, dy = direction_mapping[action]
-
-            # Calculate new position
-            new_x = current_x + dx * move_distance
-            new_y = current_y + dy * move_distance
-
-            # Clip to ensure within boundaries
-            new_x = np.clip(new_x, 0, self.config["gameboard_size"])
-            new_y = np.clip(new_y, 0, self.config["gameboard_size"])
-
-            # No waypoint is needed, we'll directly update the agent's position
-            # But we still return a waypoint to be consistent with the interface
-            waypoint = (float(new_x), float(new_y))
+        # elif self.action_type == 'direct-control':
+        #     # Get current position
+        #     current_x = self.agents[self.aircraft_ids[0]].x
+        #     current_y = self.agents[self.aircraft_ids[0]].y
+        #
+        #     # Define movement step size
+        #     move_distance = self.config['game speed'] * self.config['human speed'] * 2
+        #
+        #     # Map discrete action to direction
+        #     direction_mapping = [
+        #         (0, -1),  # up
+        #         (0.7, -0.7),  # up-right
+        #         (1, 0),  # right
+        #         (0.7, 0.7),  # down-right
+        #         (0, 1),  # down
+        #         (-0.7, 0.7),  # down-left
+        #         (-1, 0),  # left
+        #         (-0.7, -0.7)  # up-left
+        #     ]
+        #
+        #     dx, dy = direction_mapping[action]
+        #
+        #     # Calculate new position
+        #     new_x = current_x + dx * move_distance
+        #     new_y = current_y + dy * move_distance
+        #
+        #     # Clip to ensure within boundaries
+        #     new_x = np.clip(new_x, 0, self.config["gameboard_size"])
+        #     new_y = np.clip(new_y, 0, self.config["gameboard_size"])
+        #
+        #     # No waypoint is needed, we'll directly update the agent's position
+        #     # But we still return a waypoint to be consistent with the interface
+        #     waypoint = (float(new_x), float(new_y))
 
         else:
             raise ValueError('Error in process_action: action type not recognized')
@@ -1346,10 +1347,11 @@ class MAISREnvVec(gym.Env):
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
     def load_difficulty(self):
+        # TODO make config use num targets
         """Method to update env parameters using the current difficulty setting"""
         if self.difficulty == 0:
             self.config['gameboard_size'] = 300
-            self.config['num targets'] = 10
+            #self.config['num targets'] = 1
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
             self.highval_target_ratio = 0
