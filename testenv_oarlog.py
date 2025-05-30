@@ -17,6 +17,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import BaseCallback
 
 from utility.data_logging import load_env_config
+from environment_logger import EnvironmentLogger, add_logging_to_env
 
 def generate_run_name(config):
     """Generate a standardized run name from configuration."""
@@ -238,6 +239,7 @@ def train(
 
     # Load env config
     env_config = load_env_config(env_config_filename)
+    print(f'env_config is a {type(env_config)}')
 
     n_envs = min(n_envs, multiprocessing.cpu_count())
     env_config['n_envs'] = n_envs
@@ -258,24 +260,25 @@ def train(
         monitor_gym=True,
     )
 
-    if n_envs > 1:
-        #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
-        print(f"Training with {n_envs} environments in parallel")
-
-        # Create environment creation functions for each process
-        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
-        env = SubprocVecEnv(env_fns)
-        env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-
-    else:
-        env = MAISREnvVec(
-            env_config,
-            None,
-            render_mode='headless',
-            tag='train',
-            run_name=run_name,
-        )
-        env = Monitor(env)
+    # if n_envs > 1:
+    #     #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
+    #     print(f"Training with {n_envs} environments in parallel")
+    #
+    #     # Create environment creation functions for each process
+    #     env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
+    #     env = SubprocVecEnv(env_fns)
+    #     env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    #
+    # else:
+    env = MAISREnvVec(
+        env_config,
+        None,
+        render_mode='headless',
+        tag='oar_test',
+        run_name=run_name,
+    )
+    #env = add_logging_to_env(env)
+    env = Monitor(env)
 
     eval_env = MAISREnvVec(
         env_config,

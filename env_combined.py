@@ -4,6 +4,10 @@ import numpy as np
 import pygame
 import random
 import agents
+
+import json
+import os
+
 from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
@@ -30,6 +34,7 @@ class MAISREnvVec(gym.Env):
 
 
         self.config = config
+        print(self.config)
         self.run_name = run_name
 
         self.use_buttons = False # TODO make configurable
@@ -39,8 +44,7 @@ class MAISREnvVec(gym.Env):
             np.random.seed(self.seed)
             random.seed(self.seed)
 
-        self.use_beginner_levels = self.config[
-            'use_beginner_levels']  # If true, the agent only sees 5 beginner levels to make early training easier
+        self.use_beginner_levels = self.config['use_beginner_levels']  # If true, the agent only sees 5 beginner levels to make early training easier
         self.difficulty = difficulty
 
         self.highval_target_ratio = 0 # TODO placeholder
@@ -63,7 +67,7 @@ class MAISREnvVec(gym.Env):
         if self.obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
         if self.action_type not in ['discrete-downsampled', 'continuous-normalized','direct-control']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
         # if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
-        if render_mode not in ['headless', 'human']: raise ValueError('Render mode must be headless or human')
+        if render_mode not in ['headless', 'human', 'rgb_array']: raise ValueError('Render mode must be headless, rgb_array, human')
 
         print(f'%% ENV INIT: {tag}, {self.obs_type} observations, {self.action_type} actions')
 
@@ -168,7 +172,7 @@ class MAISREnvVec(gym.Env):
         self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
         self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80,80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
 
-        if render_mode == 'human':
+        if render_mode in ['rgb_array', 'human']:
             self.window = window
             self.clock = clock
             self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
@@ -185,53 +189,54 @@ class MAISREnvVec(gym.Env):
             self.quadrant_button_height = 120
             self.autonomous_button_y = 590
 
-            # Initialize buttons
-            self.gameplan_button_color = (255, 120, 80)
-            self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
-            self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)
-            self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)
-            self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
-            self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
-            self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
-            self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
-            self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
-            self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
-            self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
+            if render_mode == 'human':
+                # Initialize buttons
+                self.gameplan_button_color = (255, 120, 80)
+                self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+                self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)
+                self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)
+                self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
+                self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
+                self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
+                self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
+                self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
+                self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+                self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
-            self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
-            self.human_quadrant = None
+                self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
+                self.human_quadrant = None
 
-            # Comm log
-            self.comm_messages = []
-            self.max_messages = 4
-            self.message_font = pygame.font.SysFont(None,30)
-            self.ai_color = self.AIRCRAFT_COLORS[0]
-            self.human_color = self.AIRCRAFT_COLORS[1]
+                # Comm log
+                self.comm_messages = []
+                self.max_messages = 4
+                self.message_font = pygame.font.SysFont(None,30)
+                self.ai_color = self.AIRCRAFT_COLORS[0]
+                self.human_color = self.AIRCRAFT_COLORS[1]
 
-            self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
-            #self.pause_start_time = 0
-            #self.total_pause_time = 0
-            self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
-            self.pause_font = pygame.font.SysFont(None, 74)
-            self.pause_subtitle_font = pygame.font.SysFont(None, 40)
+                self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
+                #self.pause_start_time = 0
+                #self.total_pause_time = 0
+                self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+                self.pause_font = pygame.font.SysFont(None, 74)
+                self.pause_subtitle_font = pygame.font.SysFont(None, 40)
 
-            # For visual damage flash
-            self.damage_flash_duration = 500  # Duration of flash in milliseconds
-            self.damage_flash_start = 0  # When the last damage was taken
-            self.damage_flash_alpha = 0  # Current opacity of flash effect
-            self.agent_damage_flash_start = 0
-            self.agent_damage_flash_alpha = 0
-            self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
+                # For visual damage flash
+                self.damage_flash_duration = 500  # Duration of flash in milliseconds
+                self.damage_flash_start = 0  # When the last damage was taken
+                self.damage_flash_alpha = 0  # Current opacity of flash effect
+                self.agent_damage_flash_start = 0
+                self.agent_damage_flash_alpha = 0
+                self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
 
-            # Calculate required height of agent status info
-            self.agent_info_height_req = 0
-            if self.config['show_low_level_goals']: self.agent_info_height_req += 1
-            if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
-            if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
-            if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
-                self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
+                # Calculate required height of agent status info
+                self.agent_info_height_req = 0
+                if self.config['show_low_level_goals']: self.agent_info_height_req += 1
+                if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
+                if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
+                if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
+                    self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
 
-            self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.time_limit)
+                self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
         self.episode_counter = 0
 
@@ -327,7 +332,7 @@ class MAISREnvVec(gym.Env):
         return self.observation, info
 
 
-    def step(self, actions:dict): # TODO untested
+    def step(self, actions:dict):
         total_reward = 0
         info = None
 
@@ -340,6 +345,12 @@ class MAISREnvVec(gym.Env):
             if self.terminated or self.truncated: break
 
         self.step_count_outer += 1
+
+        #print(self.episode_counter)
+
+        if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
+            self.save_oar(observation, actions, total_reward)
+
         return observation, total_reward, self.terminated, self.truncated, info
 
 
@@ -525,8 +536,12 @@ class MAISREnvVec(gym.Env):
             if self.tag == 'pti_test':
                 self.save_action_history_plot()
 
+            if self.tag == 'oar_test':
+                if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
+                    self.save_action_history_plot()
+
             if self.tag in ['eval', 'train_mp0']:
-                if self.episode_counter in [0, 1, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
+                if self.episode_counter in [0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
                         self.save_action_history_plot()
                 elif self.episode_counter % 500 == 0:
                     self.save_action_history_plot()
@@ -647,13 +662,13 @@ class MAISREnvVec(gym.Env):
         if (self.render_mode == 'headless'): # and (not self.obs_type == 'pixel'): # Do not render if in headless mode
             pass
 
-
         window_width, window_height = self.config['window_size'][0], self.config['window_size'][0]
         game_width = self.config["gameboard_size"]
         ui_width = window_width - game_width
 
-        if self.agent_info_height_req > 0: self.comm_pane_height = 220+self.agent_info_height_req
-        else: self.comm_pane_height = 10
+        if self.render_mode == 'human':
+            if self.agent_info_height_req > 0: self.comm_pane_height = 220+self.agent_info_height_req
+            else: self.comm_pane_height = 10
 
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
@@ -690,143 +705,131 @@ class MAISREnvVec(gym.Env):
         # pygame.draw.rect(self.window, (255,255,255), (1000-33, 0, 35, game_width-2))  # Right
 
         # Handle damage flashes when human is damaged
-        if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
-            progress = (current_time - self.damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
-            alpha = int(255 * (1 - progress))
-            border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
-            border_width = 50
-            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
-            pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
-            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
-            pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
-            pygame.draw.rect(border_surface, border_color, (
-            self.config["gameboard_size"] - border_width, 0, border_width,
-            self.config["gameboard_size"]))  # Right border
-            self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+        if self.render_mode == 'human':
+            if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
+                progress = (current_time - self.damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+                alpha = int(255 * (1 - progress))
+                border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
+                border_width = 50
+                border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+                pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
+                pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
+                pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
+                pygame.draw.rect(border_surface, border_color, (
+                self.config["gameboard_size"] - border_width, 0, border_width,
+                self.config["gameboard_size"]))  # Right border
+                self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-        # Handle flash when agent is damaged (TODO: Make this a different graphic)
-        if current_time > 1000 and (current_time - self.agent_damage_flash_start < self.damage_flash_duration):
-            progress = (current_time - self.agent_damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
-            alpha = int(255 * (1 - progress))
-            border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
-            border_width = 50
-            border_color = (255, 0, 0, alpha)  # Red with calculated alpha
-            pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
-            pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
-            pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
-            pygame.draw.rect(border_surface, border_color, (
-            self.config["gameboard_size"] - border_width, 0, border_width,
-            self.config["gameboard_size"]))  # Right border
-            self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+            # Handle flash when agent is damaged (TODO: Make this a different graphic)
+            if current_time > 1000 and (current_time - self.agent_damage_flash_start < self.damage_flash_duration):
+                progress = (current_time - self.agent_damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+                alpha = int(255 * (1 - progress))
+                border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
+                border_width = 50
+                border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+                pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
+                pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
+                pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
+                pygame.draw.rect(border_surface, border_color, (
+                self.config["gameboard_size"] - border_width, 0, border_width,
+                self.config["gameboard_size"]))  # Right border
+                self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-        # elif self.config['num aircraft'] > 1:
-        #     if self.agents[self.human_idx].health_points <= 3:
-        #         alpha = int(155)
-        #         border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
-        #         border_width = 35
-        #         border_color = (255, 0, 0, alpha)  # Red with calculated alpha
-        #         pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
-        #         pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
-        #         pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
-        #         pygame.draw.rect(border_surface, border_color, (self.config["gameboard_size"] - border_width, 0, border_width,self.config["gameboard_size"]))  # Right border
-        #         self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+            if self.use_buttons:
+                # Draw Agent Gameplan sub-window
+                self.quadrant_button_height = 120
+                self.gameplan_button_width = 180
 
-        if self.use_buttons:
-            # Draw Agent Gameplan sub-window
-            self.quadrant_button_height = 120
-            self.gameplan_button_width = 180
+                pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
+                gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
+                self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
 
-            pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
-            gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
-            self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
+                #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+                self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
+                self.manual_priorities_button.color = (50, 180, 180)
+                self.manual_priorities_button.draw(self.window)
 
-            #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
-            self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
-            self.manual_priorities_button.color = (50, 180, 180)
-            self.manual_priorities_button.draw(self.window)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
 
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
+                type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
+                self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
 
-            type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
-            self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
+                #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
+                self.target_id_button.is_latched = self.button_latch_dict['target_id']
+                self.target_id_button.color = self.gameplan_button_color
+                self.target_id_button.draw(self.window)
 
-            #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
-            self.target_id_button.is_latched = self.button_latch_dict['target_id']
-            self.target_id_button.color = self.gameplan_button_color
-            self.target_id_button.draw(self.window)
+                #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
+                self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
+                self.wez_id_button.color = self.gameplan_button_color
+                self.wez_id_button.draw(self.window)
 
-            #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
-            self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
-            self.wez_id_button.color = self.gameplan_button_color
-            self.wez_id_button.draw(self.window)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
 
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
+                search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
+                self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
 
-            search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
-            self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
+                self.NW_quad_button.is_latched = self.button_latch_dict['NW']
+                self.NW_quad_button.color = self.gameplan_button_color
+                self.NW_quad_button.draw(self.window)
 
-            self.NW_quad_button.is_latched = self.button_latch_dict['NW']
-            self.NW_quad_button.color = self.gameplan_button_color
-            self.NW_quad_button.draw(self.window)
+                self.NE_quad_button.is_latched = self.button_latch_dict['NE']
+                self.NE_quad_button.color = self.gameplan_button_color
+                self.NE_quad_button.draw(self.window)
 
-            self.NE_quad_button.is_latched = self.button_latch_dict['NE']
-            self.NE_quad_button.color = self.gameplan_button_color
-            self.NE_quad_button.draw(self.window)
+                self.SW_quad_button.is_latched = self.button_latch_dict['SW']
+                self.SW_quad_button.color = self.gameplan_button_color
+                self.SW_quad_button.draw(self.window)
 
-            self.SW_quad_button.is_latched = self.button_latch_dict['SW']
-            self.SW_quad_button.color = self.gameplan_button_color
-            self.SW_quad_button.draw(self.window)
+                self.SE_quad_button.is_latched = self.button_latch_dict['SE']
+                self.SE_quad_button.color = self.gameplan_button_color
+                self.SE_quad_button.draw(self.window)
 
-            self.SE_quad_button.is_latched = self.button_latch_dict['SE']
-            self.SE_quad_button.color = self.gameplan_button_color
-            self.SE_quad_button.draw(self.window)
+                self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
+                self.full_quad_button.is_latched = self.button_latch_dict['full']
+                self.full_quad_button.draw(self.window)
 
-            self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
-            self.full_quad_button.is_latched = self.button_latch_dict['full']
-            self.full_quad_button.draw(self.window)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
 
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
+                self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
+                self.waypoint_button.color = self.gameplan_button_color
+                self.waypoint_button.draw(self.window)
 
-            self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
-            self.waypoint_button.color = self.gameplan_button_color
-            self.waypoint_button.draw(self.window)
+                self.hold_button.is_latched = self.button_latch_dict['hold']
+                self.hold_button.color = self.gameplan_button_color
+                self.hold_button.draw(self.window)
 
-            self.hold_button.is_latched = self.button_latch_dict['hold']
-            self.hold_button.color = self.gameplan_button_color
-            self.hold_button.draw(self.window)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
 
-            pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
+                self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
+                self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
+                self.autonomous_button.color = (50, 180, 180)
+                self.autonomous_button.draw(self.window)
 
-            self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
-            self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
-            self.autonomous_button.color = (50, 180, 180)
-            self.autonomous_button.draw(self.window)
+                # Draw Comm Log
+                pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
+                pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
+                comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
+                self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
 
-            # Draw Comm Log
-            pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
-            pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
-            comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
-            self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
+                # Draw incoming comm log text
+                y_offset = self.comm_pane_height+50+680
+                for entry in self.comm_messages:
+                    message = entry[0]
+                    is_ai = entry[1]
+                    color = self.ai_color if is_ai else self.human_color
+                    message_surface = self.message_font.render(message, True, color)
+                    self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
+                    y_offset += 30  # Adjust this value to change spacing between messages
 
-            # Draw incoming comm log text
-            y_offset = self.comm_pane_height+50+680
-            for entry in self.comm_messages:
-                message = entry[0]
-                is_ai = entry[1]
-                color = self.ai_color if is_ai else self.human_color
-                message_surface = self.message_font.render(message, True, color)
-                self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
-                y_offset += 30  # Adjust this value to change spacing between messages
-
-            # Draw health boxes
-
-            agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
-            agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
-            agent0_health_window.draw(self.window)
+                # Draw health boxes
+                agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
+                agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
+                agent0_health_window.draw(self.window)
 
         # if self.config['num aircraft'] > 1:
         #     agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
@@ -842,75 +845,77 @@ class MAISREnvVec(gym.Env):
         # Draw agent status window
         #if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
-        corner_round_text = f"ROUND {self.round_number+1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
-        corner_round_font = pygame.font.SysFont(None, 36)
-        corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
-        corner_round_rect = corner_round_text_surface.get_rect(
-            center=(675, 1030))
-        self.window.blit(corner_round_text_surface, corner_round_rect)
+        if self.render_mode == 'human':
 
-        # Countdown from 5 seconds at start of game
-        if current_time <= self.start_countdown_time:
-            countdown_font = pygame.font.SysFont(None, 120)
-            message_font = pygame.font.SysFont(None, 60)
-            round_font = pygame.font.SysFont(None, 72)
-            countdown_start = 0
-            countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-            countdown_surface.set_alpha(128)  # 50% transparent
+            corner_round_text = f"ROUND {self.round_number + 1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+            corner_round_font = pygame.font.SysFont(None, 36)
+            corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
+            corner_round_rect = corner_round_text_surface.get_rect(
+                center=(675, 1030))
+            self.window.blit(corner_round_text_surface, corner_round_rect)
 
-            time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
+            # Countdown from 5 seconds at start of game
+            if current_time <= self.start_countdown_time:
+                countdown_font = pygame.font.SysFont(None, 120)
+                message_font = pygame.font.SysFont(None, 60)
+                round_font = pygame.font.SysFont(None, 72)
+                countdown_start = 0
+                countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                countdown_surface.set_alpha(128)  # 50% transparent
 
-            # Draw semi-transparent overlay
-            countdown_surface.fill((100, 100, 100))
-            self.window.blit(countdown_surface, (0, 0))
+                time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
 
-            # Draw round name
-            if self.user_group == 'test':
-                round_text = f"ROUND {self.round_number+1}/4"
-            else:
-                if self.round_number == 0: round_text = "TRAINING ROUND"
-                else: round_text = f"ROUND {self.round_number}/4"
-            round_text_surface = round_font.render(round_text, True, (255, 255, 255))
-            round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
-            self.window.blit(round_text_surface, round_rect)
+                # Draw semi-transparent overlay
+                countdown_surface.fill((100, 100, 100))
+                self.window.blit(countdown_surface, (0, 0))
 
-            # Draw "Get Ready!" message
-            ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
-            ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
-            self.window.blit(ready_text, ready_rect)
+                # Draw round name
+                if self.user_group == 'test':
+                    round_text = f"ROUND {self.round_number+1}/4"
+                else:
+                    if self.round_number == 0: round_text = "TRAINING ROUND"
+                    else: round_text = f"ROUND {self.round_number}/4"
+                round_text_surface = round_font.render(round_text, True, (255, 255, 255))
+                round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
+                self.window.blit(round_text_surface, round_rect)
 
-            # Draw countdown number
-            countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
-            text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
-            self.window.blit(countdown_text, text_rect)
+                # Draw "Get Ready!" message
+                ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
+                ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
+                self.window.blit(ready_text, ready_rect)
 
-            pygame.time.wait(50)  # Control update rate
+                # Draw countdown number
+                countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+                text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
+                self.window.blit(countdown_text, text_rect)
 
-            # Handle any quit events during countdown
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    return
+                pygame.time.wait(50)  # Control update rate
 
-        if self.paused and not self.unpause_countdown:
-            pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-            pause_surface.set_alpha(128*2)  # 50% transparent
-            pause_surface.fill((100, 100, 100))  # Gray color
-            self.window.blit(pause_surface, (0, 0))
+                # Handle any quit events during countdown
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        return
 
-            pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
-            pause_subtext = self.pause_subtitle_font.render('[RIGHT CLICK TO UNPAUSE]', True, (255, 255, 255))
-            text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
-            pause_sub_rect = pause_subtext.get_rect(center=(self.window.get_width() // 2, (self.window.get_height() // 2) + 45))
+            if self.paused and not self.unpause_countdown:
+                pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                pause_surface.set_alpha(128*2)  # 50% transparent
+                pause_surface.fill((100, 100, 100))  # Gray color
+                self.window.blit(pause_surface, (0, 0))
 
-            self.window.blit(pause_text, text_rect)
-            self.window.blit(pause_subtext, pause_sub_rect)
+                pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
+                pause_subtext = self.pause_subtitle_font.render('[RIGHT CLICK TO UNPAUSE]', True, (255, 255, 255))
+                text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
+                pause_sub_rect = pause_subtext.get_rect(center=(self.window.get_width() // 2, (self.window.get_height() // 2) + 45))
+
+                self.window.blit(pause_text, text_rect)
+                self.window.blit(pause_subtext, pause_sub_rect)
 
         #if self.terminated or self.truncated:
             #self._render_game_complete() TODO temp removed
 
         pygame.display.update()
-        self.clock.tick(60)
+        if self.render_mode == 'human': self.clock.tick(60)
 
     def close(self):
         if self.render_mode == 'human' and pygame.get_init():
@@ -1244,7 +1249,7 @@ class MAISREnvVec(gym.Env):
             import os
 
             # Create directory if it doesn't exist
-            os.makedirs('./action_histories', exist_ok=True)
+            os.makedirs(f'logs/action_histories_new/{self.run_name}', exist_ok=True)
 
             # Extract agent location history
             # agent_x_coords = [pos[0] for pos in self.agent_location_history]
@@ -1326,7 +1331,7 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=self.config["gameboard_size"] / 2, color='black', linestyle='-', alpha=0.3)
 
             # Save the figure with a timestamp
-            filename = f'./action_histories//{self.run_name}/{note}{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
+            filename = f'logs/action_histories_new/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
@@ -1407,3 +1412,40 @@ class MAISREnvVec(gym.Env):
             self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         #print(f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard_size"]}, targets {self.config['num targets']}')
+
+    def save_oar(self, observation, actions, reward):
+        """Save O, A, and R to a json at each timestep"""
+
+        # Create directory if it doesn't exist
+        os.makedirs('logs/oar_logs', exist_ok=True)
+
+        # Create filename based on run_name and episode
+        filename = f'logs/oar_logs/oar_{self.run_name}_ep{self.episode_counter}.json'
+
+        # Create the data entry for this timestep
+
+        raw_action = actions.tolist() if hasattr(actions, 'tolist') else actions
+        processed_action = self.process_action(raw_action)
+
+        timestep_data = {
+            'timestep': self.step_count_outer,
+            'observation': observation.tolist() if hasattr(observation, 'tolist') else observation,
+            'raw actions': raw_action,
+            'processed actions': processed_action,
+            'reward': float(reward)
+        }
+
+        # Load existing data or create new structure
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                data = json.load(f)
+        else:
+            #print('Initializing json')
+            data = {'episode': self.episode_counter, 'timesteps': []}
+
+        # Add new timestep data
+        data['timesteps'].append(timestep_data)
+
+        # Save back to file
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=2)
