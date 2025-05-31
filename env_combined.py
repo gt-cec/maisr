@@ -285,7 +285,6 @@ class MAISREnvVec(gym.Env):
 
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.num_targets = min(self.max_targets, self.config['num_targets'])  # If more than 30 targets specified, overwrite to 30
-        print(f'Reseting env with {self.num_targets} targets')
 
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
         self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
@@ -349,7 +348,7 @@ class MAISREnvVec(gym.Env):
 
         #print(self.episode_counter)
 
-        if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
+        if self.tag == 'oar_test' and self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
             self.save_oar(observation, actions, total_reward)
 
         return observation, total_reward, self.terminated, self.truncated, info
