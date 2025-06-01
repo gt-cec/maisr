@@ -38,7 +38,7 @@ def generate_run_name(config):
         f"rew-wtn-{config['shaping_coeff_wtn']}",
         f"rew-prox-{config['shaping_coeff_prox']}",
         f"rew-timepenalty-{config['shaping_time_penalty']}",
-        #f"rew-shapedecay-{config['shaping_decay_rate']}",
+        # f"rew-shapedecay-{config['shaping_decay_rate']}",
     ])
 
     # Add a run identifier (could be auto-incremented or timestamp-based)
@@ -59,7 +59,7 @@ class EnhancedWandbCallback(BaseCallback):
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name = 'no_name'):
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name'):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
@@ -68,7 +68,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
-        self.max_ep_len_to_advance = 10000 # TODO make configurable
+        self.max_ep_len_to_advance = 10000  # TODO make configurable
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0  # Tracks how many evals in a row that the agent scores above the threshold to advance to next curriculum level. If >= 3, difficutly is updated. Resets if the agent scores less than 8
@@ -120,7 +120,7 @@ class EnhancedWandbCallback(BaseCallback):
 
             for i in range(self.n_eval_episodes):
                 obs, _ = self.eval_env.reset()
-                #obs = self.eval_env.reset() # TODO TESTING
+                # obs = self.eval_env.reset() # TODO TESTING
                 terminated = False
                 truncated = False
                 ep_reward = 0
@@ -128,7 +128,7 @@ class EnhancedWandbCallback(BaseCallback):
                 while not (terminated or truncated):
                     action, _ = self.model.predict(obs, deterministic=True)
                     obs, reward, terminated, truncated, info = self.eval_env.step(action)
-                    #obs, rewards, dones, infos = self.eval_env.step(action)
+                    # obs, rewards, dones, infos = self.eval_env.step(action)
                     ep_reward += reward
 
                 # Collect target_ids from the info dict
@@ -196,6 +196,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     Callable function that creates a MAISR environment. This function is passed to the vectorized environment
     instantiation in train()
     """
+
     def _init():
         env = MAISREnvVec(
             config=env_config,
@@ -214,10 +215,11 @@ def make_env(env_config, rank, seed, run_name='no_name'):
 def train(
         env_config_filename,
         n_envs,
+        project_name,
         save_dir="./trained_models/",
         load_path=None,
         log_dir="./logs/",
-        machine_name='machine'
+        machine_name='machine',
 ):
     """
     Main training pipeline. Does the following:
@@ -245,22 +247,22 @@ def train(
 
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
-    os.makedirs('./logs/action_histories/'+run_name, exist_ok=True)
+    os.makedirs('./logs/action_histories/' + run_name, exist_ok=True)
 
     run = wandb.init(
-        project="maisr-rl",
-        name=f'{machine_name}_{n_envs}envs'+run_name,
+        project=project_name,
+        name=f'{machine_name}_{n_envs}envs' + run_name,
         config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
     )
 
     if n_envs > 1:
-        #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
+        # n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
         print(f"Training with {n_envs} environments in parallel")
 
         # Create environment creation functions for each process
-        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
+        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
 
@@ -319,7 +321,6 @@ def train(
     else:
         print('Training new model')
 
-
     print('##################################### Beginning agent training... #######################################\n')
 
     # Log initial difficulty
@@ -331,7 +332,6 @@ def train(
         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
         reset_num_timesteps=True if load_path else False  # TODO check this
     )
-
 
     print('########################################## TRAINING COMPLETE ############################################\n')
     env.close()
@@ -361,10 +361,12 @@ if __name__ == "__main__":
     ]
 
     # Specify a checkpoint to load here
-    load_path = None #'./trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
+    load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
 
     # Get machine name to add to run name
     machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'pace'
+    project_name = 'maisr-rl' if machine_name == 'home' else 'maisr-rl-pace'
+    print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
     print('\n################################################################################')
     print('################################################################################')
@@ -375,7 +377,8 @@ if __name__ == "__main__":
     for config_filename in config_list:
         train(
             config_filename,
-            n_envs = multiprocessing.cpu_count(),
-            load_path = load_path, # Replace with absolute path to the checkpoint to load
-            machine_name = machine_name
+            n_envs=multiprocessing.cpu_count(),
+            load_path=load_path,  # Replace with absolute path to the checkpoint to load
+            machine_name=machine_name,
+            project_name=project_name
         )
