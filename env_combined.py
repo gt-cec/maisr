@@ -26,17 +26,15 @@ class MAISREnvVec(gym.Env):
                  tag='none',
                  run_name='no name',
                  seed=None,
-                 difficulty=0,  # Used for curriculum learning (TODO not used yet)
+                 difficulty=0,  # Used for curriculum learning
                  subject_id='999', user_group='99', round_number='99'):
 
         super().__init__()
 
-
-
         self.config = config
         self.run_name = run_name
 
-        self.use_buttons = False # TODO make configurable
+        self.use_buttons = False # TODO make configurable in config
 
         self.seed = seed
         if self.seed is not None:
@@ -46,7 +44,7 @@ class MAISREnvVec(gym.Env):
         self.use_beginner_levels = self.config['use_beginner_levels']  # If true, the agent only sees 5 beginner levels to make early training easier
         self.difficulty = difficulty
 
-        self.highval_target_ratio = 0 # TODO placeholder
+        self.highval_target_ratio = 0 # TODO make configurable in config
 
         self.tag = tag
         self.verbose = True if self.config['verbose'] == 'true' else False

@@ -360,7 +360,11 @@ if __name__ == "__main__":
         './config_files/rl_training_default.json'
     ]
 
+    # Specify a checkpoint to load here
     load_path = None #'./trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
+
+    # Get machine name to add to run name
+    machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'pace'
 
     print('\n################################################################################')
     print('################################################################################')
@@ -371,7 +375,7 @@ if __name__ == "__main__":
     for config_filename in config_list:
         train(
             config_filename,
-            n_envs=multiprocessing.cpu_count(),
+            n_envs = multiprocessing.cpu_count(),
             load_path = load_path, # Replace with absolute path to the checkpoint to load
-            machine_name = socket.gethostname()
+            machine_name = machine_name
         )
