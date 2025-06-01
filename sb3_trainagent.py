@@ -1,6 +1,9 @@
-import gymnasium as gym
+import warnings
+warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
+
 import os
 import numpy as np
+import gymnasium as gym
 import multiprocessing
 import socket
 
