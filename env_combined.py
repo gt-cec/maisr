@@ -520,7 +520,7 @@ class MAISREnvVec(gym.Env):
         # Calculate reward
         reward = self.get_reward(new_reward) # For agent
         self.score += new_score # For human
-        observation = self.get_observation() # Get observation
+        self.observation = self.get_observation() # Get observation
         self.ep_reward += reward
 
         info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
@@ -553,7 +553,7 @@ class MAISREnvVec(gym.Env):
         elif not self.paused: self.display_time = pygame.time.get_ticks() - self.total_pause_time
         if self.init: self.init = False
 
-        return observation, reward, self.terminated, self.truncated, info
+        return self.observation, reward, self.terminated, self.truncated, info
 
     def get_reward(self, new_reward):
 

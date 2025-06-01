@@ -20,15 +20,68 @@ from sb3_trainagent import make_env
 """
 """
 
-def heuristic_policy(observations):
-    # https://claude.ai/chat/1e42d7aa-e595-4991-9e29-6438d53c62d7
-    # TODO calculate nearest target in the observation and return action to that target
 
-    return action
+def heuristic_policy(observation):
+    # TODO vectorize (https://claude.ai/chat/9e0aa009-e9be-48b2-bc46-3192cd2dd1ee)
+    """
+    Heuristic policy that selects the closest unidentified target.
+
+    Args:
+        observation (np.ndarray): Observation vector in absolute format
+            - observation[0]: agent_x (normalized 0-1)
+            - observation[1]: agent_y (normalized 0-1)
+            - observation[2+i*3]: target_i info_level (0=unknown, 0.5=low_qual, 1.0=identified)
+            - observation[3+i*3]: target_i x position (normalized 0-1)
+            - observation[4+i*3]: target_i y position (normalized 0-1)
+
+    Returns:
+        np.ndarray: Action as [x, y] coordinates in normalized range [-1, 1]
+    """
+
+    # Extract agent position
+    agent_x = observation[0]
+    agent_y = observation[1]
+
+    # Calculate maximum number of targets based on observation size
+    # obs_size = 2 + 3 * max_targets, so max_targets = (obs_size - 2) / 3
+    max_targets = (len(observation) - 2) // 3
+
+    closest_distance = float('inf')
+    closest_target_x = agent_x  # Default to current position
+    closest_target_y = agent_y
+
+    # Iterate through all possible targets
+    for i in range(max_targets):
+        info_level_idx = 2 + i * 3
+        target_x_idx = 3 + i * 3
+        target_y_idx = 4 + i * 3
+
+        # Check if this target slot has data (info_level > 0 or position != 0)
+        info_level = observation[info_level_idx]
+        target_x = observation[target_x_idx]
+        target_y = observation[target_y_idx]
+
+        # Skip if target doesn't exist (all zeros) or is already fully identified
+        if (target_x == 0 and target_y == 0) or info_level >= 1.0:
+            continue
+
+        # Calculate distance to this target
+        distance = np.sqrt((target_x - agent_x) ** 2 + (target_y - agent_y) ** 2)
+
+        # Update closest target if this one is closer
+        if distance < closest_distance:
+            closest_distance = distance
+            closest_target_x = target_x
+            closest_target_y = target_y
+
+    # Convert from normalized [0,1] coordinates to action space [-1,1]
+    action_x = closest_target_x * 2 - 1  # Convert 0-1 to -1 to 1
+    action_y = closest_target_y * 2 - 1  # Convert 0-1 to -1 to 1
+
+    return np.array([action_x, action_y], dtype=np.float32)
 
 
-
-def behavior_cloning_pipeline(heuristic_policy, env_config, n_episodes=50, n_epochs=10, run_name = 'none', save_expert_trajectory = True):
+def behavior_cloning_pipeline(expert_policy, env_config, n_episodes=50, n_epochs=10, run_name = 'none', save_expert_trajectory = True):
     """
     Complete behavior cloning pipeline:
     1. Load heuristic policy
@@ -36,7 +89,7 @@ def behavior_cloning_pipeline(heuristic_policy, env_config, n_episodes=50, n_epo
     3. Train BC policy
 
     Args:
-        heuristic_policy: Policy object with .act(observation) method
+        expert_policy: Policy function that takes in an observation and returns an action
         env_name: Gymnasium environment name
         n_episodes: Number of episodes to collect from expert
         n_epochs: Number of training epochs for BC
@@ -86,20 +139,6 @@ def behavior_cloning_pipeline(heuristic_policy, env_config, n_episodes=50, n_epo
         rng=rng
     )
 
-    # learning_model = PPO(
-    #     "MlpPolicy",
-    #     env,
-    #     verbose=1,
-    #     tensorboard_log=f"logs/runs/{run.id}",
-    #     batch_size=env_config['batch_size'],  # * n_envs,  # Scale batch size with number of environments TODO testing
-    #     n_steps=env_config['ppo_update_steps'],  # // n_envs,  # Adjust steps per environment TODO testing
-    #     learning_rate=env_config['lr'],
-    #     seed=env_config['seed'],
-    #     device='cpu',
-    #     gamma=env_config['gamma']
-    # )
-
-    # TODO: Modify this to train a policy and save it
     # Train the BC policy
     print(f"Training behavior cloning policy for {n_epochs} epochs...")
     bc_trainer.train(n_epochs=n_epochs)
@@ -110,6 +149,7 @@ def behavior_cloning_pipeline(heuristic_policy, env_config, n_episodes=50, n_epo
 
     return trained_policy
 
+
 if __name__ == "__main__":
     config_name = './config_files/rl_training_timepenalty.json'
     run_name = 'bc_test'
@@ -118,15 +158,35 @@ if __name__ == "__main__":
 
     # Create temporary environment to get action space
     temp_env = DummyVecEnv([make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(1)])
-    heuristic_policy = # TODO needs to be a callable function that takes in obs (ndarray) and returns ndarray of actions
     temp_env.close()
 
     # Run the behavior cloning pipeline
     trained_policy = behavior_cloning_pipeline(
-        heuristic_policy=heuristic_policy,
+        expert_policy=heuristic_policy,
         env_config=env_config,
         n_episodes=2000,
         n_epochs=10,
         run_name = run_name,
         save_expert_trajectory = True
     )
+
+
+    ####################################### Save the model for later use #######################################
+
+    env = DummyVecEnv([make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(1)])
+
+    ppo_model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        learning_rate=env_config.get('lr', 3e-4),
+        seed=env_config.get('seed', 42),
+        device='cpu',
+        gamma=env_config.get('gamma', 0.99)
+    )
+
+    # Replace the PPO policy with the trained BC policy
+    ppo_model.policy = trained_policy
+
+    # Save using SB3 format
+    ppo_model.save(f"./bc_models/bc_policy")
