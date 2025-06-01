@@ -34,7 +34,6 @@ class MAISREnvVec(gym.Env):
 
 
         self.config = config
-        print(self.config)
         self.run_name = run_name
 
         self.use_buttons = False # TODO make configurable
@@ -69,7 +68,7 @@ class MAISREnvVec(gym.Env):
         # if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
         if render_mode not in ['headless', 'human', 'rgb_array']: raise ValueError('Render mode must be headless, rgb_array, human')
 
-        print(f'%% ENV INIT: {tag}, {self.obs_type} observations, {self.action_type} actions')
+        print(f'Env initialized: Tag={tag}, obs_type={self.obs_type}, action_type={self.action_type}')
 
         self.num_agents = num_agents
 

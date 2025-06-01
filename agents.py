@@ -4,7 +4,6 @@ import pygame  # for rendering
 import math  # for math functions
 import random  # for random number generation
 import numpy as np
-from autonomous_policy import AutonomousPolicy
 
 
 # generic agent class

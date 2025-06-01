@@ -1,32 +1,28 @@
 import gymnasium as gym
 import os
 import numpy as np
-from sympy.physics.units import action
 import multiprocessing
-from typing import Dict, List, Tuple, Any
+import socket
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
-from stable_baselines3 import PPO, A2C, DQN
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import BaseCallback
 
+from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
 
-def generate_run_name(config):
-    """Generate a standardized run name from configuration."""
-    # Core components that should always be included
 
-    # name='tr9_framestack'+str(frame_skip)+'_'+str(n_envs)+'envs'+'_act' + str(action_type) + '_obs' + str(obs_type) + '_lr' + str(lr) + '_batchSize' + str(batch_size)+'_ppoupdatesteps'+str(ppo_update_steps)+('_curriculum' if use_curriculum else ''),
-    # Things to add as args: n_envs, ppo_update_steps, use_curriculum
+def generate_run_name(config):
+    """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
+    history plots to make it easy to match them."""
 
     components = [
-        f"{n_envs}envs",
+        f"{config['n_envs']}envs",
         f"obs-{config['obs_type']}",
         f"act-{config['action_type']}",
     ]
@@ -54,8 +50,14 @@ def generate_run_name(config):
 
     return run_name
 
-# New callback with difficulty
+
 class EnhancedWandbCallback(BaseCallback):
+    """Custom Callback that:
+    1. Logs training metrics to WandB
+    2. Evaluates the agent periodically (also logged to WandB)
+    3. Determines if the agent should progress to the next stage of the training curriculum
+    """
+
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name = 'no_name'):
         super(EnhancedWandbCallback, self).__init__(verbose)
@@ -190,9 +192,11 @@ class EnhancedWandbCallback(BaseCallback):
 
 
 def make_env(env_config, rank, seed, run_name='no_name'):
+    """
+    Callable function that creates a MAISR environment. This function is passed to the vectorized environment
+    instantiation in train()
+    """
     def _init():
-        from env_combined import MAISREnvVec  # TODO combine non-simple env into this one
-
         env = MAISREnvVec(
             config=env_config,
             render_mode='headless',
@@ -214,41 +218,34 @@ def train(
         load_path=None,
         log_dir="./logs/",
         machine_name='machine'
-        #algo='PPO',
-        #policy_type="MlpPolicy",
-        #run_name='no name',
-        #lr=3e-4,
-        #batch_size=128,
-        #steps_per_episode=14703,
-        #ppo_update_steps=14703,
-        #num_timesteps=30e6,
-        #save_freq=14600 * 3,
-        #eval_freq=14600 * 2,
-        #n_eval_episodes=8,
-
-
-        #seed=42,
-        #frame_skip=1,
-        #use_curriculum=False,
-        #min_target_ids_to_advance=8,
-        #max_difficulty_level=5,
-        #gamma=0.998
 ):
-    from env_combined import MAISREnvVec
+    """
+    Main training pipeline. Does the following:
+    1. Loads training and env config from env_config filename
+    2. Sets up WandB for training logging
+    3. Instantiates environments (multiprocessed vectorized environments for traning, and 1 env for eval)
+    4. Instantiates training callbacks (WandB logging, checkpointing)
+    5. Sets up Stable-Baselines3 PPO training
+    6. Loads a prior checkpoint if provided
+    7. Runs PPO training and saves checkpoints and the final model
+    """
 
-    # Load env config
+    # Load env config into a dict
     env_config = load_env_config(env_config_filename)
 
+    # Make sure n_envs does not exceed CPU count
     n_envs = min(n_envs, multiprocessing.cpu_count())
+
+    # Add parameters to the config (so they can be tracked later)
     env_config['n_envs'] = n_envs
     env_config['config_filename'] = env_config_filename
 
-    # Generate run name (To be consistent between WandB, model saving, and action history plots
+    # Generate run name (To be consistent between WandB, model saving, and action history plots)
     run_name = generate_run_name(env_config)
 
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
-    os.makedirs('./action_histories/'+run_name, exist_ok=True)
+    os.makedirs('./logs/action_histories/'+run_name, exist_ok=True)
 
     run = wandb.init(
         project="maisr-rl",
@@ -285,13 +282,11 @@ def train(
         run_name=run_name,
     )
     eval_env = Monitor(eval_env)
-    #eval_env = DummyVecEnv([lambda: eval_env])  # Add this line
-
     print('Envs created')
 
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
-        save_freq=env_config['save_freq'] // n_envs,  # Adjust for number of environments
+        save_freq=env_config['save_freq'] // n_envs,
         save_path=f"{save_dir}/{run_name}",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
@@ -308,17 +303,16 @@ def train(
         env,
         verbose=1,
         tensorboard_log=f"logs/runs/{run.id}",
-        batch_size=env_config['batch_size'],  # * n_envs,  # Scale batch size with number of environments TODO testing
-        n_steps=env_config['ppo_update_steps'],  # // n_envs,  # Adjust steps per environment TODO testing
+        batch_size=env_config['batch_size'],
+        n_steps=env_config['ppo_update_steps'],
         learning_rate=env_config['lr'],
         seed=env_config['seed'],
         device='cpu',
         gamma=env_config['gamma']
     )
-
     print('Model instantiated')
 
-    # Check if there's a checkpoint to load
+    ################################################# Load checkpoint ##################################################
     if load_path:
         print(f'LOADING FROM {load_path}')
         model = model.__class__.load(load_path, env=env)
@@ -326,7 +320,7 @@ def train(
         print('Training new model')
 
 
-    print('####################################### Beginning agent training... #########################################\n')
+    print('##################################### Beginning agent training... #######################################\n')
 
     # Log initial difficulty
     run.log({"curriculum/difficulty_level": 0}, step=0)
@@ -335,11 +329,11 @@ def train(
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
-        reset_num_timesteps=True,  # Set to False when resuming training
+        reset_num_timesteps=True if load_path else False  # TODO check this
     )
 
 
-    print('####################################### TRAINING COMPLETE #########################################\n')
+    print('########################################## TRAINING COMPLETE ############################################\n')
     env.close()
     eval_env.close()
 
@@ -370,16 +364,14 @@ if __name__ == "__main__":
 
     print('\n################################################################################')
     print('################################################################################')
-    print(f'################## STARTING TRAINING RUN ##################')
+    print(f'############################ STARTING TRAINING RUN ############################')
     print('################################################################################')
     print('################################################################################')
 
-    n_envs = multiprocessing.cpu_count()
     for config_filename in config_list:
-
         train(
             config_filename,
-            n_envs,
+            n_envs=multiprocessing.cpu_count(),
             load_path = load_path, # Replace with absolute path to the checkpoint to load
-            machine_name = 'home'
+            machine_name = socket.gethostname()
         )
