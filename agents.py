@@ -13,10 +13,12 @@ class Agent:
         self.agent_idx = len(env.agents)
         env.agents.append(self)  # add agent to the environment
 
+        # Convert to centered coordinate system [-150, +150]
+        map_half_size = env.config['gameboard_size'] / 2
+        margin = env.config['gameboard_size'] * 0.03
 
-
-        self.x = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
-        self.y = random.randint(int(np.floor(env.config['gameboard_size']*0.03)), int(np.floor(env.config['gameboard_size']*0.97)))
+        self.x = random.uniform(-map_half_size + margin, map_half_size - margin)
+        self.y = random.uniform(-map_half_size + margin, map_half_size - margin)
 
         self.direction = 0
         self.initial_direction = initial_direction
@@ -31,7 +33,12 @@ class Agent:
 
     # draws the agent
     def draw(self, window, color_override=None):
-        pygame.draw.circle(window, self.color if color_override is None else color_override, (self.x, self.y), self.width)
+        # Convert from centered coordinates to screen coordinates
+        map_half_size = self.env.config['gameboard_size'] / 2
+        screen_x = self.x + map_half_size
+        screen_y = self.y + map_half_size
+        pygame.draw.circle(window, self.color if color_override is None else color_override,
+                           (int(screen_x), int(screen_y)), self.width)
 
     # move the agent towards the next waypoint
     def move(self):
@@ -82,34 +89,51 @@ class Aircraft(Agent):
         #self.base_speed = speed
 
     def draw(self, window):
-
         if self.is_visible:
-            # draw the aircraft
-            nose_point = (self.x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH, self.y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
-            tail_point = (self.x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH, self.y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
+            # Convert from centered coordinates to screen coordinates for rendering
+            map_half_size = self.env.config['gameboard_size'] / 2
+            screen_x = self.x + map_half_size
+            screen_y = self.y + map_half_size
 
-            left_wingtip_point = (self.x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH, self.y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
-            right_wingtip_point = (self.x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH, self.y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            # Calculate all points using screen coordinates
+            nose_point = (screen_x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,
+                          screen_y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
+            tail_point = (screen_x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,
+                          screen_y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
 
-            left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-            right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH, tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            left_wingtip_point = (screen_x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,
+                                  screen_y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            right_wingtip_point = (screen_x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,
+                                   screen_y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
 
+            left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,
+                               tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,
+                                tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+
+            # Draw all the aircraft components
             pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
-            pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
             pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
-            pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
-            pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
             pygame.draw.line(window, self.color, left_wingtip_point, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH)
-            pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
-            pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH / 2)
+            pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
 
-            # draw the engagement radius
-            pygame.draw.circle(window, self.color, (self.x, self.y), self.env.AIRCRAFT_ENGAGEMENT_RADIUS, 2)
+            # Draw the engagement radius (using screen coordinates)
+            pygame.draw.circle(window, self.color, (int(screen_x), int(screen_y)), self.env.AIRCRAFT_ENGAGEMENT_RADIUS,
+                               2)
 
+            # Draw waypoint line and marker
             if self.target_point is not None:
                 if self.show_agent_waypoint >= 1:
-                    pygame.draw.line(window, (0, 0, 0), (self.x, self.y), (self.target_point[0], self.target_point[1]),2)  # Draw line from aircraft to waypoint
-                    pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-5,self.target_point[1]-5,10,10)) # Draw box at waypoint location
+                    # Convert target point to screen coordinates
+                    target_screen_x = self.target_point[0] + map_half_size
+                    target_screen_y = self.target_point[1] + map_half_size
+
+                    pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+                    pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
 
     def draw_damage(self):
         target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
@@ -118,147 +142,34 @@ class Aircraft(Agent):
         pygame.draw.polygon(shape_surf, (255,0,0), semicircle_points)
 
     def move(self):
-
         if self.waypoint_override is not None:
             self.target_point = self.waypoint_override
         else:
-            self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
+            self.target_point = (self.x, self.y)  # Temporary hack, should loiter in place.
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
-        #print(f'%%% dx, dy = {dx, dy}')
         self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
 
         if dist > self.speed:  # threshold for reaching the waypoint location
             dx, dy = dx / dist, dy / dist
-            self.x += dx * self.speed
-            self.y += dy * self.speed
-            #print(f'Case 2: self.x, self.y += {dx}, {dy}')
+            new_x = self.x + dx * self.speed
+            new_y = self.y + dy * self.speed
+
+            # Ensure agent stays within centered coordinate bounds
+            map_half_size = self.env.config['gameboard_size'] / 2
+            self.x = np.clip(new_x, -map_half_size, map_half_size)
+            self.y = np.clip(new_y, -map_half_size, map_half_size)
         else:
-            self.x = self.target_point[0]
-            self.y = self.target_point[1]
+            # Ensure target point is within bounds when reaching it
+            map_half_size = self.env.config['gameboard_size'] / 2
+            self.x = np.clip(self.target_point[0], -map_half_size, map_half_size)
+            self.y = np.clip(self.target_point[1], -map_half_size, map_half_size)
+
             # if at the agent-overriding waypoint, remove it
             if self.waypoint_override is not None:
                 self.waypoint_override = None
             else:  # if at the path waypoint, remove it
-                del self.path[0]
+                if self.path:  # Check if path exists before deleting
+                    del self.path[0]
         return
-
-        # if self.path == []: # Loiter in a holding pattern (TODO: Doesn't work)
-        #     if self.direction >= 0:
-        #         self.path.append((self.x, self.y))
-
-        #super().move()
-
-    # def destroy(self):
-    #     if self.alive:
-    #         print('Aircraft %s destroyed' % self.agent_idx)
-    #         self.alive = False
-    #         if self.agent_idx in self.env.aircraft_ids:
-    #             self.env.aircraft_ids.remove(self.agent_idx)
-
-    # # utility function for convert x/y proportions to gameboard proportions
-    # def __flightplan_proportion_to_gameboard__(self, x, y):
-    #     return (self.env.config["gameboard size"] * (x * (1 - 2 * self.env.FLIGHTPLAN_EDGE_MARGIN) + self.env.FLIGHTPLAN_EDGE_MARGIN), self.env.config["gameboard size"] * ((1 - y) * (1 - 2 * self.env.FLIGHTPLAN_EDGE_MARGIN) + self.env.FLIGHTPLAN_EDGE_MARGIN))
-
-# # ship agent class
-# class Ship(Agent):
-#     def __init__(self, env, direction=0, threat=-1, speed=-1, scale=1):
-#         super().__init__(env, direction, speed=speed, scale=scale, agent_class="ship")
-#         self.idx = -1  # ship index, can be the index of the agents array
-#         self.observed = False  # whether the ship has been observed
-#         self.observed_threat = False  # whether the threat level of the ship has been observed
-#         #self.neutral = False
-#         # set threat level of the ship
-#         if threat != -1:
-#             self.threat = threat
-#         else:
-#             #self.threat = random.randint(0, len(env.AGENT_THREAT_RADIUS) - 1)
-#             self.threat = random.choices([0, 1, 2, 3], weights=[0.60, 0.13, 0.13, 0.14])[0] # 60% chance of neutral, 40% chance of hostile
-#
-#         if self.threat > 0:  # set color by threat level
-#             self.color = self.env.AGENT_COLOR_THREAT
-#         else:
-#             self.color = self.env.AGENT_COLOR_OBSERVED
-#             #self.neutral = True
-#
-#         # generate the ship's speed
-#         if self.speed != -1:
-#             print("Note: Ship speed was manually specified.")
-#         elif "motion iteration" not in env.config:
-#             print("Note: Ship speed not provided and 'motion iteration' is not in the env config, defaulting to speed = 1")
-#             self.speed = 1
-#         else:
-#             if env.config["motion iteration"] == "F":
-#                 self.speed = 0
-#             elif env.config["motion iteration"] == "G":
-#                 self.speed = 5
-#             elif env.config["motion iteration"] == "H":
-#                 self.speed = 10
-#             elif env.config["motion iteration"] == "I":
-#                 self.speed = 15
-#             elif env.config["motion iteration"] == "J":
-#                 r = random.random()
-#                 if r <= 0.5:
-#                     self.speed = 0
-#                 elif r <= 0.8:
-#                     self.speed = 5
-#                 elif r <= 0.95:
-#                     self.speed = 10
-#                 else:
-#                     self.speed = 15
-#             elif env.config["motion iteration"] == "K":
-#                 r = random.random()
-#                 if r <= 0.5:
-#                     self.speed = 15
-#                 elif r <= 0.8:
-#                     self.speed = 10
-#                 elif r <= 0.95:
-#                     self.speed = 5
-#                 else:
-#                     self.speed = 0
-#         # generate the ship's waypoints
-#         self.add_random_waypoint()
-#
-#     def draw(self, window):
-#         if not self.observed:
-#             display_color = self.env.AGENT_COLOR_UNOBSERVED
-#         else:
-#             if self.threat > 0:
-#                 display_color = self.env.AGENT_COLOR_THREAT
-#             else:
-#                 display_color = self.env.AGENT_COLOR_OBSERVED
-#
-#         super().draw(window, color_override=self.env.AGENT_COLOR_UNOBSERVED if not self.observed else self.color) # TODO: The self.env here might be causing problems
-#
-#         threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[self.threat]
-#         possible_threat_radius = self.width * self.env.AGENT_THREAT_RADIUS[3]
-#
-#         # Draw orange circle for any unidentified target (neutral or hostile)
-#         if not self.observed_threat or (self.observed_threat and self.threat == 0):
-#             pygame.draw.circle(window, self.env.AGENT_COLOR_UNOBSERVED,
-#                                (self.x, self.y),
-#                                possible_threat_radius * self.scale,
-#                                2)
-#         if self.observed_threat and self.threat == 0:
-#             pygame.draw.circle(window, (255,255,255),
-#                                (self.x, self.y),
-#                                possible_threat_radius * self.scale,
-#                                2)
-#         # If threat is observed and ship is hostile, show actual threat radius
-#         elif self.observed_threat and self.threat > 0:
-#             pygame.draw.circle(window, self.env.AGENT_COLOR_THREAT,(self.x, self.y),threat_radius * self.scale,2)
-#
-#
-#     def move(self):
-#         if self.path == []:
-#             self.add_random_waypoint()
-#         super().move()
-#
-#     def add_random_waypoint(self):
-#         self.path.append((random.randint(0, self.env.config["gameboard size"]), random.randint(0, self.env.config["gameboard size"])))
-#
-#     def in_weapon_range(self, agent=None, distance=None):
-#         if distance is None and agent is None:
-#             raise ValueError("Either distance or agent must be provided")
-#         return (math.hypot(agent.x - self.x,agent.y - self.y) if distance is None else distance) <= self.width * self.env.AGENT_THREAT_RADIUS[self.threat]

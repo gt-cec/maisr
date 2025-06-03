@@ -85,30 +85,31 @@ class MAISREnvVec(gym.Env):
                 low=np.array([-1, -1], dtype=np.float32),
                 high=np.array([1, 1], dtype=np.float32),
                 dtype=np.float32)
-        elif self.action_type == 'discrete-downsampled':
-            self.grid_size = 20 # Agent has grid_size * grid_size possible actions
-            self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
-        elif self.action_type == 'direct-control':
-            self.action_space = gym.spaces.Discrete(8) # 8 directions: up, up-right, right, down-right, down, down-left, left, up-left
+        # elif self.action_type == 'discrete-downsampled':
+        #     self.grid_size = 20 # Agent has grid_size * grid_size possible actions
+        #     self.action_space = gym.spaces.MultiDiscrete([self.grid_size, self.grid_size])
+        # elif self.action_type == 'direct-control':
+        #     self.action_space = gym.spaces.Discrete(8) # 8 directions: up, up-right, right, down-right, down, down-left, left, up-left
         else: 
             raise ValueError("Action type must be continuous or discrete")
 
         self.obs_size = 2 + 3 * self.max_targets
         if self.obs_type == 'absolute':
             self.observation_space = gym.spaces.Box(
-                low=0, high=1,
+                low=-1, high=1,
                 shape=(self.obs_size,),  # Wrap in tuple to make it iterable
                 dtype=np.float32)
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-        elif self.obs_type == 'relative':
-            self.observation_space = gym.spaces.Box(
-                low=-1, high=1,
-                shape=(self.obs_size,),  # Same size as the absolute observation
-                dtype=np.float32)
-            self.observation = np.zeros(self.obs_size, dtype=np.float32)
+        # elif self.obs_type == 'relative':
+        #     self.observation_space = gym.spaces.Box(
+        #         low=-1, high=1,
+        #         shape=(self.obs_size,),  # Same size as the absolute observation
+        #         dtype=np.float32)
+        #     self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-        else: raise ValueError("Obs type not recognized")
+        else:
+            raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
         self.time_limit = self.config['time_limit']
@@ -235,12 +236,12 @@ class MAISREnvVec(gym.Env):
 
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
-        self.episode_counter = -1
+        self.episode_counter = 0
 
         self.reset()
 
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None):
 
         if self.config['use_curriculum'] == True:
             self.load_difficulty()
@@ -280,6 +281,8 @@ class MAISREnvVec(gym.Env):
         # self.num_identified_ships = 0  # number of ships with accessed threat levels, used for determining game end
         #print(f'gameboard_size is {self.config["gameboard_size"]}')
 
+
+
         # Create vectorized ships/targets. Format: [id, value, info_level, x_pos, y_pos]
         self.num_targets = min(self.max_targets, self.config['num_targets'])  # If more than 30 targets specified, overwrite to 30
 
@@ -287,8 +290,15 @@ class MAISREnvVec(gym.Env):
         self.targets[:, 0] = np.arange(self.num_targets) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
         self.targets[:, 1] = np.random.choice([0, 1], size=self.num_targets, p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
         self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
-        self.targets[:, 3] = np.random.uniform(self.config["gameboard_size"] * 0.03, self.config["gameboard_size"] * 0.97, size=self.num_targets) # Randomly place targets on gameboard (columns 3-4)
-        self.targets[:, 4] = np.random.uniform(self.config["gameboard_size"] * 0.03, self.config["gameboard_size"] * 0.97, size=self.num_targets)
+
+        # Convert to [-150, +150] coordinate system
+        map_half_size = self.config["gameboard_size"] / 2  # 150 for a 300x300 map
+        margin = map_half_size * 0.03  # 3% margin from edges
+        self.targets[:, 3] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.num_targets)
+        self.targets[:, 4] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.num_targets)
+
+        #self.targets[:, 3] = np.random.uniform(-1, 1, size=self.num_targets) # Randomly place targets on gameboard (columns 3-4)
+        #self.targets[:, 4] = np.random.uniform(-1, 1, size=self.num_targets)
 
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
@@ -298,11 +308,13 @@ class MAISREnvVec(gym.Env):
         self.shaping_coeff_wtn = self.shaping_coeff_wtn * self.shaping_decay_rate
         self.shaping_coeff_prox = self.shaping_coeff_prox * self.shaping_decay_rate
 
-        if self.config['agent_start_location'] == "random":
-            agent_x = np.random.uniform(10, self.config["gameboard_size"] - 10)
-            agent_y = np.random.uniform(10, self.config["gameboard_size"] - 10)
 
+        if self.config['agent_start_location'] == "random":
+            map_half_size = self.config["gameboard_size"] / 2
+            agent_x = np.random.uniform(-map_half_size + 10, map_half_size - 10)
+            agent_y = np.random.uniform(-map_half_size + 10, map_half_size - 10)
         else:
+            # If specific coordinates are provided, convert them to centered system
             agent_x, agent_y = self.config['agent_start_location']
 
         # create the aircraft
@@ -330,7 +342,6 @@ class MAISREnvVec(gym.Env):
 
 
     def step(self, actions:dict):
-        #print(f'Action: {actions}')
         total_reward = 0
         info = None
 
@@ -381,7 +392,6 @@ class MAISREnvVec(gym.Env):
             waypoint = self.process_action(actions)
             #print(f'Waypoint is {waypoint}')
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
-            #print(f'Agent location {self.agents[0].x, self.agents[0].y}. waypoint override set to {self.agents[0].waypoint_override}')
 
         elif isinstance(actions, np.int64) and self.action_type == 'direct-control':
             #print(f'Agent selected action {actions}')
@@ -420,10 +430,10 @@ class MAISREnvVec(gym.Env):
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
             if not self.action_type == 'direct-control':
-                #old_x = self.agents[0].x
-                #old_y = self.agents[0].y
+                #print('Moving aircraft')
+                #print(f'Aircraft target_point is {aircraft.target_point}, location is {aircraft.x, aircraft.y}')
+                #print(f'Aircraft waypoint_override is {aircraft.waypoint_override}')
                 aircraft.move() # First, move using the waypoint override set above
-                #print(f'Agent moved {self.agents[0].x-old_x} {self.agents[0].y-old_y}')
 
             # Calculate distances to all targets
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
@@ -506,7 +516,7 @@ class MAISREnvVec(gym.Env):
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
         if self.all_targets_identified:
-            #print('TERMINATED: All targets identified')
+            print('TERMINATED: All targets identified')
             self.terminated = True
             new_score += self.all_targets_points  # Left this but it doesn't go into reward
             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
@@ -528,7 +538,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: outer (inner) {self.step_count_outer} ({info['episode']['l']}), score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'Round complete, reward {round(info['episode']['r'],3)}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
@@ -568,6 +578,7 @@ class MAISREnvVec(gym.Env):
     def get_observation(self):
         """
         State will include the following features:
+        # TODO OUT OF DATE. Coord frame modified to be -1,+1
             Absolute mode:
                 0 agent_x,             # (0-1) normalized position
                 1 agent_y,             # (0-1) normalized position
@@ -586,53 +597,28 @@ class MAISREnvVec(gym.Env):
         if self.obs_type == 'absolute':
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
+            # New agent position (-1, +1)
+            map_half_size = self.config["gameboard_size"] / 2
+            self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
+            self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
+
             # Agent position (normalized to [0,1])
-            self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
-            self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
+            #self.observation[0] = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
+            #self.observation[1] = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
 
             # Process target data
             targets_per_entry = 3  # Each target has 3 features in the observation
             target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
 
             target_features[:self.num_targets, 0] = self.targets[:, 2]  # info levels
-            target_features[:self.num_targets, 1] = self.targets[:, 3] / self.config[
-                "gameboard_size"]  # x position (normalized)
-            target_features[:self.num_targets, 2] = self.targets[:, 4] / self.config[
-                "gameboard_size"]  # y position (normalized)
+            target_features[:self.num_targets, 1] = (self.targets[:, 3]) / map_half_size
+            target_features[:self.num_targets, 2] = (self.targets[:, 4]) / map_half_size
+
+            #target_features[:self.num_targets, 1] = self.targets[:, 3] / self.config["gameboard_size"]  # x position (normalized)
+            #target_features[:self.num_targets, 2] = self.targets[:, 4] / self.config["gameboard_size"]  # y position (normalized)
 
             target_start_idx = 2
-            self.observation[
-            target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
-
-        elif self.obs_type == 'relative':
-            self.observation = np.zeros(self.obs_size, dtype=np.float32)
-
-            # Get agent position (normalized)
-            agent_x_norm = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
-            agent_y_norm = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
-
-            # Store agent's absolute position for reference
-            self.observation[0] = agent_x_norm
-            self.observation[1] = agent_y_norm
-
-            # Process target data - keep them as absolute positions in [0,1] range
-            targets_per_entry = 3
-            target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
-
-            # Copy info levels
-            target_features[:self.num_targets, 0] = self.targets[:, 2]
-
-            # Keep target positions as absolute normalized coordinates [0,1]
-            # This ensures all target coordinates are always in [0,1] range
-            if self.num_targets > 0:
-                target_features[:self.num_targets, 1] = self.targets[:self.num_targets, 3] / self.config[
-                    "gameboard_size"]  # x position (normalized)
-                target_features[:self.num_targets, 2] = self.targets[:self.num_targets, 4] / self.config[
-                    "gameboard_size"]  # y position (normalized)
-
-            target_start_idx = 2
-            self.observation[
-            target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
+            self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         # elif self.obs_type == 'relative':
         #     self.observation = np.zeros(self.obs_size, dtype=np.float32)
@@ -705,7 +691,7 @@ class MAISREnvVec(gym.Env):
 
         current_time = pygame.time.get_ticks()
 
-        # Draw the aircraft
+        # Draw the aircraft (# TODO UPDATE FOR -1,+1 grid)
         for agent in self.agents:
             agent.draw(self.window)
 
@@ -718,7 +704,12 @@ class MAISREnvVec(gym.Env):
             target_width = 7 if target[1] == 0 else 10
             target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[2] == 0.5 else SHIP_REGULAR_UNOBSERVED
             #target_color = color_list[int(target[1])][int(target[2])]
-            pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
+            #pygame.draw.circle(self.window, target_color, (float(target[3]), float(target[4])), target_width)
+
+            map_half_size = self.config["gameboard_size"] / 2
+            screen_x = target[3] + map_half_size
+            screen_y = target[4] + map_half_size
+            pygame.draw.circle(self.window, target_color, (float(screen_x), float(screen_y)), target_width)
 
         # Draw green lines and black crossbars
         self.__render_box__(35, (0, 128, 0), 2)  # inner box
@@ -1170,73 +1161,67 @@ class MAISREnvVec(gym.Env):
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
 
+        # if self.action_type == 'discrete-downsampled':
+        #     # Convert discrete grid coordinates to actual gameboard coordinates
+        #     # For a grid_size x grid_size grid on a gameboard_size x gameboard_size board
+        #     # We place the waypoint at the center of the grid cell
+        #
+        #     # Ensure action values are within grid bounds
+        #     x_grid = min(max(int(action[0]), 0), self.grid_size - 1)
+        #     y_grid = min(max(int(action[1]), 0), self.grid_size - 1)
+        #
+        #     # Convert to gameboard coordinates (center of grid cell)
+        #     cell_size = self.config["gameboard_size"] / self.grid_size
+        #     x_coord = (x_grid + 0.5) * cell_size  # +0.5 to get to center of cell
+        #     y_coord = (y_grid + 0.5) * cell_size
+        #
+        #     waypoint = (float(x_coord), float(y_coord))
 
-
-        if self.action_type == 'discrete-downsampled':
-            # Convert discrete grid coordinates to actual gameboard coordinates
-            # For a grid_size x grid_size grid on a gameboard_size x gameboard_size board
-            # We place the waypoint at the center of the grid cell
-
-            # Ensure action values are within grid bounds
-            x_grid = min(max(int(action[0]), 0), self.grid_size - 1)
-            y_grid = min(max(int(action[1]), 0), self.grid_size - 1)
-
-            # Convert to gameboard coordinates (center of grid cell)
-            cell_size = self.config["gameboard_size"] / self.grid_size
-            x_coord = (x_grid + 0.5) * cell_size  # +0.5 to get to center of cell
-            y_coord = (y_grid + 0.5) * cell_size
-
-            waypoint = (float(x_coord), float(y_coord))
-
-        elif self.action_type == 'continuous-normalized':
+        if self.action_type == 'continuous-normalized':
             # Validate action range
             if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
                 raise ValueError(f'ERROR: Actions are not normalized to [-1, +1]. Got: {action}')
 
             if self.obs_type == 'absolute':
-                # Convert from [-1, +1] to [0, gameboard_size]
-                # This gives the agent full control over the entire map
-                normalized_x = (action[0] + 1) / 2  # Convert [-1,+1] to [0,1] range
-                normalized_y = (action[1] + 1) / 2  # Convert [-1,+1] to [0,1] range
+                # Convert from [-1,+1] to [-150,+150]
+                map_half_size = self.config["gameboard_size"] / 2
+                x_coord = action[0] * map_half_size  # [-1,+1] -> [-150,+150]
+                y_coord = action[1] * map_half_size
 
-                x_coord = normalized_x * self.config["gameboard_size"]
-                y_coord = normalized_y * self.config["gameboard_size"]
-
-            elif self.obs_type == 'relative':
-                # Get current agent position
-                current_x = self.agents[self.aircraft_ids[0]].x
-                current_y = self.agents[self.aircraft_ids[0]].y
-
-                # Define maximum movement distance per action
-                # This should be tuned based on your environment's needs
-                # Option 1: Fixed percentage of map size (more predictable)
-                max_move_distance = self.config["gameboard_size"] * 0.3  # 30% of map size
-                
-                # Option 2: Adaptive based on position (ensures agent can reach edges)
-                # max_move_distance = min(
-                #     self.config["gameboard_size"] * 0.5,  # Cap at 50% of map
-                #     max(current_x, current_y, 
-                #         self.config["gameboard_size"] - current_x, 
-                #         self.config["gameboard_size"] - current_y)
-                # )
-
-                # Calculate displacement from current position
-                dx = action[0] * max_move_distance  # action[0] in [-1,+1] -> dx in [-max_move, +max_move]
-                dy = action[1] * max_move_distance
-
-                # Calculate new position and clip to boundaries
-                x_coord = np.clip(current_x + dx, 0, self.config["gameboard_size"])
-                y_coord = np.clip(current_y + dy, 0, self.config["gameboard_size"])
-
-            waypoint = (float(x_coord), float(y_coord))
+            # elif self.obs_type == 'relative':
+            #     # Get current agent position
+            #     current_x = self.agents[self.aircraft_ids[0]].x
+            #     current_y = self.agents[self.aircraft_ids[0]].y
+            #
+            #     # Define maximum movement distance per action
+            #     # This should be tuned based on your environment's needs
+            #     # Option 1: Fixed percentage of map size (more predictable)
+            #     max_move_distance = self.config["gameboard_size"] * 0.3  # 30% of map size
+            #
+            #     # Option 2: Adaptive based on position (ensures agent can reach edges)
+            #     # max_move_distance = min(
+            #     #     self.config["gameboard_size"] * 0.5,  # Cap at 50% of map
+            #     #     max(current_x, current_y,
+            #     #         self.config["gameboard_size"] - current_x,
+            #     #         self.config["gameboard_size"] - current_y)
+            #     # )
+            #
+            #     # Calculate displacement from current position
+            #     dx = action[0] * max_move_distance  # action[0] in [-1,+1] -> dx in [-max_move, +max_move]
+            #     dy = action[1] * max_move_distance
+            #
+            #     # Calculate new position and clip to boundaries
+            #     x_coord = np.clip(current_x + dx, 0, self.config["gameboard_size"])
+            #     y_coord = np.clip(current_y + dy, 0, self.config["gameboard_size"])
 
         else:
             raise ValueError(f'Error in process_action: action type "{self.action_type}" not recognized')
 
+        waypoint = (float(x_coord), float(y_coord))
+
         return waypoint
 
-
-    def save_action_history_plot(self, note = ''):
+    def save_action_history_plot(self, note=''):
         try:
             import matplotlib.pyplot as plt
             import matplotlib
@@ -1247,30 +1232,34 @@ class MAISREnvVec(gym.Env):
             # Create directory if it doesn't exist
             os.makedirs(f'logs/action_histories_new/{self.run_name}', exist_ok=True)
 
-            # Extract agent location history
-            # agent_x_coords = [pos[0] for pos in self.agent_location_history]
-            # agent_y_coords = [pos[1] for pos in self.agent_location_history]
+            # Calculate map bounds for centered coordinate system
+            map_half_size = self.config["gameboard_size"] / 2  # 150 for a 300x300 map
+
+            # Extract agent location history (already in centered coordinates)
             agent_x_coords = [pos[0] for pos in self.agent_location_history]
-            agent_y_coords = [self.config["gameboard_size"] - pos[1] for pos in self.agent_location_history]  # Flip Y
+            agent_y_coords = [pos[1] for pos in self.agent_location_history]  # No flipping needed
 
             # Create a new figure
             plt.figure(figsize=(10, 10))
 
-            # Set up the plot with correct scale
-            plt.xlim(0, self.config["gameboard_size"])
-            plt.ylim(0, self.config["gameboard_size"])
+            # Set up the plot with centered coordinate limits
+            plt.xlim(-map_half_size, map_half_size)
+            plt.ylim(-map_half_size, map_half_size)
 
-            # Plot targets
+            # Plot targets (already in centered coordinates)
             for i in range(self.num_targets):
-                #target_x = self.targets[i, 3]
-                #target_y = self.targets[i, 4]
-                target_x = self.targets[i, 3]
-                target_y = self.config["gameboard_size"] - self.targets[i, 4]  # Flip Y
+                target_x = self.targets[i, 3]  # Already in centered coordinates
+                target_y = self.targets[i, 4]  # Already in centered coordinates
 
                 size_factor = 1000 / self.config["gameboard_size"]  # Assuming 1000 was the original reference size
                 marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
 
-                color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
+                if i == 0:
+                    color = 'blue' if self.targets[i, 2] == 1.0 else 'chocolate'
+                else:
+                    #color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
+                    color = 'cyan' if self.targets[i, 2] == 1.0 else 'orange'
+
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 
             # Plot agent trajectory (actual location history) as a line with points
@@ -1281,11 +1270,9 @@ class MAISREnvVec(gym.Env):
 
             # Only plot waypoint history for waypoint-based action types
             if self.action_type != 'direct-control':
-                # Extract x and y coordinates from action history (waypoints)
-                #x_coords = [action[0] for action in self.action_history]
-                #y_coords = [action[1] for action in self.action_history]
+                # Extract x and y coordinates from action history (waypoints, already in centered coordinates)
                 x_coords = [action[0] for action in self.action_history]
-                y_coords = [self.config["gameboard_size"] - action[1] for action in self.action_history]  # Flip Y
+                y_coords = [action[1] for action in self.action_history]
 
                 # Plot waypoint history (action history) as a line with points
                 if x_coords and y_coords:
@@ -1307,8 +1294,10 @@ class MAISREnvVec(gym.Env):
             cbar = plt.colorbar()
             cbar.set_label('Timestep')
 
-            # Add grid lines
+            # Add grid lines centered at origin
             plt.grid(True, alpha=0.3)
+            plt.gca().set_xticks(range(int(-map_half_size), int(map_half_size) + 1, 25))
+            plt.gca().set_yticks(range(int(-map_half_size), int(map_half_size) + 1, 25))
 
             # Add labels and title
             plt.xlabel('X Coordinate')
@@ -1322,9 +1311,20 @@ class MAISREnvVec(gym.Env):
             # Add a legend
             plt.legend(loc='upper right')
 
-            # Add shaded quadrants to make the grid more visible
-            plt.axhline(y=self.config["gameboard_size"] / 2, color='black', linestyle='-', alpha=0.3)
-            plt.axvline(x=self.config["gameboard_size"] / 2, color='black', linestyle='-', alpha=0.3)
+            # Add centered quadrant lines (origin at center)
+            plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=2)  # Horizontal line at y=0
+            plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=2)  # Vertical line at x=0
+
+            # Optional: Add boundary lines to show map edges
+            plt.axhline(y=map_half_size, color='red', linestyle='--', alpha=0.3, label='Map Boundary')
+            plt.axhline(y=-map_half_size, color='red', linestyle='--', alpha=0.3)
+            plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
+            plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
+
+            # Add coordinate system info to the plot
+            plt.text(-map_half_size + 10, map_half_size - 20,
+                     f'Coordinate System: [{-map_half_size:.0f}, {map_half_size:.0f}]',
+                     fontsize=4, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
             # Save the figure with a timestamp
             filename = f'logs/action_histories_new/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
@@ -1347,7 +1347,7 @@ class MAISREnvVec(gym.Env):
         # TODO make config use num targets
         """Method to update env parameters using the current difficulty setting"""
         if self.difficulty == 0:
-            self.config['gameboard_size'] = 300
+            #self.config['gameboard_size'] = 300
             #self.config['num targets'] = 1
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
@@ -1356,7 +1356,7 @@ class MAISREnvVec(gym.Env):
             self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         if self.difficulty == 1:
-            self.config['gameboard_size'] = 300
+            #self.config['gameboard_size'] = 300
             self.config['num targets'] = 10
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
@@ -1365,7 +1365,7 @@ class MAISREnvVec(gym.Env):
 
 
         if self.difficulty == 2:
-            self.config['gameboard_size'] = 400
+            self.config['gameboard_size'] = self.config['gameboard_size'] * (400/300)
             self.config['num targets'] = 10
             self.prob_detect = 0
             self.reward_type = 'proximity and waypoint-to-nearest'
@@ -1374,7 +1374,7 @@ class MAISREnvVec(gym.Env):
 
 
         if self.difficulty == 3:
-            self.config['gameboard_size'] = 400
+            #self.config['gameboard_size'] = 400
             self.config['num targets'] = 10
             self.prob_detect = 0.00167
             self.reward_type = 'proximity and waypoint-to-nearest'
