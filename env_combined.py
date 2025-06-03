@@ -506,7 +506,7 @@ class MAISREnvVec(gym.Env):
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
         if self.all_targets_identified:
-            print('TERMINATED: All targets identified')
+            #print('TERMINATED: All targets identified')
             self.terminated = True
             new_score += self.all_targets_points  # Left this but it doesn't go into reward
             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
@@ -528,7 +528,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'Round complete, reward {round(info['episode']['r'],3)}, outer steps {self.step_count_outer}, inner timesteps {info['episode']['l']}, score {self.score} | {self.targets_identified} low quality | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'ROUND COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: inner/outer {self.step_count_outer}/{info['episode']['l']}, score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 

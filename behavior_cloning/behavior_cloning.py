@@ -88,16 +88,16 @@ def _process_single_observation(observation, obs_type='relative'):
     unidentified_mask = info_levels < 1.0  # Not fully identified
     valid_mask = exists_mask & unidentified_mask  # Both conditions
 
-    print(f"Agent position: ({agent_x:.3f}, {agent_y:.3f})")
-    print(f"Valid targets found: {np.sum(valid_mask)}")
+    #print(f"Agent position: ({agent_x:.3f}, {agent_y:.3f})")
+    #print(f"Valid targets found: {np.sum(valid_mask)}")
 
     if np.sum(valid_mask) > 0:
         valid_indices = np.where(valid_mask)[0]
-        print(f"Valid target positions: {[(target_x[i], target_y[i]) for i in valid_indices[:3]]}")  # Show first 3
+        #print(f"Valid target positions: {[(target_x[i], target_y[i]) for i in valid_indices[:3]]}")  # Show first 3
 
     # If no valid targets, stay at current position (no movement)
     if not np.any(valid_mask):
-        print("No valid targets found, staying in place")
+        #print("No valid targets found, staying in place")
         return np.array([0.0, 0.0], dtype=np.float32)
 
     # Calculate distances to valid targets only
@@ -114,7 +114,7 @@ def _process_single_observation(observation, obs_type='relative'):
     closest_target_y = valid_target_y[closest_valid_idx]
 
     closest_distance = distances[closest_valid_idx]
-    print(f"Closest target at ({closest_target_x:.3f}, {closest_target_y:.3f}), distance: {closest_distance:.3f}")
+    #print(f"Closest target at ({closest_target_x:.3f}, {closest_target_y:.3f}), distance: {closest_distance:.3f}")
 
     if obs_type == 'absolute':
         # For absolute mode: convert target position [0,1] to action [-1,1]
@@ -140,7 +140,7 @@ def _process_single_observation(observation, obs_type='relative'):
         raise ValueError(f"Unknown obs_type: {obs_type}")
 
     action = np.array([action_x, action_y], dtype=np.float32)
-    print(f"Taking action: [{action_x:.3f}, {action_y:.3f}]")
+    #print(f"Taking action: [{action_x:.3f}, {action_y:.3f}]")
 
     return action
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     trained_policy = behavior_cloning_pipeline(
         expert_policy=heuristic_policy,
         env_config=env_config,
-        n_episodes=1,
+        n_episodes=2000,
         n_epochs=10,
         run_name = run_name,
         save_expert_trajectory = True
