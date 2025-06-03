@@ -120,8 +120,8 @@ class MAISREnvVec(gym.Env):
         # Set reward quantities for each event (agent only)
         #self.lowqual_regulartarget_reward = 0.25  # Reward earned for gathering low quality info about a regular target
         #self.lowqual_highvaltarget_reward = 0.5  # Reward earned for gathering low quality info about a high value target
-        self.highqual_regulartarget_reward = self.config['highqual_regulartarget_reward'] # Reward earned for gathering high quality info about a regular value target
-        self.highqual_highvaltarget_reward = self.config['highqual_highvaltarget_reward'] # Reward earned for gathering high quality info about a high value target
+        self.highqual_regulartarget_reward = 2.0 # Reward earned for gathering high quality info about a regular value target
+        self.highqual_highvaltarget_reward = 3.0 # Reward earned for gathering high quality info about a high value target
         #self.target_id_reward = 1.0
 
         self.detections_reward = 0 # -1.0 (# TODO temporarily removed for simplified env
@@ -1125,22 +1125,23 @@ class MAISREnvVec(gym.Env):
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
 
-    
     def process_action(self, action):
         """
-        If the action is continuous-normalized, this denormalizes it from -1, +1 to [0, gameboard_size] in both axes
-        If the action is discrete-downsampled, this converts it to the gameboard continuous grid, placing the waypoint in the center of the selected grid square
+        If the action is continuous-normalized, this denormalizes it from -1, +1 to [0, 1000] in both axes
+        If the action is discrete-downsampled, this converts it to the 1000x1000 continuous grid, placing the waypoint in the center of the selected grid square
 
         Args:
-            action (ndarray, size 2): Agent action to normalize. Should be in the form ndarray(waypoint_x, waypoint_y), all with range [-1, +1]
+            action (ndarray, size 3): Agent action to normalize. Should be in the form ndarray(waypoint_x, waypoint_y, id_method), all with range [-1, +1]
 
         Returns:
-            waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+            waypoint (tuple, size 2): (x,y) waypoint with range [0, 1000]
+            id_method (float): Value in range [0, 1]
+
         """
 
         if self.action_type == 'discrete-downsampled':
             # Convert discrete grid coordinates to actual gameboard coordinates
-            # For a grid_size x grid_size grid on a gameboard_size x gameboard_size board
+            # For a 10x10 grid on a 1000x1000 board, each grid cell is 100x100 pixels
             # We place the waypoint at the center of the grid cell
 
             # Ensure action values are within grid bounds
@@ -1154,53 +1155,85 @@ class MAISREnvVec(gym.Env):
 
             waypoint = (float(x_coord), float(y_coord))
 
+
         elif self.action_type == 'continuous-normalized':
-            # Validate action range
             if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                raise ValueError(f'ERROR: Actions are not normalized to [-1, +1]. Got: {action}')
+                raise ValueError('ERROR: Actions are not normalized to -1, +1')
 
             if self.obs_type == 'absolute':
-                # Convert from [-1, +1] to [0, gameboard_size]
-                # This gives the agent full control over the entire map
-                normalized_x = (action[0] + 1) / 2  # Convert [-1,+1] to [0,1] range
-                normalized_y = (action[1] + 1) / 2  # Convert [-1,+1] to [0,1] range
+                # Original absolute coordinate conversion
+                normalized_x = float((action[0] + 1) / 2)  # Convert to 0,1 range
+                normalized_y = float((action[1] + 1) / 2)  # Convert to 0,1 range
 
                 x_coord = normalized_x * self.config["gameboard_size"]
                 y_coord = normalized_y * self.config["gameboard_size"]
 
+
             elif self.obs_type == 'relative':
-                # Get current agent position
+                # Get current position
                 current_x = self.agents[self.aircraft_ids[0]].x
                 current_y = self.agents[self.aircraft_ids[0]].y
 
-                # Define maximum movement distance per action
-                # This should be tuned based on your environment's needs
-                # Option 1: Fixed percentage of map size (more predictable)
-                max_move_distance = self.config["gameboard_size"] * 0.3  # 30% of map size
-                
-                # Option 2: Adaptive based on position (ensures agent can reach edges)
-                # max_move_distance = min(
-                #     self.config["gameboard_size"] * 0.5,  # Cap at 50% of map
-                #     max(current_x, current_y, 
-                #         self.config["gameboard_size"] - current_x, 
-                #         self.config["gameboard_size"] - current_y)
-                # )
+                # Calculate the distance to farthest map edge from current position
+                distance_to_right = self.config["gameboard_size"] - current_x
+                distance_to_left = current_x
+                distance_to_bottom = self.config["gameboard_size"] - current_y
+                distance_to_top = current_y
 
-                # Calculate displacement from current position
-                dx = action[0] * max_move_distance  # action[0] in [-1,+1] -> dx in [-max_move, +max_move]
-                dy = action[1] * max_move_distance
+                # Set max displacement as the greater of:
+                # 1. A percentage of map size (e.g., 50%)
+                # 2. Distance to farthest edge to ensure agent can reach map boundaries
+                max_displacement_x = max(self.config["gameboard_size"] * 0.5,max(distance_to_right, distance_to_left))
+                max_displacement_y = max(self.config["gameboard_size"] * 0.5,max(distance_to_bottom, distance_to_top))
 
-                # Calculate new position and clip to boundaries
+                # Scale action to displacement
+                dx = action[0] * max_displacement_x
+                dy = action[1] * max_displacement_y
+
+                # Calculate new waypoint (with boundary clipping)
                 x_coord = np.clip(current_x + dx, 0, self.config["gameboard_size"])
                 y_coord = np.clip(current_y + dy, 0, self.config["gameboard_size"])
 
             waypoint = (float(x_coord), float(y_coord))
 
+        # elif self.action_type == 'direct-control':
+        #     # Get current position
+        #     current_x = self.agents[self.aircraft_ids[0]].x
+        #     current_y = self.agents[self.aircraft_ids[0]].y
+        #
+        #     # Define movement step size
+        #     move_distance = self.config['game speed'] * self.config['human speed'] * 2
+        #
+        #     # Map discrete action to direction
+        #     direction_mapping = [
+        #         (0, -1),  # up
+        #         (0.7, -0.7),  # up-right
+        #         (1, 0),  # right
+        #         (0.7, 0.7),  # down-right
+        #         (0, 1),  # down
+        #         (-0.7, 0.7),  # down-left
+        #         (-1, 0),  # left
+        #         (-0.7, -0.7)  # up-left
+        #     ]
+        #
+        #     dx, dy = direction_mapping[action]
+        #
+        #     # Calculate new position
+        #     new_x = current_x + dx * move_distance
+        #     new_y = current_y + dy * move_distance
+        #
+        #     # Clip to ensure within boundaries
+        #     new_x = np.clip(new_x, 0, self.config["gameboard_size"])
+        #     new_y = np.clip(new_y, 0, self.config["gameboard_size"])
+        #
+        #     # No waypoint is needed, we'll directly update the agent's position
+        #     # But we still return a waypoint to be consistent with the interface
+        #     waypoint = (float(new_x), float(new_y))
+
         else:
-            raise ValueError(f'Error in process_action: action type "{self.action_type}" not recognized')
+            raise ValueError('Error in process_action: action type not recognized')
 
-        return waypoint
-
+        return waypoint#, id_method
 
     def save_action_history_plot(self, note = ''):
         try:
