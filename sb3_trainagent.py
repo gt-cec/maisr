@@ -49,7 +49,7 @@ def generate_run_name(config):
     timestamp = datetime.now().strftime("%m%d_%H%M")
 
     # Combine all components
-    run_name = "_".join(components) + f"_{timestamp}"
+    run_name = f"_{timestamp}"+"_".join(components)
 
     return run_name
 
@@ -404,8 +404,8 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/rl_entreg0.01_bs64.json',
-        'config_files/rl_entreg0.01_bs256.json',
+        'config_files/june3c/june3c_base.json',
+        #'config_files/rl_entreg0.01_bs256.json',
         #'config_files/rl_entreg0.03_bs128.json',
         #'config_files/rl_entreg0.03_bs64.json',
         # './config_files/rl_training_less_shaping.json',

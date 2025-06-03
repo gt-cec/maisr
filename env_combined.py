@@ -550,7 +550,7 @@ class MAISREnvVec(gym.Env):
                     self.save_action_history_plot()
 
             if self.tag in ['eval', 'train_mp0']:
-                if self.episode_counter in [0, 1, 2, 3, 4, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000]:
+                if self.episode_counter in [0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000]:
                         self.save_action_history_plot()
                 elif self.episode_counter % 500 == 0:
                     self.save_action_history_plot()
