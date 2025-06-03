@@ -17,7 +17,9 @@
 	"obs_type": "relative",
 	"action_type": "continuous-normalized",
 
-	"shaping_decay_rate":0.9995,
+	"highqual_regulartarget_reward": 7.0,
+	"highqual_highvaltarget_reward": 10.0,
+	"shaping_decay_rate":1.0,
 	"shaping_coeff_wtn": 0.02,
 	"shaping_coeff_prox": 0.005,
 	"shaping_coeff_earlyfinish": 2.0,

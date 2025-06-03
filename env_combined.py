@@ -240,7 +240,7 @@ class MAISREnvVec(gym.Env):
         self.reset()
 
 
-    def reset(self, seed=None):
+    def reset(self, seed=None, options=None):
 
         if self.config['use_curriculum'] == True:
             self.load_difficulty()
@@ -330,6 +330,7 @@ class MAISREnvVec(gym.Env):
 
 
     def step(self, actions:dict):
+        #print(f'Action: {actions}')
         total_reward = 0
         info = None
 
@@ -380,6 +381,7 @@ class MAISREnvVec(gym.Env):
             waypoint = self.process_action(actions)
             #print(f'Waypoint is {waypoint}')
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
+            #print(f'Agent location {self.agents[0].x, self.agents[0].y}. waypoint override set to {self.agents[0].waypoint_override}')
 
         elif isinstance(actions, np.int64) and self.action_type == 'direct-control':
             #print(f'Agent selected action {actions}')
@@ -418,10 +420,10 @@ class MAISREnvVec(gym.Env):
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
             if not self.action_type == 'direct-control':
-                #print('Moving aircraft')
-                #print(f'Aircraft target_point is {aircraft.target_point}, location is {aircraft.x, aircraft.y}')
-                #print(f'Aircraft waypoint_override is {aircraft.waypoint_override}')
+                #old_x = self.agents[0].x
+                #old_y = self.agents[0].y
                 aircraft.move() # First, move using the waypoint override set above
+                #print(f'Agent moved {self.agents[0].x-old_x} {self.agents[0].y-old_y}')
 
             # Calculate distances to all targets
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
@@ -609,34 +611,64 @@ class MAISREnvVec(gym.Env):
             agent_x_norm = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
             agent_y_norm = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
 
-            # Store agent's absolute position for reference (still useful for the agent)
+            # Store agent's absolute position for reference
             self.observation[0] = agent_x_norm
             self.observation[1] = agent_y_norm
 
-            # Process target data with relative positions
+            # Process target data - keep them as absolute positions in [0,1] range
             targets_per_entry = 3
             target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
 
             # Copy info levels
             target_features[:self.num_targets, 0] = self.targets[:, 2]
 
-            # Calculate relative positions for all targets at once (vectorized)
+            # Keep target positions as absolute normalized coordinates [0,1]
+            # This ensures all target coordinates are always in [0,1] range
             if self.num_targets > 0:
-                # Get all target normalized positions
-                target_x_norm = self.targets[:self.num_targets, 3] / self.config["gameboard_size"]
-                target_y_norm = self.targets[:self.num_targets, 4] / self.config["gameboard_size"]
-
-                # Calculate relative positions (normalized difference)
-                # This represents the vector from agent to target in normalized space
-                rel_x = target_x_norm - agent_x_norm  # Range: [-1, 1]
-                rel_y = target_y_norm - agent_y_norm  # Range: [-1, 1]
-
-                target_features[:self.num_targets, 1] = rel_x
-                target_features[:self.num_targets, 2] = rel_y
+                target_features[:self.num_targets, 1] = self.targets[:self.num_targets, 3] / self.config[
+                    "gameboard_size"]  # x position (normalized)
+                target_features[:self.num_targets, 2] = self.targets[:self.num_targets, 4] / self.config[
+                    "gameboard_size"]  # y position (normalized)
 
             target_start_idx = 2
             self.observation[
             target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
+
+        # elif self.obs_type == 'relative':
+        #     self.observation = np.zeros(self.obs_size, dtype=np.float32)
+        #
+        #     # Get agent position (normalized)
+        #     agent_x_norm = self.agents[self.aircraft_ids[0]].x / self.config["gameboard_size"]
+        #     agent_y_norm = self.agents[self.aircraft_ids[0]].y / self.config["gameboard_size"]
+        #
+        #     # Store agent's absolute position for reference (still useful for the agent)
+        #     self.observation[0] = agent_x_norm
+        #     self.observation[1] = agent_y_norm
+        #
+        #     # Process target data with relative positions
+        #     targets_per_entry = 3
+        #     target_features = np.zeros((self.max_targets, targets_per_entry), dtype=np.float32)
+        #
+        #     # Copy info levels
+        #     target_features[:self.num_targets, 0] = self.targets[:, 2]
+        #
+        #     # Calculate relative positions for all targets at once (vectorized)
+        #     if self.num_targets > 0:
+        #         # Get all target normalized positions
+        #         target_x_norm = self.targets[:self.num_targets, 3] / self.config["gameboard_size"]
+        #         target_y_norm = self.targets[:self.num_targets, 4] / self.config["gameboard_size"]
+        #
+        #         # Calculate relative positions (normalized difference)
+        #         # This represents the vector from agent to target in normalized space
+        #         rel_x = target_x_norm - agent_x_norm  # Range: [-1, 1]
+        #         rel_y = target_y_norm - agent_y_norm  # Range: [-1, 1]
+        #
+        #         target_features[:self.num_targets, 1] = rel_x
+        #         target_features[:self.num_targets, 2] = rel_y
+        #
+        #     target_start_idx = 2
+        #     self.observation[
+        #     target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         else:
             raise ValueError('Unknown obs type')
@@ -1137,6 +1169,8 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
+
+
 
         if self.action_type == 'discrete-downsampled':
             # Convert discrete grid coordinates to actual gameboard coordinates
