@@ -235,7 +235,7 @@ class MAISREnvVec(gym.Env):
 
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.time_limit)
 
-        self.episode_counter = 0
+        self.episode_counter = -1
 
         self.reset()
 
@@ -528,7 +528,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'ROUND COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: inner/outer {self.step_count_outer}/{info['episode']['l']}, score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: outer (inner) {self.step_count_outer} ({info['episode']['l']}), score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
             if self.action_type == 'direct-control':
                 print(f'Action history: {self.direct_action_history}')
 
