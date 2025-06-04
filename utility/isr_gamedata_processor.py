@@ -7,7 +7,7 @@ from collections import defaultdict
 """
 NEW. Takes all .jsonl files from a folder and outputs them to an excel sheet (one row per subject) for later processing in R.
 
-Important notes: 
+Important june4a notes: 
 1. Subject must have completed all four rounds + the training round for this script to run correctly. It automatically ignores round 0, but round 0 must be present in the folder or it will shift all round metrics by 1 round (e.g. it will report round 2's score as round 1).
 2. Note distinction between weapons and threat types. Identifying a friendly target contributes to the threat types counter but not the weapons counter.
 

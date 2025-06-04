@@ -55,7 +55,7 @@ def convert_game_to_action_space(game_coords, gameboard_size):
     return np.array([action_x, action_y], dtype=np.float32)
 
 
-def render_reward_text(window, episode_reward, step_reward_components, cumulative_reward_components, gameboard_size):
+def render_reward_text(window, episode_reward, step_reward_components, cumulative_reward_components, gameboard_size, config):
     """
     Render the episode reward and reward components on the screen
 
@@ -83,8 +83,9 @@ def render_reward_text(window, episode_reward, step_reward_components, cumulativ
     component_texts.append(f"Waypoint-to-Nearest: {cumulative_reward_components.get('waypoint-to-nearest', 0):.2f}")
     component_texts.append("")
     component_texts.append("=== CURRENT STEP ===")
-    component_texts.append(f"High Val Targets: {step_reward_components.get('high val target id', 0):.2f}")
-    component_texts.append(f"Regular Targets: {step_reward_components.get('regular val target id', 0):.2f}")
+
+    component_texts.append(f"High Val Targets: {step_reward_components.get('high val target id', 0) * config["highqual_highvaltarget_reward"]:.2f}")
+    component_texts.append(f"Regular Targets: {step_reward_components.get('regular val target id', 0) * config["highqual_regulartarget_reward"]:.2f}")
     component_texts.append(f"Proximity: {step_reward_components.get('proximity', 0):.2f}")
     component_texts.append(f"Early Finish: {step_reward_components.get('early finish', 0):.2f}")
     component_texts.append(f"Waypoint-to-Nearest: {step_reward_components.get('waypoint-to-nearest', 0):.2f}")
@@ -227,7 +228,8 @@ def main():
     ctypes.windll.user32.SetProcessDPIAware()
     
     # Load environment configuration
-    config_file = './config_files/humantest_config.json'
+    #config_file = './config_files/humantest_config.json'
+    config_file = '../config_files/rl_simpleoar.json'
     env_config = load_env_config(config_file)
     
     # Override config for human play
@@ -318,15 +320,24 @@ def main():
             step_reward_components = info.get('reward_components', {})
             for component, value in step_reward_components.items():
                 if component in cumulative_reward_components:
-                    cumulative_reward_components[component] += value
-            
+                    if component == 'high val target id':
+                        cumulative_reward_components[component] += value * env_config['highqual_highvaltarget_reward']
+                    elif component == 'regular val target id':
+                        cumulative_reward_components[component] += value * env_config['highqual_regulartarget_reward']
+                    else:
+                        cumulative_reward_components[component] += value
+            # step_reward_components = info.get('reward_components', {})
+            # for component, value in step_reward_components.items():
+            #     if component in cumulative_reward_components:
+            #         cumulative_reward_components[component] += value
+            #
             env.render()
             
             # Render episode reward on top of the game
             #render_reward_text(window, episode_reward, gameboard_size)
 
             step_reward_components = info.get('reward_components', {})
-            render_reward_text(window, episode_reward, step_reward_components, cumulative_reward_components,gameboard_size)
+            render_reward_text(window, episode_reward, step_reward_components, cumulative_reward_components,gameboard_size, env_config)
 
             render_target_labels(window, env, gameboard_size)
             render_current_action(window, current_action, gameboard_size)
