@@ -376,6 +376,7 @@ class MAISREnvVec(gym.Env):
         new_score = 0 # For tracking human-understandable reward
         info = {
             "new_identifications": [],  # List to track newly identified targets/threats
+            "reward_components": {},
             "detections": self.detections,  # Current detection count
             "target_ids": 0,
             'episode': {'r': 0, 'l': self.step_count_inner},
@@ -533,6 +534,7 @@ class MAISREnvVec(gym.Env):
         self.ep_reward += reward
 
         info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
+        info['reward_components'] = new_reward
         info['detections'] = self.detections
         info["target_ids"] =self.targets_identified
 
@@ -872,48 +874,49 @@ class MAISREnvVec(gym.Env):
                 center=(675, 1030))
             self.window.blit(corner_round_text_surface, corner_round_rect)
 
-            # Countdown from 5 seconds at start of game
-            if current_time <= self.start_countdown_time:
-                countdown_font = pygame.font.SysFont(None, 120)
-                message_font = pygame.font.SysFont(None, 60)
-                round_font = pygame.font.SysFont(None, 72)
-                countdown_start = 0
-                countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-                countdown_surface.set_alpha(128)  # 50% transparent
-
-                time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
-
-                # Draw semi-transparent overlay
-                countdown_surface.fill((100, 100, 100))
-                self.window.blit(countdown_surface, (0, 0))
-
-                # Draw round name
-                if self.user_group == 'test':
-                    round_text = f"ROUND {self.round_number+1}/4"
-                else:
-                    if self.round_number == 0: round_text = "TRAINING ROUND"
-                    else: round_text = f"ROUND {self.round_number}/4"
-                round_text_surface = round_font.render(round_text, True, (255, 255, 255))
-                round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
-                self.window.blit(round_text_surface, round_rect)
-
-                # Draw "Get Ready!" message
-                ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
-                ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
-                self.window.blit(ready_text, ready_rect)
-
-                # Draw countdown number
-                countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
-                text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
-                self.window.blit(countdown_text, text_rect)
-
-                pygame.time.wait(50)  # Control update rate
-
-                # Handle any quit events during countdown
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        return
+            # # Countdown from 5 seconds at start of game
+            # (TODO TEMP REMOVED)
+            # if current_time <= self.start_countdown_time:
+            #     countdown_font = pygame.font.SysFont(None, 120)
+            #     message_font = pygame.font.SysFont(None, 60)
+            #     round_font = pygame.font.SysFont(None, 72)
+            #     countdown_start = 0
+            #     countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+            #     countdown_surface.set_alpha(128)  # 50% transparent
+            #
+            #     time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
+            #
+            #     # Draw semi-transparent overlay
+            #     countdown_surface.fill((100, 100, 100))
+            #     self.window.blit(countdown_surface, (0, 0))
+            #
+            #     # Draw round name
+            #     if self.user_group == 'test':
+            #         round_text = f"ROUND {self.round_number+1}/4"
+            #     else:
+            #         if self.round_number == 0: round_text = "TRAINING ROUND"
+            #         else: round_text = f"ROUND {self.round_number}/4"
+            #     round_text_surface = round_font.render(round_text, True, (255, 255, 255))
+            #     round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
+            #     self.window.blit(round_text_surface, round_rect)
+            #
+            #     # Draw "Get Ready!" message
+            #     ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
+            #     ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
+            #     self.window.blit(ready_text, ready_rect)
+            #
+            #     # Draw countdown number
+            #     countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+            #     text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
+            #     self.window.blit(countdown_text, text_rect)
+            #
+            #     pygame.time.wait(50)  # Control update rate
+            #
+            #     # Handle any quit events during countdown
+            #     for event in pygame.event.get():
+            #         if event.type == pygame.QUIT:
+            #             pygame.quit()
+            #             return
 
             if self.paused and not self.unpause_countdown:
                 pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
