@@ -436,7 +436,7 @@ if __name__ == "__main__":
     for config_filename in config_list:
         train(
             config_filename,
-            n_envs = 4,#multiprocessing.cpu_count(),
+            n_envs = multiprocessing.cpu_count(),
             load_path = load_path, # Replace with absolute path to the checkpoint to load
             machine_name = machine_name,
             project_name=project_name
