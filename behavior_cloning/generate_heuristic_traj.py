@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import math
 
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -31,111 +32,191 @@ def heuristic_policy(observation, state, dones):
     # Handle both single and batched observations
     if len(observation.shape) == 1:
         # Single observation
-        return _process_single_observation(observation)
+        return _process_single_observation_vectorized(observation)
     else:
         # Batched observations from vectorized environment
         batch_size = observation.shape[0]
         actions = np.zeros((batch_size, 2), dtype=np.float32)
 
         for i in range(batch_size):
-            actions[i] = _process_single_observation(observation[i])
+            actions[i] = _process_single_observation_vectorized(observation[i])
 
         return actions, None
 
 
-def _process_single_observation(observation, obs_type='relative'):
+def _process_single_observation_vectorized(observation, obs_type='relative'):
     """
-    Process a single observation and return a single action.
+    Vectorized version: Process a single observation and return a single action.
 
     Args:
         observation: Single observation array
         obs_type: 'absolute' or 'relative' - should match your environment config
     """
-    # Extract agent position (always absolute in [0,1] range)
-    agent_x = observation[0]
-    agent_y = observation[1]
 
-    # Calculate maximum number of targets based on observation size
-    max_targets = (len(observation) - 2) // 3
+    # Convert to numpy array for vectorized operations
+    obs = np.array(observation)
 
-    if max_targets == 0:
-        # No targets, stay at current position
-        return np.array([0.0, 0.0], dtype=np.float32)
+    # Direction mapping - convert to numpy arrays
+    directions = np.array([
+        [0, 1],  # up
+        [1, 1],  # up-right
+        [1, 0],  # right
+        [1, -1],  # down-right
+        [0, -1],  # down
+        [-1, -1],  # down-left
+        [-1, 0],  # left
+        [-1, 1]  # up-left
+    ], dtype=float)
 
-    # Extract target data using array slicing and reshaping
-    target_data = observation[2:2 + max_targets * 3].reshape(max_targets, 3)
+    # Extract agent position
+    agent_pos = obs[:2]  # [agent_x, agent_y]
 
-    # Split into separate arrays for each attribute
-    info_levels = target_data[:, 0]  # Shape: (max_targets,)
-    target_x_raw = target_data[:, 1]  # Shape: (max_targets,)
-    target_y_raw = target_data[:, 2]  # Shape: (max_targets,)
+    # Extract target information vectorized
+    max_targets = 5
+    target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
 
-    # Based on your environment code, both absolute and relative modes
-    # store target positions in absolute [0,1] coordinates
-    target_x = target_x_raw
-    target_y = target_y_raw
+    # Check which targets are valid (non-zero position)
+    valid_mask = (target_data[:, 1] != 0) | (target_data[:, 2] != 0)
 
-    # Create masks for valid and unidentified targets
-    # Check if target exists (non-zero coordinates OR has info level > 0)
-    exists_mask = (target_x > 0) | (target_y > 0) | (info_levels > 0)
-    unidentified_mask = info_levels < 1.0  # Not fully identified
-    valid_mask = exists_mask & unidentified_mask  # Both conditions
-
-    #print(f"Agent position: ({agent_x:.3f}, {agent_y:.3f})")
-    #print(f"Valid targets found: {np.sum(valid_mask)}")
-
-    if np.sum(valid_mask) > 0:
-        valid_indices = np.where(valid_mask)[0]
-        #print(f"Valid target positions: {[(target_x[i], target_y[i]) for i in valid_indices[:3]]}")  # Show first 3
-
-    # If no valid targets, stay at current position (no movement)
     if not np.any(valid_mask):
-        #print("No valid targets found, staying in place")
-        return np.array([0.0, 0.0], dtype=np.float32)
+        # No targets at all, just move up
+        return 0
 
-    # Calculate distances to valid targets only
-    valid_target_x = target_x[valid_mask]
-    valid_target_y = target_y[valid_mask]
+    # Filter to valid targets only
+    valid_targets = target_data[valid_mask]
 
-    distances = np.sqrt((valid_target_x - agent_x) ** 2 + (valid_target_y - agent_y) ** 2)
+    # Calculate distances vectorized
+    target_positions = valid_targets[:, 1:3]  # x, y coordinates
+    distances = np.linalg.norm(target_positions - agent_pos, axis=1)
 
-    # Find index of closest valid target (in the valid targets array)
-    closest_valid_idx = np.argmin(distances)
+    # Filter to unidentified targets (info_level < 1.0)
+    unidentified_mask = valid_targets[:, 0] < 1.0
 
-    # Get coordinates of closest target
-    closest_target_x = valid_target_x[closest_valid_idx]
-    closest_target_y = valid_target_y[closest_valid_idx]
-
-    closest_distance = distances[closest_valid_idx]
-    #print(f"Closest target at ({closest_target_x:.3f}, {closest_target_y:.3f}), distance: {closest_distance:.3f}")
-
-    if obs_type == 'absolute':
-        # For absolute mode: convert target position [0,1] to action [-1,1]
-        action_x = closest_target_x * 2 - 1
-        action_y = closest_target_y * 2 - 1
-
-    elif obs_type == 'relative':
-        # For relative mode: calculate movement direction
-        # Based on your environment's process_action method for relative mode
-        dx = closest_target_x - agent_x
-        dy = closest_target_y - agent_y
-
-        # Normalize to action space [-1,1]
-        # The environment uses max_move_distance = gameboard_size * 0.3
-        # Since coordinates are normalized [0,1], max movement is 0.3
-        max_movement = 0.3
-
-        # Scale movement to fit in [-1,1] action space
-        action_x = np.clip(dx / max_movement, -1, 1)
-        action_y = np.clip(dy / max_movement, -1, 1)
-
+    if np.any(unidentified_mask):
+        # Find closest unidentified target
+        unidentified_distances = distances[unidentified_mask]
+        closest_idx = np.argmin(unidentified_distances)
+        # Map back to original valid targets index
+        unidentified_indices = np.where(unidentified_mask)[0]
+        target_idx = unidentified_indices[closest_idx]
     else:
-        raise ValueError(f"Unknown obs_type: {obs_type}")
+        # No unidentified targets, move toward closest identified target
+        target_idx = np.argmin(distances)
 
-    action = np.array([action_x, action_y], dtype=np.float32)
-    #print(f"Taking action: [{action_x:.3f}, {action_y:.3f}]")
+    # Get target position
+    target_pos = target_positions[target_idx]
 
-    return action
+    # Calculate direction vector
+    direction_to_target = target_pos - agent_pos
+
+    # Handle case where we're already at target
+    if np.linalg.norm(direction_to_target) < 1e-6:
+        return 0
+
+    # Normalize direction vectors
+    direction_norms = np.linalg.norm(directions, axis=1)
+    normalized_directions = directions / direction_norms[:, np.newaxis]
+
+    # Calculate dot products with all directions at once
+    dot_products = np.dot(normalized_directions, direction_to_target)
+
+    # Find best action
+    best_action = np.argmax(dot_products)
+
+    return int(best_action)
+
+# def _process_single_observation(observation, obs_type='relative'):
+#     """
+#     Process a single observation and return a single action.
+#
+#     Args:
+#         observation: Single observation array
+#         obs_type: 'absolute' or 'relative' - should match your environment config
+#     """
+#
+#     # Direction mapping from the environment
+#     direction_map = {
+#         0: (0, 1),  # up
+#         1: (1, 1),  # up-right
+#         2: (1, 0),  # right
+#         3: (1, -1),  # down-right
+#         4: (0, -1),  # down
+#         5: (-1, -1),  # down-left
+#         6: (-1, 0),  # left
+#         7: (-1, 1)  # up-left
+#     }
+#
+#     # Extract agent position
+#     agent_x = observation[0]
+#     agent_y = observation[1]
+#
+#     # Extract target information
+#     max_targets = 5  # From the environment code
+#     targets = []
+#
+#     for i in range(max_targets):
+#         info_idx = 2 + i * 3
+#         x_idx = 3 + i * 3
+#         y_idx = 4 + i * 3
+#
+#         # Check if this target slot has data (non-zero position indicates a real target)
+#         if info_idx < len(observation) and (observation[x_idx] != 0 or observation[y_idx] != 0):
+#             info_level = observation[info_idx]
+#             target_x = observation[x_idx]
+#             target_y = observation[y_idx]
+#
+#             targets.append({
+#                 'info_level': info_level,
+#                 'x': target_x,
+#                 'y': target_y,
+#                 'distance': math.sqrt((target_x - agent_x) ** 2 + (target_y - agent_y) ** 2)
+#             })
+#
+#     # Filter to only unidentified targets (info_level < 1.0)
+#     unidentified_targets = [t for t in targets if t['info_level'] < 1.0]
+#
+#     # If no unidentified targets, move toward the closest identified target or stay put
+#     if not unidentified_targets:
+#         if targets:
+#             # Move toward closest identified target
+#             closest_target = min(targets, key=lambda t: t['distance'])
+#         else:
+#             # No targets at all, just move up
+#             return 0
+#     else:
+#         # Find the closest unidentified target
+#         closest_target = min(unidentified_targets, key=lambda t: t['distance'])
+#
+#     # Calculate direction vector from agent to closest target
+#     target_x = closest_target['x']
+#     target_y = closest_target['y']
+#
+#     dx = target_x - agent_x
+#     dy = target_y - agent_y
+#
+#     # Handle the case where we're already at the target
+#     if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+#         return 0  # Default to moving up
+#
+#     # Find the best direction by calculating dot product with each direction vector
+#     best_action = 0
+#     best_dot_product = -float('inf')
+#
+#     for action, (dir_x, dir_y) in direction_map.items():
+#         # Normalize the direction vector
+#         dir_length = math.sqrt(dir_x * dir_x + dir_y * dir_y)
+#         norm_dir_x = dir_x / dir_length
+#         norm_dir_y = dir_y / dir_length
+#
+#         # Calculate dot product with target direction
+#         dot_product = dx * norm_dir_x + dy * norm_dir_y
+#
+#         if dot_product > best_dot_product:
+#             best_dot_product = dot_product
+#             best_action = action
+#
+#     #print(best_action)
+#     return best_action
 
 def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, run_name = 'none', save_expert_trajectory = True):
     """
@@ -196,7 +277,7 @@ def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, ru
 if __name__ == "__main__":
 
     # Set parameters
-    config_name = '../config_files/rl_default.json'
+    config_name = '../config_files/bc_config.json'
     n_episodes = 50000
 
 

@@ -240,7 +240,7 @@ class MAISREnvVec(gym.Env):
         self.reset()
 
 
-    def reset(self, seed=None):
+    def reset(self, seed=None, options=None):
 
         if self.config['use_curriculum'] == True:
             self.load_difficulty()
@@ -519,7 +519,7 @@ class MAISREnvVec(gym.Env):
         #if self.verbose: print("Targets with low-quality info: ", self.low_quality_identified, " Targets with high-quality info: ", self.high_quality_identified, "Detections: ", self.detections)
 
         if self.all_targets_identified:
-            print('TERMINATED: All targets identified')
+            #print('TERMINATED: All targets identified')
             self.terminated = True
             new_score += self.all_targets_points  # Left this but it doesn't go into reward
             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
@@ -1122,8 +1122,13 @@ class MAISREnvVec(gym.Env):
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
 
+        #print(f'received action {action} (length {len(action)})')
+
         if self.action_type == 'waypoint-direction':
             # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
+            if len(action) > 1:
+                action = action[0]
+
             direction_map = {
                 0: (0, 1),  # up
                 1: (1, 1),  # up-right
@@ -1213,10 +1218,10 @@ class MAISREnvVec(gym.Env):
                 marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
 
                 if i == 0:
-                    color = 'blue' if self.targets[i, 2] == 1.0 else 'chocolate'
+                    color = 'purple' if self.targets[i, 2] == 1.0 else 'chocolate'
                 else:
                     #color = 'red' if self.targets[i, 2] == 1.0 else 'orange'  # Identified are red, unidentified are orange
-                    color = 'cyan' if self.targets[i, 2] == 1.0 else 'orange'
+                    color = 'red' if self.targets[i, 2] == 1.0 else 'orange'
 
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 

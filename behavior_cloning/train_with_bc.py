@@ -155,11 +155,13 @@ if __name__ == "__main__":
     # Run the behavior cloning pipeline
     if train_new:
         trained_policy = train_with_bc(
-            expert_trajectory_path='./expert_trajectories/bc_run_0603_1052/data-00000-of-00001.arrow',
+            expert_trajectory_path='./expert_trajectories/maisr_bc_expert_trajectory_50000games/data-00000-of-00005.arrow',
             env_config=env_config,
             bc_config=bc_config,
             run_name=run_name
         )
+
+
 
     # Evaluate the policy
     if evaluate:
