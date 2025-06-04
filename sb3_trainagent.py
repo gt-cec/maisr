@@ -167,15 +167,18 @@ class EnhancedWandbCallback(BaseCallback):
             for i in range(self.n_eval_episodes):
                 obs = self.eval_env.reset()
                 #obs = self.eval_env.reset() # TODO TESTING
-                terminated = False
-                truncated = False
+                #terminated = False
+                #truncated = False
+                done = False
                 ep_reward = 0
 
-                while not (terminated or truncated):
+                while not done:
                     action, other = self.model.predict(obs, deterministic=True)
                     #print(f'Action type: {type(action)}')
                     #print(f'Other: {other}')
                     obs, reward, dones, info = self.eval_env.step(action)
+                    done = dones[0]
+                    
                     #obs, rewards, dones, infos = self.eval_env.step(action)
                     ep_reward += reward
 
