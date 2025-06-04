@@ -176,7 +176,7 @@ class EnhancedWandbCallback(BaseCallback):
                     action, other = self.model.predict(obs, deterministic=True)
                     #print(f'Action type: {type(action)}')
                     #print(f'Other: {other}')
-                    obses, rewards, dones, infos = self.eval_env.step(action)
+                    obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
