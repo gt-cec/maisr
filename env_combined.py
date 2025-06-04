@@ -1067,8 +1067,8 @@ class MAISREnvVec(gym.Env):
 
         if self.action_type == 'waypoint-direction':
             # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
-            if len(action) > 1:
-                action = action[0]
+            #if len(action) > 1:
+                #action = action[0]
 
             direction_map = {
                 0: (0, 1),  # up
