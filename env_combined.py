@@ -1170,7 +1170,7 @@ class MAISREnvVec(gym.Env):
             if agent_x_coords and agent_y_coords:
                 plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
                 plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
-                            cmap='Greens', alpha=0.7, marker='o', label='Agent Path')
+                            cmap='Greens', alpha=0.7, marker='o', label='')
 
             # Only plot waypoint history for waypoint-based action types
             if self.action_type != 'direct-control':
@@ -1180,8 +1180,8 @@ class MAISREnvVec(gym.Env):
 
                 # Plot waypoint history (action history) as a line with points
                 if x_coords and y_coords:
-                    plt.plot(x_coords, y_coords, 'b-', alpha=0.2, linewidth=1)
-                    plt.scatter(x_coords, y_coords, s=30, c=range(len(x_coords)),
+                    plt.plot(x_coords, y_coords, 'b-', alpha=0.15, linewidth=1)
+                    plt.scatter(x_coords, y_coords, s=20, c=range(len(x_coords)),
                                 cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
 
                     # Add starting and ending points with different markers
@@ -1189,9 +1189,9 @@ class MAISREnvVec(gym.Env):
                     plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
 
             if agent_x_coords and agent_y_coords:
-                plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='darkgreen', marker='*',
+                plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='lime', marker='*',
                             label='Start Position')
-                plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='lime', marker='*',
+                plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='darkgreen', marker='*',
                             label='End Position')
 
             # Add a colorbar to show time progression
@@ -1209,15 +1209,15 @@ class MAISREnvVec(gym.Env):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
             action_type_label = 'direct-control' if self.action_type == 'direct-control' else self.action_type
-            plot_title = f'{self.tag} - episode {self.episode_counter} - Agent Movement (Reward: {self.ep_reward:.2f}, Steps: {self.step_count_outer})'
+            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.ep_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
             plt.title(plot_title)
 
             # Add a legend
-            plt.legend(loc='upper right')
+            plt.legend(loc='upper right', fontsize='small')
 
             # Add centered quadrant lines (origin at center)
-            plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=2)  # Horizontal line at y=0
-            plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=2)  # Vertical line at x=0
+            plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Horizontal line at y=0
+            plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Vertical line at x=0
 
             # Optional: Add boundary lines to show map edges
             plt.axhline(y=map_half_size, color='red', linestyle='--', alpha=0.3, label='Map Boundary')
@@ -1225,10 +1225,10 @@ class MAISREnvVec(gym.Env):
             plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
             plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
 
-            # Add coordinate system info to the plot
-            plt.text(-map_half_size + 10, map_half_size - 20,
-                     f'Coordinate System: [{-map_half_size:.0f}, {map_half_size:.0f}]',
-                     fontsize=4, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+            # # Add coordinate system info to the plot
+            # plt.text(-map_half_size + 10, map_half_size - 20,
+            #          f'Coordinate System: [{-map_half_size:.0f}, {map_half_size:.0f}]',
+            #          fontsize=4, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
             # Save the figure with a timestamp
             filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
