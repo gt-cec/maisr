@@ -10,7 +10,7 @@ import socket
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -313,6 +313,7 @@ def train(
         # Create environment creation functions for each process
         env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
+        env = VecNormalize(env)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
 
     else:
