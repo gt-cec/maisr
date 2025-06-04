@@ -1,5 +1,4 @@
 import pygame
-import sys
 import os
 import ctypes
 import numpy as np

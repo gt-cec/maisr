@@ -1,17 +1,13 @@
-from agents import *
-import os
-import ctypes
 import numpy as np
 
 from env_combined import MAISREnvVec
 from new_heuristic_policy import AutonomousPolicy
 from gui import *
-from utility.data_logging import GameLogger, load_env_config
-from config import x, y, config_dict, run_order, surveys_enabled, times
-
+from utility.data_logging import load_env_config
 
 if __name__ == "__main__":
-    from config import subject_id, user_group, log_data, x, y
+    from config import subject_id, user_group, log_data
+
     round_number = 0
 
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")

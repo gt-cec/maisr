@@ -1,4 +1,3 @@
-from agents import *
 import os
 import ctypes
 import numpy as np
@@ -6,9 +5,8 @@ import json
 import glob
 
 from env_combined import MAISREnvVec
-from new_heuristic_policy import AutonomousPolicy
 from gui import *
-from utility.data_logging import GameLogger, load_env_config
+from utility.data_logging import load_env_config
 
 
 if __name__ == "__main__":

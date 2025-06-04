@@ -2,20 +2,15 @@ import warnings
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
 import optuna
-import gymnasium as gym
 import os
 import numpy as np
 import multiprocessing
-import socket
 import json
-import shutil
 from datetime import datetime
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 
-import wandb
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
