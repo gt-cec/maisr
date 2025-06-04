@@ -1142,6 +1142,10 @@ class MAISREnvVec(gym.Env):
             current_y = self.agents[self.aircraft_ids[0]].y
 
             # Get direction vector and normalize it
+
+            if isinstance(action, np.ndarray):
+                action = int(action)
+
             dx, dy = direction_map[action]
             length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
             dx_norm = dx / length
@@ -1184,7 +1188,9 @@ class MAISREnvVec(gym.Env):
             import os
 
             # Create directory if it doesn't exist
-            os.makedirs(f'logs/action_histories_new/{self.run_name}', exist_ok=True)
+            #os.makedirs(f'logs/action_histories/{self.run_name}', exist_ok=True)
+            full_dir_path = f'logs/action_histories/{self.run_name}'
+            os.makedirs(full_dir_path, exist_ok=True)
 
             # Calculate map bounds for centered coordinate system
             map_half_size = self.config["gameboard_size"] / 2  # 150 for a 300x300 map
@@ -1281,7 +1287,7 @@ class MAISREnvVec(gym.Env):
                      fontsize=4, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
 
             # Save the figure with a timestamp
-            filename = f'logs/action_histories_new/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}_{self.run_name}.png'
+            filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 

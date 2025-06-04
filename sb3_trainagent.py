@@ -35,12 +35,12 @@ def generate_run_name(config):
         f"lr-{config['lr']}",
         f"bs-{config['batch_size']}",
         f"g-{config['gamma']}",
-        f"fs-{config.get('frame skip', 1)}",
-        f"ppoupdates-{config['ppo_update_steps']}",
-        f"curriculum-{config['use_curriculum']}"
-        f"rew-wtn-{config['shaping_coeff_wtn']}",
-        f"rew-prox-{config['shaping_coeff_prox']}",
-        f"rew-timepenalty-{config['shaping_time_penalty']}",
+        #f"fs-{config.get('frame_skip', 1)}",
+        #f"ppoupdates-{config['ppo_update_steps']}",
+        #f"curriculum-{config['use_curriculum']}",
+        #f"rew-wtn-{config['shaping_coeff_wtn']}",
+        #f"rew-prox-{config['shaping_coeff_prox']}",
+        #f"rew-timepenalty-{config['shaping_time_penalty']}",
         #f"rew-shapedecay-{config['shaping_decay_rate']}",
     ])
 
@@ -49,7 +49,7 @@ def generate_run_name(config):
     timestamp = datetime.now().strftime("%m%d_%H%M")
 
     # Combine all components
-    run_name = f"_{timestamp}"+"_".join(components)
+    run_name = f"{timestamp}_"+"_".join(components)
 
     return run_name
 
@@ -172,7 +172,9 @@ class EnhancedWandbCallback(BaseCallback):
                 ep_reward = 0
 
                 while not (terminated or truncated):
-                    action, _ = self.model.predict(obs, deterministic=True)
+                    action, other = self.model.predict(obs, deterministic=True)
+                    #print(f'Action type: {type(action)}')
+                    #print(f'Other: {other}')
                     obs, reward, terminated, truncated, info = self.eval_env.step(action)
                     #obs, rewards, dones, infos = self.eval_env.step(action)
                     ep_reward += reward
@@ -294,11 +296,11 @@ def train(
 
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
-    os.makedirs('./logs/action_histories/'+run_name, exist_ok=True)
+    os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
 
     run = wandb.init(
         project=project_name,
-        name=f'{machine_name}_{n_envs}envs'+run_name,
+        name=f'{machine_name}_{n_envs}envs_'+run_name,
         config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -404,7 +406,9 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june3c/june3c_base.json',
+        'config_files/june4a/june4a_baseline.json',
+        'config_files/june4a/june4a_bs128.json',
+        'config_files/june4a/june4a_lr0005.json',
         #'config_files/rl_entreg0.01_bs256.json',
         #'config_files/rl_entreg0.03_bs128.json',
         #'config_files/rl_entreg0.03_bs64.json',
@@ -419,8 +423,8 @@ if __name__ == "__main__":
 
     # Get machine name to add to run name
     print(f'machine is {socket.gethostname()}')
-    machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'pace'
-    project_name = 'maisr-rl' if machine_name == 'home' else 'maisr-rl-pace'
+    machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'
+    project_name = 'maisr-rl' if machine_name in ['home','lab_pc'] else 'maisr-rl-pace'
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
     
     print('\n################################################################################')
@@ -432,7 +436,7 @@ if __name__ == "__main__":
     for config_filename in config_list:
         train(
             config_filename,
-            n_envs = multiprocessing.cpu_count(),
+            n_envs = 4,#multiprocessing.cpu_count(),
             load_path = load_path, # Replace with absolute path to the checkpoint to load
             machine_name = machine_name,
             project_name=project_name
