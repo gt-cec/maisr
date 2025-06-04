@@ -334,6 +334,8 @@ def train(
         run_name=run_name,
     )
     eval_env = Monitor(eval_env)
+    eval_env = DummyVecEnv([lambda: eval_env])
+    eval_env = VecNormalize(eval_env)
     print('Envs created')
 
     ################################################# Setup callbacks #################################################
