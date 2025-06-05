@@ -312,11 +312,11 @@ def train(
         monitor_gym=True,
     )
 
+    
+    ################################################ Initialize envs ################################################
     if n_envs > 1:
-        #n_envs = min(n_envs, multiprocessing.cpu_count())  # Use at most 8 or the number of CPU cores
         print(f"Training with {n_envs} environments in parallel")
 
-        # Create environment creation functions for each process
         env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
         env = VecNormalize(env)
@@ -344,6 +344,7 @@ def train(
     eval_env = VecNormalize(eval_env)
     print('Envs created')
 
+    
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
@@ -351,15 +352,23 @@ def train(
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-
     wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}", verbose=2)
-    
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run)
 
     print('Callbacks created')
 
+    ################################################# Setup model #################################################
+
+    policy_kwargs = {
+        activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else 'unknown',
+        net_arch = dict(
+            pi=[env_config['policy_network_size'], env_config['policy_network_size'],
+            vf=[env_config['value_network_size'],env_config['value_network_size']])
+        }
+    
     model = PPO(
         "MlpPolicy",
+        policy_kwargs = policy_kwargs,
         env,
         verbose=1,
         tensorboard_log=f"logs/runs/{run.id}",
