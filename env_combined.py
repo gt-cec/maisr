@@ -482,7 +482,7 @@ class MAISREnvVec(gym.Env):
 
 
         if (self.terminated or self.truncated):
-            print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps:{self.step_count_outer}({info['episode']['l']}), score {round(self.score,0)} | {self.targets_identified} IDs | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
+            print(f'ROUND {self.episode_counter}: {self.targets_identified} IDs, reward {round(info['episode']['r'],1)}, Steps:{self.step_count_outer}({info['episode']['l']}), score {round(self.score,0)} | {self.detections} detections | {round(self.time_limit-self.display_time/1000,1)} secs left')
 
             if self.tag == 'pti_test':
                 self.save_action_history_plot()
