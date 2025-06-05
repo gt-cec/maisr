@@ -424,16 +424,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june4a/june4a_baseline.json',
-        'config_files/june4a/june4a_bs128.json',
-        'config_files/june4a/june4a_lr0005.json',
-        #'config_files/rl_entreg0.01_bs256.json',
-        #'config_files/rl_entreg0.03_bs128.json',
-        #'config_files/rl_entreg0.03_bs64.json',
-        # './config_files/rl_training_less_shaping.json',
-        # './config_files/rl_training_less_shaping_timepenalty.json',
-        # './config_files/rl_training_timepenalty.json',
-        # './config_files/rl_training_default.json'
+        'config_files/june5a_baseline.json,
     ]
 
     # Specify a checkpoint to load here
