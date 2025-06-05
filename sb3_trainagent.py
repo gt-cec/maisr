@@ -358,17 +358,18 @@ def train(
     print('Callbacks created')
 
     ################################################# Setup model #################################################
+    activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
 
-    policy_kwargs = {
-        activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else 'unknown',
-        net_arch = dict(
-            pi=[env_config['policy_network_size'], env_config['policy_network_size'],
-            vf=[env_config['value_network_size'],env_config['value_network_size']])
-        }
+    # policy_kwargs = {
+    #     activation_fn,
+    #     net_arch = dict(
+    #         pi=[env_config['policy_network_size'], env_config['policy_network_size']],
+    #         vf=[env_config['value_network_size'],env_config['value_network_size']])
+    # }
     
     model = PPO(
         "MlpPolicy",
-        policy_kwargs = policy_kwargs,
+        #policy_kwargs = policy_kwargs,
         env,
         verbose=1,
         tensorboard_log=f"logs/runs/{run.id}",
@@ -424,7 +425,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june5a_baseline.json,
+        'config_files/june5a/june5a_baseline.json',
     ]
 
     # Specify a checkpoint to load here
