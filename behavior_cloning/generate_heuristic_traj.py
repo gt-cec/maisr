@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
     # Set parameters
     config_name = '../config_files/bc_config.json'
-    n_episodes = 1000
+    n_episodes = 10000
 
 
     run_name = 'expert_trajectory'+str(n_episodes)+datetime.now().strftime("%m%d_%H%M")
