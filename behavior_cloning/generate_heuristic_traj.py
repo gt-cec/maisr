@@ -36,10 +36,10 @@ def heuristic_policy(observation, state, dones):
     else:
         # Batched observations from vectorized environment
         batch_size = observation.shape[0]
-        actions = np.zeros((batch_size, 2), dtype=np.float32)
+        actions = np.zeros((batch_size,), dtype=np.float32)
 
         for i in range(batch_size):
-            actions[i] = _process_single_observation_vectorized(observation[i])
+            actions[i] = np.int64(_process_single_observation_vectorized(observation[i]))
 
         return actions, None
 
@@ -123,100 +123,9 @@ def _process_single_observation_vectorized(observation, obs_type='relative'):
     # Find best action
     best_action = np.argmax(dot_products)
 
+    #print(f'Chose action {best_action} {type(best_action)}')
     return int(best_action)
 
-# def _process_single_observation(observation, obs_type='relative'):
-#     """
-#     Process a single observation and return a single action.
-#
-#     Args:
-#         observation: Single observation array
-#         obs_type: 'absolute' or 'relative' - should match your environment config
-#     """
-#
-#     # Direction mapping from the environment
-#     direction_map = {
-#         0: (0, 1),  # up
-#         1: (1, 1),  # up-right
-#         2: (1, 0),  # right
-#         3: (1, -1),  # down-right
-#         4: (0, -1),  # down
-#         5: (-1, -1),  # down-left
-#         6: (-1, 0),  # left
-#         7: (-1, 1)  # up-left
-#     }
-#
-#     # Extract agent position
-#     agent_x = observation[0]
-#     agent_y = observation[1]
-#
-#     # Extract target information
-#     max_targets = 5  # From the environment code
-#     targets = []
-#
-#     for i in range(max_targets):
-#         info_idx = 2 + i * 3
-#         x_idx = 3 + i * 3
-#         y_idx = 4 + i * 3
-#
-#         # Check if this target slot has data (non-zero position indicates a real target)
-#         if info_idx < len(observation) and (observation[x_idx] != 0 or observation[y_idx] != 0):
-#             info_level = observation[info_idx]
-#             target_x = observation[x_idx]
-#             target_y = observation[y_idx]
-#
-#             targets.append({
-#                 'info_level': info_level,
-#                 'x': target_x,
-#                 'y': target_y,
-#                 'distance': math.sqrt((target_x - agent_x) ** 2 + (target_y - agent_y) ** 2)
-#             })
-#
-#     # Filter to only unidentified targets (info_level < 1.0)
-#     unidentified_targets = [t for t in targets if t['info_level'] < 1.0]
-#
-#     # If no unidentified targets, move toward the closest identified target or stay put
-#     if not unidentified_targets:
-#         if targets:
-#             # Move toward closest identified target
-#             closest_target = min(targets, key=lambda t: t['distance'])
-#         else:
-#             # No targets at all, just move up
-#             return 0
-#     else:
-#         # Find the closest unidentified target
-#         closest_target = min(unidentified_targets, key=lambda t: t['distance'])
-#
-#     # Calculate direction vector from agent to closest target
-#     target_x = closest_target['x']
-#     target_y = closest_target['y']
-#
-#     dx = target_x - agent_x
-#     dy = target_y - agent_y
-#
-#     # Handle the case where we're already at the target
-#     if abs(dx) < 1e-6 and abs(dy) < 1e-6:
-#         return 0  # Default to moving up
-#
-#     # Find the best direction by calculating dot product with each direction vector
-#     best_action = 0
-#     best_dot_product = -float('inf')
-#
-#     for action, (dir_x, dir_y) in direction_map.items():
-#         # Normalize the direction vector
-#         dir_length = math.sqrt(dir_x * dir_x + dir_y * dir_y)
-#         norm_dir_x = dir_x / dir_length
-#         norm_dir_y = dir_y / dir_length
-#
-#         # Calculate dot product with target direction
-#         dot_product = dx * norm_dir_x + dy * norm_dir_y
-#
-#         if dot_product > best_dot_product:
-#             best_dot_product = dot_product
-#             best_action = action
-#
-#     #print(best_action)
-#     return best_action
 
 def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, run_name = 'none', save_expert_trajectory = True):
     """
@@ -278,7 +187,7 @@ if __name__ == "__main__":
 
     # Set parameters
     config_name = '../config_files/bc_config.json'
-    n_episodes = 50000
+    n_episodes = 1000
 
 
     run_name = 'expert_trajectory'+str(n_episodes)+datetime.now().strftime("%m%d_%H%M")

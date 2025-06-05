@@ -359,7 +359,7 @@ class MAISREnvVec(gym.Env):
             #print(f'Waypoint is {waypoint}')
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
-        elif isinstance(actions, (np.int64, int)) and self.action_type == 'waypoint-direction':
+        elif isinstance(actions, (np.int64, np.float32, int)) and self.action_type == 'waypoint-direction':
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = waypoint
 
@@ -1027,7 +1027,11 @@ class MAISREnvVec(gym.Env):
             # Get direction vector and normalize it
 
             if isinstance(action, np.ndarray):
-                action = int(action)
+                #print(f'Action came into proc_ac as {action} {type(action)}')
+                try:
+                    action = int(action)
+                except:
+                    action = int(action[0])
 
             dx, dy = direction_map[action]
             length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
