@@ -358,8 +358,7 @@ def train(
     print('Callbacks created')
 
     ################################################# Setup model #################################################
-    activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
-
+    #activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
     # policy_kwargs = {
     #     activation_fn,
     #     net_arch = dict(

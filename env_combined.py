@@ -509,7 +509,7 @@ class MAISREnvVec(gym.Env):
     def get_reward(self, new_reward):
         reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
                  (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \ # Currently not used in the waypoint-direction action_type
+                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \
                  (new_reward['proximity'] * self.shaping_coeff_prox) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (self.shaping_time_penalty)
@@ -1052,7 +1052,7 @@ class MAISREnvVec(gym.Env):
         return waypoint
 
     def save_action_history_plot(self, note=''):
-       """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
+        """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
         try:
             import matplotlib.pyplot as plt
             import matplotlib
