@@ -31,8 +31,8 @@ class MAISREnvVec(gym.Env):
 
         super().__init__()
 
-        self.config = config
-        self.run_name = run_name
+        self.config = config # Loaded from .json into a dictionary
+        self.run_name = run_name # For logging
 
         self.use_buttons = False # TODO make configurable in config
 
@@ -41,43 +41,35 @@ class MAISREnvVec(gym.Env):
             np.random.seed(self.seed)
             random.seed(self.seed)
 
-        self.use_beginner_levels = self.config['use_beginner_levels']  # If true, the agent only sees 5 beginner levels to make early training easier
-        self.difficulty = difficulty
+        self.use_beginner_levels = self.config['use_beginner_levels']  # If true, the agent only sees 5 map layouts, to make early training easier
+        self.difficulty = difficulty # Curriculum learning level (starts at 0)
+        self.max_steps = 14703/self.config['frame_skip'] # Max step count of the episode. 14703 by default, but frame_skip will scale this.
 
-        self.highval_target_ratio = 0 # TODO make configurable in config
+        self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
-        self.tag = tag
+        self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
         self.verbose = True if self.config['verbose'] == 'true' else False
         self.render_mode = render_mode
-        self.gather_info = True  # self.render_mode == 'human' # Only populate the info dict if playing with humans
 
         self.obs_type = self.config['obs_type']
         self.action_type = self.config['action_type']
         # reward_type = self.config['reward type']
-
-        self.shaping_decay_rate = self.config['shaping_decay_rate']
-        self.shaping_coeff_wtn = self.config['shaping_coeff_wtn']
-        self.shaping_coeff_prox = self.config['shaping_coeff_prox']
-        self.shaping_coeff_earlyfinish = self.config['shaping_coeff_earlyfinish']
+                    
+        self.shaping_decay_rate = self.config['shaping_decay_rate'] # Shaping rewards are multiplied by this ratio (<1.0) every episode, to "wean" the agent off shaping rewards over time. Not tested.
+        self.shaping_coeff_wtn = self.config['shaping_coeff_wtn'] # The amount of reward the agent earns for placing its waypoint near the closest unknown target
+        self.shaping_coeff_prox = self.config['shaping_coeff_prox'] # If the agent gets closer to the nearest unknown target, it earns rew = shaping_coeff_prox * (distance improvement) for that step
+        self.shaping_coeff_earlyfinish = self.config['shaping_coeff_earlyfinish'] # 
         self.shaping_time_penalty = self.config['shaping_time_penalty']
 
-        if self.obs_type not in ['absolute', 'relative']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
-        if self.action_type not in ['continuous-normalized','waypoint-direction']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
-        # if reward_type not in ['proximity and target', 'waypoint-to-nearest', 'proximity and waypoint-to-nearest']: raise ValueError('reward_type must be normal. Others coming soon')
+        if self.obs_type not in ['absolute']: raise ValueError(f"obs_type invalid, got '{self.obs_type}'")
+        if self.action_type not in ['waypoint-direction']: raise ValueError(f"action_type invalid, got '{self.action_type}'")
+        # if reward_type not in ['proximity and waypoint-to-nearest']: raise ValueError('Invalid reward type')
         if render_mode not in ['headless', 'human', 'rgb_array']: raise ValueError('Render mode must be headless, rgb_array, human')
 
         print(f'Env initialized: Tag={tag}, obs_type={self.obs_type}, action_type={self.action_type}')
 
         self.num_agents = num_agents
-
-        self.tag = tag
-        self.verbose = True if self.config['verbose'] == 'true' else False
-        self.render_mode = render_mode
-        self.gather_info = True #self.render_mode == 'human' # Only populate the info dict if playing with humans
-
-        #self.time_limit = self.config['time limit'] # MOVED
         self.max_targets = 5
-        #self.num_targets = min(30, self.config['num targets']) # If more than 30 targets specified, overwrite to 30 # MOVED
 
         ######################################### OBSERVATION AND ACTION SPACES ########################################
         if self.action_type == 'continuous-normalized':
@@ -90,13 +82,13 @@ class MAISREnvVec(gym.Env):
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
 
         else: 
-            raise ValueError("Action type must be continuous or discrete")
+            raise ValueError("Invalid action type")
 
         self.obs_size = 2 + 3 * self.max_targets
         if self.obs_type == 'absolute':
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
-                shape=(self.obs_size,),  # Wrap in tuple to make it iterable
+                shape=(self.obs_size,),
                 dtype=np.float32)
             self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
@@ -118,7 +110,6 @@ class MAISREnvVec(gym.Env):
         #self.target_id_reward = 1.0
 
         self.detections_reward = 0 # -1.0 (# TODO temporarily removed for simplified env
-        self.time_reward = 0.3  # Reward earned for every second early. 0.1 translates to 1.0 per 10 seconds
 
 
         ################################################# HUMAN THINGS #################################################
@@ -472,7 +463,7 @@ class MAISREnvVec(gym.Env):
             self.terminated = True
             new_score += self.all_targets_points  # Left this but it doesn't go into reward
             new_score += (self.time_limit - self.display_time / 1000) * self.time_points
-            new_reward['early finish'] = (self.time_limit - self.display_time / 1000)
+            new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
 
         if self.step_count_outer >= 490 or self.display_time / 1000 >= self.time_limit: # TODO: Temporarily hard-coding 490 steps
             #print('TERMINATED: TIME UP')
@@ -518,9 +509,9 @@ class MAISREnvVec(gym.Env):
     def get_reward(self, new_reward):
         reward = (new_reward['high val target id'] * self.highqual_highvaltarget_reward) + \
                  (new_reward['regular val target id'] * self.highqual_regulartarget_reward) + \
-                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \
+                 (new_reward['waypoint-to-nearest'] * self.shaping_coeff_wtn) + \ # Currently not used in the waypoint-direction action_type
                  (new_reward['proximity'] * self.shaping_coeff_prox) + \
-                 (new_reward['early finish'] * self.time_reward) + \
+                 (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (self.shaping_time_penalty)
 
         return reward
@@ -528,25 +519,19 @@ class MAISREnvVec(gym.Env):
     def get_observation(self):
         """
         State will include the following features:
-        # TODO OUT OF DATE. Coord frame modified to be -1,+1
             Absolute mode:
-                0 agent_x,             # (0-1) normalized position
-                1 agent_y,             # (0-1) normalized position
-                2+i*3 info_level       # 0 for no info, 0.5 for low quality info, 1.0 for full info
-                3+i*3 target_x,        # (0-1) normalized position
-                4+i*3 target_y,        # (0-1) normalized position
+                0 agent_x,                 # (-1 to +1) normalized position
+                1 agent_y,                 # (-1 to +1) normalized position
 
-            Relative mode:
-                0 agent_x,             # (0-1) normalized position (for reference)
-                1 agent_y,             # (0-1) normalized position (for reference)
-                2+i*3 info_level       # 0 for no info, 0.5 for low quality info, 1.0 for full info
-                3+i*3 rel_target_x,    # (-1 to 1) relative position from agent to target
-                4+i*3 rel_target_y,    # (-1 to 1) relative position from agent to target
+                for target i:
+                2+i*3 target_info_level    # 0 if unknown, 1 if known
+                3+i*3 target_x,            # (-1 to +1) normalized position
+                4+i*3 target_y,            # (-1 to +1) normalized position
+                
         """
 
         self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
-        # New agent position (-1, +1)
         map_half_size = self.config["gameboard_size"] / 2
         self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
         self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
@@ -564,14 +549,6 @@ class MAISREnvVec(gym.Env):
 
         return self.observation
 
-
-    def add_comm_message(self,message,is_ai=True):
-        #timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        sender = "AGENT" if is_ai else "HUMAN"
-        full_message = f"{sender}: {message}"
-        self.comm_messages.append((full_message, is_ai))
-        if len(self.comm_messages) > self.max_messages:
-            self.comm_messages.pop(0)
 
     def render(self):
 
@@ -752,17 +729,6 @@ class MAISREnvVec(gym.Env):
                 agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
                 agent0_health_window.draw(self.window)
 
-        # if self.config['num aircraft'] > 1:
-        #     agent1_health_window = HealthWindow(self.human_idx, game_width-150, game_width + 5, 'HUMAN HP',self.AIRCRAFT_COLORS[1])
-        #     agent1_health_window.update(self.agents[self.human_idx].health_points)
-        #     agent1_health_window.draw(self.window)
-
-        # current_time = pygame.time.get_ticks()
-        #
-        # if current_time > self.start_countdown_time:
-        #     self.time_window.update(self.display_time)
-        #     self.time_window.draw(self.window)
-
         # Draw agent status window
         #if self.agent_info_height_req > 0: self.agent_info_display.draw(self.window)
 
@@ -842,32 +808,6 @@ class MAISREnvVec(gym.Env):
     def close(self):
         if self.render_mode == 'human' and pygame.get_init():
             pygame.quit()
-
-    # convert the environment into a state dictionary
-    def get_state(self):
-        state = {
-            "aircrafts": {},
-            "ships": {},
-            "detections": self.detections,
-            "num lowQ": self.low_quality_identified,
-            "num highQ": self.high_quality_identified
-        }
-        for agent in self.agents:
-            if agent.agent_class == "ship":
-                state["ships"][agent.agent_idx] = {
-                    "position": (agent.x, agent.y),
-                    "direction": agent.direction,
-                    "observed": agent.observed,
-                    "threat": agent.threat,
-                    "observed threat": agent.observed_threat
-                }
-            elif agent.agent_class == "aircraft":
-                state["aircrafts"][agent.agent_idx] = {
-                    "position": (agent.x, agent.y),
-                    "direction": agent.direction,
-                    "damage": agent.health_points
-                }
-        return state
 
     # utility function for drawing a square box
     def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
@@ -1055,11 +995,10 @@ class MAISREnvVec(gym.Env):
     
     def process_action(self, action):
         """
-        If the action is continuous-normalized, this denormalizes it from -1, +1 to [0, gameboard_size] in both axes
         If the action type is waypoint-direction, this converts the discrete action chosen into an x,y in the appropriate direction
 
         Args:
-            action (ndarray, size 2): Agent action to normalize. Should be in the form ndarray(waypoint_x, waypoint_y), all with range [-1, +1]
+            action (ndarray, size 1): Agent discrete action to convert to waypoint coords
 
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
@@ -1081,7 +1020,7 @@ class MAISREnvVec(gym.Env):
                 7: (-1, 1)  # up-left
             }
 
-            # Get current agent position (already in centered coordinates)
+            # Get current agent position
             current_x = self.agents[self.aircraft_ids[0]].x
             current_y = self.agents[self.aircraft_ids[0]].y
 
@@ -1105,17 +1044,6 @@ class MAISREnvVec(gym.Env):
             x_coord = np.clip(x_coord, -map_half_size, map_half_size)
             y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
-        elif self.action_type == 'continuous-normalized':
-            # Validate action range
-            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                raise ValueError(f'ERROR: Actions are not normalized to [-1, +1]. Got: {action}')
-
-            if self.obs_type == 'absolute':
-                # Convert from [-1,+1] to [-150,+150]
-                map_half_size = self.config["gameboard_size"] / 2
-                x_coord = action[0] * map_half_size  # [-1,+1] -> [-150,+150]
-                y_coord = action[1] * map_half_size
-
         else:
             raise ValueError(f'Error in process_action: action type "{self.action_type}" not recognized')
 
@@ -1124,6 +1052,7 @@ class MAISREnvVec(gym.Env):
         return waypoint
 
     def save_action_history_plot(self, note=''):
+       """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
         try:
             import matplotlib.pyplot as plt
             import matplotlib
@@ -1243,7 +1172,7 @@ class MAISREnvVec(gym.Env):
 
 
     def set_difficulty(self, difficulty):
-        """Method to change difficulty level from an external method (i.e. a training loop"""
+        """Method to change difficulty level from an external method (i.e. a training loop)"""
         self.difficulty = difficulty
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
@@ -1312,40 +1241,3 @@ class MAISREnvVec(gym.Env):
             self.shaping_time_penalty = self.config['shaping_time_penalty']
 
         #print(f'env.load_difficulty: DIFFICULTY {self.difficulty}: board size {self.config["gameboard_size"]}, targets {self.config['num targets']}')
-
-    def save_oar(self, observation, actions, reward):
-        """Save O, A, and R to a json at each timestep"""
-
-        # Create directory if it doesn't exist
-        os.makedirs('logs/oar_logs', exist_ok=True)
-
-        # Create filename based on run_name and episode
-        filename = f'logs/oar_logs/oar_{self.run_name}_ep{self.episode_counter}.json'
-
-        # Create the data entry for this timestep
-
-        raw_action = actions.tolist() if hasattr(actions, 'tolist') else actions
-        processed_action = self.process_action(raw_action)
-
-        timestep_data = {
-            'timestep': self.step_count_outer,
-            'observation': observation.tolist() if hasattr(observation, 'tolist') else observation,
-            'raw actions': raw_action,
-            'processed actions': processed_action,
-            'reward': float(reward)
-        }
-
-        # Load existing data or create new structure
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                data = json.load(f)
-        else:
-            #print('Initializing json')
-            data = {'episode': self.episode_counter, 'timesteps': []}
-
-        # Add new timestep data
-        data['timesteps'].append(timestep_data)
-
-        # Save back to file
-        with open(filename, 'w') as f:
-            json.dump(data, f, indent=2)
