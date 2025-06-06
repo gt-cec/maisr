@@ -153,7 +153,7 @@ def save_histograms(observations, rewards, actions, test_dir, test_name):
 
     # Create reward histogram
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    ax.hist(reward_array, bins=20, alpha=0.7, edgecolor='black')
+    ax.hist(reward_array, bins=20, alpha=0.7, edgecolor='black', range=(-50.0, 100.0))
     ax.set_title(f'Episode Rewards - {test_name}')
     ax.set_xlabel('Episode Reward')
     ax.set_ylabel('Frequency')
@@ -185,13 +185,13 @@ def test_oar_normalized():
     pass
 
 
-def test_env_heuristic(heuristic):
+def test_env_heuristic(heuristic, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("Starting heuristic test...")
 
     # Load config
     config = load_env_config('config_files/testsuite_config.json')
-    test_dir = create_test_directory()
+    #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
@@ -242,7 +242,7 @@ def test_env_heuristic(heuristic):
     print(f"Heuristic test completed. Results saved to {test_dir}")
 
 
-def test_env_humanplaytest():
+def test_env_humanplaytest(test_dir=None):
     """Run env for 3 episodes allowing human to take actions using numpad keys"""
     print("Starting human playtest...")
     print("Controls: Numpad 8=Up, 2=Down, 4=Left, 6=Right")
@@ -251,7 +251,7 @@ def test_env_humanplaytest():
 
     # Load config
     config = load_env_config('config_files/testsuite_config.json')
-    test_dir = create_test_directory()
+    #test_dir = create_test_directory()
 
     pygame.init()
     clock = pygame.time.Clock()
@@ -281,14 +281,14 @@ def test_env_humanplaytest():
 
     # Mapping numpad keys to actions
     key_to_action = {
-        pygame.K_KP8: 0,  # up
-        pygame.K_KP9: 1,  # up-right
+        pygame.K_KP8: 4,  # up
+        pygame.K_KP9: 3,  # up-right
         pygame.K_KP6: 2,  # right
-        pygame.K_KP3: 3,  # down-right
-        pygame.K_KP2: 4,  # down
-        pygame.K_KP1: 5,  # down-left
+        pygame.K_KP3: 1,  # down-right
+        pygame.K_KP2: 0,  # down
+        pygame.K_KP1: 7,  # down-left
         pygame.K_KP4: 6,  # left
-        pygame.K_KP7: 7  # up-left
+        pygame.K_KP7: 5  # up-left
     }
 
     all_observations = []
@@ -337,7 +337,7 @@ def test_env_humanplaytest():
             # Render environment
             env.render()
             pygame.display.flip()
-            clock.tick(10)  # 60 FPS
+            clock.tick(20)  # 60 FPS
 
         # Store episode data
         all_observations.extend(episode_observations)
@@ -354,13 +354,13 @@ def test_env_humanplaytest():
     print(f"Human playtest completed. Results saved to {test_dir}")
 
 
-def test_env_random():
+def test_env_random(test_dir=None):
     """Run env for 20 episodes, taking actions by randomly sampling from the action space"""
     print("Starting random test...")
 
     # Load config
     config = load_env_config('config_files/testsuite_config.json')
-    test_dir = create_test_directory()
+    #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
@@ -434,18 +434,21 @@ if __name__ == "__main__":
     print("Starting Environment Test Suite...")
     print("=" * 50)
 
+    # Create shared test directory for all tests
+    shared_test_dir = create_test_directory()
+    print(f"All test results will be saved to: {shared_test_dir}")
+
     # Skip OAR test as requested
     # test_oar_normalized()
 
     try:
-
-        test_env_humanplaytest()
+        test_env_humanplaytest(test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_random()
+        test_env_random(test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_heuristic(heuristic_policy)
+        test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
 
