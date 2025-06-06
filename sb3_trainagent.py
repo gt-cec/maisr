@@ -268,7 +268,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
 
 
 def train(
-        env_config_filename,
+        env_config,
         n_envs,
         project_name,
         save_dir="./trained_models/",
@@ -287,16 +287,6 @@ def train(
     6. Loads a prior checkpoint if provided
     7. Runs PPO training and saves checkpoints and the final model
     """
-
-    # Load env config into a dict
-    env_config = load_env_config(env_config_filename)
-
-    # Make sure n_envs does not exceed CPU count
-    n_envs = min(n_envs, multiprocessing.cpu_count())
-
-    # Add parameters to the config (so they can be tracked later)
-    env_config['n_envs'] = n_envs
-    env_config['config_filename'] = env_config_filename
 
     # Generate run name (To be consistent between WandB, model saving, and action history plots)
     run_name = generate_run_name(env_config)
@@ -353,7 +343,9 @@ def train(
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None, verbose=2)
+    wandb_callback = WandbCallback(gradient_save_freq=2,
+                                   model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None,
+                                   verbose=2)
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run)
 
     print('Callbacks created')
@@ -425,7 +417,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june5a/june5a_baseline.json',
+        'config_files/june5a/june5b_baseline.json',
     ]
 
     # Specify a checkpoint to load here
@@ -438,16 +430,22 @@ if __name__ == "__main__":
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
     
     print('\n################################################################################')
-    print('################################################################################')
     print(f'############################ STARTING TRAINING RUN ############################')
-    print('################################################################################')
     print('################################################################################')
 
     for config_filename in config_list:
-        train(
-            config_filename,
-            n_envs = multiprocessing.cpu_count(),
-            load_path = load_path, # Replace with absolute path to the checkpoint to load
-            machine_name = machine_name,
-            project_name=project_name
-        )
+        env_config = load_env_config(config_filename) # Load env config into a dict
+        # Add parameters to the config so they can be tracked later
+        env_config['n_envs'] = multiprocessing.cpu_count()
+        env_config['config_filename'] = config_filename
+
+        for lr in [0.005, 0.0005, 0.0001]:
+            env_config['lr'] = lr
+
+            train(
+                env_config,
+                n_envs=multiprocessing.cpu_count(),
+                load_path=load_path, # Replace with absolute path to the checkpoint to load
+                machine_name=machine_name,
+                project_name=project_name
+            )

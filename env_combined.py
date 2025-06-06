@@ -206,12 +206,11 @@ class MAISREnvVec(gym.Env):
             random.seed(42)
 
         if self.config['use_beginner_levels']: # If true, the agent only sees 5 map layouts, to make early training easier
-            seed_list = [42, 123, 456, 789, 101] # List of seeds to cycle through
+            seed_list = [42, 123, 456] # List of seeds to cycle through
             current_seed_index = self.episode_counter % len(seed_list)
             current_seed = seed_list[current_seed_index]
             np.random.seed(current_seed)
             random.seed(current_seed)
-
 
         self.agents = [] # List of names of all current agents. Typically integers
         self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
