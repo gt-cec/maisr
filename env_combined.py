@@ -309,6 +309,8 @@ class MAISREnvVec(gym.Env):
 
         self.step_count_inner += 1
 
+        last_potential = self.calculate_potential(self.observation)
+
         new_reward = {'high val target id': 0, 'regular val target id': 0,
                       'proximity':0, 'early finish': 0, 'waypoint-to-nearest':0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -446,14 +448,11 @@ class MAISREnvVec(gym.Env):
 
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: outer (inner) {self.step_count_outer} ({info['episode']['l']}), score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.config['time_limit']-self.display_time/1000,1)} secs left')
-
             if self.tag == 'pti_test':
                 self.save_action_history_plot()
-
             if self.tag == 'oar_test':
                 if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
                     self.save_action_history_plot()
-
             if self.tag in ['eval', 'train_mp0']:
                 if self.episode_counter in [0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000] or self.episode_counter % 500 == 0:
                         self.save_action_history_plot()
@@ -466,6 +465,9 @@ class MAISREnvVec(gym.Env):
         if self.init: self.init = False
 
         self.observation = self.get_observation()  # Get observation
+
+        potential = self.calculate_potential(self.observation)
+        potential_gain = potential - last_potential
 
         return self.observation, reward, self.terminated, self.truncated, info
 
@@ -480,6 +482,10 @@ class MAISREnvVec(gym.Env):
 
         return reward
 
+    def get_potential(self, observation):
+        # TODO
+        raise NotImplementedError
+        return potential
 
     def get_observation(self):
         """
