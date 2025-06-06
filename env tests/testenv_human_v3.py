@@ -219,21 +219,16 @@ def render_current_action(window, current_action, gameboard_size):
     window.blit(text_surface, text_rect)
 
 def main():
+    # Load environment configuration
+    # config_file = './config_files/humantest_config.json'
+    config_file = '../config_files/testsuite_config.json'
+    env_config = load_env_config(config_file)
     
     pygame.init()
     clock = pygame.time.Clock()
     
     # Disable display scaling for high-res monitors
     ctypes.windll.user32.SetProcessDPIAware()
-    
-    # Load environment configuration
-    #config_file = './config_files/humantest_config.json'
-    config_file = '../config_files/rl_simpleoar.json'
-    env_config = load_env_config(config_file)
-    
-    # Override config for human play
-    env_config['obs_type'] = 'absolute'
-    env_config['action_type'] = 'continuous-normalized'
     
     # Set up pygame window
     window_width, window_height = env_config['window_size'][0], env_config['window_size'][1]

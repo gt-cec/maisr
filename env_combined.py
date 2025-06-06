@@ -184,11 +184,11 @@ class MAISREnvVec(gym.Env):
 
                 # Calculate required height of agent status info
                 self.agent_info_height_req = 0
-                if self.config['show_low_level_goals']: self.agent_info_height_req += 1
-                if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
-                if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
-                if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
-                    self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
+                # if self.config['show_low_level_goals']: self.agent_info_height_req += 1
+                # if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
+                # if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
+                # if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
+                #     self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
 
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
 
@@ -470,7 +470,7 @@ class MAISREnvVec(gym.Env):
 
 
     def get_reward(self, new_reward):
-        reward = (new_reward['high val target id'] * self.self.config['highqual_highvaltarget_reward']) + \
+        reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['waypoint-to-nearest'] * self.config['shaping_coeff_wtn']) + \
                  (new_reward['proximity'] * self.config['shaping_coeff_prox']) + \
@@ -523,7 +523,7 @@ class MAISREnvVec(gym.Env):
             raise ValueError(f"obs_type invalid, got '{self.config['obs_type']}'")
         if self.config['action_type'] not in valid_action_types:
             raise ValueError(f"action_type invalid, got '{self.config['action_type']}'")
-        if render_mode not in valid_render_modes:
+        if self.render_mode not in valid_render_modes:
             raise ValueError('Render mode must be headless, rgb_array, human')
     
     
@@ -533,7 +533,7 @@ class MAISREnvVec(gym.Env):
         game_width = self.config["gameboard_size"]
         ui_width = window_width - game_width
 
-        if self.render_mode == 'human':
+        if self.render_mode == 'human' and self.use_buttons:
             if self.agent_info_height_req > 0: self.comm_pane_height = 220+self.agent_info_height_req
             else: self.comm_pane_height = 10
 

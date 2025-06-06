@@ -275,6 +275,7 @@ def train(
         load_path=None,
         log_dir="./logs/",
         machine_name='machine',
+        save_model=True
 ):
     """
     Main training pipeline. Does the following:
@@ -352,7 +353,7 @@ def train(
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}", verbose=2)
+    wandb_callback = WandbCallback(gradient_save_freq=0, model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None, verbose=2)
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run)
 
     print('Callbacks created')
