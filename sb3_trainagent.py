@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
 import gymnasium as gym
@@ -35,13 +36,13 @@ def generate_run_name(config):
         f"lr-{config['lr']}",
         f"bs-{config['batch_size']}",
         f"g-{config['gamma']}",
-        #f"fs-{config.get('frame_skip', 1)}",
-        #f"ppoupdates-{config['ppo_update_steps']}",
-        #f"curriculum-{config['use_curriculum']}",
-        #f"rew-wtn-{config['shaping_coeff_wtn']}",
-        #f"rew-prox-{config['shaping_coeff_prox']}",
-        #f"rew-timepenalty-{config['shaping_time_penalty']}",
-        #f"rew-shapedecay-{config['shaping_decay_rate']}",
+        # f"fs-{config.get('frame_skip', 1)}",
+        # f"ppoupdates-{config['ppo_update_steps']}",
+        # f"curriculum-{config['use_curriculum']}",
+        # f"rew-wtn-{config['shaping_coeff_wtn']}",
+        # f"rew-prox-{config['shaping_coeff_prox']}",
+        # f"rew-timepenalty-{config['shaping_time_penalty']}",
+        # f"rew-shapedecay-{config['shaping_decay_rate']}",
     ])
 
     # Add a run identifier (could be auto-incremented or timestamp-based)
@@ -49,7 +50,7 @@ def generate_run_name(config):
     timestamp = datetime.now().strftime("%m%d_%H%M")
 
     # Combine all components
-    run_name = f"{timestamp}_"+"_".join(components)
+    run_name = f"{timestamp}_" + "_".join(components)
 
     return run_name
 
@@ -63,7 +64,7 @@ class EnhancedWandbCallback(BaseCallback):
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name = 'no_name'):
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name'):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
@@ -72,7 +73,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
-        self.max_ep_len_to_advance = 10000 # TODO make configurable
+        self.max_ep_len_to_advance = 10000  # TODO make configurable
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0  # Tracks how many evals in a row that the agent scores above the threshold to advance to next curriculum level. If >= 3, difficutly is updated. Resets if the agent scores less than 8
@@ -117,17 +118,17 @@ class EnhancedWandbCallback(BaseCallback):
         # NEW: Log additional PPO training metrics when they become available
         # These are typically updated after each training epoch in PPO
         training_metrics = {}
-        
+
         # Check if training metrics are available in self.locals
         # These become available during the training phase of PPO
         if hasattr(self.model, '_n_updates'):
             training_metrics["train/n_updates"] = self.model._n_updates
-            
+
         # Try to access metrics from the logger's name_to_value dict
         # which stores the most recent values logged by the algorithm
         if hasattr(self.logger, 'name_to_value'):
             logger_dict = self.logger.name_to_value
-            
+
             # Log the core training metrics you requested
             if "train/approx_kl" in logger_dict:
                 training_metrics["train/approx_kl"] = logger_dict["train/approx_kl"]
@@ -137,7 +138,7 @@ class EnhancedWandbCallback(BaseCallback):
                 training_metrics["train/explained_variance"] = logger_dict["train/explained_variance"]
             if "train/n_updates" in logger_dict:
                 training_metrics["train/n_updates"] = logger_dict["train/n_updates"]
-                
+
             # Optional: Log other available training metrics
             if "train/policy_gradient_loss" in logger_dict:
                 training_metrics["train/policy_gradient_loss"] = logger_dict["train/policy_gradient_loss"]
@@ -166,23 +167,23 @@ class EnhancedWandbCallback(BaseCallback):
 
             for i in range(self.n_eval_episodes):
                 obs = self.eval_env.reset()
-                #obs = self.eval_env.reset() # TODO TESTING
-                #terminated = False
-                #truncated = False
+                # obs = self.eval_env.reset() # TODO TESTING
+                # terminated = False
+                # truncated = False
                 done = False
                 ep_reward = 0
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
-                    #print(f'Action type: {type(action)}')
-                    #print(f'Other: {other}')
+                    # print(f'Action type: {type(action)}')
+                    # print(f'Other: {other}')
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
-                    
-                    #obs, rewards, dones, infos = self.eval_env.step(action)
+
+                    # obs, rewards, dones, infos = self.eval_env.step(action)
                     ep_reward += reward
 
                 # Collect target_ids from the info dict
@@ -252,6 +253,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     Callable function that creates a MAISR environment. This function is passed to the vectorized environment
     instantiation in train()
     """
+
     def _init():
         env = MAISREnvVec(
             config=env_config,
@@ -297,18 +299,17 @@ def train(
 
     run = wandb.init(
         project=project_name,
-        name=f'{machine_name}_{n_envs}envs_'+run_name,
+        name=f'{machine_name}_{n_envs}envs_' + run_name,
         config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
     )
 
-    
     ################################################ Initialize envs ################################################
     if n_envs > 1:
         print(f"Training with {n_envs} environments in parallel")
 
-        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name)for i in range(n_envs)]
+        env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
         env = VecNormalize(env)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
@@ -335,7 +336,6 @@ def train(
     eval_env = VecNormalize(eval_env)
     print('Envs created')
 
-    
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
@@ -343,25 +343,25 @@ def train(
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-    wandb_callback = WandbCallback(gradient_save_freq=2,
+    wandb_callback = WandbCallback(gradient_save_freq=50,
                                    model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None,
-                                   verbose=2)
+                                   verbose=1)
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run)
 
     print('Callbacks created')
 
     ################################################# Setup model #################################################
-    #activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
+    # activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
     # policy_kwargs = {
     #     activation_fn,
     #     net_arch = dict(
     #         pi=[env_config['policy_network_size'], env_config['policy_network_size']],
     #         vf=[env_config['value_network_size'],env_config['value_network_size']])
     # }
-    
+
     model = PPO(
         "MlpPolicy",
-        #policy_kwargs = policy_kwargs,
+        # policy_kwargs = policy_kwargs,
         env,
         verbose=1,
         tensorboard_log=f"logs/runs/{run.id}",
@@ -371,7 +371,7 @@ def train(
         seed=env_config['seed'],
         device='cpu',
         gamma=env_config['gamma'],
-        ent_coef = env_config['entropy_regularization']
+        ent_coef=env_config['entropy_regularization']
     )
     print('Model instantiated')
 
@@ -381,7 +381,6 @@ def train(
         model = model.__class__.load(load_path, env=env)
     else:
         print('Training new model')
-
 
     print('##################################### Beginning agent training... #######################################\n')
 
@@ -394,7 +393,6 @@ def train(
         callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
         reset_num_timesteps=True if load_path else False  # TODO check this
     )
-
 
     print('########################################## TRAINING COMPLETE ############################################\n')
     env.close()
@@ -417,35 +415,37 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june5a/june5b_baseline.json',
+        'config_files/june5b/june5b_baseline.json',
     ]
 
     # Specify a checkpoint to load here
-    load_path = None #'./trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
+    load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
 
     # Get machine name to add to run name
     print(f'machine is {socket.gethostname()}')
     machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'
-    project_name = 'maisr-rl' if machine_name in ['home','lab_pc'] else 'maisr-rl-pace'
+    project_name = 'maisr-rl' if machine_name in ['home', 'lab_pc'] else 'maisr-rl-pace'
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
-    
+
     print('\n################################################################################')
     print(f'############################ STARTING TRAINING RUN ############################')
     print('################################################################################')
 
     for config_filename in config_list:
-        env_config = load_env_config(config_filename) # Load env config into a dict
+        env_config = load_env_config(config_filename)  # Load env config into a dict
         # Add parameters to the config so they can be tracked later
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
 
         for lr in [0.005, 0.0005, 0.0001]:
-            env_config['lr'] = lr
+            for batch_size in [128, 256]:
+                env_config['lr'] = lr
+                env_config['batch_size'] = batch_size
 
-            train(
-                env_config,
-                n_envs=multiprocessing.cpu_count(),
-                load_path=load_path, # Replace with absolute path to the checkpoint to load
-                machine_name=machine_name,
-                project_name=project_name
-            )
+                train(
+                    env_config,
+                    n_envs=multiprocessing.cpu_count(),
+                    load_path=load_path,  # Replace with absolute path to the checkpoint to load
+                    machine_name=machine_name,
+                    project_name=project_name
+                )
