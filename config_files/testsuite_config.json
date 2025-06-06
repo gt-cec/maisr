@@ -34,7 +34,7 @@
 	"activation_fn": "Tanh",
 	"lr": 0.00005,
 	"batch_size": 64,
-	"gamma": 0.998,
+	"gamma": 0.9993,
 	"frame_skip": 30,
 	"ppo_update_steps": 2048,
 	"entropy_regularization": 0.01,

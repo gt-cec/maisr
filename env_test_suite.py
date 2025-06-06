@@ -224,7 +224,7 @@ def test_env_heuristic(heuristic, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
+            episode_reward += reward*config['gamma'] ** step_count
             done = terminated or truncated
             step_count += 1
 
@@ -282,7 +282,7 @@ def test_env_badheuristic(badheuristic, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
+            episode_reward += reward*config['gamma'] ** step_count
             done = terminated or truncated
             step_count += 1
 
@@ -387,7 +387,7 @@ def test_env_humanplaytest(test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
+            episode_reward += reward*config['gamma'] ** step_count
             done = terminated or truncated
             step_count += 1
 
@@ -440,6 +440,7 @@ def test_env_random(test_dir=None):
         step_count = 0
         max_steps = 1000  # Safety limit
 
+
         while not done and step_count < max_steps:
             # Random action from action space (0-7 for discrete)
             action = env.action_space.sample()
@@ -450,7 +451,7 @@ def test_env_random(test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
+            episode_reward += reward*config['gamma'] ** step_count
             done = terminated or truncated
             step_count += 1
 
@@ -499,8 +500,8 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        test_env_humanplaytest(test_dir=shared_test_dir)
-        print("\n" + "=" * 50)
+        #test_env_humanplaytest(test_dir=shared_test_dir)
+        #print("\n" + "=" * 50)
 
         test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
