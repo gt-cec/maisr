@@ -224,7 +224,7 @@ def test_env_heuristic(heuristic, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward*config['gamma'] ** step_count
+            episode_reward += reward * (config['gamma'] ** step_count)
             done = terminated or truncated
             step_count += 1
 
@@ -282,7 +282,7 @@ def test_env_badheuristic(badheuristic, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward*config['gamma'] ** step_count
+            episode_reward += reward * (config['gamma'] ** step_count)
             done = terminated or truncated
             step_count += 1
 
@@ -387,7 +387,7 @@ def test_env_humanplaytest(test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward*config['gamma'] ** step_count
+            episode_reward += reward* (config['gamma'] ** step_count)
             done = terminated or truncated
             step_count += 1
 
@@ -451,7 +451,7 @@ def test_env_random(test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward*config['gamma'] ** step_count
+            episode_reward += reward * (config['gamma'] ** step_count)
             done = terminated or truncated
             step_count += 1
 
