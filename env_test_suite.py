@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 from sb3_trainagent import train
-from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized
+from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
 
@@ -153,7 +153,7 @@ def save_histograms(observations, rewards, actions, test_dir, test_name):
 
     # Create reward histogram
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    ax.hist(reward_array, bins=20, alpha=0.7, edgecolor='black', range=(-50.0, 100.0))
+    ax.hist(reward_array, bins=30, alpha=0.7, edgecolor='black', range=(-15.0, 15.0))
     ax.set_title(f'Episode Rewards - {test_name}')
     ax.set_xlabel('Episode Reward')
     ax.set_ylabel('Frequency')
@@ -262,6 +262,8 @@ def test_env_badheuristic(badheuristic, test_dir=None):
 
     for episode in range(20):
         obs, info = env.reset()
+        reset_badheuristic_state()
+
         episode_reward = 0
         episode_observations = []
         episode_actions = []
@@ -496,24 +498,24 @@ if __name__ == "__main__":
     shared_test_dir = create_test_directory()
     print(f"All test results will be saved to: {shared_test_dir}")
 
-    # Skip OAR test as requested
-    # test_oar_normalized()
-
     try:
         test_env_humanplaytest(test_dir=shared_test_dir)
-        print("\n" + "=" * 50)
-
-        test_env_random(test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
         test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
+        test_env_random(test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_train()
+        #test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
+
+        #test_env_circles(test_dir=shared_test_dir)
+        #print("\n" + "=" * 50)
+
+        #test_env_train()
+        #print("\n" + "=" * 50)
 
     except KeyboardInterrupt:
         print("\nTest suite interrupted by user.")

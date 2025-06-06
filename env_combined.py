@@ -41,7 +41,7 @@ class MAISREnvVec(gym.Env):
             random.seed(seed)
 
         self.difficulty = starting_difficulty # Curriculum learning level (starts at 0)
-        self.max_steps = 14703/self.config['frame_skip'] # Max step count of the episode. 14703 by default, but frame_skip will scale this.
+        self.max_steps = 14703 # Max step count of the episode
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
@@ -427,6 +427,8 @@ class MAISREnvVec(gym.Env):
             self.terminated = True
             new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
+            #print(f'{self.max_steps} - {self.step_count_inner}')
+            #print(f'earned {new_reward['early finish']*self.config['shaping_coeff_earlyfinish']} for finishing early')
 
         if self.step_count_outer >= 490 or self.display_time / 1000 >= self.config['time_limit']: # TODO: Temporarily hard-coding 490 steps
             self.terminated = True
