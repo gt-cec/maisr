@@ -32,6 +32,9 @@
 	"gamma": 0.998,
 	"frame_skip": 30,
 	"ppo_update_steps": 2048,
+	"vf_coef":0.5,
+	"n_epochs":10,
+	"lr_schedule":"none",
 
 	"steps_per_episode": 500,
 	"num_timesteps": 15e6,

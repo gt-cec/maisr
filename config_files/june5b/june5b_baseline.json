@@ -32,7 +32,7 @@
 	"policy_network_size": 64,
 	"value_network_size": 32,
 	"activation_fn": "Tanh",
-	"lr": 0.00005,
+	"lr": 0.005,
 	"batch_size": 64,
 	"gamma": 0.9993,
 	"frame_skip": 30,

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 from sb3_trainagent import train
-from behavior_cloning.generate_heuristic_traj import heuristic_policy, _process_single_observation_vectorized
+from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
 
@@ -241,6 +241,61 @@ def test_env_heuristic(heuristic, test_dir=None):
     env.close()
     print(f"Heuristic test completed. Results saved to {test_dir}")
 
+def test_env_badheuristic(badheuristic, test_dir=None):
+    """Run env for 20 episodes using the provided heuristic function"""
+    print("Starting badheuristic test...")
+
+    # Load config
+    config = load_env_config('config_files/testsuite_config.json')
+    #test_dir = create_test_directory()
+
+    # Create environment
+    env = MAISREnvVec(
+        config=config,
+        render_mode='headless',
+        tag='badheuristic_test'
+    )
+
+    all_observations = []
+    episode_rewards = []
+    all_actions = []
+
+    for episode in range(20):
+        obs, info = env.reset()
+        episode_reward = 0
+        episode_observations = []
+        episode_actions = []
+
+        done = False
+        step_count = 0
+        max_steps = 1000  # Safety limit
+
+        while not done and step_count < max_steps:
+            # Get action from heuristic
+            action = badheuristic(obs, None, False)
+            episode_actions.append(action)
+
+            # Store observation
+            episode_observations.append(obs.copy())
+
+            # Take step
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode_reward += reward
+            done = terminated or truncated
+            step_count += 1
+
+        # Store episode data
+        all_observations.extend(episode_observations)
+        episode_rewards.append(episode_reward)
+        all_actions.extend(episode_actions)
+
+        print(f"Badheuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f}, Steps: {step_count}")
+
+    # Generate and save histograms
+    save_histograms(all_observations, episode_rewards, all_actions, test_dir, "badheuristic")
+
+    env.close()
+    print(f"Bad heuristic test completed. Results saved to {test_dir}")
 
 def test_env_humanplaytest(test_dir=None):
     """Run env for 3 episodes allowing human to take actions using numpad keys"""
@@ -418,8 +473,11 @@ def test_env_train():
     machine_name = 'testenv'
     project_name = 'maisr-rl-tests'
 
+    env_config = load_env_config('config_files/testsuite_config.json')
+    env_config['n_envs'] = multiprocessing.cpu_count()
+
     train(
-        env_config_filename='config_files/testsuite_config.json',
+        env_config,
         n_envs=multiprocessing.cpu_count(),
         load_path=None,
         machine_name=machine_name,
@@ -451,7 +509,8 @@ if __name__ == "__main__":
         test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-
+        test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
+        print("\n" + "=" * 50)
 
         test_env_train()
         print("\n" + "=" * 50)
