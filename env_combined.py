@@ -84,7 +84,7 @@ class MAISREnvVec(gym.Env):
         #self.steps_for_highqual_info = 7 * 60  # TODO currently not used
         # self.detections_reward = 0 # -1.0 # TODO temporarily removed for simplified env
         #self.highqual_regulartarget_reward = self.config['highqual_regulartarget_reward'] # Reward earned for gathering high quality info about a regular value target
-        #self.self.config['highqual_highvaltarget_reward'] = self.config['self.config['highqual_highvaltarget_reward']'] # Reward earned for gathering high quality info about a high value target
+        #self.config['highqual_highvaltarget_reward'] = self.config['self.config['highqual_highvaltarget_reward']'] # Reward earned for gathering high quality info about a high value target
 
         ################################################# HUMAN THINGS #################################################
         self.subject_id = subject_id
@@ -248,7 +248,6 @@ class MAISREnvVec(gym.Env):
         self.targets_identified = 0
 
         # Decay shaping rewards
-        self.config['shaping_coeff_wtn'] = self.config['shaping_coeff_wtn'] * self.config['shaping_decay_rate']
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
 
         if self.config['agent_start_location'] == "random":
@@ -309,8 +308,9 @@ class MAISREnvVec(gym.Env):
 
         self.step_count_inner += 1
 
-        new_reward = {'high val target id': 0, 'regular val target id': 0,
-                      'proximity':0, 'early finish': 0, 'waypoint-to-nearest':0} # Track events that give reward. Will be passed to get_reward at end of step
+        last_potential = self.get_potential(self.observation)
+
+        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
         info = {
             "new_identifications": [],  # List to track newly identified targets/threats
@@ -352,40 +352,30 @@ class MAISREnvVec(gym.Env):
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
             aircraft.move() # First, move using the waypoint override set above
 
-            # Calculate distances to all targets
+            # # Calculate distances to all targets
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             target_positions = self.targets[:, 3:5]  # x,y coordinates
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
-
-            # Create a mask for unidentified targets (info_level < 1.0)
-            if aircraft.agent_idx == 0:
-                unidentified_mask = self.targets[:, 2] < 1.0
-                if np.any(unidentified_mask):
-                    unidentified_distances = distances[unidentified_mask]
-                    nearest_unidentified_distance = np.min(unidentified_distances)
-
-                    if not hasattr(self, 'previous_nearest_distance'):
-                        self.previous_nearest_distance = nearest_unidentified_distance
-
-                    unidentified_indices = np.where(unidentified_mask)[0]
-                    nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
-
-                    current_waypoint = self.agents[0].waypoint_override
-                    # if current_waypoint is not None:
-                    #     # Check if waypoint is within 30 px of nearest unknown target
-                    #     nearest_target_location = target_positions[nearest_unidentified_idx]
-                    #
-                    #     waypoint_to_target_distance = np.sqrt(np.sum((nearest_target_location - current_waypoint) ** 2))
-                    #     if waypoint_to_target_distance <= 40:
-                    #         new_reward['waypoint-to-nearest'] = 1.0
-                    #     else:
-                    #         new_reward['waypoint-to-nearest'] = 0.0
-
-                    distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
-                    if distance_improvement > 0:
-                        new_reward['proximity'] = distance_improvement
-
-                    self.previous_nearest_distance = nearest_unidentified_distance
+            #
+            # # Create a mask for unidentified targets (info_level < 1.0)
+            # if aircraft.agent_idx == 0:
+            #     unidentified_mask = self.targets[:, 2] < 1.0
+            #     if np.any(unidentified_mask):
+            #         unidentified_distances = distances[unidentified_mask]
+            #         nearest_unidentified_distance = np.min(unidentified_distances)
+            #
+            #         if not hasattr(self, 'previous_nearest_distance'):
+            #             self.previous_nearest_distance = nearest_unidentified_distance
+            #
+            #         #unidentified_indices = np.where(unidentified_mask)[0]
+            #         #nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
+            #         #current_waypoint = self.agents[0].waypoint_override
+            #
+            #         distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
+            #         if distance_improvement > 0:
+            #             new_reward['proximity'] = distance_improvement
+            #
+            #         self.previous_nearest_distance = nearest_unidentified_distance
 
             # Find targets within ISR range (for identification)
             in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
@@ -401,11 +391,11 @@ class MAISREnvVec(gym.Env):
                         new_score += self.config['highqual_regulartarget_reward']
                         new_reward['regular val target id'] += 1
                     else:
-                        new_score += self.self.config['highqual_highvaltarget_reward']
+                        new_score += self.config['highqual_highvaltarget_reward']
                         new_reward['high val target id'] += 1
 
                     # Update info dictionary
-                    info["score_breakdown"]["target_points"] += self.config['highqual_regulartarget_reward'] if self.targets[target_idx, 1] == 0.0 else self.self.config['highqual_highvaltarget_reward']
+                    info["score_breakdown"]["target_points"] += self.config['highqual_regulartarget_reward'] if self.targets[target_idx, 1] == 0.0 else self.config['highqual_highvaltarget_reward']
                     info["new_identifications"].append({
                         "type": "low quality info gathered",
                         "target_id": int(self.targets[target_idx, 0]),
@@ -427,16 +417,9 @@ class MAISREnvVec(gym.Env):
             self.terminated = True
             new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
-            #print(f'{self.max_steps} - {self.step_count_inner}')
-            #print(f'earned {new_reward['early finish']*self.config['shaping_coeff_earlyfinish']} for finishing early')
 
         if self.step_count_outer >= 490 or self.display_time / 1000 >= self.config['time_limit']: # TODO: Temporarily hard-coding 490 steps
             self.terminated = True
-
-        # Calculate reward
-        reward = self.get_reward(new_reward) # For agent
-        self.ep_reward += reward
-        self.score += new_score # For human
 
         # Populate info dict
         info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
@@ -446,14 +429,11 @@ class MAISREnvVec(gym.Env):
 
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: outer (inner) {self.step_count_outer} ({info['episode']['l']}), score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.config['time_limit']-self.display_time/1000,1)} secs left')
-
             if self.tag == 'pti_test':
                 self.save_action_history_plot()
-
             if self.tag == 'oar_test':
                 if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
                     self.save_action_history_plot()
-
             if self.tag in ['eval', 'train_mp0']:
                 if self.episode_counter in [0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000] or self.episode_counter % 500 == 0:
                         self.save_action_history_plot()
@@ -467,19 +447,55 @@ class MAISREnvVec(gym.Env):
 
         self.observation = self.get_observation()  # Get observation
 
+        potential = self.get_potential(self.observation)
+        potential_gain = potential - last_potential
+
+        # Calculate reward
+        reward = self.get_reward(new_reward, potential_gain)  # For agent
+        self.ep_reward += reward
+        self.score += new_score  # For human
+
         return self.observation, reward, self.terminated, self.truncated, info
 
 
-    def get_reward(self, new_reward):
+    def get_reward(self, new_reward, potential_gain):
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
-                 (new_reward['waypoint-to-nearest'] * self.config['shaping_coeff_wtn']) + \
-                 (new_reward['proximity'] * self.config['shaping_coeff_prox']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
+                 (potential_gain * self.config['shaping_coeff_prox']) + \
                  (self.config['shaping_time_penalty'])
 
         return reward
 
+    def get_potential(self, observation):
+        """
+        Calculate potential as negative distance to nearest unknown target.
+        Returns a higher (less negative) value when closer to unknown targets.
+        """
+        # Get agent position from observation (first 2 elements, normalized)
+        map_half_size = self.config["gameboard_size"] / 2
+        agent_x = observation[0] * map_half_size
+        agent_y = observation[1] * map_half_size
+        agent_pos = np.array([agent_x, agent_y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:, 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:, 2]  # info levels
+
+        # Create mask for unidentified targets (info_level < 1.0)
+        unidentified_mask = target_info_levels < 1.0
+
+        if not np.any(unidentified_mask):
+            # No unidentified targets remaining
+            return 0.0
+
+        # Calculate distances to unidentified targets only
+        unidentified_positions = target_positions[unidentified_mask]
+        distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
+        nearest_distance = np.min(distances)
+
+        # Return negative distance (higher potential when closer)
+        return -nearest_distance
 
     def get_observation(self):
         """
@@ -1073,8 +1089,17 @@ class MAISREnvVec(gym.Env):
                 # Plot waypoint history (action history) as a line with points
                 if x_coords and y_coords:
                     plt.plot(x_coords, y_coords, 'b-', alpha=0.15, linewidth=1)
-                    plt.scatter(x_coords, y_coords, s=20, c=range(len(x_coords)),
-                                cmap='cool', alpha=0.8, marker='x', label='Agent Waypoints')
+
+                    # Plot only every fourth waypoint
+                    x_coords_subset = x_coords[::self.config['frame_skip']]  # Plot one action per outer step instead of every action
+                    y_coords_subset = y_coords[::self.config['frame_skip']]
+                    subset_indices = list(range(0, len(x_coords), 4))  # Corresponding indices for colormap
+
+                    plt.scatter(x_coords_subset, y_coords_subset, s=15, c=subset_indices,
+                                cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints')
+
+                    # plt.scatter(x_coords, y_coords, s=15, c=range(len(x_coords)),
+                    #             cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints')
 
                     # Add starting and ending points with different markers
                     plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
