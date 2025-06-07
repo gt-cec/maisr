@@ -296,6 +296,7 @@ def train(
         monitor_gym=True,
     )
 
+    
     ################################################ Initialize envs ################################################
     if n_envs > 1:
         print(f"Training with {n_envs} environments in parallel")
