@@ -409,7 +409,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june7b_baseline.json',
+        'config_files/june7c_baseline.json',
     ]
 
     # Specify a checkpoint to load here
@@ -431,7 +431,7 @@ if __name__ == "__main__":
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
 
-        for lr in [0.005, 0.001, 0.0005]:
+        for lr in [0.001, 0.005, 0.0005]:
             for network_size in [32, 64]:
                 env_config['value_network_size'] = network_size
                 env_config['policy_network_size'] = network_size
