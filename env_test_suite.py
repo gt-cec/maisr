@@ -496,6 +496,7 @@ if __name__ == "__main__":
     config = load_env_config('config_files/june8a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
+    config['num_timesteps'] = 2e5
 
     print("Starting Environment Test Suite...")
     print("=" * 50)
