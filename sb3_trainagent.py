@@ -174,9 +174,15 @@ class EnhancedWandbCallback(BaseCallback):
             mean_reward, std_reward = 0, 0
             eval_lengths = []
 
+            obs = self.eval_env.reset() # We call reset() at the beginning (vec envs reset automatically after this)
             for i in range(self.n_eval_episodes):
-                obs = self.eval_env.reset()
-                print(f'Reset to eval env episode {self.eval_env.unwrapped.unwrapped.episode_counter}')
+                #obs = self.eval_env.reset()
+                try:
+                    episode_counter = self.eval_env.get_attr('episode_counter')[0]
+                    print(f'Reset to eval env episode {episode_counter}')
+                except (AttributeError, IndexError):
+                    print('Reset to eval env episode (counter unavailable)')
+
                 done = False
                 ep_reward = 0
 
@@ -440,7 +446,7 @@ if __name__ == "__main__":
         env_config['config_filename'] = config_filename
 
         for lr in [0.001, 0.0005]:
-            for ent_coef in [0.01, 0.03]:
+            for ent_coef in [0.01, 0.013]:
                 env_config['entropy_regularization'] = ent_coef
                 env_config['lr'] = lr
 

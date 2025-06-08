@@ -185,19 +185,19 @@ def test_oar_normalized():
     pass
 
 
-def test_env_heuristic(heuristic, test_dir=None):
+def test_env_heuristic(heuristic, config, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("Starting heuristic test...")
 
     # Load config
-    config = load_env_config('config_files/testsuite_config.json')
+
     #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
         config=config,
         render_mode='headless',
-        tag='heuristic_test'
+        tag='test_suite'
     )
 
     all_observations = []
@@ -241,19 +241,19 @@ def test_env_heuristic(heuristic, test_dir=None):
     env.close()
     print(f"Heuristic test completed. Results saved to {test_dir}")
 
-def test_env_badheuristic(badheuristic, test_dir=None):
+def test_env_badheuristic(badheuristic, config, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("Starting badheuristic test...")
 
     # Load config
-    config = load_env_config('config_files/testsuite_config.json')
+    #config = load_env_config('config_files/testsuite_config.json')
     #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
         config=config,
         render_mode='headless',
-        tag='badheuristic_test'
+        tag='test_suite'
     )
 
     all_observations = []
@@ -299,7 +299,7 @@ def test_env_badheuristic(badheuristic, test_dir=None):
     env.close()
     print(f"Bad heuristic test completed. Results saved to {test_dir}")
 
-def test_env_humanplaytest(test_dir=None):
+def test_env_humanplaytest(config, test_dir=None):
     """Run env for 3 episodes allowing human to take actions using numpad keys"""
     print("Starting human playtest...")
     print("Controls: Numpad 8=Up, 2=Down, 4=Left, 6=Right")
@@ -307,7 +307,7 @@ def test_env_humanplaytest(test_dir=None):
     print("Press ESC to quit early")
 
     # Load config
-    config = load_env_config('config_files/testsuite_config.json')
+    #config = load_env_config('config_files/testsuite_config.json')
     #test_dir = create_test_directory()
 
     pygame.init()
@@ -333,7 +333,7 @@ def test_env_humanplaytest(test_dir=None):
         render_mode='human',
         num_agents=1,
         run_name='human_player',
-        tag='human_test'
+        tag='test_suite'
     )
 
     # Mapping numpad keys to actions
@@ -411,19 +411,19 @@ def test_env_humanplaytest(test_dir=None):
     print(f"Human playtest completed. Results saved to {test_dir}")
 
 
-def test_env_random(test_dir=None):
+def test_env_random(config, test_dir=None):
     """Run env for 20 episodes, taking actions by randomly sampling from the action space"""
     print("Starting random test...")
 
     # Load config
-    config = load_env_config('config_files/testsuite_config.json')
+    #config = load_env_config('config_files/testsuite_config.json')
     #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
         config=config,
         render_mode='headless',
-        tag='random_test'
+        tag='test_suite'
     )
 
     all_observations = []
@@ -469,18 +469,18 @@ def test_env_random(test_dir=None):
     print(f"Random test completed. Results saved to {test_dir}")
 
 
-def test_env_train():
+def test_env_train(config):
     """Run brief training run using Stable-baselines3"""
     print("Starting training test...")
 
     machine_name = 'testenv'
     project_name = 'maisr-rl-tests'
 
-    env_config = load_env_config('config_files/june7b_baseline.json')
-    env_config['n_envs'] = multiprocessing.cpu_count()
+    #env_config = load_env_config('config_files/june7b_baseline.json')
+    config['n_envs'] = multiprocessing.cpu_count()
 
     train(
-        env_config,
+        config,
         n_envs=multiprocessing.cpu_count(),
         load_path=None,
         machine_name=machine_name,
@@ -492,6 +492,11 @@ def test_env_train():
 
 
 if __name__ == "__main__":
+
+    config = load_env_config('config_files/june8a.json')
+    config['eval_freq'] = 4900
+    config['n_eval_episodes'] = 5
+
     print("Starting Environment Test Suite...")
     print("=" * 50)
 
@@ -503,19 +508,19 @@ if __name__ == "__main__":
         #test_env_humanplaytest(test_dir=shared_test_dir)
         #print("\n" + "=" * 50)
 
-        test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
+        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_random(test_dir=shared_test_dir)
+        test_env_random(config, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
+        test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        #test_env_circles(test_dir=shared_test_dir)
+        #test_env_circles(config, test_dir=shared_test_dir)
         #print("\n" + "=" * 50)
 
-        test_env_train()
+        test_env_train(config)
         print("\n" + "=" * 50)
 
     except KeyboardInterrupt:

@@ -41,7 +41,7 @@ class MAISREnvVec(gym.Env):
             random.seed(seed)
 
         self.beginner_level_seeds = [42, 123, 465, 299, 928]
-        self.num_beginner_levels = 3
+        self.num_beginner_levels = self.config['num_beginner_levels']
 
         # Generate list of episodes to plot using save_action_history_plot()
         base_episodes = []
@@ -215,21 +215,24 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None, options=None):
 
-        #if self.config['use_curriculum'] == True:
+        #if self.config['use_curriculum'] == True: # TODO ADD BACK
             #self.load_difficulty()
 
-        # TODO Temp, remove later
-        self.config['prob_detect'] = 0
-        self.highval_target_ratio = 0
-        self.config['shaping_time_penalty'] = self.config['shaping_time_penalty']
+        #self.config['prob_detect'] = 0
+        #self.highval_target_ratio = 0
 
-        if self.tag == 'pti_test':
-            np.random.seed(42)
-            random.seed(42)
+        # if self.tag == 'pti_test':
+        #     np.random.seed(42)
+        #     random.seed(42)
 
-        if self.config['use_beginner_levels']: # If true, the agent only sees 5 map layouts, to make early training easier
+        # Set level seed if applicable
+        if self.config['use_beginner_levels']: # If true, the agent only sees a few map layouts, to make early training easier
             seed_list = self.beginner_level_seeds[0:self.num_beginner_levels] # List of seeds to cycle through
-            current_seed_index = self.episode_counter % len(seed_list)
+            if self.tag in ['eval','test_suite']:
+                current_seed_index = (self.episode_counter) % len(seed_list)
+            else:
+                current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
+            #print(f'current seed index is {current_seed_index} (for env tag {self.tag}')
             current_seed = seed_list[current_seed_index]
             np.random.seed(current_seed)
             random.seed(current_seed)
