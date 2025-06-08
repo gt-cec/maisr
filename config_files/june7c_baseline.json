@@ -48,7 +48,7 @@
 	"eval_freq": 9800,
 	"seed": 42,
 
-	"use_curriculum":true,
+	"use_curriculum":false,
 	"min_target_ids_to_advance": 5,
 	"initial_difficulty": 0,
 	"max_difficulty_level": 5

@@ -164,6 +164,10 @@ class EnhancedWandbCallback(BaseCallback):
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
             print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
 
+            if hasattr(self.model.get_env(), 'obs_rms'):
+                self.eval_env.obs_rms = self.model.get_env().obs_rms
+                self.eval_env.ret_rms = self.model.get_env().ret_rms
+
             # ... rest of evaluation code remains unchanged ...
             target_ids_list = []
             target_ids_per_step_list = []
@@ -304,8 +308,8 @@ def train(
 
         env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
-        env = VecNormalize(env)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+        env = VecNormalize(env)
 
     else:
         env = MAISREnvVec(
@@ -326,7 +330,9 @@ def train(
     )
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
-    eval_env = VecNormalize(eval_env)
+    eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+    eval_env.obs_rms = env.obs_rms
+    eval_env.ret_rms = env.ret_rms
     print('Envs created')
 
     ################################################# Setup callbacks #################################################

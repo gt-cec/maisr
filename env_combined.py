@@ -198,8 +198,13 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None, options=None):
 
-        if self.config['use_curriculum'] == True:
-            self.load_difficulty()
+        #if self.config['use_curriculum'] == True:
+            #self.load_difficulty()
+
+        # TODO Temp, remove later
+        self.config['prob_detect'] = 0
+        self.highval_target_ratio = 0
+        self.config['shaping_time_penalty'] = self.config['shaping_time_penalty']
 
         if self.tag == 'pti_test':
             np.random.seed(42)
