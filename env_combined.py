@@ -40,6 +40,23 @@ class MAISREnvVec(gym.Env):
             np.random.seed(seed)
             random.seed(seed)
 
+        self.beginner_level_seeds = [42, 123, 465, 299, 928]
+        self.num_beginner_levels = 3
+
+        # Generate list of episodes to plot using save_action_history_plot()
+        base_episodes = []
+        for i in range(self.num_beginner_levels):
+            base_episodes.extend(
+                [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
+                 1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
+                 4000 + i, 5000 + i, 6000 + i, 7000 + i])
+        for j in range(self.num_beginner_levels):
+            base_episodes.extend([(500 + j) * i for i in range(80)])
+        base_episodes.sort()
+        self.episodes_to_plot = list(set(base_episodes))
+        self.episodes_to_plot.sort()
+        #print(f'For {self.num_beginner_levels} levels, we have {self.episodes_to_plot}')
+
         self.difficulty = starting_difficulty # Curriculum learning level (starts at 0)
         self.max_steps = 14703 # Max step count of the episode
 
@@ -211,7 +228,7 @@ class MAISREnvVec(gym.Env):
             random.seed(42)
 
         if self.config['use_beginner_levels']: # If true, the agent only sees 5 map layouts, to make early training easier
-            seed_list = [42, 123] # List of seeds to cycle through
+            seed_list = self.beginner_level_seeds[0:self.num_beginner_levels] # List of seeds to cycle through
             current_seed_index = self.episode_counter % len(seed_list)
             current_seed = seed_list[current_seed_index]
             np.random.seed(current_seed)
@@ -361,26 +378,6 @@ class MAISREnvVec(gym.Env):
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             target_positions = self.targets[:, 3:5]  # x,y coordinates
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
-            #
-            # # Create a mask for unidentified targets (info_level < 1.0)
-            # if aircraft.agent_idx == 0:
-            #     unidentified_mask = self.targets[:, 2] < 1.0
-            #     if np.any(unidentified_mask):
-            #         unidentified_distances = distances[unidentified_mask]
-            #         nearest_unidentified_distance = np.min(unidentified_distances)
-            #
-            #         if not hasattr(self, 'previous_nearest_distance'):
-            #             self.previous_nearest_distance = nearest_unidentified_distance
-            #
-            #         #unidentified_indices = np.where(unidentified_mask)[0]
-            #         #nearest_unidentified_idx = unidentified_indices[np.argmin(unidentified_distances)]
-            #         #current_waypoint = self.agents[0].waypoint_override
-            #
-            #         distance_improvement = self.previous_nearest_distance - nearest_unidentified_distance
-            #         if distance_improvement > 0:
-            #             new_reward['proximity'] = distance_improvement
-            #
-            #         self.previous_nearest_distance = nearest_unidentified_distance
 
             # Find targets within ISR range (for identification)
             in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
@@ -426,39 +423,31 @@ class MAISREnvVec(gym.Env):
         if self.step_count_outer >= 490 or self.display_time / 1000 >= self.config['time_limit']: # TODO: Temporarily hard-coding 490 steps
             self.terminated = True
 
-        # Populate info dict
-        info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
-        info['reward_components'] = new_reward
-        info['detections'] = self.detections
-        info["target_ids"] =self.targets_identified
-
-        if self.terminated or self.truncated:
-            print(f'ROUND {self.episode_counter} COMPLETE {'(ALL IDs)' if self.all_targets_identified else ''}, reward {round(info['episode']['r'],1)}, Steps: outer (inner) {self.step_count_outer} ({info['episode']['l']}), score {round(self.score,1)} | {self.targets_identified} low quality IDs | {self.detections} detections | {round(self.config['time_limit']-self.display_time/1000,1)} secs left')
-            if self.tag == 'pti_test':
-                self.save_action_history_plot()
-            if self.tag == 'oar_test':
-                if self.episode_counter in [0, 1, 2, 3, 50, 100, 500, 1000]:
-                    self.save_action_history_plot()
-            if self.tag in ['eval', 'train_mp0']:
-                if self.episode_counter in [0, 1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 800, 1000, 1200, 1400, 1700, 2000, 2300, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000] or self.episode_counter % 500 == 0:
-                        self.save_action_history_plot()
-
-            if self.render_mode == 'human': pygame.time.wait(50)
-
-        # Advance time (only relevant for
+        # Advance time (only relevant for human play)
         if self.render_mode == 'headless': self.display_time = self.display_time + (1000/60) # If agent training, each step is 1/60th of a second
         elif not self.paused: self.display_time = pygame.time.get_ticks() - self.total_pause_time
         if self.init: self.init = False
 
         self.observation = self.get_observation()  # Get observation
 
-        potential = self.get_potential(self.observation)
-        potential_gain = potential - last_potential
-
         # Calculate reward
+        potential_gain = self.get_potential(self.observation) - last_potential
         reward = self.get_reward(new_reward, potential_gain)  # For agent
         self.ep_reward += reward
         self.score += new_score  # For human
+
+        # Populate info dict
+        info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
+        info['reward_components'] = new_reward
+        info['detections'] = self.detections
+        info["target_ids"] = self.targets_identified
+
+        if self.terminated or self.truncated: # Print round complete, plot round history, render
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.config['time_limit'] - self.display_time / 1000, 1)} secs left')
+            if self.tag in ['eval', 'train_mp0'] and self.episode_counter in self.episodes_to_plot:
+                self.save_action_history_plot()
+            if self.render_mode == 'human':
+                pygame.time.wait(50)
 
         return self.observation, reward, self.terminated, self.truncated, info
 

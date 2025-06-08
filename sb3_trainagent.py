@@ -176,6 +176,7 @@ class EnhancedWandbCallback(BaseCallback):
 
             for i in range(self.n_eval_episodes):
                 obs = self.eval_env.reset()
+                print(f'Reset to eval env episode {self.eval_env.unwrapped.unwrapped.episode_counter}')
                 done = False
                 ep_reward = 0
 
@@ -300,6 +301,7 @@ def train(
         sync_tensorboard=True,
         monitor_gym=True,
     )
+    run.log_code(".")
 
     
     ################################################ Initialize envs ################################################
@@ -415,7 +417,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june7c_baseline.json',
+        'config_files/june8a.json',
     ]
 
     # Specify a checkpoint to load here
@@ -437,16 +439,15 @@ if __name__ == "__main__":
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
 
-        for lr in [0.001, 0.005, 0.0005]:
-            for network_size in [32, 64]:
-                env_config['value_network_size'] = network_size
-                env_config['policy_network_size'] = network_size
+        for lr in [0.001, 0.0005]:
+            for ent_coef in [0.01, 0.03]:
+                env_config['entropy_regularization'] = ent_coef
                 env_config['lr'] = lr
 
                 train(
                     env_config,
                     n_envs=multiprocessing.cpu_count(),
-                    load_path=load_path,  # Replace with absolute path to the checkpoint to load
+                    load_path=load_path,
                     machine_name=machine_name,
                     project_name=project_name
                 )

@@ -500,7 +500,7 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        test_env_humanplaytest(test_dir=shared_test_dir)
+        #test_env_humanplaytest(test_dir=shared_test_dir)
         #print("\n" + "=" * 50)
 
         test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
