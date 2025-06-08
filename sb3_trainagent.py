@@ -7,6 +7,7 @@ import os
 import numpy as np
 import multiprocessing
 import socket
+import torch
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
@@ -343,19 +344,19 @@ def train(
     print('Callbacks created')
 
     ################################################# Setup model #################################################
-    # activation_fn = torch.nn.Tanh if self.config['activation_fn'] == "Tanh" else torch.nn.ReLU if self.config['activation_fn'] == 'ReLU' else None
-    # policy_kwargs = {
-    #     activation_fn,
-    #     net_arch = dict(
-    #         pi=[env_config['policy_network_size'], env_config['policy_network_size']],
-    #         vf=[env_config['value_network_size'],env_config['value_network_size']])
-    # }
+
+    policy_kwargs = dict(
+        activation_fn=torch.nn.Tanh,
+        net_arch=dict(
+            pi=[env_config['policy_network_size'], env_config['policy_network_size']],
+            vf=[env_config['value_network_size'], env_config['value_network_size']]
+        ))
 
     model = PPO(
         "MlpPolicy",
-        # policy_kwargs = policy_kwargs,
         env,
-        verbose=1,
+        policy_kwargs=policy_kwargs,
+        verbose=2,
         tensorboard_log=f"logs/runs/{run.id}",
         batch_size=env_config['batch_size'],
         n_steps=env_config['ppo_update_steps'],
@@ -366,6 +367,7 @@ def train(
         ent_coef=env_config['entropy_regularization']
     )
     print('Model instantiated')
+    print(model.policy)
 
     ################################################# Load checkpoint ##################################################
     if load_path:
@@ -407,7 +409,7 @@ def train(
 if __name__ == "__main__":
 
     config_list = [
-        'config_files/june5b/june5b_baseline.json',
+        'config_files/june7b_baseline.json',
     ]
 
     # Specify a checkpoint to load here
@@ -429,10 +431,11 @@ if __name__ == "__main__":
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
 
-        for lr in [0.005, 0.0005, 0.0001]:
-            for batch_size in [128, 256]:
+        for lr in [0.005, 0.001, 0.0005]:
+            for network_size in [32, 64]:
+                env_config['value_network_size'] = network_size
+                env_config['policy_network_size'] = network_size
                 env_config['lr'] = lr
-                env_config['batch_size'] = batch_size
 
                 train(
                     env_config,

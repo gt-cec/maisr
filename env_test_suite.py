@@ -476,7 +476,7 @@ def test_env_train():
     machine_name = 'testenv'
     project_name = 'maisr-rl-tests'
 
-    env_config = load_env_config('config_files/testsuite_config.json')
+    env_config = load_env_config('config_files/june7b_baseline.json')
     env_config['n_envs'] = multiprocessing.cpu_count()
 
     train(
@@ -500,7 +500,7 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        #test_env_humanplaytest(test_dir=shared_test_dir)
+        test_env_humanplaytest(test_dir=shared_test_dir)
         #print("\n" + "=" * 50)
 
         test_env_heuristic(heuristic_policy, test_dir=shared_test_dir)
@@ -509,14 +509,14 @@ if __name__ == "__main__":
         test_env_random(test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
-        #test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
+        test_env_badheuristic(badheuristic_policy, test_dir=shared_test_dir)
         print("\n" + "=" * 50)
 
         #test_env_circles(test_dir=shared_test_dir)
         #print("\n" + "=" * 50)
 
-        #test_env_train()
-        #print("\n" + "=" * 50)
+        test_env_train()
+        print("\n" + "=" * 50)
 
     except KeyboardInterrupt:
         print("\nTest suite interrupted by user.")

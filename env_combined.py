@@ -206,7 +206,7 @@ class MAISREnvVec(gym.Env):
             random.seed(42)
 
         if self.config['use_beginner_levels']: # If true, the agent only sees 5 map layouts, to make early training easier
-            seed_list = [42, 123, 456] # List of seeds to cycle through
+            seed_list = [42, 123] # List of seeds to cycle through
             current_seed_index = self.episode_counter % len(seed_list)
             current_seed = seed_list[current_seed_index]
             np.random.seed(current_seed)
@@ -1093,7 +1093,7 @@ class MAISREnvVec(gym.Env):
                     # Plot only every fourth waypoint
                     x_coords_subset = x_coords[::self.config['frame_skip']]  # Plot one action per outer step instead of every action
                     y_coords_subset = y_coords[::self.config['frame_skip']]
-                    subset_indices = list(range(0, len(x_coords), 4))  # Corresponding indices for colormap
+                    subset_indices = list(range(0, len(x_coords), self.config['frame_skip']))  # Corresponding indices for colormap
 
                     plt.scatter(x_coords_subset, y_coords_subset, s=15, c=subset_indices,
                                 cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints')
