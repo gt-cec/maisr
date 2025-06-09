@@ -9,7 +9,7 @@ if __name__ == "__main__":
     config = load_env_config('../config_files/june9a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
-    config['num_timesteps'] = 2e5
+    config['num_timesteps'] = 1e5
 
     with cProfile.Profile() as pr:
         env_test_suite.test_env_train(config)

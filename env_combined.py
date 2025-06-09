@@ -62,6 +62,11 @@ class MAISREnvVec(gym.Env):
         self.difficulty = starting_difficulty # Curriculum learning level (starts at 0)
         self.max_steps = 14703 # Max step count of the episode
 
+        # Initialize target ID caches (used to speed up get_potential()
+        self._cached_unidentified_mask = None
+        self._cached_unidentified_positions = None
+        self._targets_hash = None
+
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
         self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
@@ -75,16 +80,10 @@ class MAISREnvVec(gym.Env):
         self.max_targets = 5
 
         ######################################### OBSERVATION AND ACTION SPACES ########################################
-        # if self.config['action_type'] == 'continuous-normalized':
-        #     self.action_space = gym.spaces.Box(
-        #         low=np.array([-1, -1], dtype=np.float32),
-        #         high=np.array([1, 1], dtype=np.float32),
-        #         dtype=np.float32)
-
         if self.config['action_type'] == 'waypoint-direction':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
-
-        else:  raise ValueError("Invalid action type")
+        else:
+            raise ValueError("Invalid action type")
 
         self.obs_size = 2 + 3 * self.max_targets
         if self.config['obs_type'] == 'absolute':
@@ -92,9 +91,8 @@ class MAISREnvVec(gym.Env):
                 low=-1, high=1,
                 shape=(self.obs_size,),
                 dtype=np.float32)
-            #self.observation = np.zeros(self.obs_size, dtype=np.float32)
-
-        else: raise ValueError("Obs type not recognized")
+        else:
+            raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
         # Set reward quantities for each event (agent only)
@@ -203,12 +201,6 @@ class MAISREnvVec(gym.Env):
 
                 # Calculate required height of agent status info
                 self.agent_info_height_req = 0
-                # if self.config['show_low_level_goals']: self.agent_info_height_req += 1
-                # if self.config['show_high_level_goals']: self.agent_info_height_req += 1.7
-                # if self.config['show_tracked_factors']: self.agent_info_height_req += 1.7
-                # if self.agent_info_height_req > 0: # Only render agent info display if at least one of the info elements is used
-                #     self.agent_info_display = AgentInfoDisplay(self.comm_pane_edge, 10, 445, 40+35*self.agent_info_height_req)
-
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
 
         self.episode_counter = 0
@@ -247,6 +239,8 @@ class MAISREnvVec(gym.Env):
         self.agent_location_history = []
         self.direct_action_history = [] # Direct control only
 
+        # Initialize potential for reward shaping
+        self.last_potential = None
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
 
@@ -331,8 +325,6 @@ class MAISREnvVec(gym.Env):
         """
 
         self.step_count_inner += 1
-
-        last_potential = self.get_potential(self.observation)
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -432,8 +424,13 @@ class MAISREnvVec(gym.Env):
 
         self.observation = self.get_observation()  # Get observation
 
+        # Calculate potential (distance improvement to target)
+        current_potential = self.get_potential(self.observation)
+        if self.last_potential: potential_gain = current_potential - self.last_potential
+        else: potential_gain = 0
+        self.last_potential = current_potential
+
         # Calculate reward
-        potential_gain = self.get_potential(self.observation) - last_potential
         reward = self.get_reward(new_reward, potential_gain)  # For agent
         self.ep_reward += reward
         self.score += new_score  # For human
@@ -462,6 +459,39 @@ class MAISREnvVec(gym.Env):
                  (self.config['shaping_time_penalty'])
 
         return reward
+
+    def get_potential(self, observation):
+        """
+        Calculate potential as negative distance to nearest unknown target.
+        Returns a higher (less negative) value when closer to unknown targets.
+        """
+        # Create a simple hash of target info levels to detect changes
+        current_hash = hash(self.targets[:, 2].tobytes())
+
+        if self._targets_hash != current_hash:
+            # Recalculate cached data only when targets change
+            target_info_levels = self.targets[:, 2]  # info levels
+            self._cached_unidentified_mask = target_info_levels < 1.0
+
+            if not np.any(self._cached_unidentified_mask):
+                self._cached_unidentified_positions = None
+            else:
+                target_positions = self.targets[:, 3:5]  # x,y coordinates
+                self._cached_unidentified_positions = target_positions[self._cached_unidentified_mask]
+            self._targets_hash = current_hash
+
+        if self._cached_unidentified_positions is None:
+            return 0.0
+
+        map_half_size = self.config["gameboard_size"] / 2
+        agent_pos = np.array([observation[0] * map_half_size, observation[1] * map_half_size])
+
+        # Calculate distance to nearest target
+        distances = np.sqrt(np.sum((self._cached_unidentified_positions - agent_pos) ** 2, axis=1))
+        nearest_distance = np.min(distances)
+
+        # Return negative distance
+        return -nearest_distance
 
     def get_potential(self, observation):
         """
@@ -504,7 +534,7 @@ class MAISREnvVec(gym.Env):
                 2+i*3 target_info_level    # 0 if unknown, 1 if known
                 3+i*3 target_x,            # (-1 to +1) normalized position
                 4+i*3 target_y,            # (-1 to +1) normalized position
-                
+
         """
 
         self.observation = np.zeros(self.obs_size, dtype=np.float32)

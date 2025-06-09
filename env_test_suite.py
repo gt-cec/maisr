@@ -21,64 +21,6 @@ def create_test_directory():
     os.makedirs(test_dir, exist_ok=True)
     return test_dir
 
-
-# def save_histograms(observations, rewards, actions, test_dir, test_name):
-#     """Save observation, reward, and action histograms"""
-#
-#     # Convert lists to numpy arrays for easier handling
-#     obs_array = np.array(observations)
-#     reward_array = np.array(rewards)
-#     action_array = np.array(actions)
-#
-#     # Create observation histograms (17 subplots)
-#     fig, axes = plt.subplots(4, 5, figsize=(20, 16))
-#     axes = axes.flatten()
-#
-#     obs_labels = ['Agent X', 'Agent Y'] + [f'Target {i // 3 + 1} {"Info" if i % 3 == 0 else "X" if i % 3 == 1 else "Y"}'
-#                                            for i in range(15)]
-#
-#     for i in range(17):
-#         if i < obs_array.shape[1]:
-#             axes[i].hist(obs_array[:, i], bins=30, alpha=0.7, edgecolor='black')
-#             axes[i].set_title(f'{obs_labels[i]}')
-#             axes[i].set_xlabel('Value')
-#             axes[i].set_ylabel('Frequency')
-#             axes[i].grid(True, alpha=0.3)
-#
-#     # Hide unused subplots
-#     for i in range(17, len(axes)):
-#         axes[i].set_visible(False)
-#
-#     plt.tight_layout()
-#     plt.savefig(f"{test_dir}/obs_histogram_{test_name}.png", dpi=300, bbox_inches='tight')
-#     plt.close()
-#
-#     # Create reward histogram
-#     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-#     ax.hist(reward_array, bins=20, alpha=0.7, edgecolor='black')
-#     ax.set_title(f'Episode Rewards - {test_name}')
-#     ax.set_xlabel('Episode Reward')
-#     ax.set_ylabel('Frequency')
-#     ax.grid(True, alpha=0.3)
-#     plt.tight_layout()
-#     plt.savefig(f"{test_dir}/rew_histogram_{test_name}.png", dpi=300, bbox_inches='tight')
-#     plt.close()
-#
-#     # Create action histogram (8 bins for actions 0-7)
-#     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-#     bins = np.arange(-0.5, 8.5, 1)  # Bins centered on integers 0-7
-#     ax.hist(action_array, bins=bins, alpha=0.7, edgecolor='black')
-#     ax.set_title(f'Action Distribution - {test_name}')
-#     ax.set_xlabel('Action (0-7)')
-#     ax.set_ylabel('Frequency')
-#     ax.set_xticks(range(8))
-#     ax.grid(True, alpha=0.3)
-#     plt.tight_layout()
-#     plt.savefig(f"{test_dir}/act_histogram_{test_name}.png", dpi=300, bbox_inches='tight')
-#     plt.close()
-#
-#     print(f"Saved histograms for {test_name} in {test_dir}")
-
 def save_histograms(observations, rewards, actions, test_dir, test_name):
     """Save observation, reward, and action histograms"""
 
@@ -495,7 +437,7 @@ def test_env_train(config):
 
 if __name__ == "__main__":
 
-    config = load_env_config('config_files/june8a.json')
+    config = load_env_config('config_files/june9a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
     config['num_timesteps'] = 1e5
@@ -508,23 +450,11 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        #test_env_humanplaytest(test_dir=shared_test_dir)
-        #print("\n" + "=" * 50)
-
-        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
-        print("\n" + "=" * 50)
-
+        test_env_humanplaytest(config, test_dir=shared_test_dir)
+        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
-        print("\n" + "=" * 50)
-
         test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
-        print("\n" + "=" * 50)
-
-        #test_env_circles(config, test_dir=shared_test_dir)
-        #print("\n" + "=" * 50)
-
         test_env_train(config)
-        print("\n" + "=" * 50)
 
     except KeyboardInterrupt:
         print("\nTest suite interrupted by user.")
