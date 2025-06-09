@@ -1,5 +1,4 @@
 import warnings
-
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
 import gymnasium as gym

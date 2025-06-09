@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 import ctypes
 import multiprocessing
 import os
@@ -496,7 +498,7 @@ if __name__ == "__main__":
     config = load_env_config('config_files/june8a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
-    config['num_timesteps'] = 2e5
+    config['num_timesteps'] = 1e5
 
     print("Starting Environment Test Suite...")
     print("=" * 50)
