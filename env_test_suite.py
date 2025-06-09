@@ -414,6 +414,107 @@ def test_env_random(config, test_dir=None):
     print(f"Random test completed. Results saved to {test_dir}")
 
 
+def test_curriculum(config):
+    """Test curriculum advancement by running episodes and manually incrementing difficulty"""
+    print("Starting curriculum test...")
+
+    # Create environments similar to train_sb3.py
+    from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+    from stable_baselines3.common.monitor import Monitor
+
+    # Training environment (vectorized and normalized like in train_sb3)
+    env = MAISREnvVec(
+        config=config,
+        render_mode='headless',
+        tag='curriculum_test_train_0'
+    )
+    env = Monitor(env)
+    env = DummyVecEnv([lambda: env])
+    env = VecNormalize(env)
+
+    # Evaluation environment (normalized but not training, like in train_sb3)
+    eval_env = MAISREnvVec(
+        config=config,
+        render_mode='headless',
+        tag='curriculum_test_eval_0'
+    )
+    eval_env = Monitor(eval_env)
+    eval_env = DummyVecEnv([lambda: eval_env])
+    eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+    eval_env.obs_rms = env.obs_rms
+    eval_env.ret_rms = env.ret_rms
+
+    print("Environments created and normalized")
+
+    # Test curriculum advancement through difficulty levels
+    max_difficulty_levels = 3
+    min_target_ids_to_advance = config.get('min_target_ids_to_advance', 8)
+
+    for difficulty_level in range(max_difficulty_levels):
+        print(f"\n--- Testing Difficulty Level {difficulty_level} ---")
+
+        # Set difficulty on both environments (like EnhancedWandbCallback)
+        env.env_method("set_difficulty", difficulty_level)
+        try:
+            eval_env.env_method("set_difficulty", difficulty_level)
+        except Exception as e:
+            print(f"Failed to set difficulty on eval env: {e}")
+
+        # Run one episode on training env
+        obs = env.reset()
+        done = False
+        step_count = 0
+        episode_reward = 0
+        max_steps = 50
+
+        while not done and step_count < max_steps:
+            # Take random action (since we don't have a trained model)
+            action = [env.action_space.sample()]
+            obs, reward, done, info = env.step(action)
+            episode_reward += reward[0]
+            step_count += 1
+
+        print(f"Training episode completed: Reward={episode_reward:.2f}, Steps={step_count}")
+
+        # Run one episode on eval env (like EnhancedWandbCallback evaluation)
+        obs = eval_env.reset()
+        done = False
+        step_count = 0
+        episode_reward = 0
+
+        while not done and step_count < max_steps:
+            # Take random action (deterministic=True would be used with real model)
+            action = [eval_env.action_space.sample()]
+            obs, reward, done, info = eval_env.step(action)
+            episode_reward += reward[0]
+            step_count += 1
+
+        print(f"Eval episode completed: Reward={episode_reward:.2f}, Steps={step_count}")
+        if info and len(info) > 0 and "target_ids" in info[0]:
+            target_ids = info[0]["target_ids"]
+            episode_length = info[0]["episode"]["l"]
+            print(f"Target IDs collected: {target_ids}")
+            print(f"Episode length: {episode_length}")
+
+            # # Simulate curriculum advancement logic (like EnhancedWandbCallback)
+            # if target_ids >= min_target_ids_to_advance:
+            #     print(f"✓ Would advance curriculum (target_ids {target_ids} >= threshold {min_target_ids_to_advance})")
+            # else:
+            #     print(
+            #         f"✗ Would not advance curriculum (target_ids {target_ids} < threshold {min_target_ids_to_advance})")
+
+    # Test difficulty getter
+    try:
+        current_difficulty = env.get_attr("difficulty")[0]
+        print(f"\nFinal difficulty level: {current_difficulty}")
+    except Exception as e:
+        print(f"Could not get difficulty attribute: {e}")
+
+    env.close()
+    eval_env.close()
+    print("Curriculum test completed.")
+
+
 def test_env_train(config):
     """Run brief training run using Stable-baselines3"""
     print("Starting training test...")
@@ -452,6 +553,7 @@ if __name__ == "__main__":
 
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
+        test_curriculum(config)
         test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
