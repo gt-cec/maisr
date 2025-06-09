@@ -277,7 +277,6 @@ def badheuristic_policy(observation, state, dones):
 
         return actions, None
 
-
 def badheuristic_process_single_observation_vectorized(observation, obs_type='relative'):
     """
     Vectorized version: Process a single observation and return a single action.
@@ -383,7 +382,6 @@ def badheuristic_process_single_observation_vectorized(observation, obs_type='re
 
     return int(best_action)
 
-
 def reset_badheuristic_state():
     """
     Call this function to reset the persistent state of the badheuristic policy.
@@ -392,9 +390,6 @@ def reset_badheuristic_state():
     global _current_waypoint, _current_target_pos
     _current_waypoint = None
     _current_target_pos = None
-    print("Badheuristic state reset")
-
-
 
 
 def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, run_name = 'none', save_expert_trajectory = True):
@@ -423,7 +418,7 @@ def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, ru
                 env_config,
                 None,
                 render_mode='headless',
-                tag='train',
+                tag='bc',
                 run_name=run_name,
             )
             env = Monitor(env)
@@ -455,17 +450,18 @@ def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, ru
 
 if __name__ == "__main__":
 
-    # Set parameters
-    config_name = '../config_files/bc_config.json'
-    n_episodes = 10000
+    ######################## Set parameters ########################
+    config_name = '../config_files/june9_cloning.json'
+    n_episodes = 200
 
+    ################################################################
 
-    run_name = 'expert_trajectory'+str(n_episodes)+datetime.now().strftime("%m%d_%H%M")
+    run_name = f'expert_trajectory_{str(n_episodes)}episodes_{datetime.now().strftime("%m%d_%H%M")}'
     env_config = load_env_config(config_name)
 
     # Create temporary environment to get action space
-    temp_env = DummyVecEnv([make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(1)])
-    temp_env.close()
+    #temp_env = DummyVecEnv([make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(1)])
+    #temp_env.close()
 
     # Run the behavior cloning pipeline
     trained_policy = generate_heuristic_trajectories(

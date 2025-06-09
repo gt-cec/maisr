@@ -1,9 +1,10 @@
 import os
 from datetime import datetime
 import torch
-from imitation.data import serialize
+import numpy as np
 import datasets
-from imitation.data.huggingface_utils import TrajectoryDatasetSequence
+import glob
+from pathlib import Path
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -12,51 +13,62 @@ from stable_baselines3.common.monitor import Monitor
 from imitation.algorithms import bc
 from imitation.data import rollout
 from imitation.data.wrappers import RolloutInfoWrapper
+from imitation.data import serialize
+from imitation.data.huggingface_utils import TrajectoryDatasetSequence
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
 from sb3_trainagent import make_env
 
-import numpy as np
+
+def load_multiple_arrow_files(trajectory_dir_or_pattern):
+    """Load and combine multiple arrow files"""
+    if os.path.isdir(trajectory_dir_or_pattern): # If it's a directory, find all .arrow files
+        arrow_files = glob.glob(os.path.join(trajectory_dir_or_pattern, "*.arrow"))
+    else: # If it's a pattern, use it directly
+        arrow_files = glob.glob(trajectory_dir_or_pattern)
+
+    arrow_files.sort()  # Ensure consistent ordering
+    print(f"Found {len(arrow_files)} arrow files: {[os.path.basename(f) for f in arrow_files]}")
+
+    all_transitions = []
+    for arrow_file in arrow_files:
+        print('Loading trajectories from arrow file')
+        dataset = datasets.load_dataset("arrow", data_files=arrow_file, split="train")
+        trajectories = TrajectoryDatasetSequence(dataset)
+        transitions = rollout.flatten_trajectories(trajectories)
+        all_transitions.append(transitions)
+        print(f"  Loaded {len(transitions)} transitions")
+
+    # Combine all transitions
+    if all_transitions:
+        combined_transitions = all_transitions[0]
+        for transitions in all_transitions[1:]:
+            combined_transitions = combined_transitions.concatenate(transitions)
+        print(f"Combined total: {len(combined_transitions)} transitions")
+        return combined_transitions
+    else:
+        raise ValueError("No arrow files could be loaded successfully")
+
 
 def train_with_bc(expert_trajectory_path, env_config, bc_config, run_name='none'):
     """
     Complete behavior cloning pipeline:
-    1. Load expert trajectories
+    1. Load expert trajectories from multiple .arrow files
     2. Train BC policy
 
     Args:
-        expert_trajectory_path: Path to expert trajectory .arrow file
+        expert_trajectory_path: Path to directory containing .arrow files or glob pattern
         env_config: Environment configuration
-        n_episodes: Number of episodes to collect from expert (not used when loading from file)
-        n_epochs: Number of training epochs for BC
+        bc_config: BC configuration dict with 'batch_size' and 'n_epochs'
+        run_name: Name for this training run
 
     Returns:
-        bc_trainer: Trained behavior cloning agent
+        None (saves trained model to disk)
     """
 
     # Load expert trajectory from Arrow file
-    #transitions = serialize.load(expert_trajectory_path)
-    try:
-        # Method 1: Use imitation's serialize.load() on the directory
-        transitions = serialize.load(expert_trajectory_path)
-    except Exception as e:
-        print(f"Method 1 failed: {e}")
-        try:
-            # Method 2: Load as HuggingFace dataset and convert
-            print("Trying to load as HuggingFace dataset...")
-            dataset = datasets.load_dataset("arrow", data_files=expert_trajectory_path, split="train")
-            trajectories = TrajectoryDatasetSequence(dataset)
-            # Convert to transitions
-            transitions = rollout.flatten_trajectories(trajectories)
-        except Exception as e2:
-            print(f"Method 2 failed: {e2}")
-            # Method 3: Load the entire dataset directory
-            print("Trying to load dataset directory...")
-            dataset = datasets.load_dataset(expert_trajectory_path)
-            trajectories = TrajectoryDatasetSequence(dataset["train"])
-            transitions = rollout.flatten_trajectories(trajectories)
-
+    transitions = load_multiple_arrow_files(expert_trajectory_path)
     print('Dataset loaded')
 
     # Create vectorized environment with RolloutInfoWrapper
@@ -82,7 +94,7 @@ def train_with_bc(expert_trajectory_path, env_config, bc_config, run_name='none'
     ppo_model = PPO(
         "MlpPolicy",
         env,
-        verbose=1,
+        verbose=2,
         # tensorboard_log=f"logs/runs/{run.id}",
         batch_size=bc_config['batch_size'],
         n_steps=env_config['ppo_update_steps'],
@@ -119,79 +131,75 @@ def train_with_bc(expert_trajectory_path, env_config, bc_config, run_name='none'
     ppo_model = PPO(
         "MlpPolicy",
         save_env,
-        verbose=1,
+        verbose=2,
         learning_rate=env_config.get('lr', 3e-4),
         seed=env_config.get('seed', 42),
         device='cpu',
         gamma=env_config.get('gamma', 0.99)
     )
-
-    # Replace the PPO policy with the trained BC policy
     ppo_model.policy = trained_policy
 
-    # Save using SB3 format
+    # Save
     os.makedirs('./bc_models', exist_ok=True)
     ppo_model.save(f"./bc_models/bc_policy_{run_name}")
     print(f'Saved trained model to "./bc_models/bc_policy_{run_name}"')
 
     return
 
+def evaluate_bc_policy(env_config, load_path):
+    from stable_baselines3.common.evaluation import evaluate_policy
+
+    eval_env = MAISREnvVec(
+        env_config,
+        None,
+        render_mode='headless',
+        tag='eval',
+        run_name=run_name,
+    )
+    eval_env = Monitor(eval_env)
+    print('Instantiated eval_env')
+
+    trained_policy = PPO(
+        "MlpPolicy",
+        eval_env,
+        verbose=1,
+        # tensorboard_log=f"logs/runs/{run.id}",
+        batch_size=bc_config['batch_size'],
+        n_steps=env_config['ppo_update_steps'],
+        learning_rate=env_config['lr'],
+        seed=env_config['seed'],
+        device='cpu',
+        gamma=env_config['gamma'],
+        ent_coef=env_config['entropy_regularization']
+    )
+    print('instantiated policy')
+    trained_policy = trained_policy.__class__.load(load_path, env=eval_env)
+    print('loaded bc-trained policy')
+
+    mean_reward, std_reward = evaluate_policy(trained_policy, eval_env, n_eval_episodes=10)
+    return mean_reward, std_reward
 
 if __name__ == "__main__":
-    config_name = '../config_files/rl_default.json'
 
+    config_name = '../config_files/june9a.json'
     train_new = True
-    evaluate = True
+    evaluate = False
     load_path = None #'./bc_models/bc_policy_bc_run_0603_1202'
 
     bc_config = {
-        'batch_size': 64,
-        'n_epochs': 1,
-    }
+        'batch_size': 256,
+        'n_epochs': 10}
 
     env_config = load_env_config(config_name)
     run_name = 'bc_run_' + datetime.now().strftime("%m%d_%H%M")
 
-    # Run the behavior cloning pipeline
     if train_new:
-        trained_policy = train_with_bc(
-            expert_trajectory_path='./expert_trajectories/maisr_bc_expert_trajectory_50000games/data-00000-of-00005.arrow',
+        train_with_bc(
+            expert_trajectory_path = './expert_trajectories/expert_trajectory_continuousactions_92obs_50000games',
             env_config=env_config,
             bc_config=bc_config,
             run_name=run_name
         )
 
-
-
-    # Evaluate the policy
     if evaluate:
-        eval_env = MAISREnvVec(
-            env_config,
-            None,
-            render_mode='headless',
-            tag='eval',
-            run_name=run_name,
-        )
-        eval_env = Monitor(eval_env)
-        print('Instantiated eval_env')
-
-        trained_policy = PPO(
-            "MlpPolicy",
-            eval_env,
-            verbose=1,
-            #tensorboard_log=f"logs/runs/{run.id}",
-            batch_size=bc_config['batch_size'],
-            n_steps=env_config['ppo_update_steps'],
-            learning_rate=env_config['lr'],
-            seed=env_config['seed'],
-            device='cpu',
-            gamma=env_config['gamma'],
-            ent_coef=env_config['entropy_regularization']
-        )
-        print('instantiated trained_policy')
-        if load_path is not None:
-            trained_policy = trained_policy.__class__.load(load_path, env=eval_env)
-            print('loaded trained policy')
-
-        from stable_baselines3.common.evaluation import evaluate_policy
-        mean_reward, std_reward = evaluate_policy(trained_policy, eval_env, n_eval_episodes=10)
+        evaluate_bc_policy(env_config, load_path)

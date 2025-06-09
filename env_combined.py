@@ -43,6 +43,7 @@ class MAISREnvVec(gym.Env):
             random.seed(seed)
 
         self.beginner_level_seeds = [42, 123, 465, 299, 928]
+        self.num_beginner_levels = 0 if self.config['curriculum_type'] == 'none' else self.config['num_beginner_levels']
         # self.num_beginner_levels = self.config['num_beginner_levels']
         #
         # # Generate list of episodes to plot using save_action_history_plot()
@@ -71,6 +72,9 @@ class MAISREnvVec(gym.Env):
 
         self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
         self.render_mode = render_mode
+
+        self.generate_plot_list()
+        print(f'Wil plot {self.episodes_to_plot}')
         
         self.check_valid_config()
 
@@ -443,7 +447,7 @@ class MAISREnvVec(gym.Env):
 
         if self.terminated or self.truncated: # Print round complete, plot round history, render
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.config['time_limit'] - self.display_time / 1000, 1)} secs left')
-            if self.tag in ['eval', 'train_mp0'] and self.episode_counter in self.episodes_to_plot:
+            if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
             if self.render_mode == 'human':
                 pygame.time.wait(50)
@@ -1220,14 +1224,22 @@ class MAISREnvVec(gym.Env):
 
 
         # Generate list of episodes to plot using save_action_history_plot()
+        self.generate_plot_list()
+
+
+    def generate_plot_list(self):
+        """Generate list of env episodes to plot using save_action_history_plot"""
         base_episodes = []
-        for i in range(self.num_beginner_levels):
-            base_episodes.extend(
-                [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
-                 1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
-                 4000 + i, 5000 + i, 6000 + i, 7000 + i])
-        for j in range(self.num_beginner_levels):
-            base_episodes.extend([(500 + j) * i for i in range(80)])
-        base_episodes.sort()
-        self.episodes_to_plot = list(set(base_episodes))
-        self.episodes_to_plot.sort()
+        if self.tag == 'bc':
+            self.episodes_to_plot = [10*i for i in range(20)]
+        else:
+            for i in range(self.num_beginner_levels):
+                base_episodes.extend(
+                    [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
+                     1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
+                     4000 + i, 5000 + i, 6000 + i, 7000 + i])
+            for j in range(self.num_beginner_levels):
+                base_episodes.extend([(500 + j) * i for i in range(80)])
+            base_episodes.sort()
+            self.episodes_to_plot = list(set(base_episodes))
+            self.episodes_to_plot.sort()
