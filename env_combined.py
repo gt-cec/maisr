@@ -34,6 +34,9 @@ class MAISREnvVec(gym.Env):
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
+
+        print(f'Shaping time penalty = {self.config['shaping_time_penalty'] * 300 / (self.config['gameboard_size'])}')
+
         self.run_name = run_name # For logging
 
         self.use_buttons = False # TODO make configurable in config
@@ -43,7 +46,7 @@ class MAISREnvVec(gym.Env):
             random.seed(seed)
 
         self.beginner_level_seeds = [42, 123, 465, 299, 928]
-        self.num_beginner_levels = 0 if self.config['curriculum_type'] == 'none' else self.config['num_beginner_levels']
+        self.num_beginner_levels = 0 if not self.config['use_beginner_levels'] else self.config['num_beginner_levels']
         # self.num_beginner_levels = self.config['num_beginner_levels']
         #
         # # Generate list of episodes to plot using save_action_history_plot()
@@ -213,7 +216,7 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None, options=None):
 
-        if self.config['curriculum_type'] != "none":
+        if self.config['use_curriculum']:
             self.load_difficulty()
 
         # Set level seed if applicable
@@ -268,7 +271,7 @@ class MAISREnvVec(gym.Env):
 
         # Set agent start location
         if self.config['agent_start_location'] == "random":
-            if self.config["curriculum_type"] == "random_start" and self.difficulty >= 1:
+            if self.config["cl_lesson1"] == "random_start" and self.difficulty >= 1:
                 agent_x, agent_y = self.agent_start_location
             else:
                 map_half_size = self.config["gameboard_size"] / 2
@@ -459,7 +462,7 @@ class MAISREnvVec(gym.Env):
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (potential_gain * self.config['shaping_coeff_prox']) + \
-                 (self.config['shaping_time_penalty'])
+                 (self.config['shaping_time_penalty'] * 300/(self.config['gameboard_size']))
 
         return reward
 
@@ -1198,9 +1201,9 @@ class MAISREnvVec(gym.Env):
             self.num_beginner_levels = self.config['num_beginner_levels']
 
         elif self.difficulty == 1:
-            if self.config['curriculum_type'] == 'more_levels':
+            if self.config['cl_lesson1'] == 'more_levels':
                 self.num_beginner_levels = self.config['num_beginner_levels'] + 3
-            elif self.config['curriculum_type'] == 'random_start':
+            elif self.config['cl_lesson1'] == 'random_start':
                 current_random_state, current_py_random_state = np.random.get_state(), random.getstate()
                 temp_seed = int(time.time() * 1000000) % 2 ** 32
                 np.random.seed(temp_seed)
@@ -1215,7 +1218,7 @@ class MAISREnvVec(gym.Env):
 
         if self.difficulty == 2:
             if self.config['cl_lesson2'] == 'map_size':
-                self.config['gameboard_size'] = 400
+                self.config['gameboard_size'] = 450
             elif self.config['cl_lesson2'] == 'more_levels':
                 self.config['num_beginner_levels'] += 3
 
