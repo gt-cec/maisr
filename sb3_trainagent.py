@@ -64,9 +64,10 @@ class EnhancedWandbCallback(BaseCallback):
     4. Logs additional PPO training metrics
     """
 
-    def __init__(self, env_config, verbose=0, eval_env=None, run=None, run_name='no_name', log_freq=2):
+    def __init__(self, env_config, verbose=0, eval_env=None, run=None,
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
+                 log_freq=2):  # New parameter: log every N steps
         super(EnhancedWandbCallback, self).__init__(verbose)
-
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
@@ -75,7 +76,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['curriculum_type'] != "none"
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
-        self.max_ep_len_to_advance = 120
+        self.max_ep_len_to_advance = 150
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0
@@ -234,14 +235,16 @@ class EnhancedWandbCallback(BaseCallback):
                     else:
                         self.above_threshold_counter = 0
 
-                if self.above_threshold_counter >= 3:
+                if self.above_threshold_counter >= 5:
                     self.above_threshold_counter = 0
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
                     self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-                    try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
-                    except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+                    try:
+                        self.eval_env.env_method("set_difficulty", self.current_difficulty)
+                    except Exception as e:
+                        print(f"Failed to set difficulty on eval env: {e}")
 
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
                 else:
@@ -338,6 +341,7 @@ def train(
         tag='eval',
         run_name=run_name,
     )
+    
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
     eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
@@ -444,10 +448,12 @@ if __name__ == "__main__":
     env_config['n_envs'] = multiprocessing.cpu_count()
     env_config['config_filename'] = config_filename
 
-    for curriculum_type in ["more_levels", "random_start"]:
-        for ent_coef in [0.011]:
-            env_config['entropy_regularization'] = ent_coef
-            env_config['curriculum_type'] = curriculum_type
+    for curriculum_type in ["random_start"]:
+        for ent_coef in [0.011, 0.012]:
+            for vf_coef in [0.5, 0.55]:
+                env_config['entropy_regularization'] = ent_coef
+                env_config['curriculum_type'] = curriculum_type
+                env_config['vf_coef'] = vf_coef
 
             train(
                 env_config,
