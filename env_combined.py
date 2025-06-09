@@ -247,7 +247,6 @@ class MAISREnvVec(gym.Env):
         self.last_potential = None
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
-
         self.num_targets = min(self.max_targets, self.config['num_targets'])  # If more than 30 targets specified, overwrite to 30
 
         self.targets = np.zeros((self.num_targets, 5), dtype=np.float32)
@@ -497,35 +496,35 @@ class MAISREnvVec(gym.Env):
         # Return negative distance
         return -nearest_distance
 
-    def get_potential(self, observation):
-        """
-        Calculate potential as negative distance to nearest unknown target.
-        Returns a higher (less negative) value when closer to unknown targets.
-        """
-        # Get agent position from observation (first 2 elements, normalized)
-        map_half_size = self.config["gameboard_size"] / 2
-        agent_x = observation[0] * map_half_size
-        agent_y = observation[1] * map_half_size
-        agent_pos = np.array([agent_x, agent_y])
-
-        # Get target positions and info levels
-        target_positions = self.targets[:, 3:5]  # x,y coordinates
-        target_info_levels = self.targets[:, 2]  # info levels
-
-        # Create mask for unidentified targets (info_level < 1.0)
-        unidentified_mask = target_info_levels < 1.0
-
-        if not np.any(unidentified_mask):
-            # No unidentified targets remaining
-            return 0.0
-
-        # Calculate distances to unidentified targets only
-        unidentified_positions = target_positions[unidentified_mask]
-        distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
-        nearest_distance = np.min(distances)
-
-        # Return negative distance (higher potential when closer)
-        return -nearest_distance
+    # def get_potential(self, observation):
+    #     """
+    #     Calculate potential as negative distance to nearest unknown target.
+    #     Returns a higher (less negative) value when closer to unknown targets.
+    #     """
+    #     # Get agent position from observation (first 2 elements, normalized)
+    #     map_half_size = self.config["gameboard_size"] / 2
+    #     agent_x = observation[0] * map_half_size
+    #     agent_y = observation[1] * map_half_size
+    #     agent_pos = np.array([agent_x, agent_y])
+    #
+    #     # Get target positions and info levels
+    #     target_positions = self.targets[:, 3:5]  # x,y coordinates
+    #     target_info_levels = self.targets[:, 2]  # info levels
+    #
+    #     # Create mask for unidentified targets (info_level < 1.0)
+    #     unidentified_mask = target_info_levels < 1.0
+    #
+    #     if not np.any(unidentified_mask):
+    #         # No unidentified targets remaining
+    #         return 0.0
+    #
+    #     # Calculate distances to unidentified targets only
+    #     unidentified_positions = target_positions[unidentified_mask]
+    #     distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
+    #     nearest_distance = np.min(distances)
+    #
+    #     # Return negative distance (higher potential when closer)
+    #     return -nearest_distance
 
     def get_observation(self):
         """
@@ -559,20 +558,6 @@ class MAISREnvVec(gym.Env):
         self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         return self.observation
-
-
-    def check_valid_config(self):
-        valid_obs_types = ['absolute']
-        valid_action_types = ['waypoint-direction'] # 'continuous_normalized
-        valid_render_modes = ['headless', 'human', 'rgb_array']
-        
-        if self.config['obs_type'] not in valid_obs_types: 
-            raise ValueError(f"obs_type invalid, got '{self.config['obs_type']}'")
-        if self.config['action_type'] not in valid_action_types:
-            raise ValueError(f"action_type invalid, got '{self.config['action_type']}'")
-        if self.render_mode not in valid_render_modes:
-            raise ValueError('Render mode must be headless, rgb_array, human')
-    
     
     def render(self):
 
@@ -827,6 +812,18 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
+
+    def check_valid_config(self):
+        valid_obs_types = ['absolute']
+        valid_action_types = ['waypoint-direction']  # 'continuous_normalized
+        valid_render_modes = ['headless', 'human', 'rgb_array']
+
+        if self.config['obs_type'] not in valid_obs_types:
+            raise ValueError(f"obs_type invalid, got '{self.config['obs_type']}'")
+        if self.config['action_type'] not in valid_action_types:
+            raise ValueError(f"action_type invalid, got '{self.config['action_type']}'")
+        if self.render_mode not in valid_render_modes:
+            raise ValueError('Render mode must be headless, rgb_array, human')
 
     def pause(self, unpause_key):
         print('Game paused')
@@ -1197,34 +1194,32 @@ class MAISREnvVec(gym.Env):
     def load_difficulty(self):
         """Method to update env parameters using the current difficulty setting"""
 
-        if self.config['curriculum_type'] == 'more_levels':
-            if self.difficulty == 0:
-                self.num_beginner_levels = self.config['num_beginner_levels']
-
-            elif self.difficulty == 1:
-                self.num_beginner_levels = self.config['num_beginner_levels'] + 3
-
-
-        elif self.config['curriculum_type'] == 'random_start':
+        if self.difficulty == 0:
             self.num_beginner_levels = self.config['num_beginner_levels']
 
-            if self.difficulty == 1:
+        elif self.difficulty == 1:
+            if self.config['curriculum_type'] == 'more_levels':
+                self.num_beginner_levels = self.config['num_beginner_levels'] + 3
+            elif self.config['curriculum_type'] == 'random_start':
                 current_random_state, current_py_random_state = np.random.get_state(), random.getstate()
                 temp_seed = int(time.time() * 1000000) % 2 ** 32
                 np.random.seed(temp_seed)
                 random.seed(temp_seed)
 
-                map_half_size = self.config["gameboard_size"] / 2
+                map_half_size = (self.config["gameboard_size"] / 2) * 0.05
                 margin = map_half_size * 0.05  # 5% margin from edges
-
                 self.agent_start_location = [np.random.uniform(-map_half_size + margin, map_half_size - margin), np.random.uniform(-map_half_size + margin, map_half_size - margin)]
 
                 np.random.set_state(current_random_state)
                 random.setstate(current_py_random_state)
 
+        if self.difficulty == 2:
+            if self.config['cl_lesson2'] == 'map_size':
+                self.config['gameboard_size'] = 400
+            elif self.config['cl_lesson2'] == 'more_levels':
+                self.config['num_beginner_levels'] += 3
 
-        # Generate list of episodes to plot using save_action_history_plot()
-        self.generate_plot_list()
+        self.generate_plot_list() # Generate list of episodes to plot using save_action_history_plot()
 
 
     def generate_plot_list(self):

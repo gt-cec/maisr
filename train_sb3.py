@@ -438,7 +438,7 @@ if __name__ == "__main__":
     ###############################################
 
     # Get machine name to add to run name
-    print(f'machine is {socket.gethostname()}')
+    #print(f'machine is {socket.gethostname()}')
     machine_name = 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'
     project_name = 'maisr-rl' if machine_name in ['home', 'lab_pc'] else 'maisr-rl-pace'
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
@@ -449,8 +449,6 @@ if __name__ == "__main__":
 
     all_configs = load_env_config_with_sweeps(config_filename)
     print(f"Found {len(all_configs)} configurations to run")
-
-    #env_config = load_env_config(config_filename)  # Load env config into a dict
 
     for i, env_config in enumerate(all_configs):
 
