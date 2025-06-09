@@ -74,7 +74,7 @@ class MAISREnvVec(gym.Env):
         self.render_mode = render_mode
 
         self.generate_plot_list()
-        print(f'Wil plot {self.episodes_to_plot}')
+        #print(f'Will plot {self.episodes_to_plot}')
         
         self.check_valid_config()
 
@@ -813,7 +813,7 @@ class MAISREnvVec(gym.Env):
             #self._render_game_complete() TODO temp removed
 
         pygame.display.update()
-        if self.render_mode == 'human': self.clock.tick(60)
+        if self.render_mode == 'human': self.clock.tick(self.config['tick_rate'])
 
     def close(self):
         if self.render_mode == 'human' and pygame.get_init():

@@ -12,6 +12,7 @@
 	"time_to_id": 0,
 	"prob_detect": 0,
 	"difficulty": 0,
+	"tick_rate": 120,
 
 	"obs_type": "absolute",
 	"action_type": "waypoint-direction",

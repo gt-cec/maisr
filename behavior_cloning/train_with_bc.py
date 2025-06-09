@@ -1,5 +1,8 @@
+import ctypes
 import os
 from datetime import datetime
+
+import pygame
 import torch
 import numpy as np
 import datasets
@@ -141,21 +144,43 @@ def train_with_bc(expert_trajectory_path, env_config, bc_config, run_name='none'
 
     # Save
     os.makedirs('./bc_models', exist_ok=True)
-    ppo_model.save(f"./bc_models/bc_policy_{run_name}")
+    trained_model_path = f"./bc_models/bc_policy_{run_name}"
+    ppo_model.save(trained_model_path)
     print(f'Saved trained model to "./bc_models/bc_policy_{run_name}"')
 
-    return
+    return trained_model_path
 
-def evaluate_bc_policy(env_config, load_path):
-    from stable_baselines3.common.evaluation import evaluate_policy
-
-    eval_env = MAISREnvVec(
+def evaluate_bc_policy(
         env_config,
-        None,
-        render_mode='headless',
-        tag='eval',
-        run_name=run_name,
-    )
+        load_path,
+        num_episodes=20,
+        render=True):
+
+    if render:
+        pygame.init()
+        clock = pygame.time.Clock()
+        ctypes.windll.user32.SetProcessDPIAware()
+        window_width, window_height = env_config['window_size'][0], env_config['window_size'][1]
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
+
+        eval_env = MAISREnvVec(
+            config=env_config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            run_name='run_name',
+            tag='bc_eval'
+        )
+    else:
+        eval_env = MAISREnvVec(
+            env_config,
+            None,
+            render_mode='human' if render else 'headless',
+            tag='bc_eval',
+            run_name=run_name,
+        )
+
     eval_env = Monitor(eval_env)
     print('Instantiated eval_env')
 
@@ -163,43 +188,111 @@ def evaluate_bc_policy(env_config, load_path):
         "MlpPolicy",
         eval_env,
         verbose=1,
-        # tensorboard_log=f"logs/runs/{run.id}",
-        batch_size=bc_config['batch_size'],
-        n_steps=env_config['ppo_update_steps'],
-        learning_rate=env_config['lr'],
-        seed=env_config['seed'],
         device='cpu',
-        gamma=env_config['gamma'],
-        ent_coef=env_config['entropy_regularization']
     )
-    print('instantiated policy')
     trained_policy = trained_policy.__class__.load(load_path, env=eval_env)
-    print('loaded bc-trained policy')
+    print('instantiated policy')
 
-    mean_reward, std_reward = evaluate_policy(trained_policy, eval_env, n_eval_episodes=10)
-    return mean_reward, std_reward
+    # # Create environment
+    # env = MAISREnvVec(
+    #     config=env_config,
+    #     render_mode='headless',
+    #     tag='test_suite'
+    # )
+
+    reward_history = []
+    for episode in range(num_episodes):
+        obs, info = eval_env.reset()
+        episode_reward = 0
+
+        terminated, truncated = False, False
+
+        while not (terminated or truncated):
+            action = trained_policy.predict(obs)[0]
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            if render: eval_env.render()
+            episode_reward += reward
+
+        reward_history.append(episode_reward)
+
+    eval_env.close()
+    print(f'Evaluated {num_episodes} episodes. Average reward: {np.mean(reward_history)}')
+
+    return reward_history, np.mean(reward_history), np.std(reward_history)
+
 
 if __name__ == "__main__":
 
-    config_name = '../config_files/june9a.json'
-    train_new = True
-    evaluate = False
-    load_path = None #'./bc_models/bc_policy_bc_run_0603_1202'
+    ################### Set parameters ###################
+    config_name = '../config_files/june9_cloning.json'
+    train_new = False
+    evaluate = True
+    # For eval, load trained BC model from path
+    load_path = 'bc_models/bc_policy_bc_run_0609_1412.zip'
+
+    ######################################################
 
     bc_config = {
         'batch_size': 256,
         'n_epochs': 10}
 
     env_config = load_env_config(config_name)
+    env_config['curriculum_type'] = 'none'
+    env_config['use_beginner_levels'] = False
+
     run_name = 'bc_run_' + datetime.now().strftime("%m%d_%H%M")
 
-    if train_new:
-        train_with_bc(
-            expert_trajectory_path = './expert_trajectories/expert_trajectory_continuousactions_92obs_50000games',
-            env_config=env_config,
-            bc_config=bc_config,
-            run_name=run_name
-        )
+    results_dict = {} # Will be of the form batchsize,n_epochs = (reward_history, average_reward, std_reward)
 
-    if evaluate:
-        evaluate_bc_policy(env_config, load_path)
+    for batch_size in [256, 512, 1024, 2048]:
+        for n_epochs in [10, 20, 30]:
+            bc_config['batch_size'] = batch_size
+            bc_config['n_epochs'] = n_epochs
+
+            trained_model_path = train_with_bc(
+                                    expert_trajectory_path='./expert_trajectories/expert_trajectory_200episodes_0609_1408',
+                                    env_config=env_config,
+                                    bc_config=bc_config,
+                                    run_name=run_name
+                                )
+            reward_history, average_reward, std_reward = evaluate_bc_policy(env_config, trained_model_path, render=False)
+            results_dict[(batch_size, n_epochs)] = (reward_history, average_reward, std_reward)
+
+    # Convert results_dict to JSON-serializable format
+    import json
+    json_results = {}
+    for (batch_size, n_epochs), (reward_history, avg_reward, std_reward) in results_dict.items():
+        json_results[f"batch_{batch_size}_epochs_{n_epochs}"] = {
+            "batch_size": batch_size,
+            "n_epochs": n_epochs,
+            "average_reward": float(avg_reward),
+            "std_reward": float(std_reward)
+        }
+
+    # Save to JSON file
+    results_filename = f"bc_training_results_{run_name}.json"
+    with open(results_filename, 'w') as f:
+        json.dump(json_results, f, indent=4)
+
+    print(f"Results saved to {results_filename}")
+
+    print('#######################################################################')
+    print('\nTraining results:')
+    try:
+        print(f'Config with highest average reward: {max(results_dict.keys(), key=lambda k: results_dict[k][1])}')
+    except:
+        print('max get failed. Printing results dict')
+        print(results_dict)
+
+    print('#######################################################################')
+
+    # if train_new:
+    #     train_with_bc(
+    #         expert_trajectory_path = './expert_trajectories/expert_trajectory_200episodes_0609_1408',
+    #         env_config=env_config,
+    #         bc_config=bc_config,
+    #         run_name=run_name
+    #     )
+    #
+    # if evaluate:
+    #     evaluate_bc_policy(env_config, load_path, render=False)
