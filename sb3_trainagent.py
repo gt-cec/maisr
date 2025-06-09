@@ -73,7 +73,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.run = run
         self.log_freq = log_freq  # Log every N steps instead of every step
 
-        self.use_curriculum = env_config['use_curriculum']
+        self.use_curriculum = env_config['curriculum_type'] != "none"
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
         self.max_ep_len_to_advance = 120
 
@@ -240,7 +240,9 @@ class EnhancedWandbCallback(BaseCallback):
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
                     self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-                    self.eval_env.unwrapped.set_difficulty(self.current_difficulty)
+                    try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
+                    except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
                 else:
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
