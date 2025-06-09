@@ -245,12 +245,12 @@ if __name__ == "__main__":
     results_dict = {} # Will be of the form batchsize,n_epochs = (reward_history, average_reward, std_reward)
 
     for batch_size in [256, 512, 1024, 2048]:
-        for n_epochs in [10, 20, 30]:
+        for n_epochs in [10, 20]:
             bc_config['batch_size'] = batch_size
             bc_config['n_epochs'] = n_epochs
 
             trained_model_path = train_with_bc(
-                                    expert_trajectory_path='./expert_trajectories/expert_trajectory_200episodes_0609_1408',
+                                    expert_trajectory_path='./expert_trajectories/experttraj_mp_10000eps_0609_1506',
                                     env_config=env_config,
                                     bc_config=bc_config,
                                     run_name=run_name
