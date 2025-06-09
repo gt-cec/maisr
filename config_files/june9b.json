@@ -1,5 +1,5 @@
 {
-	"gameboard_size": 300,
+	"gameboard_size": 400,
 	"window_size": [1450,1080],
 	"num_aircraft": 1,
 	"num_targets":5,
@@ -30,8 +30,8 @@
 	"policy_network_size": 64,
 	"value_network_size": 64,
 	"activation_fn": "Tanh",
-	"lr": [0.001,0.002],
-	"batch_size": [256,512],
+	"lr": 0.001,
+	"batch_size": 256,
 	"gamma": 0.9993,
 	"frame_skip": 30,
 	"ppo_update_steps": 2048,

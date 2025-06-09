@@ -31,15 +31,15 @@ def generate_run_name(config):
 
     components = [
         f"{config['n_envs']}envs",
-        f"obs-{config['obs_type']}",
-        f"act-{config['action_type']}",
+        #f"obs-{config['obs_type']}",
+        #f"act-{config['action_type']}",
     ]
 
     # Add critical hyperparameters
     components.extend([
-        f"lr-{config['lr']}",
-        f"bs-{config['batch_size']}",
-        f"g-{config['gamma']}",
+        #f"lr-{config['lr']}",
+#        f"bs-{config['batch_size']}",
+        #f"g-{config['gamma']}",
         # f"fs-{config.get('frame_skip', 1)}",
         # f"ppoupdates-{config['ppo_update_steps']}",
         # f"curriculum-{config['use_curriculum']}",
@@ -434,7 +434,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     # Specify a checkpoint to load
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'config_files/june8c.json'
+    config_filename = 'config_files/june9b.json'
     ###############################################
 
     # Get machine name to add to run name
@@ -443,28 +443,18 @@ if __name__ == "__main__":
     project_name = 'maisr-rl' if machine_name in ['home', 'lab_pc'] else 'maisr-rl-pace'
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
-    print('\n################################################################################')
-    print(f'############################ STARTING TRAINING RUN ############################')
-    print('################################################################################')
+    print(f'\n############################ STARTING TRAINING RUN ############################')
 
-    all_configs = load_env_config_with_sweeps(config_filename)
-    print(f"Found {len(all_configs)} configurations to run")
+    all_configs, param_names = load_env_config_with_sweeps(config_filename)
+    #print(f"Found {len(all_configs)} configurations to run (sweeping over {param_names})")
 
     for i, env_config in enumerate(all_configs):
-
         print(f'\n--- Starting training run {i + 1}/{len(all_configs)} ---')
+
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
-
-        base_run_name = generate_run_name(env_config)
-        final_run_name = generate_sweep_run_name(env_config, base_run_name)
+        final_run_name = generate_run_name(env_config) + f'{"".join('_'+str(name)+'-'+str(env_config[name]) for name in param_names)}'
         print(f"Running with config: {final_run_name}")
-
-        KNOWN_LIST_PARAMS = {'window_size', 'agent_start_location', 'human_start_location'}
-        sweep_params = {k: v
-                        for k, v in env_config.items()
-                        if k not in KNOWN_LIST_PARAMS}
-        if sweep_params: print(f"Sweep parameters for this run: {sweep_params}")
 
         train(
             env_config,

@@ -31,6 +31,7 @@ def load_env_config_with_sweeps(config_filename):
     for key, value in base_config.items():
         if isinstance(value, list) and key not in KNOWN_LIST_PARAMS:
             sweep_params[key] = value
+            #print(f'Added {key}={value}')
         else:
             fixed_params[key] = value
 
@@ -54,7 +55,7 @@ def load_env_config_with_sweeps(config_filename):
         configs.append(config)
 
     print(f"Generated {len(configs)} configurations from sweep parameters: {param_names}")
-    return configs
+    return configs, param_names
 
 
 def generate_sweep_run_name(config, base_run_name):
@@ -80,9 +81,7 @@ def generate_sweep_run_name(config, base_run_name):
 
     # Common parameters that might be swept
     potential_sweep_params = [
-        'lr', 'learning_rate', 'batch_size', 'gamma', 'entropy_regularization',
-        'vf_coef', 'curriculum_type', 'shaping_coeff_prox', 'shaping_coeff_earlyfinish',
-        'shaping_time_penalty', 'frame_skip', 'ppo_update_steps'
+        'entropy_regularization', 'vf_coef', 'curriculum_type',
     ]
 
     for param in potential_sweep_params:

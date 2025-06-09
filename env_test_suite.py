@@ -262,6 +262,7 @@ def test_env_humanplaytest(config, test_dir=None):
 
     # Set up pygame window
     window_width, window_height = config['window_size'][0], config['window_size'][1]
+    config['tick_rate'] = 80
     #gameboard_size = config['gameboard_size']
 
     # Position window (from config.py)
@@ -374,7 +375,7 @@ def test_env_random(config, test_dir=None):
     episode_rewards = []
     all_actions = []
 
-    for episode in range(20):
+    for episode in range(15):
         obs, info = env.reset()
         episode_reward = 0
         episode_observations = []
@@ -437,7 +438,7 @@ def test_env_train(config):
 
 if __name__ == "__main__":
 
-    config = load_env_config('config_files/june9a.json')
+    config = load_env_config('config_files/june9b.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
     config['num_timesteps'] = 1e5
@@ -450,10 +451,10 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        test_env_humanplaytest(config, test_dir=shared_test_dir)
-        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_humanplaytest(config, test_dir=shared_test_dir)
+        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
-        test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         test_env_train(config)
 
     except KeyboardInterrupt:

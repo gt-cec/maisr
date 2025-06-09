@@ -280,7 +280,7 @@ class MAISREnvVec(gym.Env):
 
         ############################################# Create the aircraft ##############################################
         for i in range(self.num_agents):
-            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['human_speed'], flight_pattern=self.config["search pattern"])
+            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['human_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         if self.num_agents == 2: # TODO delete
