@@ -1,15 +1,13 @@
 import gymnasium as gym
-from gymnasium.spaces import MultiDiscrete
 import numpy as np
 import pygame
 import random
-import agents
+from utility import agents
 
 import json
 import os
 
-from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
-import datetime
+from utility.gui import Button, HealthWindow, TimeWindow, AgentInfoDisplay
 import math
 
 """
@@ -318,7 +316,7 @@ class MAISREnvVec(gym.Env):
 
         # create the aircraft
         for i in range(self.num_agents):
-            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['human_speed'], flight_pattern=self.config["search pattern"])
+            agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game_speed'] * self.config['human_speed'], flight_pattern=self.config["search pattern"])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         #self.agent_idx = self.aircraft_ids[0]

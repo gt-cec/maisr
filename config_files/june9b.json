@@ -56,5 +56,5 @@
 	"cl_lesson2": ["more_levels", "map_size"],
 	"min_target_ids_to_advance": 4,
 	"initial_difficulty": 0,
-	"max_difficulty_level": 5
+	"max_difficulty": 2
 }

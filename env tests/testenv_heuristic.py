@@ -2,7 +2,7 @@ import numpy as np
 
 from env_combined import MAISREnvVec
 from new_heuristic_policy import AutonomousPolicy
-from gui import *
+from utility.gui import *
 from utility.data_logging import load_env_config
 
 if __name__ == "__main__":

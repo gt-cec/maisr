@@ -1,15 +1,9 @@
-from agents import *
-import sys
-import os
-import ctypes
 from custom_ppo import PPOTrainer
 from a2c_policy import MAISRActorCritic
-import wandb
 
 from env import MAISREnv
-from gui import *
-from utility.data_logging import GameLogger, load_env_config
-from config import x, y, config_dict, run_order, surveys_enabled, times
+from utility.data_logging import load_env_config
+
 
 def train_rl_agent(episodes=1000):
 

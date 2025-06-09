@@ -1,14 +1,11 @@
-from agents import *
-import sys
 import os
 import ctypes
 
 from env import MAISREnv
-from gui import *
+from utility.gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order
 from autonomous_policy import AutonomousPolicy
-import webbrowser
 
 if __name__ == "__main__":
 

@@ -556,7 +556,7 @@ if __name__ == "__main__":
         test_curriculum(config)
         test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
-        #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
+        test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         test_env_train(config)
 
     except KeyboardInterrupt:

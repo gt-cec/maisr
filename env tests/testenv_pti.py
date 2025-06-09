@@ -5,7 +5,7 @@ import json
 import glob
 
 from env_combined import MAISREnvVec
-from gui import *
+from utility.gui import *
 from utility.data_logging import load_env_config
 
 

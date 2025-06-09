@@ -2,7 +2,7 @@ import os
 import ctypes
 import numpy as np
 from env_combined import MAISREnvVec
-from gui import *
+from utility.gui import *
 from utility.data_logging import load_env_config
 from config import config_dict
 

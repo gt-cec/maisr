@@ -80,6 +80,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.use_curriculum = env_config['curriculum_type'] != "none"
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
         self.max_ep_len_to_advance = 150
+        self.max_difficulty = env_config['max_difficulty']
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0
@@ -238,7 +239,7 @@ class EnhancedWandbCallback(BaseCallback):
                     else:
                         self.above_threshold_counter = 0
 
-                if self.above_threshold_counter >= 5:
+                if self.above_threshold_counter >= 5 and self.current_difficulty <= self.max_difficulty:
                     self.above_threshold_counter = 0
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')

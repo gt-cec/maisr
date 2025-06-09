@@ -5,12 +5,12 @@ from gymnasium.spaces import MultiDiscrete
 import numpy as np
 import pygame
 import random
-import agents
+import utility.agents as agents
 
 import json
 import os
 
-from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
+from utility.gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
 import math
 
