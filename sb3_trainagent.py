@@ -403,7 +403,7 @@ def train(
 
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
-        callback=[wandb_callback, enhanced_wandb_callback], # checkpoint_callback
+        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
         reset_num_timesteps=True if load_path else False  # TODO check this
     )
 
