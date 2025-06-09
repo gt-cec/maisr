@@ -41,17 +41,17 @@
 	"lr_schedule":"none",
 
 	"steps_per_episode": 491,
-	"num_timesteps": 10e6,
-	"save_freq": 9800,
+	"num_timesteps": 20e6,
+	"save_freq": 14700,
 	"n_eval_episodes": 10,
-	"eval_freq": 9800,
+	"eval_freq": 14700,
 	"seed": 42,
 
 	"use_beginner_levels": true,
 	"num_beginner_levels": 3,
 
-	"use_curriculum":false,
-	"min_target_ids_to_advance": 5,
+	"curriculum_type": "more_levels",
+	"min_target_ids_to_advance": 4,
 	"initial_difficulty": 0,
 	"max_difficulty_level": 5
 }

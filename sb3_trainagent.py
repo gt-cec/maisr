@@ -64,10 +64,9 @@ class EnhancedWandbCallback(BaseCallback):
     4. Logs additional PPO training metrics
     """
 
-    def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
-                 log_freq=2):  # New parameter: log every N steps
+    def __init__(self, env_config, verbose=0, eval_env=None, run=None, run_name='no_name', log_freq=2):
         super(EnhancedWandbCallback, self).__init__(verbose)
+
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
@@ -76,7 +75,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
-        self.max_ep_len_to_advance = 10000
+        self.max_ep_len_to_advance = 120
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0
@@ -177,11 +176,12 @@ class EnhancedWandbCallback(BaseCallback):
             obs = self.eval_env.reset() # We call reset() at the beginning (vec envs reset automatically after this)
             for i in range(self.n_eval_episodes):
                 #obs = self.eval_env.reset()
-                try:
-                    episode_counter = self.eval_env.get_attr('episode_counter')[0]
-                    print(f'Reset to eval env episode {episode_counter}')
-                except (AttributeError, IndexError):
-                    print('Reset to eval env episode (counter unavailable)')
+                # try:
+                #     #episode_counter = self.eval_env.get_attr('episode_counter')[0]
+                #     episode_counter = self.eval_env.get_wrapper_attr('episode_counter')
+                #     print(f'Reset to eval env episode {episode_counter}')
+                # except (AttributeError, IndexError):
+                #     print('Reset to eval env episode (counter unavailable)')
 
                 done = False
                 ep_reward = 0
@@ -234,7 +234,7 @@ class EnhancedWandbCallback(BaseCallback):
                     else:
                         self.above_threshold_counter = 0
 
-                if self.above_threshold_counter >= 5:
+                if self.above_threshold_counter >= 3:
                     self.above_threshold_counter = 0
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
@@ -421,11 +421,6 @@ def train(
 
 
 if __name__ == "__main__":
-
-    config_list = [
-        'config_files/june8a.json',
-    ]
-
     # Specify a checkpoint to load here
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
 
@@ -439,21 +434,23 @@ if __name__ == "__main__":
     print(f'############################ STARTING TRAINING RUN ############################')
     print('################################################################################')
 
-    for config_filename in config_list:
-        env_config = load_env_config(config_filename)  # Load env config into a dict
-        # Add parameters to the config so they can be tracked later
-        env_config['n_envs'] = multiprocessing.cpu_count()
-        env_config['config_filename'] = config_filename
 
-        for lr in [0.001, 0.0005]:
-            for ent_coef in [0.01, 0.013]:
-                env_config['entropy_regularization'] = ent_coef
-                env_config['lr'] = lr
+    config_filename = 'config_files/june8c.json'
+    env_config = load_env_config(config_filename)  # Load env config into a dict
 
-                train(
-                    env_config,
-                    n_envs=multiprocessing.cpu_count(),
-                    load_path=load_path,
-                    machine_name=machine_name,
-                    project_name=project_name
-                )
+    # Add parameters to the config so they can be tracked later
+    env_config['n_envs'] = multiprocessing.cpu_count()
+    env_config['config_filename'] = config_filename
+
+    for curriculum_type in ["more_levels", "random_start"]:
+        for ent_coef in [0.011]:
+            env_config['entropy_regularization'] = ent_coef
+            env_config['curriculum_type'] = curriculum_type
+
+            train(
+                env_config,
+                n_envs=multiprocessing.cpu_count(),
+                load_path=load_path,
+                machine_name=machine_name,
+                project_name=project_name
+            )
