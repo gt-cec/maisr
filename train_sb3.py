@@ -415,7 +415,7 @@ def train(
         ))
 
     model = PPO(
-        "MlpPolicy",
+        "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
         env,
         policy_kwargs=policy_kwargs,
         verbose=2,

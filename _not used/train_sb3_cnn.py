@@ -34,45 +34,6 @@ from utility.config_management import load_env_config_with_sweeps, generate_swee
 from train_sb3 import EnhancedWandbCallback
 
 
-class MAISRCNN(BaseFeaturesExtractor):
-    """
-    Custom CNN feature extractor optimized for MAISR environment.
-    Designed for 84x84 grayscale images.
-    """
-
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 512):
-        super(MAISRCNN, self).__init__(observation_space, features_dim)
-
-        # Expect input shape: (1, 84, 84) - grayscale 84x84 images
-        n_input_channels = observation_space.shape[0]
-
-        self.cnn = nn.Sequential(
-            # First conv layer: 84x84x1 -> 20x20x32
-            nn.Conv2d(n_input_channels, 16, kernel_size=8, stride=4, padding=0),
-            nn.ReLU(),
-            # Second conv layer: 20x20x32 -> 9x9x64
-            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            # Third conv layer: 9x9x64 -> 7x7x64
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
-            nn.Flatten(),
-        )
-
-        # Compute shape by doing one forward pass
-        with torch.no_grad():
-            sample_input = torch.as_tensor(observation_space.sample()[None]).float()
-            n_flatten = self.cnn(sample_input).shape[1]
-
-        self.linear = nn.Sequential(
-            nn.Linear(n_flatten, features_dim),
-            nn.ReLU()
-        )
-
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        return self.linear(self.cnn(observations))
-
-
 def generate_run_name_cnn(config):
     """Generate a unique, descriptive name for CNN training runs."""
 
@@ -216,20 +177,19 @@ def train_cnn(
 
     ################################################# Setup CNN model #################################################
 
-    policy_kwargs = dict(
-        features_extractor_class=MAISRCNN,
-        features_extractor_kwargs=dict(features_dim=env_config.get('cnn_features_dim', 256)),
-        net_arch=dict(
-            pi=[env_config.get('policy_network_size', 64)],
-            vf=[env_config.get('value_network_size', 64)]
-        ),
-        activation_fn=torch.nn.ReLU,
-    )
+    # policy_kwargs = dict(
+    #     features_extractor_class=MAISRCNN,
+    #     features_extractor_kwargs=dict(features_dim=env_config.get('cnn_features_dim', 256)),
+    #     net_arch=dict(
+    #         pi=[env_config.get('policy_network_size', 64)],
+    #         vf=[env_config.get('value_network_size', 64)]
+    #     ),
+    #     activation_fn=torch.nn.ReLU,
+    # )
 
     model = PPO(
         "CnnPolicy",  # Use CNN policy
         env,
-        policy_kwargs=policy_kwargs,
         verbose=2,
         tensorboard_log=f"logs/runs/{run.id}",
         batch_size=env_config.get('batch_size', 32),
@@ -310,7 +270,7 @@ if __name__ == "__main__":
 
     ############## ---- CNN TRAINING SETTINGS ---- ##############
     load_path = None  # Path to load existing CNN model
-    config_filename = 'config_files/cnn_test.json'
+    config_filename = '../config_files/cnn_test.json'
     ###############################################
 
     # Get machine name
