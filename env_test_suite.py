@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from PIL import Image
 import glob
-
 from stable_baselines3 import PPO
 
 from train_sb3 import train
 from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
+from utility.visualize_values import get_directional_potential_gains, draw_value_arrows
 
 
 def combine_and_display_plots(test_dir):
@@ -362,7 +362,8 @@ def test_env_humanplaytest(config, test_dir=None):
         render_mode='human',
         num_agents=1,
         run_name='human_player',
-        tag='test_suite'
+        tag='test_suite',
+        seed=config['seed']
     )
 
     # Mapping numpad keys to actions
@@ -425,6 +426,27 @@ def test_env_humanplaytest(config, test_dir=None):
 
             # Render environment
             env.render()
+
+            ##################### TEMP TESTING ##########################################
+            # Calculate and draw value arrows
+            current_obs = obs  # obs from the last step
+            potentials = get_directional_potential_gains(env, current_obs)
+
+            # Get agent position for arrow drawing
+            if env.agents and len(env.aircraft_ids) > 0:
+                agent = env.agents[env.aircraft_ids[0]]
+                map_half_size = config["gameboard_size"] / 2
+                draw_value_arrows(window, env, potentials, agent.x, agent.y, map_half_size)
+
+            # Add a legend in the corner
+            font = pygame.font.Font(None, 24)
+            # legend_text = ["Value Arrows:", "Green = Positive", "Red = Negative", "Length = Magnitude"]
+            # for i, text in enumerate(legend_text):
+            #     color = (255, 255, 255) if i == 0 else (200, 200, 200)
+            #     text_surface = font.render(text, True, color)
+            #     window.blit(text_surface, (10, 10 + i * 25))
+            ##################### TEMP TESTING ##########################################
+
             pygame.display.flip()
             clock.tick(20)  # 60 FPS
 
@@ -630,6 +652,33 @@ def test_env_train(config):
 
     #env_config = load_env_config('config_files/june7b_baseline.json')
     config['n_envs'] = multiprocessing.cpu_count()
+    config['num_timesteps'] = 3e5
+
+    train(
+        config,
+        n_envs=multiprocessing.cpu_count(),
+        load_path=None,
+        machine_name=machine_name,
+        project_name=project_name,
+        save_model=False
+    )
+
+    print("Training test completed.")
+
+def test_env_overfit(config):
+    """Test if agent can overfit to 1 level"""
+    print("Starting training test...")
+
+    machine_name = 'testenv'
+    project_name = 'maisr-rl-tests'
+
+    #env_config = load_env_config('config_files/june7b_baseline.json')
+    config['n_envs'] = multiprocessing.cpu_count()
+    config["levels_per_lesson"] = {"0": 3, "1": 5, "2":  10}
+    config["num_timesteps"] = 8e5
+    config['lr'] = 0.001
+    config['n_eval_episodes'] = 3
+    config['eval_freq'] = 19600
 
     train(
         config,
@@ -643,14 +692,15 @@ def test_env_train(config):
     print("Training test completed.")
 
 
+
 if __name__ == "__main__":
 
     config = load_env_config('config_files/june10a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
-    config['num_timesteps'] = 1e5
 
-    print("Starting Environment Test Suite...")
+
+    print("\nStarting Environment Test Suite...")
     print("=" * 50)
 
     # Create shared test directory for all tests
@@ -658,12 +708,13 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        test_env_humanplaytest(config, test_dir=shared_test_dir)
+        #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
-        test_env_random(config, test_dir=shared_test_dir)
-        test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_random(config, test_dir=shared_test_dir)
+        #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         #test_env_train(config)
+        test_env_overfit(config)
 
     except KeyboardInterrupt:
         print("\nTest suite interrupted by user.")

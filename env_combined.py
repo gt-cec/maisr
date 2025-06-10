@@ -48,8 +48,6 @@ class MAISREnvVec(gym.Env):
             np.random.seed(seed)
             random.seed(seed)
 
-        #self.agent_start_locations = [(np.random.uniform(-1,1), np.random.uniform(-1,1)) for _ in range(10)]
-
         self.start_location_list = [(-0.040025224653889024, -0.9625879446233576), (-0.7540669154968491, -0.7678726873009407),
                                     (0.9345335196185689, -0.39997004285253945), (-0.5163174741656262, 0.5376409004137273),
                                     (0.6583087133274226, 0.5564162525991561), (0.7272350284428963, 0.18485499597619803),
@@ -72,8 +70,6 @@ class MAISREnvVec(gym.Env):
         self.render_mode = render_mode
 
         self.generate_plot_list()
-        #print(f'Will plot {self.episodes_to_plot}')
-        
         self.check_valid_config()
 
         #print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
@@ -84,26 +80,29 @@ class MAISREnvVec(gym.Env):
         ######################################### OBSERVATION AND ACTION SPACES ########################################
         if self.config['action_type'] == 'waypoint-direction':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
-        else:
-            raise ValueError("Invalid action type")
+        else: raise ValueError("Invalid action type")
 
-        if self.use_pixel_obs:
-            # CNN observation space - grayscale 84x84
+        if self.config['obs_type'] == 'pixel': # CNN observation space - grayscale 84x84
             self.observation_space = gym.spaces.Box(
                 low=0, high=255,
                 shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
                 dtype=np.uint8
             )
-        else:
-            # Original vector observation space
+
+        elif self.config['obs_type'] == 'absolute':
             self.obs_size = 2 + 3 * self.max_targets
-            if self.config['obs_type'] == 'absolute':
-                self.observation_space = gym.spaces.Box(
-                    low=-1, high=1,
-                    shape=(self.obs_size,),
-                    dtype=np.float32)
-            else:
-                raise ValueError("Obs type not recognized")
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),
+                dtype=np.float32)
+
+        elif self.config['obs_type'] == 'absolute-1target':
+            self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),
+                dtype=np.float32)
+        else: raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
         # Set reward quantities for each event (agent only)
@@ -242,6 +241,7 @@ class MAISREnvVec(gym.Env):
         else:
             current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
         current_seed = seed_list[current_seed_index]
+        #print(f'Seed index = {current_seed_index}, seed = {current_seed}')
         np.random.seed(current_seed)
         random.seed(current_seed)
 
@@ -276,6 +276,7 @@ class MAISREnvVec(gym.Env):
         margin = map_half_size * 0.03  # 3% margin from edges
         self.targets[:, 3] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.num_targets)
         self.targets[:, 4] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.num_targets)
+        #print(f'Target xs: {self.targets[:, 3]}')
 
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
@@ -456,6 +457,7 @@ class MAISREnvVec(gym.Env):
         # Calculate potential (distance improvement to target)
         self.potential = self.get_potential(self.observation)
         potential_gain = max(-10, min(10, self.potential - last_potential))  # Cap between -10 and +10
+        #print(round(potential_gain,2))
 
         # Calculate reward
         reward = self.get_reward(new_reward, potential_gain)  # For agent
@@ -470,7 +472,7 @@ class MAISREnvVec(gym.Env):
         info["potential_gain"] = potential_gain
 
         if self.terminated or self.truncated:
-            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {self.max_steps/self.config['frame_skip'] - self.step_count_outer} inner steps left')
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.max_steps/self.config['frame_skip'] - self.step_count_outer,0)} outer steps early')
             if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
             if self.render_mode == 'human':
@@ -495,8 +497,6 @@ class MAISREnvVec(gym.Env):
         """
         if self.use_pixel_obs:
             return 0
-        # Create a simple hash of target info levels to detect changes
-        current_hash = hash(self.targets[:, 2].tobytes())
 
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
@@ -519,11 +519,66 @@ class MAISREnvVec(gym.Env):
         distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
         nearest_distance = np.min(distances)
 
-        # Return negative distance (higher potential when closer)
-        return -nearest_distance
+        # Progressive multiplier - higher when fewer targets remain
+        targets_remaining = np.sum(unidentified_mask)
+        total_targets = len(target_info_levels)
+        progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
 
+        return -nearest_distance * progress_multiplier
 
     def get_observation(self):
+        """Main function to return the observation vector. Calls specific observation functions depending on obs type. """
+        if self.config['obs_type'] == 'absolute':
+            self.observation = self.get_observation_alltargets()
+
+        elif self.config['obs_type'] == 'absolute-1target':
+            self.observation = self.get_observation_1target()
+
+        elif self.config['obs_type'] == 'pixel':
+            self.observation = self.get_pixel_observation()
+
+        return self.observation
+
+
+    def get_observation_1target(self):
+        """
+        State will include the following features:
+            Absolute mode:
+                0 agent_x,                 # (-1 to +1) normalized position
+                1 agent_y,                 # (-1 to +1) normalized position
+                2 nearest_target_x,        # (-1 to +1) normalized position
+                3 nearest_target_y,        # (-1 to +1) normalized position
+        """
+
+        # New observation size: agent (x,y) + nearest target (x,y) = 4 elements
+        self.observation = np.zeros(4, dtype=np.float32)
+
+        map_half_size = self.config["gameboard_size"] / 2
+
+        # Agent position (normalized)
+        self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
+        self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
+
+        # Find nearest target
+        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+        target_positions = self.targets[:self.num_targets, 3:5]  # x,y coordinates of existing targets
+
+        if self.num_targets > 0:
+            # Calculate distances to all targets
+            distances = np.sqrt(np.sum((target_positions - agent_pos) ** 2, axis=1))
+            nearest_idx = np.argmin(distances)
+
+            # Nearest target position (normalized)
+            self.observation[2] = self.targets[nearest_idx, 3] / map_half_size
+            self.observation[3] = self.targets[nearest_idx, 4] / map_half_size
+        else:
+            # No targets exist, set to agent position
+            self.observation[2] = self.observation[0]
+            self.observation[3] = self.observation[1]
+
+        return self.observation
+
+    def get_observation_alltargets(self):
         """
         State will include the following features:
             Absolute mode:
@@ -536,10 +591,6 @@ class MAISREnvVec(gym.Env):
                 4+i*3 target_y,            # (-1 to +1) normalized position
 
         """
-
-        if self.use_pixel_obs:
-            self.observation = self.get_pixel_observation()
-            return self.observation
 
         self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
@@ -900,7 +951,7 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
     def check_valid_config(self):
-        valid_obs_types = ['absolute']
+        valid_obs_types = ['absolute', 'pixel', 'absolute-1target']
         valid_action_types = ['waypoint-direction']  # 'continuous_normalized
         valid_render_modes = ['headless', 'human', 'rgb_array']
 

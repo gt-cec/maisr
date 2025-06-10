@@ -10,7 +10,7 @@
 	"time_to_id": 0,
 	"prob_detect": 0,
 
-	"obs_type": "absolute",
+	"obs_type": "absolute-1target",
 	"action_type": "waypoint-direction",
 
 	"highqual_regulartarget_reward": 2.5,
@@ -26,18 +26,19 @@
 	"policy_network_size": 64,
 	"value_network_size": 64,
 	"activation_fn": "Tanh",
-	"lr": 0.001,
+	"lr": 0.0005,
 	"batch_size": 256,
 	"gamma": 0.9993,
+	"gae_lambda": 0.95,
 	"frame_skip": 30,
 	"ppo_update_steps": 2048,
-	"entropy_regularization": 0.011,
+	"entropy_regularization": 0.02,
 	"vf_coef":0.5,
 	"n_epochs":10,
 	"lr_schedule":"none",
-	"clip_range": [0.2, 0.17],
+	"clip_range": 0.2,
 
-	"steps_per_episode": 491,
+	"steps_per_episode": 490,
 	"num_timesteps": 18e6,
 	"save_freq": 14700,
 	"n_eval_episodes": 10,
@@ -45,12 +46,12 @@
 	"seed": 42,
 
 	"use_curriculum": true,
-	"cl_lr_decrease": [1.5, 1],
+	"cl_lr_decrease": 1.5,
 	"levels_per_lesson": {"0": 3, "1": 3, "2":  10},
 	"gameboard_size_per_lesson": {"0": 300, "1": 300, "2": 450},
 	"agent_start_locations_per_lesson": {"0": 1, "1": 3, "2": 3},
 
 	"min_target_ids_to_advance": 4,
-	"starting_difficulty": 2,
+	"starting_difficulty": 0,
 	"max_difficulty": 2
 }

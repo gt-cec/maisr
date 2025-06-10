@@ -98,7 +98,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.best_eval_performance = -np.inf
         self.performance_crash_counter = 0
         self.performance_crash_threshold = 20  # Number of consecutive poor evals before stopping
-        self.performance_crash_ratio = 0.5  # Performance must drop below 50% of best
+        self.performance_crash_ratio = 0.4  # Performance must drop below 50% of best
         self.should_stop_training = False
 
     def _on_step(self):
@@ -113,10 +113,8 @@ class EnhancedWandbCallback(BaseCallback):
                     self.episode_buffer['rewards'].append(info["episode"]["r"])
                     self.episode_buffer['lengths'].append(info["episode"]["l"])
 
-                    if "target_ids" in info:
-                        self.episode_buffer['target_ids'].append(info["target_ids"])
-                    if "detections" in info:
-                        self.episode_buffer['detections'].append(info["detections"])
+                    if "target_ids" in info: self.episode_buffer['target_ids'].append(info["target_ids"])
+                    if "detections" in info: self.episode_buffer['detections'].append(info["detections"])
 
         # Only log episode data at the specified frequency
         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
@@ -127,23 +125,14 @@ class EnhancedWandbCallback(BaseCallback):
                 log_data["train/mean_episode_reward"] = np.mean(self.episode_buffer['rewards'])
                 log_data["train/mean_episode_length"] = np.mean(self.episode_buffer['lengths'])
 
-            if self.episode_buffer['target_ids']:
-                log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
+            if self.episode_buffer['target_ids']: log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
+            if self.episode_buffer['detections']: log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            if self.episode_buffer['detections']:
-                log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
-
-            # Log the aggregated data
-            if log_data:
+            if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
 
             # Clear the buffer after logging
-            self.episode_buffer = {
-                'rewards': [],
-                'lengths': [],
-                'target_ids': [],
-                'detections': []
-            }
+            self.episode_buffer = {'rewards': [], 'lengths': [], 'target_ids': [], 'detections': []}
 
         # Log training metrics less frequently (e.g., every 10 steps)
         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
@@ -151,8 +140,7 @@ class EnhancedWandbCallback(BaseCallback):
         if should_log_training_metrics:
             training_metrics = {}
 
-            if hasattr(self.model, '_n_updates'):
-                training_metrics["train/n_updates"] = self.model._n_updates
+            if hasattr(self.model, '_n_updates'): training_metrics["train/n_updates"] = self.model._n_updates
 
             if hasattr(self.logger, 'name_to_value'):
                 logger_dict = self.logger.name_to_value
@@ -208,8 +196,7 @@ class EnhancedWandbCallback(BaseCallback):
                     done = dones[0]
                     ep_reward += reward
 
-                if "target_ids" in info:
-                    target_ids_list.append(info["target_ids"])
+                if "target_ids" in info: target_ids_list.append(info["target_ids"])
 
                 mean_reward += ep_reward / self.n_eval_episodes
                 eval_lengths.append(info["episode"]["l"])
@@ -226,6 +213,9 @@ class EnhancedWandbCallback(BaseCallback):
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
+
+            #################################### Early stopping ####################################
+            # Check for performance crash
             current_performance = np.mean(target_ids_list) if target_ids_list else 0
             if current_performance > self.best_eval_performance:
                 self.best_eval_performance = current_performance
@@ -233,7 +223,6 @@ class EnhancedWandbCallback(BaseCallback):
                 eval_metrics["eval/best_performance"] = self.best_eval_performance
                 print(f'NEW BEST PERFORMANCE: {self.best_eval_performance:.3f}')
 
-            # Check for performance crash
             performance_threshold = self.best_eval_performance * self.performance_crash_ratio
             if current_performance < performance_threshold and self.best_eval_performance > 0:
                 self.performance_crash_counter += 1
@@ -250,8 +239,7 @@ class EnhancedWandbCallback(BaseCallback):
                 self.should_stop_training = True
                 print(f'\n{"=" * 80}')
                 print(f'EARLY STOPPING TRIGGERED!')
-                print(
-                    f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
+                print(f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
                 print(f'Best performance: {self.best_eval_performance:.3f}')
                 print(f'Current performance: {current_performance:.3f}')
                 print(f'Threshold: {performance_threshold:.3f}')
@@ -259,10 +247,10 @@ class EnhancedWandbCallback(BaseCallback):
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
-            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, '
-                  f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
+            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
 
-            # Curriculum logic remains unchanged
+
+            #################################### Curriculum learning ####################################
             if self.use_curriculum:
                 print('CURRICULUM: Checking if we should increase difficulty')
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
@@ -303,7 +291,7 @@ class EnhancedWandbCallback(BaseCallback):
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
 
-            print('#################################################\n\nReturning to training...')
+            print('#################################################\n\nReturning to training... \n')
 
         if self.should_stop_training:
             return False
@@ -438,7 +426,9 @@ def train(
         seed=env_config['seed'],
         device='cpu',
         gamma=env_config['gamma'],
-        ent_coef=env_config['entropy_regularization']
+        gae_lambda=env_config['gae_lambda'],
+        ent_coef=env_config['entropy_regularization'],
+        clip_range=env_config['clip_range']
     )
     print('Model instantiated')
     print(model.policy)
@@ -447,8 +437,7 @@ def train(
     if load_path:
         print(f'LOADING FROM {load_path}')
         model = model.__class__.load(load_path, env=env)
-    else:
-        print('Training new model')
+    else: print('Training new model')
 
     print('##################################### Beginning agent training... #######################################\n')
 
@@ -481,7 +470,6 @@ def train(
 
 
 if __name__ == "__main__":
-
     ############## ---- SETTINGS ---- ##############
     # Specify a checkpoint to load
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
