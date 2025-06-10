@@ -49,7 +49,7 @@ class MAISREnvVec(gym.Env):
             np.random.seed(seed)
             random.seed(seed)
 
-        self.beginner_level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0]
+        self.beginner_level_seeds = [42, 123, 465, 299, 928]
         self.num_beginner_levels = 0 if not self.config['use_beginner_levels'] else self.config['num_beginner_levels']
         # self.num_beginner_levels = self.config['num_beginner_levels']
         #
@@ -69,6 +69,11 @@ class MAISREnvVec(gym.Env):
 
         self.difficulty = starting_difficulty # Curriculum learning level (starts at 0)
         self.max_steps = 14703 # Max step count of the episode
+
+        # Initialize target ID caches (used to speed up get_potential()
+        self._cached_unidentified_mask = None
+        self._cached_unidentified_positions = None
+        self._targets_hash = None
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
@@ -260,7 +265,7 @@ class MAISREnvVec(gym.Env):
         self.direct_action_history = [] # Direct control only
 
         # Initialize potential for reward shaping
-        self.potential = None
+        self.last_potential = None
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
         self.num_targets = min(self.max_targets, self.config['num_targets'])  # If more than 30 targets specified, overwrite to 30
@@ -321,20 +326,17 @@ class MAISREnvVec(gym.Env):
     def step(self, actions:dict):
         """ Skip frames by repeating the action multiple times """
 
-        total_reward, info, total_potential_gain = 0, None, 0
+        total_reward, info = 0, None
 
         for frame in range(self.config['frame_skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
             total_reward += reward
-            total_potential_gain += info["potential_gain"]
 
             # Break early if the episode is done to avoid unnecessary computation
             if self.terminated or self.truncated:
                 break
 
-        #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
-        info["outerstep_potential_gain"] = total_potential_gain
 
         return observation, total_reward, self.terminated, self.truncated, info
 
@@ -347,10 +349,6 @@ class MAISREnvVec(gym.Env):
         """
 
         self.step_count_inner += 1
-        if self.potential:
-            last_potential = self.potential
-        else:
-            last_potential = 0
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -440,7 +438,7 @@ class MAISREnvVec(gym.Env):
             new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
 
-        if self.step_count_inner >= self.max_steps: # TODO: Temporarily hard-coding 490 steps
+        if self.step_count_outer >= 490 or self.display_time / 1000 >= self.config['time_limit']: # TODO: Temporarily hard-coding 490 steps
             self.terminated = True
 
         # Advance time (only relevant for human play)
@@ -451,8 +449,10 @@ class MAISREnvVec(gym.Env):
         self.observation = self.get_observation()  # Get observation
 
         # Calculate potential (distance improvement to target)
-        self.potential = self.get_potential(self.observation)
-        potential_gain = max(-10, min(10, self.potential - last_potential))  # Cap between -10 and +10
+        current_potential = self.get_potential(self.observation)
+        if self.last_potential: potential_gain = current_potential - self.last_potential
+        else: potential_gain = 0
+        self.last_potential = current_potential
 
         # Calculate reward
         reward = self.get_reward(new_reward, potential_gain)  # For agent
@@ -464,10 +464,9 @@ class MAISREnvVec(gym.Env):
         info['reward_components'] = new_reward
         info['detections'] = self.detections
         info["target_ids"] = self.targets_identified
-        info["potential_gain"] = potential_gain
 
-        if self.terminated or self.truncated:
-            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {self.max_steps/self.config['frame_skip'] - self.step_count_outer} inner steps left')
+        if self.terminated or self.truncated: # Print round complete, plot round history, render
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.config['time_limit'] - self.display_time / 1000, 1)} secs left')
             if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
             if self.render_mode == 'human':
@@ -481,7 +480,7 @@ class MAISREnvVec(gym.Env):
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (potential_gain * self.config['shaping_coeff_prox']) + \
-                 (self.config['shaping_time_penalty'])
+                 (self.config['shaping_time_penalty'] * 300/(self.config['gameboard_size']))
 
         return reward
 
@@ -495,28 +494,29 @@ class MAISREnvVec(gym.Env):
         # Create a simple hash of target info levels to detect changes
         current_hash = hash(self.targets[:, 2].tobytes())
 
-        # Get agent position from observation (first 2 elements, normalized)
-        map_half_size = self.config["gameboard_size"] / 2
-        agent_x = observation[0] * map_half_size
-        agent_y = observation[1] * map_half_size
-        agent_pos = np.array([agent_x, agent_y])
+        if self._targets_hash != current_hash:
+            # Recalculate cached data only when targets change
+            target_info_levels = self.targets[:, 2]  # info levels
+            self._cached_unidentified_mask = target_info_levels < 1.0
 
-        # Get target positions and info levels
-        target_positions = self.targets[:, 3:5]  # x,y coordinates
-        target_info_levels = self.targets[:, 2]  # info levels
+            if not np.any(self._cached_unidentified_mask):
+                self._cached_unidentified_positions = None
+            else:
+                target_positions = self.targets[:, 3:5]  # x,y coordinates
+                self._cached_unidentified_positions = target_positions[self._cached_unidentified_mask]
+            self._targets_hash = current_hash
 
-        # Create mask for unidentified targets (info_level < 1.0)
-        unidentified_mask = target_info_levels < 1.0
-
-        if not np.any(unidentified_mask): # No unidentified targets remaining
+        if self._cached_unidentified_positions is None:
             return 0.0
 
-        # Calculate distances to unidentified targets only
-        unidentified_positions = target_positions[unidentified_mask]
-        distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
+        map_half_size = self.config["gameboard_size"] / 2
+        agent_pos = np.array([observation[0] * map_half_size, observation[1] * map_half_size])
+
+        # Calculate distance to nearest target
+        distances = np.sqrt(np.sum((self._cached_unidentified_positions - agent_pos) ** 2, axis=1))
         nearest_distance = np.min(distances)
 
-        # Return negative distance (higher potential when closer)
+        # Return negative distance
         return -nearest_distance
 
 

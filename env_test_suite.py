@@ -7,6 +7,8 @@ import pygame
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+from PIL import Image
+import glob
 
 from stable_baselines3 import PPO
 
@@ -15,6 +17,76 @@ from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
 
+
+def combine_and_display_plots(test_dir):
+    """Combine all saved plots into one image and display it"""
+    print(f"\nCombining plots from {test_dir}...")
+
+    # Find all PNG files in the test directory
+    plot_files = glob.glob(os.path.join(test_dir, "*.png"))
+
+    if not plot_files:
+        print("No plots found to combine.")
+        return
+
+    # Sort files for consistent ordering
+    plot_files.sort()
+
+    # Load all images
+    images = []
+    for file_path in plot_files:
+        try:
+            img = Image.open(file_path)
+            images.append(img)
+            #print(f"Loaded: {os.path.basename(file_path)}")
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+
+    if not images:
+        print("No valid images to combine.")
+        return
+
+    # Calculate grid dimensions (prefer wider layout)
+    n_images = len(images)
+    cols = min(3, n_images)  # Maximum 3 columns
+    rows = (n_images + cols - 1) // cols  # Ceiling division
+
+    # Get max dimensions for consistent sizing
+    max_width = max(img.width for img in images)
+    max_height = max(img.height for img in images)
+
+    # Create combined image
+    combined_width = cols * max_width
+    combined_height = rows * max_height
+    combined_image = Image.new('RGB', (combined_width, combined_height), 'white')
+
+    # Paste images into grid
+    for idx, img in enumerate(images):
+        row = idx // cols
+        col = idx % cols
+        x = col * max_width
+        y = row * max_height
+
+        # Center the image in its allocated space
+        x_offset = (max_width - img.width) // 2
+        y_offset = (max_height - img.height) // 2
+
+        combined_image.paste(img, (x + x_offset, y + y_offset))
+
+    # Save combined image
+    combined_path = os.path.join(test_dir, "combined_results.png")
+    combined_image.save(combined_path, dpi=(300, 300))
+    print(f"Combined image saved to: {combined_path}")
+
+    # Display the image
+    try:
+        combined_image.show()
+        print("Combined plot opened for viewing.")
+    except Exception as e:
+        print(f"Could not automatically open image: {e}")
+        print(f"Please manually open: {combined_path}")
+
+    return combined_path
 
 def create_test_directory():
     """Create timestamped directory for test results"""
@@ -99,7 +171,7 @@ def save_histograms(observations, rewards, actions, test_dir, test_name):
 
     # Create reward histogram
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    ax.hist(reward_array, bins=30, alpha=0.7, edgecolor='black', range=(-15.0, 15.0))
+    ax.hist(reward_array, bins=30, alpha=0.7, edgecolor='black', range=(-17.0, 17.0))
     ax.set_title(f'Episode Rewards - {test_name}')
     ax.set_xlabel('Episode Reward')
     ax.set_ylabel('Frequency')
@@ -121,14 +193,7 @@ def save_histograms(observations, rewards, actions, test_dir, test_name):
     plt.savefig(f"{test_dir}/act_histogram_{test_name}.png", dpi=300, bbox_inches='tight')
     plt.close()
 
-    print(f"Saved histograms for {test_name} in {test_dir}")
-
-
-def test_oar_normalized():
-    # TODO: Access observations and actions at various points in the env running and training cycle. Assert that observations are between -1 and +1
-    # Save OAR
-    print("test_oar_normalized: Skipping for now as requested")
-    pass
+    print(f"\nSaved histograms for {test_name} in {test_dir}")
 
 
 def test_env_heuristic(heuristic, config, test_dir=None):
@@ -153,6 +218,8 @@ def test_env_heuristic(heuristic, config, test_dir=None):
     for episode in range(20):
         obs, info = env.reset()
         episode_reward = 0
+        reward_history = []
+        potential_gain_history = []
         episode_observations = []
         episode_actions = []
 
@@ -170,16 +237,21 @@ def test_env_heuristic(heuristic, config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
+            reward_history.append(reward)
+            potential_gain_history.append(info["outerstep_potential_gain"])
             episode_reward += reward * (config['gamma'] ** step_count)
             done = terminated or truncated
             step_count += 1
 
         # Store episode data
         all_observations.extend(episode_observations)
+        all_potential_gain = sum(potential_gain_history)
         episode_rewards.append(episode_reward)
         all_actions.extend(episode_actions)
 
-        print(f"Heuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f}, Steps: {step_count}")
+        print(f"Heuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} ({round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
+        #print(f'Total potential = {sum(potential_gain_history)} - {potential_gain_history}')
+        #print(f'Total potential reward = {round(all_potential_gain,1)}*{config['shaping_coeff_prox']}={round(all_potential_gain * config["shaping_coeff_prox"],2)} (% of total reward)')
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "heuristic")
@@ -193,7 +265,7 @@ def test_env_heuristic(heuristic, config, test_dir=None):
 
 def test_env_badheuristic(badheuristic, config, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
-    print("Starting badheuristic test...")
+    print("\nStarting badheuristic test...")
 
     # Load config
     #config = load_env_config('config_files/testsuite_config.json')
@@ -217,6 +289,7 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
         episode_reward = 0
         episode_observations = []
         episode_actions = []
+        potential_gain_history = []
 
         done = False
         step_count = 0
@@ -233,6 +306,7 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward * (config['gamma'] ** step_count)
+            potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
 
@@ -240,8 +314,9 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
         all_observations.extend(episode_observations)
         episode_rewards.append(episode_reward)
         all_actions.extend(episode_actions)
+        all_potential_gain = sum(potential_gain_history)
 
-        print(f"Badheuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f}, Steps: {step_count}")
+        print(f"Badheuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} (Shaping: {round((all_potential_gain * config["shaping_coeff_prox"]),1)} / {episode_reward} = {round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "badheuristic")
@@ -254,7 +329,7 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
 
 def test_env_humanplaytest(config, test_dir=None):
     """Run env for 3 episodes allowing human to take actions using numpad keys"""
-    print("Starting human playtest...")
+    print("\nStarting human playtest...")
     print("Controls: Numpad 8=Up, 2=Down, 4=Left, 6=Right")
     print("Diagonals: 7=Up-Left, 9=Up-Right, 1=Down-Left, 3=Down-Right")
     print("Press ESC to quit early")
@@ -311,6 +386,7 @@ def test_env_humanplaytest(config, test_dir=None):
         episode_reward = 0
         episode_observations = []
         episode_actions = []
+        potential_gain_history = []
 
         done = False
         step_count = 0
@@ -330,7 +406,7 @@ def test_env_humanplaytest(config, test_dir=None):
                         break
                     elif event.key in key_to_action:
                         action = key_to_action[event.key]
-                        print(f"Action selected: {action}")
+                        #print(f"Action selected: {action}")
 
             if done:
                 break
@@ -341,9 +417,11 @@ def test_env_humanplaytest(config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward* (config['gamma'] ** step_count)
+            episode_reward += reward# * (config['gamma'] ** step_count)
+            potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
+            #print(f'step {step_count}')
 
             # Render environment
             env.render()
@@ -354,8 +432,9 @@ def test_env_humanplaytest(config, test_dir=None):
         all_observations.extend(episode_observations)
         episode_rewards.append(episode_reward)
         all_actions.extend(episode_actions)
+        all_potential_gain = sum(potential_gain_history)
 
-        print(f"Human episode {episode + 1}/3 completed. Reward: {episode_reward:.2f}, Steps: {step_count}")
+        print(f"Human episode {episode + 1}/3 completed. Reward: {episode_reward:.2f} (Shaping: {round((all_potential_gain * config["shaping_coeff_prox"]),1)} / {episode_reward} = {round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "human")
@@ -367,7 +446,7 @@ def test_env_humanplaytest(config, test_dir=None):
 
 def test_env_random(config, test_dir=None):
     """Run env for 20 episodes, taking actions by randomly sampling from the action space"""
-    print("Starting random test...")
+    print("\nStarting random test...")
 
     # Load config
     #config = load_env_config('config_files/testsuite_config.json')
@@ -389,6 +468,7 @@ def test_env_random(config, test_dir=None):
         episode_reward = 0
         episode_observations = []
         episode_actions = []
+        potential_gain_history = []
 
         done = False
         step_count = 0
@@ -406,6 +486,7 @@ def test_env_random(config, test_dir=None):
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward * (config['gamma'] ** step_count)
+            potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
 
@@ -413,8 +494,9 @@ def test_env_random(config, test_dir=None):
         all_observations.extend(episode_observations)
         episode_rewards.append(episode_reward)
         all_actions.extend(episode_actions)
+        all_potential_gain = sum(potential_gain_history)
 
-        print(f"Random episode {episode + 1}/20 completed. Reward: {episode_reward:.2f}, Steps: {step_count}")
+        print(f"Random episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} (Shaping: {round((all_potential_gain * config["shaping_coeff_prox"]),1)} / {episode_reward} = {round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "random")
@@ -563,7 +645,7 @@ def test_env_train(config):
 
 if __name__ == "__main__":
 
-    config = load_env_config('config_files/june9b.json')
+    config = load_env_config('config_files/june10a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
     config['num_timesteps'] = 1e5
@@ -576,12 +658,12 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        #test_env_humanplaytest(config, test_dir=shared_test_dir)
-        test_curriculum(config)
+        test_env_humanplaytest(config, test_dir=shared_test_dir)
+        #test_curriculum(config)
         test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
         test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
-        test_env_train(config)
+        #test_env_train(config)
 
     except KeyboardInterrupt:
         print("\nTest suite interrupted by user.")
@@ -591,3 +673,10 @@ if __name__ == "__main__":
         traceback.print_exc()
 
     print("Environment Test Suite completed!")
+
+    # Combine and display all plots
+    try:
+        combine_and_display_plots(shared_test_dir)
+    except Exception as e:
+        print(f"Error combining plots: {e}")
+        print(f"Individual plots are still available in: {shared_test_dir}")
