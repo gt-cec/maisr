@@ -77,7 +77,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.run = run
         self.log_freq = log_freq  # Log every N steps instead of every step
 
-        self.use_curriculum = env_config['curriculum_type'] != "none"
+        self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
         self.max_ep_len_to_advance = 150
         self.max_difficulty = env_config['max_difficulty']

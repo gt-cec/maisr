@@ -15,6 +15,7 @@
 	"tick_rate": 10,
 
 	"obs_type": "absolute",
+	"use_pixel_obs": true,
 	"action_type": "waypoint-direction",
 
 	"highqual_regulartarget_reward": 1.9,

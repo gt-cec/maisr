@@ -9,6 +9,7 @@ import utility.agents as agents
 
 import json
 import os
+import cv2
 
 from utility.gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
@@ -35,7 +36,10 @@ class MAISREnvVec(gym.Env):
 
         self.config = config # Loaded from .json into a dictionary
 
-        print(f'Shaping time penalty = {self.config['shaping_time_penalty'] * 300 / (self.config['gameboard_size'])}')
+        try:
+            self.use_pixel_obs = self.config['use_pixel_obs']
+        except:
+            self.use_pixel_obs = False
 
         self.run_name = run_name # For logging
 
@@ -499,35 +503,6 @@ class MAISREnvVec(gym.Env):
         # Return negative distance
         return -nearest_distance
 
-    # def get_potential(self, observation):
-    #     """
-    #     Calculate potential as negative distance to nearest unknown target.
-    #     Returns a higher (less negative) value when closer to unknown targets.
-    #     """
-    #     # Get agent position from observation (first 2 elements, normalized)
-    #     map_half_size = self.config["gameboard_size"] / 2
-    #     agent_x = observation[0] * map_half_size
-    #     agent_y = observation[1] * map_half_size
-    #     agent_pos = np.array([agent_x, agent_y])
-    #
-    #     # Get target positions and info levels
-    #     target_positions = self.targets[:, 3:5]  # x,y coordinates
-    #     target_info_levels = self.targets[:, 2]  # info levels
-    #
-    #     # Create mask for unidentified targets (info_level < 1.0)
-    #     unidentified_mask = target_info_levels < 1.0
-    #
-    #     if not np.any(unidentified_mask):
-    #         # No unidentified targets remaining
-    #         return 0.0
-    #
-    #     # Calculate distances to unidentified targets only
-    #     unidentified_positions = target_positions[unidentified_mask]
-    #     distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
-    #     nearest_distance = np.min(distances)
-    #
-    #     # Return negative distance (higher potential when closer)
-    #     return -nearest_distance
 
     def get_observation(self):
         """
@@ -542,6 +517,10 @@ class MAISREnvVec(gym.Env):
                 4+i*3 target_y,            # (-1 to +1) normalized position
 
         """
+
+        if self.use_pixel_obs:
+            self.observation = self.get_pixel_observation()
+            return self.observation
 
         self.observation = np.zeros(self.obs_size, dtype=np.float32)
 
@@ -561,7 +540,91 @@ class MAISREnvVec(gym.Env):
         self.observation[target_start_idx:target_start_idx + self.max_targets * targets_per_entry] = target_features.flatten()
 
         return self.observation
-    
+
+    def get_pixel_observation(self):
+        """Render the game state to an 84x84 grayscale pixel array for CNN input"""
+        import pygame
+
+        # Use existing render surface if in human mode, otherwise create temporary surface
+        if self.render_mode == 'human' and hasattr(self, 'window'):
+            # Capture the main game area from the existing window
+            game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
+            pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
+        else:
+            # Create offscreen surface and render to it
+            self.pixel_surface.fill((255, 255, 255))  # White background
+            self._render_game_to_surface(self.pixel_surface)
+            pixel_array = pygame.surfarray.array3d(self.pixel_surface)
+
+        # Pygame arrays are (width, height, channels), we need (height, width, channels)
+        pixel_array = np.transpose(pixel_array, (1, 0, 2))
+
+        # Convert to grayscale
+        if len(pixel_array.shape) == 3:
+            # Use standard RGB to grayscale conversion
+            pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
+
+        # Resize to 84x84 using OpenCV for consistency
+        pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
+
+        # Add channel dimension for grayscale
+        pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
+
+        return pixel_array_resized.astype(np.uint8)
+
+    def _render_game_to_surface(self, surface):
+        """
+        Render game elements to a pygame surface - identical to human render() but without UI elements.
+        This ensures pixel observations match exactly what humans see.
+        """
+        import pygame
+
+        # Draw outer and inner boxes (same as human render)
+        self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
+        self.__render_box_to_surface__(surface, 35, (0, 128, 0), 2)  # inner box
+
+        # Draw crosshairs (same as human render)
+        pygame.draw.line(surface, (0, 0, 0),
+                         (self.config["gameboard_size"] // 2, 0),
+                         (self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
+        pygame.draw.line(surface, (0, 0, 0),
+                         (0, self.config["gameboard_size"] // 2),
+                         (self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
+
+        # Draw aircraft (same as human render)
+        for agent in self.agents:
+            agent.draw(surface)
+
+        # Draw targets (same colors and sizes as human render)
+        SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
+        SHIP_REGULAR_LOWQ = (130, 0, 210)
+        SHIP_REGULAR_HIGHQ = (0, 255, 210)
+
+        for target in self.targets:
+            target_width = 7 if target[1] == 0 else 10
+            target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[
+                                                                                                2] == 0.5 else SHIP_REGULAR_UNOBSERVED
+
+            map_half_size = self.config["gameboard_size"] / 2
+            screen_x = target[3] + map_half_size
+            screen_y = target[4] + map_half_size
+            pygame.draw.circle(surface, target_color, (float(screen_x), float(screen_y)), target_width)
+
+    def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
+        """Utility function for drawing a square box to a specific surface"""
+        import pygame
+        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge),
+                         (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge),
+                         (self.config["gameboard_size"] - distance_from_edge,
+                          self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (
+        self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge),
+                         (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge),
+                         (distance_from_edge, distance_from_edge), width)
+
+
     def render(self):
 
         window_width, window_height = self.config['window_size'][0], self.config['window_size'][0]
