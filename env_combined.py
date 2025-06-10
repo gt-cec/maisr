@@ -85,7 +85,7 @@ class MAISREnvVec(gym.Env):
         
         self.check_valid_config()
 
-        print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
+        #print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
 
         self.num_agents = num_agents
         self.max_targets = 5
@@ -96,14 +96,23 @@ class MAISREnvVec(gym.Env):
         else:
             raise ValueError("Invalid action type")
 
-        self.obs_size = 2 + 3 * self.max_targets
-        if self.config['obs_type'] == 'absolute':
+        if self.use_pixel_obs:
+            # CNN observation space - grayscale 84x84
             self.observation_space = gym.spaces.Box(
-                low=-1, high=1,
-                shape=(self.obs_size,),
-                dtype=np.float32)
+                low=0, high=255,
+                shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
+                dtype=np.uint8
+            )
         else:
-            raise ValueError("Obs type not recognized")
+            # Original vector observation space
+            self.obs_size = 2 + 3 * self.max_targets
+            if self.config['obs_type'] == 'absolute':
+                self.observation_space = gym.spaces.Box(
+                    low=-1, high=1,
+                    shape=(self.obs_size,),
+                    dtype=np.float32)
+            else:
+                raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
         # Set reward quantities for each event (agent only)
@@ -213,6 +222,12 @@ class MAISREnvVec(gym.Env):
                 # Calculate required height of agent status info
                 self.agent_info_height_req = 0
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
+
+        if self.use_pixel_obs and render_mode == 'headless':
+            import pygame
+            pygame.init()
+            # Create offscreen surface for pixel observations
+            self.pixel_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]))
 
         self.episode_counter = 0
         self.reset()
@@ -475,6 +490,8 @@ class MAISREnvVec(gym.Env):
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
         """
+        if self.use_pixel_obs:
+            return 0
         # Create a simple hash of target info levels to detect changes
         current_hash = hash(self.targets[:, 2].tobytes())
 
@@ -542,7 +559,7 @@ class MAISREnvVec(gym.Env):
         return self.observation
 
     def get_pixel_observation(self):
-        """Render the game state to an 84x84 grayscale pixel array for CNN input"""
+        """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
         import pygame
 
         # Use existing render surface if in human mode, otherwise create temporary surface
@@ -551,15 +568,15 @@ class MAISREnvVec(gym.Env):
             game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
             pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
         else:
-            # Create offscreen surface and render to it
+            # Create offscreen surface and render to it with enhanced target visibility
             self.pixel_surface.fill((255, 255, 255))  # White background
-            self._render_game_to_surface(self.pixel_surface)
+            self._render_game_to_surface_enhanced(self.pixel_surface)
             pixel_array = pygame.surfarray.array3d(self.pixel_surface)
 
         # Pygame arrays are (width, height, channels), we need (height, width, channels)
         pixel_array = np.transpose(pixel_array, (1, 0, 2))
 
-        # Convert to grayscale
+        # Convert to grayscale using weighted average for better contrast
         if len(pixel_array.shape) == 3:
             # Use standard RGB to grayscale conversion
             pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
@@ -572,43 +589,47 @@ class MAISREnvVec(gym.Env):
 
         return pixel_array_resized.astype(np.uint8)
 
-    def _render_game_to_surface(self, surface):
+    def _render_game_to_surface_enhanced(self, surface):
         """
-        Render game elements to a pygame surface - identical to human render() but without UI elements.
-        This ensures pixel observations match exactly what humans see.
+        Render game elements to a pygame surface with enhanced target visibility for pixel observations.
+        Uses distinct grayscale values and shapes to ensure unknown vs known targets are clearly differentiable.
         """
         import pygame
 
-        # Draw outer and inner boxes (same as human render)
+        # Draw outer box (same as human render)
         self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
-        self.__render_box_to_surface__(surface, 35, (0, 128, 0), 2)  # inner box
-
-        # Draw crosshairs (same as human render)
-        pygame.draw.line(surface, (0, 0, 0),
-                         (self.config["gameboard_size"] // 2, 0),
-                         (self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
-        pygame.draw.line(surface, (0, 0, 0),
-                         (0, self.config["gameboard_size"] // 2),
-                         (self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
 
         # Draw aircraft (same as human render)
         for agent in self.agents:
             agent.draw(surface)
 
-        # Draw targets (same colors and sizes as human render)
-        SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
-        SHIP_REGULAR_LOWQ = (130, 0, 210)
-        SHIP_REGULAR_HIGHQ = (0, 255, 210)
+        # Enhanced target rendering with clear grayscale differentiation
+        map_half_size = self.config["gameboard_size"] / 2
 
         for target in self.targets:
-            target_width = 7 if target[1] == 0 else 10
-            target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[
-                                                                                                2] == 0.5 else SHIP_REGULAR_UNOBSERVED
-
-            map_half_size = self.config["gameboard_size"] / 2
             screen_x = target[3] + map_half_size
             screen_y = target[4] + map_half_size
-            pygame.draw.circle(surface, target_color, (float(screen_x), float(screen_y)), target_width)
+
+            # Base size for targets
+            base_size = 10 if target[1] == 1 else 7  # High-value vs regular targets
+
+            if target[2] == 1.0:  # Known/identified targets
+                # Use very dark gray (almost black) for known targets - will be ~51 in grayscale
+                target_color = (11, 11, 11)
+                # Draw filled circle for known targets
+                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+
+                # Add a white center dot to make them even more distinct
+                pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), max(2, base_size // 3))
+
+            else:  # Unknown targets (info_level < 1.0)
+                # Use light gray for unknown targets - will be ~204 in grayscale
+                target_color = (204, 204, 204)
+                # Draw filled circle for unknown targets
+                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+
+                # Add black border to make them stand out against white background
+                pygame.draw.circle(surface, (0, 0, 0), (int(screen_x), int(screen_y)), base_size, 2)
 
     def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
         """Utility function for drawing a square box to a specific surface"""

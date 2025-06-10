@@ -126,14 +126,14 @@ class Aircraft(Agent):
                                2)
 
             # Draw waypoint line and marker
-            if self.target_point is not None:
-                if self.show_agent_waypoint >= 1:
-                    # Convert target point to screen coordinates
-                    target_screen_x = self.target_point[0] + map_half_size
-                    target_screen_y = self.target_point[1] + map_half_size
-
-                    pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
-                    pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
+            # if self.target_point is not None: # TODO temporarily removed for CNN observations
+            #     if self.show_agent_waypoint >= 1:
+            #         # Convert target point to screen coordinates
+            #         target_screen_x = self.target_point[0] + map_half_size
+            #         target_screen_y = self.target_point[1] + map_half_size
+            #
+            #         pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+            #         pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
 
     def draw_damage(self):
         target_rect = pygame.Rect((self.x, self.y), (0, 0)).inflate((self.env.AIRCRAFT_ISR_RADIUS * 2, self.env.AIRCRAFT_ISR_RADIUS * 2))
