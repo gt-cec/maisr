@@ -29,7 +29,6 @@ class MAISREnvVec(gym.Env):
                  tag='none',
                  run_name='no name',
                  seed=None,
-                 starting_difficulty=0,  # Used for curriculum learning
                  subject_id='999', user_group='99', round_number='99'):
 
         super().__init__()
@@ -49,25 +48,22 @@ class MAISREnvVec(gym.Env):
             np.random.seed(seed)
             random.seed(seed)
 
-        self.beginner_level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0]
-        self.num_beginner_levels = 0 if not self.config['use_beginner_levels'] else self.config['num_beginner_levels']
-        # self.num_beginner_levels = self.config['num_beginner_levels']
-        #
-        # # Generate list of episodes to plot using save_action_history_plot()
-        # base_episodes = []
-        # for i in range(self.num_beginner_levels):
-        #     base_episodes.extend(
-        #         [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
-        #          1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
-        #          4000 + i, 5000 + i, 6000 + i, 7000 + i])
-        # for j in range(self.num_beginner_levels):
-        #     base_episodes.extend([(500 + j) * i for i in range(80)])
-        # base_episodes.sort()
-        # self.episodes_to_plot = list(set(base_episodes))
-        # self.episodes_to_plot.sort()
-        #print(f'For {self.num_beginner_levels} levels, we have {self.episodes_to_plot}')
+        #self.agent_start_locations = [(np.random.uniform(-1,1), np.random.uniform(-1,1)) for _ in range(10)]
 
-        self.difficulty = starting_difficulty # Curriculum learning level (starts at 0)
+        self.start_location_list = [(-0.040025224653889024, -0.9625879446233576), (-0.7540669154968491, -0.7678726873009407),
+                                    (0.9345335196185689, -0.39997004285253945), (-0.5163174741656262, 0.5376409004137273),
+                                    (0.6583087133274226, 0.5564162525991561), (0.7272350284428963, 0.18485499597619803),
+                                    (0.30589404581350754, -0.290256375901367), (0.79881559364427, 0.9301793065831461),
+                                    (0.8434517570450266, 0.2828723363229593), (0.0450388363149643, 0.6458992596871613)]
+        #print(self.start_location_list)
+        self.level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0, 1337, 2023, 9876, 5432, 8888, 1234, 7777, 3141,
+                            2718, 9999, 1111, 6666, 4444, 8080, 3333, 7890, 1029, 5678, 9012, 2468, 1357, 8642, 9753,
+                            1470, 2581, 3692, 7410, 8520, 9630, 1590, 7531, 4682, 9173, 2640, 5791, 8462, 3951, 6284,
+                            7395, 1683, 4729, 5064, 8317, 9428, 2756, 6049, 3870, 7152, 4681]
+
+        self.difficulty = self.config['starting_difficulty'] # Curriculum learning level (starts at 0)
+        self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
+
         self.max_steps = 14703 # Max step count of the episode
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
@@ -229,19 +225,25 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None, options=None):
 
-        if self.config['use_curriculum']:
-            self.load_difficulty()
+        # Load settings based on difficulty level
+        self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
+        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+        #print(f'using {self.num_levels} levels for difficulty {self.difficulty}')
 
-        # Set level seed if applicable
-        if self.config['use_beginner_levels']: # If true, the agent only sees a few map layouts, to make early training easier
-            seed_list = self.beginner_level_seeds[0:self.num_beginner_levels] # List of seeds to cycle through
-            if self.tag in ['eval','test_suite']:
-                current_seed_index = (self.episode_counter) % len(seed_list)
-            else:
-                current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
-            current_seed = seed_list[current_seed_index]
-            np.random.seed(current_seed)
-            random.seed(current_seed)
+        self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
+        #print(f'using {len(self.start_locations)} start locations for difficulty {self.difficulty}')
+
+        self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
+
+        # Set seed for this level
+        seed_list = self.level_seeds[0:self.num_levels]
+        if self.tag in ['eval','test_suite']:
+            current_seed_index = self.episode_counter % len(seed_list)
+        else:
+            current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
+        current_seed = seed_list[current_seed_index]
+        np.random.seed(current_seed)
+        random.seed(current_seed)
 
         self.agents = [] # List of names of all current agents. Typically integers
         self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
@@ -283,20 +285,23 @@ class MAISREnvVec(gym.Env):
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
 
         # Set agent start location
-        if self.config['agent_start_location'] == "random":
-            if self.config["cl_lesson1"] == "random_start" and self.difficulty >= 1:
-                agent_x, agent_y = self.agent_start_location
-            else:
-                map_half_size = self.config["gameboard_size"] / 2
-                agent_x = np.random.uniform(-map_half_size + 10, map_half_size - 10)
-                agent_y = np.random.uniform(-map_half_size + 10, map_half_size - 10)
+        if self.tag in ['eval','test_suite']:
+            start_loc_index = self.episode_counter % len(self.start_locations)
+            print(
+                f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
         else:
-            agent_x, agent_y = self.config['agent_start_location']
+            start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+            print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
+
+
+        map_half_size = self.config["gameboard_size"] / 2
+        agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
+        print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
         ############################################# Create the aircraft ##############################################
         for i in range(self.num_agents):
-            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['human_speed'])
+            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
         if self.num_agents == 2: # TODO delete
@@ -480,7 +485,7 @@ class MAISREnvVec(gym.Env):
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
-                 (potential_gain * self.config['shaping_coeff_prox']) + \
+                 (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty'])
 
         return reward
@@ -1274,49 +1279,50 @@ class MAISREnvVec(gym.Env):
         self.difficulty = difficulty
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
-    def load_difficulty(self):
-        """Method to update env parameters using the current difficulty setting"""
-
-        if self.difficulty == 0:
-            self.num_beginner_levels = self.config['num_beginner_levels']
-
-        elif self.difficulty == 1:
-            if self.config['cl_lesson1'] == 'more_levels':
-                self.num_beginner_levels = self.config['num_beginner_levels'] + 3
-            elif self.config['cl_lesson1'] == 'random_start':
-                current_random_state, current_py_random_state = np.random.get_state(), random.getstate()
-                temp_seed = int(time.time() * 1000000) % 2 ** 32
-                np.random.seed(temp_seed)
-                random.seed(temp_seed)
-
-                map_half_size = (self.config["gameboard_size"] / 2) * 0.05
-                margin = map_half_size * 0.05  # 5% margin from edges
-                self.agent_start_location = [np.random.uniform(-map_half_size + margin, map_half_size - margin), np.random.uniform(-map_half_size + margin, map_half_size - margin)]
-
-                np.random.set_state(current_random_state)
-                random.setstate(current_py_random_state)
-
-        if self.difficulty == 2:
-            if self.config['cl_lesson2'] == 'map_size':
-                self.config['gameboard_size'] = 450
-            elif self.config['cl_lesson2'] == 'more_levels':
-                self.config['num_beginner_levels'] += 3
-
-        self.generate_plot_list() # Generate list of episodes to plot using save_action_history_plot()
+    # def load_difficulty(self):
+    #     """Method to update env parameters using the current difficulty setting"""
+    #
+    #     # if self.difficulty == 0:
+    #     #     self.num_beginner_levels = self.config['num_beginner_levels']
+    #
+    #     #elif self.difficulty == 1:
+    #         # if self.config['cl_lesson1'] == 'more_levels':
+    #         #     self.num_beginner_levels = self.config['num_beginner_levels'] + 3
+    #         # if self.config['cl_lesson1'] == 'random_start':
+    #         #     current_random_state, current_py_random_state = np.random.get_state(), random.getstate()
+    #         #     temp_seed = int(time.time() * 1000000) % 2 ** 32
+    #         #     np.random.seed(temp_seed)
+    #         #     random.seed(temp_seed)
+    #         #
+    #         #     map_half_size = (self.config["gameboard_size"] / 2) * 0.05
+    #         #     margin = map_half_size * 0.05  # 5% margin from edges
+    #         #     self.agent_start_location = [np.random.uniform(-map_half_size + margin, map_half_size - margin), np.random.uniform(-map_half_size + margin, map_half_size - margin)]
+    #         #
+    #         #     np.random.set_state(current_random_state)
+    #         #     random.setstate(current_py_random_state)
+    #
+    #     # if self.difficulty == 2:
+    #     #     if self.config['cl_lesson2'] == 'map_size':
+    #     #         self.config['gameboard_size'] = 450
+    #     #     elif self.config['cl_lesson2'] == 'more_levels':
+    #     #         self.config['num_beginner_levels'] += 3
+    #
+    #     self.generate_plot_list() # Generate list of episodes to plot using save_action_history_plot()
 
 
     def generate_plot_list(self):
         """Generate list of env episodes to plot using save_action_history_plot"""
+        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
         base_episodes = []
         if self.tag == 'bc':
             self.episodes_to_plot = [10*i for i in range(20)]
         else:
-            for i in range(self.num_beginner_levels):
+            for i in range(self.num_levels):
                 base_episodes.extend(
                     [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
                      1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
                      4000 + i, 5000 + i, 6000 + i, 7000 + i])
-            for j in range(self.num_beginner_levels):
+            for j in range(self.num_levels):
                 base_episodes.extend([(500 + j) * i for i in range(80)])
             base_episodes.sort()
             self.episodes_to_plot = list(set(base_episodes))

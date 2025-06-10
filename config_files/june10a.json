@@ -1,18 +1,14 @@
 {
-	"gameboard_size": 300,
 	"window_size": [1450,1080],
-	"num_aircraft": 1,
-	"num_targets":5,
-	"agent_start_location": "random",
-	"human_start_location": [100,450],
+	"tick_rate": 10,
 	"time_limit": 245,
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
-	"human_speed": 2.8,
+	"num_aircraft": 1,
+
+	"num_targets":5,
 	"time_to_id": 0,
 	"prob_detect": 0,
-	"difficulty": 0,
-	"tick_rate": 10,
 
 	"obs_type": "absolute",
 	"action_type": "waypoint-direction",
@@ -37,9 +33,9 @@
 	"ppo_update_steps": 2048,
 	"entropy_regularization": 0.011,
 	"vf_coef":0.5,
-	"clip_range": 0.2,
 	"n_epochs":10,
 	"lr_schedule":"none",
+	"clip_range": [0.2, 0.17],
 
 	"steps_per_episode": 491,
 	"num_timesteps": 18e6,
@@ -48,14 +44,13 @@
 	"eval_freq": 14700,
 	"seed": 42,
 
-	"use_beginner_levels": true,
-	"num_beginner_levels": 10,
-
 	"use_curriculum": true,
-	"cl_lesson1": "random_start",
-	"cl_lesson2": ["map_size", "more_levels"],
 	"cl_lr_decrease": [1.5, 1],
+	"levels_per_lesson": {"0": 3, "1": 3, "2":  10},
+	"gameboard_size_per_lesson": {"0": 300, "1": 300, "2": 450},
+	"agent_start_locations_per_lesson": {"0": 1, "1": 3, "2": 3},
+
 	"min_target_ids_to_advance": 4,
-	"initial_difficulty": 0,
+	"starting_difficulty": 1,
 	"max_difficulty": 2
 }
