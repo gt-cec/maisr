@@ -230,7 +230,7 @@ if __name__ == "__main__":
     evaluate = True
 
     # For eval, load trained BC model from path
-    load_path = 'bc_models/bc_2000eps_7rewardavg.zip'
+    load_path = 'bc_models/bcpolicy_5keps_10rewardavg.zip'
 
     ######################################################
 
@@ -252,7 +252,7 @@ if __name__ == "__main__":
                 bc_config['n_epochs'] = n_epochs
 
                 trained_model_path = train_with_bc(
-                                        expert_trajectory_path='./expert_trajectories/experttraj_mp_2000eps_0610_1059',
+                                        expert_trajectory_path='./expert_trajectories/experttraj_mp_5000eps_0610_1117',
                                         env_config=env_config,
                                         bc_config=bc_config,
                                         run_name=run_name
