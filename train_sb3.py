@@ -81,6 +81,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
         self.max_ep_len_to_advance = 150
         self.max_difficulty = env_config['max_difficulty']
+        self.cl_lr_decrease = env_config['cl_lr_decrease'] # Divide learning rate by this every time we increase difficulty
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0
@@ -92,6 +93,13 @@ class EnhancedWandbCallback(BaseCallback):
             'target_ids': [],
             'detections': []
         }
+
+        # Early stopping based on performance degradation
+        self.best_eval_performance = -np.inf
+        self.performance_crash_counter = 0
+        self.performance_crash_threshold = 20  # Number of consecutive poor evals before stopping
+        self.performance_crash_ratio = 0.5  # Performance must drop below 50% of best
+        self.should_stop_training = False
 
     def _on_step(self):
         # Only log on the specified frequency
@@ -210,14 +218,46 @@ class EnhancedWandbCallback(BaseCallback):
             std_reward = np.std(target_ids_list) if target_ids_list else 0
 
             # Log evaluation results
-            self.run.log({
+            eval_metrics = {
                 "eval/mean_reward": mean_reward,
                 "eval/std_reward": std_reward,
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
-            }, step=self.num_timesteps)
+            }
+            current_performance = np.mean(target_ids_list) if target_ids_list else 0
+            if current_performance > self.best_eval_performance:
+                self.best_eval_performance = current_performance
+                self.performance_crash_counter = 0
+                eval_metrics["eval/best_performance"] = self.best_eval_performance
+                print(f'NEW BEST PERFORMANCE: {self.best_eval_performance:.3f}')
+
+            # Check for performance crash
+            performance_threshold = self.best_eval_performance * self.performance_crash_ratio
+            if current_performance < performance_threshold and self.best_eval_performance > 0:
+                self.performance_crash_counter += 1
+                print(f'PERFORMANCE CRASH WARNING: {current_performance:.3f} < {performance_threshold:.3f} '
+                      f'({self.performance_crash_counter}/{self.performance_crash_threshold})')
+            else:
+                self.performance_crash_counter = 0
+
+            eval_metrics["eval/performance_crash_counter"] = self.performance_crash_counter
+            eval_metrics["eval/performance_threshold"] = performance_threshold
+
+            # Check if we should stop training
+            if self.performance_crash_counter >= self.performance_crash_threshold:
+                self.should_stop_training = True
+                print(f'\n{"=" * 80}')
+                print(f'EARLY STOPPING TRIGGERED!')
+                print(
+                    f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
+                print(f'Best performance: {self.best_eval_performance:.3f}')
+                print(f'Current performance: {current_performance:.3f}')
+                print(f'Threshold: {performance_threshold:.3f}')
+                print(f'{"=" * 80}\n')
+
+            self.run.log(eval_metrics, step=self.num_timesteps)
 
             print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, '
                   f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
@@ -228,16 +268,16 @@ class EnhancedWandbCallback(BaseCallback):
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
                 avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
 
-                if self.model.get_env().get_attr("difficulty")[0] == 0:
-                    if avg_target_ids >= self.min_target_ids_to_advance:
-                        self.above_threshold_counter += 1
-                    else:
-                        self.above_threshold_counter = 0
+                # if self.model.get_env().get_attr("difficulty")[0] == 0:
+                #     if avg_target_ids >= self.min_target_ids_to_advance:
+                #         self.above_threshold_counter += 1
+                #     else:
+                #         self.above_threshold_counter = 0
+                #else:
+                if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
+                    self.above_threshold_counter += 1
                 else:
-                    if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
-                        self.above_threshold_counter += 1
-                    else:
-                        self.above_threshold_counter = 0
+                    self.above_threshold_counter = 0
 
                 if self.above_threshold_counter >= 5 and self.current_difficulty <= self.max_difficulty:
                     self.above_threshold_counter = 0
@@ -245,18 +285,28 @@ class EnhancedWandbCallback(BaseCallback):
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
                     self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-                    try:
-                        self.eval_env.env_method("set_difficulty", self.current_difficulty)
-                    except Exception as e:
-                        print(f"Failed to set difficulty on eval env: {e}")
+                    try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
+                    except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+
+                    print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
+                    try: self.best_eval_performance = current_performance  # Reset best to current performance
+                    except: self.best_eval_performance = -np.inf
+                    self.performance_crash_counter = 0  # Reset crash counter
 
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
+
+                    # Decrease LR
+                    print(f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]['lr']} to {self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease}')
+                    self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease
+
                 else:
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
 
             print('#################################################\n\nReturning to training...')
 
+        if self.should_stop_training:
+            return False
         return True
 
 
@@ -447,7 +497,6 @@ if __name__ == "__main__":
     print(f'\n############################ STARTING TRAINING RUN ############################')
 
     all_configs, param_names = load_env_config_with_sweeps(config_filename)
-    #print(f"Found {len(all_configs)} configurations to run (sweeping over {param_names})")
 
     for i, env_config in enumerate(all_configs):
         print(f'\n--- Starting training run {i + 1}/{len(all_configs)} ---')

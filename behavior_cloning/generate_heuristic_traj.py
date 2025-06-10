@@ -10,7 +10,7 @@ from imitation.data.wrappers import RolloutInfoWrapper
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
-from sb3_trainagent import make_env
+from train_sb3 import make_env
 
 import numpy as np
 

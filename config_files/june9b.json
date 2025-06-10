@@ -42,7 +42,7 @@
 	"lr_schedule":"none",
 
 	"steps_per_episode": 491,
-	"num_timesteps": 3e6,
+	"num_timesteps": 18e6,
 	"save_freq": 14700,
 	"n_eval_episodes": 10,
 	"eval_freq": 14700,
@@ -54,6 +54,7 @@
 	"use_curriculum": true,
 	"cl_lesson1": "random_start",
 	"cl_lesson2": ["more_levels", "map_size"],
+	"cl_lr_decrease": [1, 1.5],
 	"min_target_ids_to_advance": 4,
 	"initial_difficulty": 0,
 	"max_difficulty": 2

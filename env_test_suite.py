@@ -8,7 +8,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from sb3_trainagent import train
+from stable_baselines3 import PPO
+
+from train_sb3 import train
 from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
@@ -444,6 +446,11 @@ def test_curriculum(config):
     eval_env.obs_rms = env.obs_rms
     eval_env.ret_rms = env.ret_rms
 
+    model = PPO(
+        "MlpPolicy",
+        env,
+    )
+
     print("Environments created and normalized")
 
     # Test curriculum advancement through difficulty levels
@@ -459,6 +466,11 @@ def test_curriculum(config):
             eval_env.env_method("set_difficulty", difficulty_level)
         except Exception as e:
             print(f"Failed to set difficulty on eval env: {e}")
+
+        if difficulty_level == 2:
+            new_lr = model.policy.optimizer.param_groups[0]['lr'] / 3
+            print(f'Model lr reduced from {model.policy.optimizer.param_groups[0]['lr']} to {new_lr}')
+            model.policy.optimizer.param_groups[0]['lr'] = new_lr
 
         # Run one episode on training env
         obs = env.reset()
@@ -564,7 +576,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nError during test execution: {e}")
         import traceback
-
         traceback.print_exc()
 
     print("Environment Test Suite completed!")
