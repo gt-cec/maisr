@@ -48,13 +48,13 @@ class MAISRCNN(BaseFeaturesExtractor):
 
         self.cnn = nn.Sequential(
             # First conv layer: 84x84x1 -> 20x20x32
-            nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0),
+            nn.Conv2d(n_input_channels, 16, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
             # Second conv layer: 20x20x32 -> 9x9x64
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
+            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
             # Third conv layer: 9x9x64 -> 7x7x64
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
             nn.Flatten(),
         )
