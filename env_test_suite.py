@@ -183,9 +183,13 @@ def test_env_heuristic(heuristic, config, test_dir=None):
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "heuristic")
-
     env.close()
+
+    avg_reward = np.mean(episode_rewards)
+    print(f"Average heuristic reward: {avg_reward:.2f}")
+    assert avg_reward > 10, f"Heuristic average reward {avg_reward:.2f} must be > 10"
     print(f"Heuristic test completed. Results saved to {test_dir}")
+
 
 def test_env_badheuristic(badheuristic, config, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
@@ -241,8 +245,11 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "badheuristic")
-
     env.close()
+
+    avg_reward = np.mean(episode_rewards)
+    print(f"Average badheuristic reward: {avg_reward:.2f}")
+    assert avg_reward < -3, f"Badheuristic average reward {avg_reward:.2f} must be < -3"
     print(f"Bad heuristic test completed. Results saved to {test_dir}")
 
 def test_env_humanplaytest(config, test_dir=None):
@@ -413,6 +420,11 @@ def test_env_random(config, test_dir=None):
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "random")
 
     env.close()
+
+    avg_reward = np.mean(episode_rewards)
+    print(f"Average random reward: {avg_reward:.2f}")
+    assert avg_reward < -3, f"Random average reward {avg_reward:.2f} must be < -3"
+
     print(f"Random test completed. Results saved to {test_dir}")
 
 

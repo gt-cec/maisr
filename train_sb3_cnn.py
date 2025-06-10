@@ -205,12 +205,11 @@ def train_cnn(
         verbose=1
     )
 
-    # Use existing enhanced callback with CNN-specific eval environment
     enhanced_wandb_callback = EnhancedWandbCallback(
         env_config,
         eval_env=eval_env,
         run=run,
-        log_freq=50  # Log less frequently for CNN training
+        log_freq=50
     )
 
     print('Callbacks created')
@@ -219,10 +218,10 @@ def train_cnn(
 
     policy_kwargs = dict(
         features_extractor_class=MAISRCNN,
-        features_extractor_kwargs=dict(features_dim=env_config.get('cnn_features_dim', 512)),
+        features_extractor_kwargs=dict(features_dim=env_config.get('cnn_features_dim', 256)),
         net_arch=dict(
-            pi=[env_config.get('policy_network_size', 256)],
-            vf=[env_config.get('value_network_size', 256)]
+            pi=[env_config.get('policy_network_size', 64)],
+            vf=[env_config.get('value_network_size', 64)]
         ),
         activation_fn=torch.nn.ReLU,
     )
