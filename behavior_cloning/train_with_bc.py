@@ -21,7 +21,7 @@ from imitation.data.huggingface_utils import TrajectoryDatasetSequence
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
-from sb3_trainagent import make_env
+from train_sb3 import make_env
 
 
 def load_multiple_arrow_files(trajectory_dir_or_pattern):
@@ -226,9 +226,11 @@ if __name__ == "__main__":
     ################### Set parameters ###################
     config_name = '../config_files/june9_cloning.json'
     train_new = False
+    sweep = False
     evaluate = True
+
     # For eval, load trained BC model from path
-    load_path = 'bc_models/(good)_bc_policy_bc_run_0609_1514.zip'
+    load_path = 'bc_models/bc_2000eps_7rewardavg.zip'
 
     ######################################################
 
@@ -242,57 +244,57 @@ if __name__ == "__main__":
 
     run_name = 'bc_run_' + datetime.now().strftime("%m%d_%H%M")
 
-    # results_dict = {} # Will be of the form batchsize,n_epochs = (reward_history, average_reward, std_reward)
-    #
-    # for batch_size in [256, 512, 1024, 2048]:
-    #     for n_epochs in [10, 20]:
-    #         bc_config['batch_size'] = batch_size
-    #         bc_config['n_epochs'] = n_epochs
-    #
-    #         trained_model_path = train_with_bc(
-    #                                 expert_trajectory_path='./expert_trajectories/experttraj_mp_10000eps_0609_1506',
-    #                                 env_config=env_config,
-    #                                 bc_config=bc_config,
-    #                                 run_name=run_name
-    #                             )
-    #         reward_history, average_reward, std_reward = evaluate_bc_policy(env_config, trained_model_path, render=False)
-    #         results_dict[(batch_size, n_epochs)] = (reward_history, average_reward, std_reward)
-    #
-    # # Convert results_dict to JSON-serializable format
-    # import json
-    # json_results = {}
-    # for (batch_size, n_epochs), (reward_history, avg_reward, std_reward) in results_dict.items():
-    #     json_results[f"batch_{batch_size}_epochs_{n_epochs}"] = {
-    #         "batch_size": batch_size,
-    #         "n_epochs": n_epochs,
-    #         "average_reward": float(avg_reward),
-    #         "std_reward": float(std_reward)
-    #     }
-    #
-    # # Save to JSON file
-    # results_filename = f"bc_training_results_{run_name}.json"
-    # with open(results_filename, 'w') as f:
-    #     json.dump(json_results, f, indent=4)
-    #
-    # print(f"Results saved to {results_filename}")
-    #
-    # print('#######################################################################')
-    # print('\nTraining results:')
-    # try:
-    #     print(f'Config with highest average reward: {max(results_dict.keys(), key=lambda k: results_dict[k][1])}')
-    # except:
-    #     print('max get failed. Printing results dict')
-    #     print(results_dict)
-    #
-    # print('#######################################################################')
+    if sweep:
+        results_dict = {} # Will be of the form batchsize,n_epochs = (reward_history, average_reward, std_reward)
+        for batch_size in [256, 512, 1024]:
+            for n_epochs in [10, 15]:
+                bc_config['batch_size'] = batch_size
+                bc_config['n_epochs'] = n_epochs
 
-    # if train_new:
-    #     train_with_bc(
-    #         expert_trajectory_path = './expert_trajectories/expert_trajectory_200episodes_0609_1408',
-    #         env_config=env_config,
-    #         bc_config=bc_config,
-    #         run_name=run_name
-    #     )
-    #
+                trained_model_path = train_with_bc(
+                                        expert_trajectory_path='./expert_trajectories/experttraj_mp_2000eps_0610_1059',
+                                        env_config=env_config,
+                                        bc_config=bc_config,
+                                        run_name=run_name
+                                    )
+                reward_history, average_reward, std_reward = evaluate_bc_policy(env_config, trained_model_path, render=False)
+                results_dict[(batch_size, n_epochs)] = (reward_history, average_reward, std_reward)
+
+        # Convert results_dict to JSON-serializable format
+        import json
+        json_results = {}
+        for (batch_size, n_epochs), (reward_history, avg_reward, std_reward) in results_dict.items():
+            json_results[f"batch_{batch_size}_epochs_{n_epochs}"] = {
+                "batch_size": batch_size,
+                "n_epochs": n_epochs,
+                "average_reward": float(avg_reward),
+                "std_reward": float(std_reward)
+            }
+
+        # Save to JSON file
+        results_filename = f"bc_training_results_{run_name}.json"
+        with open(results_filename, 'w') as f:
+            json.dump(json_results, f, indent=4)
+
+        print(f"Results saved to {results_filename}")
+
+        print('#######################################################################')
+        print('\nTraining results:')
+        try:
+            print(f'Config with highest average reward: {max(results_dict.keys(), key=lambda k: results_dict[k][1])}')
+        except:
+            print('max get failed. Printing results dict')
+            print(results_dict)
+
+    print('#######################################################################')
+
+    if train_new:
+        train_with_bc(
+            expert_trajectory_path = './expert_trajectories/expert_trajectory_200episodes_0609_1408',
+            env_config=env_config,
+            bc_config=bc_config,
+            run_name=run_name
+        )
+
     if evaluate:
         evaluate_bc_policy(env_config, load_path, render=True)

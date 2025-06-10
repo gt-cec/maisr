@@ -51,8 +51,11 @@
 	"use_beginner_levels": false,
 	"num_beginner_levels": 3,
 
-	"curriculum_type": "none",
+	"use_curriculum": false,
+	"cl_lesson1": "random_start",
+	"cl_lesson2": ["map_size", "more_levels"],
+	"cl_lr_decrease": [1.5, 1],
 	"min_target_ids_to_advance": 4,
 	"initial_difficulty": 0,
-	"max_difficulty_level": 5
+	"max_difficulty": 2
 }

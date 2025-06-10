@@ -504,7 +504,7 @@ def generate_heuristic_trajectories_mp(expert_policy, env_config, n_episodes=50,
 if __name__ == "__main__":
     # Set parameters
     config_name = '../config_files/june9_cloning.json'
-    n_episodes = 10000
+    n_episodes = 5000
     n_processes = 16  # Adjust based on your system
 
     run_name = f'experttraj_mp_{str(n_episodes)}eps_{datetime.now().strftime("%m%d_%H%M")}'

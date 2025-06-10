@@ -9,7 +9,7 @@ import utility.agents as agents
 
 import json
 import os
-import cv2
+#import cv2
 
 from utility.gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
@@ -224,7 +224,6 @@ class MAISREnvVec(gym.Env):
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
 
         if self.use_pixel_obs and render_mode == 'headless':
-            import pygame
             pygame.init()
             # Create offscreen surface for pixel observations
             self.pixel_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]))
@@ -560,7 +559,6 @@ class MAISREnvVec(gym.Env):
 
     def get_pixel_observation(self):
         """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
-        import pygame
 
         # Use existing render surface if in human mode, otherwise create temporary surface
         if self.render_mode == 'human' and hasattr(self, 'window'):
@@ -594,7 +592,6 @@ class MAISREnvVec(gym.Env):
         Render game elements to a pygame surface with enhanced target visibility for pixel observations.
         Uses distinct grayscale values and shapes to ensure unknown vs known targets are clearly differentiable.
         """
-        import pygame
 
         # Draw outer box (same as human render)
         self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
@@ -633,7 +630,6 @@ class MAISREnvVec(gym.Env):
 
     def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
         """Utility function for drawing a square box to a specific surface"""
-        import pygame
         pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge),
                          (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
         pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge),
