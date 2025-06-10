@@ -78,11 +78,11 @@ class MAISREnvVec(gym.Env):
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
         else: raise ValueError("Invalid action type")
 
-        if self.config['obs_type'] == 'pixel': # CNN observation space - grayscale 84x84
+        if self.config['obs_type'] == 'pixel':  # CNN observation space - grayscale 84x84
             self.observation_space = gym.spaces.Box(
                 low=0, high=255,
                 shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
-                dtype=np.uint8
+                dtype=np.uint8  # Change from np.float32 to np.uint8
             )
 
         elif self.config['obs_type'] == 'absolute':

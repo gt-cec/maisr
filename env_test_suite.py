@@ -780,9 +780,23 @@ def test_cnn_observations(config):
 
 if __name__ == "__main__":
 
+    from stable_baselines3.common.env_checker import check_env
+
+
+
     config = load_env_config('config_files/june10a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
+
+    config['policy_type'] = 'CnnPolicy'
+    config['obs_type'] = 'pixel'
+
+    # env = MAISREnvVec(
+    #     config=config,
+    #     render_mode='headless',
+    #     tag='test_suite'
+    # )
+    # check_env(env)
 
 
     print("\nStarting Environment Test Suite...")
@@ -801,6 +815,7 @@ if __name__ == "__main__":
         #test_cnn_observations(config)
         #test_env_train(config)
         test_env_overfit(config)
+        pass
 
     except KeyboardInterrupt: print("\nTest suite interrupted by user.")
     except Exception as e:

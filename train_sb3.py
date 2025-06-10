@@ -364,7 +364,8 @@ def train(
         env_fns = [make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
         env = SubprocVecEnv(env_fns)
         env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-        env = VecNormalize(env)
+        if env_config['obs_type'] != 'pixel':
+            env = VecNormalize(env)
 
     else:
         env = MAISREnvVec(
@@ -386,9 +387,10 @@ def train(
     
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
-    eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
-    eval_env.obs_rms = env.obs_rms
-    eval_env.ret_rms = env.ret_rms
+    if env_config['obs_type'] != 'pixel':
+        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        eval_env.obs_rms = env.obs_rms
+        eval_env.ret_rms = env.ret_rms
     print('Envs created')
 
     ################################################# Setup callbacks #################################################
