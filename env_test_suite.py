@@ -267,10 +267,6 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("\nStarting badheuristic test...")
 
-    # Load config
-    #config = load_env_config('config_files/testsuite_config.json')
-    #test_dir = create_test_directory()
-
     # Create environment
     env = MAISREnvVec(
         config=config,
@@ -333,10 +329,6 @@ def test_env_humanplaytest(config, test_dir=None):
     print("Controls: Numpad 8=Up, 2=Down, 4=Left, 6=Right")
     print("Diagonals: 7=Up-Left, 9=Up-Right, 1=Down-Left, 3=Down-Right")
     print("Press ESC to quit early")
-
-    # Load config
-    #config = load_env_config('config_files/testsuite_config.json')
-    #test_dir = create_test_directory()
 
     pygame.init()
     clock = pygame.time.Clock()
@@ -469,10 +461,6 @@ def test_env_humanplaytest(config, test_dir=None):
 def test_env_random(config, test_dir=None):
     """Run env for 20 episodes, taking actions by randomly sampling from the action space"""
     print("\nStarting random test...")
-
-    # Load config
-    #config = load_env_config('config_files/testsuite_config.json')
-    #test_dir = create_test_directory()
 
     # Create environment
     env = MAISREnvVec(
@@ -650,7 +638,6 @@ def test_env_train(config):
     machine_name = 'testenv'
     project_name = 'maisr-rl-tests'
 
-    #env_config = load_env_config('config_files/june7b_baseline.json')
     config['n_envs'] = multiprocessing.cpu_count()
     config['num_timesteps'] = 3e5
 
@@ -669,26 +656,32 @@ def test_env_overfit(config):
     """Test if agent can overfit to 1 level"""
     print("Starting training test...")
 
-    machine_name = 'testenv'
+    machine_name = 'pace_overfittests'#'testenv'
     project_name = 'maisr-rl-tests'
 
-    #env_config = load_env_config('config_files/june7b_baseline.json')
     config['n_envs'] = multiprocessing.cpu_count()
-    config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
+    #config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
     config['agent_start_locations_per_lesson'] = {"0": 1, "1": 1, "2": 1}
-    config["num_timesteps"] = 8e5
+    #config["num_timesteps"] = 8e5
     config['lr'] = 0.001
     config['n_eval_episodes'] = 3
     config['eval_freq'] = 19600
 
-    train(
-        config,
-        n_envs=multiprocessing.cpu_count(),
-        load_path=None,
-        machine_name=machine_name,
-        project_name=project_name,
-        save_model=False
-    )
+    config["num_timesteps"] = 2e6 # Temp
+
+    for levels_per_lesson in [{"0": 1, "1": 1, "2":  1}, {"0": 3, "1": 3, "2":  3}]:
+        for obs_type in ['absolute-1target', 'pixel']:
+            config['obs_type'] = obs_type
+            config["levels_per_lesson"] = levels_per_lesson
+
+            train(
+                config,
+                n_envs=multiprocessing.cpu_count(),
+                load_path=None,
+                machine_name=machine_name,
+                project_name=project_name,
+                save_model=False
+            )
 
     print("Training test completed.")
 
@@ -782,14 +775,12 @@ if __name__ == "__main__":
 
     from stable_baselines3.common.env_checker import check_env
 
-
-
     config = load_env_config('config_files/june10a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
 
-    config['policy_type'] = 'CnnPolicy'
-    config['obs_type'] = 'pixel'
+    #config['policy_type'] = 'CnnPolicy'
+    #config['obs_type'] = 'pixel'
 
     # env = MAISREnvVec(
     #     config=config,
@@ -808,9 +799,9 @@ if __name__ == "__main__":
 
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
-        #test_curriculum(config)
-        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
-        #test_env_random(config, test_dir=shared_test_dir)
+        test_curriculum(config)
+        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
+        test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         #test_cnn_observations(config)
         #test_env_train(config)
