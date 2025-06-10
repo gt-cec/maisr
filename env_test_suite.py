@@ -675,6 +675,7 @@ def test_env_overfit(config):
     #env_config = load_env_config('config_files/june7b_baseline.json')
     config['n_envs'] = multiprocessing.cpu_count()
     config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
+    config['agent_start_locations_per_lesson'] = {"0": 1, "1": 1, "2": 1}
     config["num_timesteps"] = 8e5
     config['lr'] = 0.001
     config['n_eval_episodes'] = 3
