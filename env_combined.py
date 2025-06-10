@@ -9,7 +9,7 @@ import utility.agents as agents
 
 import json
 import os
-#import cv2
+import cv2
 
 from utility.gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
@@ -35,10 +35,6 @@ class MAISREnvVec(gym.Env):
 
         self.config = config # Loaded from .json into a dictionary
 
-        try:
-            self.use_pixel_obs = self.config['use_pixel_obs']
-        except:
-            self.use_pixel_obs = False
 
         self.run_name = run_name # For logging
 
@@ -213,9 +209,8 @@ class MAISREnvVec(gym.Env):
                 self.agent_info_height_req = 0
                 self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
 
-        if self.use_pixel_obs and render_mode == 'headless':
+        if self.config['obs_type'] == 'pixel': # Create offscreen surface for pixel observations
             pygame.init()
-            # Create offscreen surface for pixel observations
             self.pixel_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]))
 
         self.episode_counter = 0
@@ -495,13 +490,12 @@ class MAISREnvVec(gym.Env):
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
         """
-        if self.use_pixel_obs:
-            return 0
 
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
-        agent_x = observation[0] * map_half_size
-        agent_y = observation[1] * map_half_size
+
+        agent_x = (self.agents[self.aircraft_ids[0]].x) / map_half_size #observation[0] * map_half_size
+        agent_y = (self.agents[self.aircraft_ids[0]].y) / map_half_size #observation[1] * map_half_size
         agent_pos = np.array([agent_x, agent_y])
 
         # Get target positions and info levels
