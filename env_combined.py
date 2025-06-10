@@ -287,16 +287,14 @@ class MAISREnvVec(gym.Env):
         # Set agent start location
         if self.tag in ['eval','test_suite']:
             start_loc_index = self.episode_counter % len(self.start_locations)
-            print(
-                f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
+            #print(f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
         else:
             start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
-            print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
-
+            #print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
 
         map_half_size = self.config["gameboard_size"] / 2
         agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
-        print(f'Agent spawned at {agent_x}, {agent_y}')
+        #print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
         ############################################# Create the aircraft ##############################################

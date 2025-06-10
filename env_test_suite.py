@@ -658,7 +658,7 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        #test_env_humanplaytest(config, test_dir=shared_test_dir)
+        test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
         test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
