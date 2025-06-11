@@ -51,7 +51,7 @@
 	"gameboard_size_per_lesson": {"0": 300, "1": 300, "2": 450},
 	"agent_start_locations_per_lesson": {"0": 3, "1": 5, "2": 8},
 
-	"min_target_ids_to_advance": 4,
+	"min_target_ids_to_advance": 5,
 	"starting_difficulty": 0,
 	"max_difficulty": 2
 }

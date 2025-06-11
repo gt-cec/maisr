@@ -691,14 +691,14 @@ def test_env_overfit(config):
     #config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
     config['agent_start_locations_per_lesson'] = {"0": 1, "1": 1, "2": 1}
     #config["num_timesteps"] = 8e5
-    config['lr'] = 0.001
+    #config['lr'] = 0.001
     config['n_eval_episodes'] = 3
-    config['eval_freq'] = 19600
+    config['eval_freq'] = 4500
 
     config["num_timesteps"] = 2e6 # Temp
 
     for levels_per_lesson in [{"0": 1, "1": 1, "2":  1}, {"0": 3, "1": 3, "2":  3}]:
-        for obs_type in ['absolute-1target', 'absolute','pixel']:
+        for obs_type in ['absolute']:
             config['obs_type'] = obs_type
             config["levels_per_lesson"] = levels_per_lesson
 
@@ -828,14 +828,14 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        test_env_humanplaytest(config, test_dir=shared_test_dir)
+        #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
         #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         #test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
         #test_env_train(config)
-        #test_env_overfit(config)
+        test_env_overfit(config)
         pass
 
     except KeyboardInterrupt: print("\nTest suite interrupted by user.")

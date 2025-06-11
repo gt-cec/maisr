@@ -79,7 +79,7 @@ class EnhancedWandbCallback(BaseCallback):
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
-        self.max_ep_len_to_advance = 150
+        self.max_ep_len_to_advance = 130
         self.max_difficulty = env_config['max_difficulty']
         self.cl_lr_decrease = env_config['cl_lr_decrease'] # Divide learning rate by this every time we increase difficulty
 
@@ -267,7 +267,7 @@ class EnhancedWandbCallback(BaseCallback):
                 else:
                     self.above_threshold_counter = 0
 
-                if self.above_threshold_counter >= 5 and self.current_difficulty <= self.max_difficulty:
+                if self.above_threshold_counter >= 5 and self.current_difficulty < self.max_difficulty:
                     self.above_threshold_counter = 0
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
