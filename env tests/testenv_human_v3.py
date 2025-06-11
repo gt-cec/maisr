@@ -221,7 +221,7 @@ def render_current_action(window, current_action, gameboard_size):
 def main():
     # Load environment configuration
     # config_file = './config_files/humantest_config.json'
-    config_file = '../config_files/testsuite_config.json'
+    config_file = '../configs/testsuite_config.json'
     env_config = load_env_config(config_file)
     
     pygame.init()

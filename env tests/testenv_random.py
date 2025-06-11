@@ -201,7 +201,7 @@ def main():
     
     # Load environment configuration
     #config_file = './config_files/humantest_config.json'
-    config_file = '../config_files/rl_simpleoar.json'
+    config_file = '../configs/rl_simpleoar.json'
     env_config = load_env_config(config_file)
     
     # Override config for human play

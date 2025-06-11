@@ -6,7 +6,7 @@ import cProfile, pstats, io
 from pstats import SortKey
 
 if __name__ == "__main__":
-    config = load_env_config('../../config_files/june9a.json')
+    config = load_env_config('../../configs/june9a.json')
     config['eval_freq'] = 4900
     config['n_eval_episodes'] = 5
     config['num_timesteps'] = 1e5

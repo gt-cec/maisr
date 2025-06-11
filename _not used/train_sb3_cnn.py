@@ -270,7 +270,7 @@ if __name__ == "__main__":
 
     ############## ---- CNN TRAINING SETTINGS ---- ##############
     load_path = None  # Path to load existing CNN model
-    config_filename = '../config_files/cnn_test.json'
+    config_filename = '../configs/cnn_test.json'
     ###############################################
 
     # Get machine name

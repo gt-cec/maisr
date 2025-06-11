@@ -689,18 +689,14 @@ def test_env_overfit(config):
 
     config['n_envs'] = multiprocessing.cpu_count()
     #config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
-    config['agent_start_locations_per_lesson'] = {"0": 1, "1": 1, "2": 1}
     #config["num_timesteps"] = 8e5
     #config['lr'] = 0.001
-    config['n_eval_episodes'] = 3
-    config['eval_freq'] = 4500
-
-    config["num_timesteps"] = 2e6 # Temp
 
     for levels_per_lesson in [{"0": 1, "1": 1, "2":  1}, {"0": 3, "1": 3, "2":  3}]:
         for obs_type in ['absolute']:
             config['obs_type'] = obs_type
             config["levels_per_lesson"] = levels_per_lesson
+            config['n_eval_episodes'] = levels_per_lesson["0"]
 
             train(
                 config,
@@ -803,7 +799,7 @@ if __name__ == "__main__":
 
     from stable_baselines3.common.env_checker import check_env
 
-    config = load_env_config('config_files/shorterepisodes.json')
+    config = load_env_config('configs/shorterepisodes.json')
     config['eval_freq'] = 4900
 
     config['obs_type'] = 'absolute'
