@@ -1,11 +1,10 @@
-from agents import *
-import sys
+from utility.agents import *
 import os
 import ctypes
 
 #from env import MAISREnv
 from env_vec import MAISREnvVec
-from gui import *
+from utility.gui import *
 from utility.data_logging import GameLogger, load_env_config
 from config import x, y, config_dict, run_order, surveys_enabled, times
 from autonomous_policy import AutonomousPolicy

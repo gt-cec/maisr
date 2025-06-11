@@ -1,18 +1,14 @@
-from agents import *
-import sys
 import os
 import ctypes
 import numpy as np
 from env_combined import MAISREnvVec
-from gui import *
-from utility.data_logging import GameLogger, load_env_config
-from config import x, y, config_dict, run_order, surveys_enabled, times
-import webbrowser
-
-from stable_baselines3 import PPO
+from utility.gui import *
+from utility.data_logging import load_env_config
+from config import config_dict
 
 if __name__ == "__main__":
-    from config import subject_id, user_group, log_data, x, y, round_number
+    from config import subject_id, user_group, log_data, x, y
+
     round_number = 0
 
     print(f"\nStarting MAISR environment (subject_id = {subject_id}, group = {user_group}, data logging = {log_data})")

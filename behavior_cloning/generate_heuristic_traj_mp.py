@@ -10,9 +10,9 @@ from imitation.data.wrappers import RolloutInfoWrapper
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
-from train_sb3 import make_env
-
-import numpy as np
+import multiprocessing as mp
+from multiprocessing import Pool
+from functools import partial
 
 
 def heuristic_policy(observation, state, dones):
@@ -392,25 +392,26 @@ def reset_badheuristic_state():
     _current_target_pos = None
 
 
-def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, run_name = 'none', save_expert_trajectory = True):
+def generate_heuristic_trajectories_worker(args):
     """
-    Complete behavior cloning pipeline:
-    1. Load heuristic policy
-    2. Generate expert trajectories
-    3. Train BC policy
+    Worker function for multiprocessing trajectory generation.
 
     Args:
-        expert_policy: Policy function that takes in an observation and returns an action
-        env_name: Gymnasium environment name
-        n_episodes: Number of episodes to collect from expert
-        n_epochs: Number of training epochs for BC
+        args: Tuple containing (expert_policy, env_config, n_episodes, run_name, process_id)
 
     Returns:
-        bc_trainer: Trained behavior cloning agent
+        Tuple of (rollouts, process_id)
     """
+    expert_policy, env_config, n_episodes, run_name, process_id = args
 
-    # Create vectorized environment with RolloutInfoWrapper
-    rng = np.random.default_rng(0)
+    # Reset global state for badheuristic if using it
+    if expert_policy.__name__ == 'badheuristic_policy':
+        reset_badheuristic_state()
+
+    # Create unique run name for this process
+    process_run_name = f"{run_name}_proc{process_id}"
+
+    rng = np.random.default_rng(process_id)  # Different seed per process
 
     def make_env_with_wrapper(env_config, rank, seed, run_name):
         def _init():
@@ -418,18 +419,18 @@ def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, ru
                 env_config,
                 None,
                 render_mode='headless',
-                tag='bc',
+                tag='train',
                 run_name=run_name,
             )
             env = Monitor(env)
             env = RolloutInfoWrapper(env)
             return env
+
         return _init
 
-    env = DummyVecEnv([make_env_with_wrapper(env_config, 0, env_config['seed'], run_name)])
+    env = DummyVecEnv([make_env_with_wrapper(env_config, 0, env_config['seed'] + process_id, process_run_name)])
 
-    # Generate expert trajectories using the heuristic policy
-    print(f"Collecting {n_episodes} episodes from expert policy...")
+    print(f"Process {process_id}: Collecting {n_episodes} episodes...")
     rollouts = rollout.rollout(
         expert_policy,
         env,
@@ -437,37 +438,84 @@ def generate_heuristic_trajectories(expert_policy, env_config, n_episodes=50, ru
         rng=rng
     )
 
+    env.close()
+    print(f"Process {process_id}: Completed {len(rollouts)} episodes")
+
+    return rollouts, process_id
+
+
+def generate_heuristic_trajectories_mp(expert_policy, env_config, n_episodes=50, run_name='none',
+                                       save_expert_trajectory=True, n_processes=None):
+    """
+    Multiprocessing version of trajectory generation.
+
+    Args:
+        expert_policy: Policy function that takes in an observation and returns an action
+        env_config: Environment configuration
+        n_episodes: Total number of episodes to collect
+        run_name: Name for the run
+        save_expert_trajectory: Whether to save trajectories
+        n_processes: Number of processes (defaults to CPU count)
+
+    Returns:
+        None (saves trajectories to file)
+    """
+    if n_processes is None:
+        n_processes = mp.cpu_count()
+
+    print(f"Using {n_processes} processes to collect {n_episodes} total episodes")
+
+    # Split episodes across processes
+    episodes_per_process = n_episodes // n_processes
+    extra_episodes = n_episodes % n_processes
+
+    # Create arguments for each process
+    process_args = []
+    for i in range(n_processes):
+        # Give extra episodes to first few processes
+        proc_episodes = episodes_per_process + (1 if i < extra_episodes else 0)
+        process_args.append((expert_policy, env_config, proc_episodes, run_name, i))
+
+    # Run processes
+    with Pool(n_processes) as pool:
+        results = pool.map(generate_heuristic_trajectories_worker, process_args)
+
+    # Combine results
+    all_rollouts = []
+    total_transitions = 0
+
+    for rollouts, process_id in results:
+        all_rollouts.extend(rollouts)
+        transitions = rollout.flatten_trajectories(rollouts)
+        total_transitions += len(transitions)
+        print(f"Process {process_id}: Generated {len(transitions)} transitions from {len(rollouts)} episodes")
+
+    print(f"Total: Generated {total_transitions} transitions from {len(all_rollouts)} episodes")
+
     if save_expert_trajectory:
         from imitation.data import serialize
         os.makedirs('./expert_trajectories', exist_ok=True)
-        serialize.save(f'./expert_trajectories/{run_name}', rollouts)
+        serialize.save(f'./expert_trajectories/{run_name}', all_rollouts)
+        print(f"Saved trajectories to ./expert_trajectories/{run_name}")
 
-    transitions = rollout.flatten_trajectories(rollouts)
-    print(f"Generated {len(transitions)} transitions from {len(rollouts)} episodes")
-
-    return
+    return all_rollouts
 
 
 if __name__ == "__main__":
-
-    ######################## Set parameters ########################
+    # Set parameters
     config_name = '../config_files/june9_cloning.json'
-    n_episodes = 30000
+    n_episodes = 5000
+    n_processes = 16  # Adjust based on your system
 
-    ################################################################
-
-    run_name = f'experttraj_{str(n_episodes)}eps_{datetime.now().strftime("%m%d_%H%M")}'
+    run_name = f'experttraj_mp_{str(n_episodes)}eps_{datetime.now().strftime("%m%d_%H%M")}'
     env_config = load_env_config(config_name)
 
-    # Create temporary environment to get action space
-    #temp_env = DummyVecEnv([make_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(1)])
-    #temp_env.close()
-
-    # Run the behavior cloning pipeline
-    trained_policy = generate_heuristic_trajectories(
-        expert_policy=heuristic_policy,
+    # Run the multiprocessing behavior cloning pipeline
+    all_rollouts = generate_heuristic_trajectories_mp(
+        expert_policy=heuristic_policy,  # or badheuristic_policy
         env_config=env_config,
         n_episodes=n_episodes,
-        run_name = run_name,
-        save_expert_trajectory = True
+        run_name=run_name,
+        save_expert_trajectory=True,
+        n_processes=n_processes
     )

@@ -2,11 +2,9 @@ import gymnasium as gym
 import numpy as np
 import pygame
 import random
-import agents
-from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
-import datetime
+from utility import agents
+from utility.gui import Button, HealthWindow, TimeWindow, AgentInfoDisplay
 import math
-import webbrowser
 
 
 class MAISREnv(gym.Env):
@@ -227,8 +225,8 @@ class MAISREnv(gym.Env):
 
         # create the aircraft
         # Agent speed was originally set by self.config['agent speed'] but currently overridden with static value
-        agents.Aircraft(self, 0,prob_detect=0.0015,max_health=10,color=self.AIRCRAFT_COLORS[0],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
-        agents.Aircraft(self, 0,prob_detect=0.04,max_health=10,color=self.AIRCRAFT_COLORS[1],speed=self.config['game speed']*self.config['human speed'], flight_pattern=self.config["search pattern"]) # Human
+        agents.Aircraft(self, 0, prob_detect=0.0015, max_health=10, color=self.AIRCRAFT_COLORS[0], speed=self.config['game speed'] * self.config['human speed'], flight_pattern=self.config["search pattern"]) # Agent
+        agents.Aircraft(self, 0, prob_detect=0.04, max_health=10, color=self.AIRCRAFT_COLORS[1], speed=self.config['game speed'] * self.config['human speed'], flight_pattern=self.config["search pattern"]) # Human
         self.agents[self.agent_idx].x,self.agents[self.agent_idx].y = self.config['agent start location']
         self.agents[self.human_idx].x, self.agents[self.human_idx].y = self.config['human start location']
 

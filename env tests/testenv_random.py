@@ -122,33 +122,6 @@ def render_reward_text(window, episode_reward, step_reward_components, cumulativ
         window.blit(text_surface, (10, y_offset+300))
         y_offset += line_height
 
-# def render_reward_text(window, episode_reward, gameboard_size):
-#     """
-#     Render the cumulative reward text on the screen
-#
-#     Args:
-#         window: pygame display surface
-#         episode_reward: Current episode cumulative reward
-#         gameboard_size: Size of the gameboard
-#     """
-#     font = pygame.font.SysFont(None, 20)
-#     reward_text = f"Episode Reward: {episode_reward:.2f}"
-#     text_surface = font.render(reward_text, True, (255, 255, 255))  # White text
-#
-#     # Position the text in the top-left corner with some padding
-#     text_rect = text_surface.get_rect()
-#     text_rect.topleft = (10, 310)
-#
-#     # Draw a semi-transparent background for better readability
-#     background_rect = text_rect.copy()
-#     background_rect.inflate(20, 10)  # Add padding around text
-#     background_surface = pygame.Surface((background_rect.width, background_rect.height))
-#     background_surface.set_alpha(256)  # Semi-transparent
-#     background_surface.fill((0, 0, 0))  # Black background
-#
-#     window.blit(background_surface, background_rect)
-#     window.blit(text_surface, text_rect)
-
 
 def render_target_labels(window, env, gameboard_size):
     """
@@ -219,16 +192,21 @@ def render_current_action(window, current_action, gameboard_size):
     window.blit(text_surface, text_rect)
 
 def main():
-    # Load environment configuration
-    # config_file = './config_files/humantest_config.json'
-    config_file = '../config_files/testsuite_config.json'
-    env_config = load_env_config(config_file)
     
     pygame.init()
     clock = pygame.time.Clock()
     
     # Disable display scaling for high-res monitors
     ctypes.windll.user32.SetProcessDPIAware()
+    
+    # Load environment configuration
+    #config_file = './config_files/humantest_config.json'
+    config_file = '../config_files/rl_simpleoar.json'
+    env_config = load_env_config(config_file)
+    
+    # Override config for human play
+    #env_config['obs_type'] = 'absolute'
+    #env_config['action_type'] = 'waypoint-direction'
     
     # Set up pygame window
     window_width, window_height = env_config['window_size'][0], env_config['window_size'][1]
@@ -275,37 +253,37 @@ def main():
         
         # Episode loop
         while not (terminated or truncated) and running:
-            # Handle pygame events
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                    break
-                
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-                        break
-                
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left mouse button
-                        mouse_pos = pygame.mouse.get_pos()
-                        
-                        # Only process clicks within the gameboard area
-                        if 0 <= mouse_pos[0] <= gameboard_size and 0 <= mouse_pos[1] <= gameboard_size:
-                            # Convert mouse position to game coordinates
-                            game_coords = convert_mouse_to_game_coords(mouse_pos, gameboard_size)
-                            
-                            # Convert to action space
-                            current_action = convert_game_to_action_space(game_coords, gameboard_size)
-                            
-                            print(f"Waypoint set: Mouse({mouse_pos[0]:.0f}, {mouse_pos[1]:.0f}) -> "
-                                  f"Game({game_coords[0]:.1f}, {game_coords[1]:.1f}) -> "
-                                  f"Action({current_action[0]:.3f}, {current_action[1]:.3f})")
+            # # Handle pygame events
+            # for event in pygame.event.get():
+            #     if event.type == pygame.QUIT:
+            #         running = False
+            #         break
+            #
+            #     elif event.type == pygame.KEYDOWN:
+            #         if event.key == pygame.K_ESCAPE:
+            #             running = False
+            #             break
+            #
+            #     elif event.type == pygame.MOUSEBUTTONDOWN:
+            #         if event.button == 1:  # Left mouse button
+            #             mouse_pos = pygame.mouse.get_pos()
+            #
+            #             # Only process clicks within the gameboard area
+            #             if 0 <= mouse_pos[0] <= gameboard_size and 0 <= mouse_pos[1] <= gameboard_size:
+            #                 # Convert mouse position to game coordinates
+            #                 game_coords = convert_mouse_to_game_coords(mouse_pos, gameboard_size)
+            #
+            #                 # Convert to action space
+            #                 current_action = convert_game_to_action_space(game_coords, gameboard_size)
+            #
+            #                 print(f"Waypoint set: Mouse({mouse_pos[0]:.0f}, {mouse_pos[1]:.0f}) -> "
+            #                       f"Game({game_coords[0]:.1f}, {game_coords[1]:.1f}) -> "
+            #                       f"Action({current_action[0]:.3f}, {current_action[1]:.3f})")
             
             if not running:
                 break
             
-            action = current_action
+            action = env.action_space.sample()
             
             observation, reward, terminated, truncated, info = env.step(action)
             episode_reward += reward

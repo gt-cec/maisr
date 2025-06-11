@@ -1,13 +1,10 @@
-from multiprocessing.managers import Value
-
 import gymnasium as gym
 from gymnasium.spaces import MultiDiscrete
 import numpy as np
 import pygame
 import random
-import agents
-from gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
-import datetime
+from utility import agents
+from utility.gui import Button, HealthWindow, TimeWindow, AgentInfoDisplay
 import math
 
 
@@ -262,7 +259,7 @@ class MAISREnvVec(gym.Env):
 
         # create the aircraft
         for i in range(self.num_agents):
-            agents.Aircraft(self, 0,prob_detect=self.prob_detect,max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game speed']*self.config['agent_speed'], flight_pattern=self.config["search pattern"])
+            agents.Aircraft(self, 0, prob_detect=self.prob_detect, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game speed'] * self.config['agent_speed'], flight_pattern=self.config["search pattern"])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = self.config['agent start location'] # TODO make random based on seed
 
         #self.agent_idx = self.aircraft_ids[0]
