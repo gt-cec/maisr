@@ -340,6 +340,8 @@ def train(
     7. Runs PPO training and saves checkpoints and the final model
     """
 
+    print(f'Setting machine_name to {machine_name}. Using project {project_name}')
+
     # Generate run name (To be consistent between WandB, model saving, and action history plots)
     run_name = generate_run_name(env_config)
 
