@@ -838,7 +838,7 @@ if __name__ == "__main__":
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        test_env_heuristic(improved_heuristic_policy, config, render=False, test_dir=shared_test_dir)
+        test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
         #test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)

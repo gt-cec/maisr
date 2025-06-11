@@ -391,7 +391,7 @@ def generate_heuristic_trajectories_mp(expert_policy, env_config, n_episodes=50,
 if __name__ == "__main__":
     # Set parameters
     config_name = '../configs/bigmap.json'
-    n_episodes = 15000
+    n_episodes = 10000
     n_processes = 6  # Adjust based on your system
 
     run_name = f'experttraj_mp_1000map_30tgts_{str(n_episodes)}eps_{datetime.now().strftime("%m%d_%H%M")}'

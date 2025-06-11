@@ -5,7 +5,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 1,
-	"max_steps": 44109,
+	"max_steps": 29406,
 
 	"num_targets":30,
 	"time_to_id": 0,
