@@ -331,9 +331,9 @@ class MAISREnvVec(gym.Env):
             if self.terminated or self.truncated:
                 break
 
+        #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
         info["outerstep_potential_gain"] = total_potential_gain
-        #print(f'#### OUTER STEP: dP = {total_potential_gain:.2f} | R_p = {total_potential_gain*self.config['shaping_coeff_prox']:.2f}')
 
         return observation, total_reward, self.terminated, self.truncated, info
 
@@ -346,10 +346,10 @@ class MAISREnvVec(gym.Env):
         """
 
         self.step_count_inner += 1
-        if self.potential is None:
-            last_potential = self.get_potential()
-        else:
+        if self.potential:
             last_potential = self.potential
+        else:
+            last_potential = 0
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -450,9 +450,9 @@ class MAISREnvVec(gym.Env):
         self.observation = self.get_observation()  # Get observation
 
         # Calculate potential (distance improvement to target)
-        self.potential = self.get_potential()
-        potential_gain = max(-0.2, min(0.2, self.potential - last_potential))  # Cap between -10 and +10
-        # print(f'dPotential = {potential_gain:.2f} -> R_p = {potential_gain*self.config['shaping_coeff_prox']:.2f} (Projected outer dP = {potential_gain*30:.2f})') # {self.potential:.2f} - {last_potential:.2f} # DEBUG
+        self.potential = self.get_potential(self.observation)
+        potential_gain = max(-10, min(10, self.potential - last_potential))  # Cap between -10 and +10
+        #print(round(potential_gain,2))
 
         # Calculate reward
         reward = self.get_reward(new_reward, potential_gain)  # For agent
@@ -480,19 +480,12 @@ class MAISREnvVec(gym.Env):
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
-                 (potential_gain * self.config['shaping_coeff_prox']) + \
+                 (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty'])
-        # gain = (potential_gain * self.config['shaping_coeff_prox'])
-        # if gain > 0:
-        #     print(f'POSITIVE {gain}')
-        #
-        # elif gain < 0:
-        #     print(f'NEGATIVE {gain}')
-        # else:
-        #     print('NEUTRAL')
+
         return reward
 
-    def get_potential(self):
+    def get_potential(self, observation):
         """
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
@@ -501,8 +494,8 @@ class MAISREnvVec(gym.Env):
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
 
-        agent_x = (self.agents[self.aircraft_ids[0]].x)# / map_half_size #observation[0] * map_half_size
-        agent_y = (self.agents[self.aircraft_ids[0]].y)# / map_half_size #observation[1] * map_half_size
+        agent_x = (self.agents[self.aircraft_ids[0]].x) / map_half_size #observation[0] * map_half_size
+        agent_y = (self.agents[self.aircraft_ids[0]].y) / map_half_size #observation[1] * map_half_size
         agent_pos = np.array([agent_x, agent_y])
 
         # Get target positions and info levels
@@ -524,8 +517,6 @@ class MAISREnvVec(gym.Env):
         targets_remaining = np.sum(unidentified_mask)
         total_targets = len(target_info_levels)
         progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
-
-        #print(f"Agent: ({agent_x:.1f}, {agent_y:.1f}), Nearest target: {nearest_distance:.1f}") # DEBUG
 
         return -nearest_distance * progress_multiplier
 
@@ -1308,12 +1299,7 @@ class MAISREnvVec(gym.Env):
             plt.axhline(y=-map_half_size, color='red', linestyle='--', alpha=0.3)
             plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
             plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
-
-            # # Add coordinate system info to the plot
-            # plt.text(-map_half_size + 10, map_half_size - 20,
-            #          f'Coordinate System: [{-map_half_size:.0f}, {map_half_size:.0f}]',
-            #          fontsize=4, bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-
+            
             # Save the figure with a timestamp
             filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
@@ -1330,36 +1316,6 @@ class MAISREnvVec(gym.Env):
         """Method to change difficulty level from an external method (i.e. a training loop)"""
         self.difficulty = difficulty
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
-
-    # def load_difficulty(self):
-    #     """Method to update env parameters using the current difficulty setting"""
-    #
-    #     # if self.difficulty == 0:
-    #     #     self.num_beginner_levels = self.config['num_beginner_levels']
-    #
-    #     #elif self.difficulty == 1:
-    #         # if self.config['cl_lesson1'] == 'more_levels':
-    #         #     self.num_beginner_levels = self.config['num_beginner_levels'] + 3
-    #         # if self.config['cl_lesson1'] == 'random_start':
-    #         #     current_random_state, current_py_random_state = np.random.get_state(), random.getstate()
-    #         #     temp_seed = int(time.time() * 1000000) % 2 ** 32
-    #         #     np.random.seed(temp_seed)
-    #         #     random.seed(temp_seed)
-    #         #
-    #         #     map_half_size = (self.config["gameboard_size"] / 2) * 0.05
-    #         #     margin = map_half_size * 0.05  # 5% margin from edges
-    #         #     self.agent_start_location = [np.random.uniform(-map_half_size + margin, map_half_size - margin), np.random.uniform(-map_half_size + margin, map_half_size - margin)]
-    #         #
-    #         #     np.random.set_state(current_random_state)
-    #         #     random.setstate(current_py_random_state)
-    #
-    #     # if self.difficulty == 2:
-    #     #     if self.config['cl_lesson2'] == 'map_size':
-    #     #         self.config['gameboard_size'] = 450
-    #     #     elif self.config['cl_lesson2'] == 'more_levels':
-    #     #         self.config['num_beginner_levels'] += 3
-    #
-    #     self.generate_plot_list() # Generate list of episodes to plot using save_action_history_plot()
 
 
     def generate_plot_list(self):
