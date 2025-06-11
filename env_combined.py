@@ -9,7 +9,7 @@ import utility.agents as agents
 
 import json
 import os
-import cv2
+#import cv2
 
 from utility.gui import Button, ScoreWindow, HealthWindow, TimeWindow, AgentInfoDisplay
 import datetime
@@ -58,7 +58,7 @@ class MAISREnvVec(gym.Env):
         self.difficulty = self.config['starting_difficulty'] # Curriculum learning level (starts at 0)
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
 
-        self.max_steps = 14703 # Max step count of the episode
+        self.max_steps = self.config['max_steps']#150*30#14703 # Max step count of the episode
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
