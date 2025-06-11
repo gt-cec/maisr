@@ -421,7 +421,7 @@ def train(
         env,
         policy_kwargs=policy_kwargs,
         verbose=2,
-        tensorboard_log=f"logs/runs/{run.id}",
+        tensorboard_log=f"logs/tb_runs/{run.id}",
         batch_size=env_config['batch_size'],
         n_steps=env_config['ppo_update_steps'],
         learning_rate=env_config['lr'],
