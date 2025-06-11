@@ -13,7 +13,9 @@ from stable_baselines3 import PPO
 
 from train_sb3 import train
 from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
-from env_combined import MAISREnvVec
+from heuristic_policies.greedy_heuristic_improved import improved_heuristic_policy, improved_heuristic_process_single_observation, reset_heuristic_state
+#from env_combined import MAISREnvVec
+from env_20targets import MAISREnvVec
 from utility.data_logging import load_env_config
 from utility.visualize_values import get_directional_potential_gains, draw_value_arrows
 
@@ -196,20 +198,31 @@ def save_histograms(observations, rewards, actions, test_dir, test_name):
     print(f"\nSaved histograms for {test_name} in {test_dir}")
 
 
-def test_env_heuristic(heuristic, config, test_dir=None):
+def test_env_heuristic(heuristic, config, render=True, test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("Starting heuristic test...")
 
-    # Load config
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        config['obs_type'] = 'absolute'
+        ctypes.windll.user32.SetProcessDPIAware()
 
-    #test_dir = create_test_directory()
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = 80
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
 
-    # Create environment
-    env = MAISREnvVec(
-        config=config,
-        render_mode='headless',
-        tag='test_suite'
-    )
+        env = MAISREnvVec(
+            config=config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            num_agents=1,
+            tag='test_suite',
+            seed=config['seed']
+        )
 
     all_observations = []
     episode_rewards = []
@@ -224,10 +237,9 @@ def test_env_heuristic(heuristic, config, test_dir=None):
         episode_actions = []
 
         done = False
-        step_count = 0
-        max_steps = 1000  # Safety limit
 
-        while not done and step_count < max_steps:
+        while not done:
+            pygame.event.get()
             # Get action from heuristic
             action = heuristic(obs, None, False)
             episode_actions.append(action)
@@ -237,11 +249,11 @@ def test_env_heuristic(heuristic, config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
+            env.render()
             reward_history.append(reward)
             potential_gain_history.append(info["outerstep_potential_gain"])
-            episode_reward += reward * (config['gamma'] ** step_count)
+            episode_reward += reward
             done = terminated or truncated
-            step_count += 1
 
         # Store episode data
         all_observations.extend(episode_observations)
@@ -249,7 +261,7 @@ def test_env_heuristic(heuristic, config, test_dir=None):
         episode_rewards.append(episode_reward)
         all_actions.extend(episode_actions)
 
-        print(f"Heuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} ({round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
+        print(f"Heuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} ({round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps:")
         print(f'Total potential gain = {sum(potential_gain_history)}. History: ({potential_gain_history}')
         print(f'Total potential reward = {round(all_potential_gain,1)}*{config['shaping_coeff_prox']}={round(all_potential_gain * config["shaping_coeff_prox"],2)}\n')
 
@@ -799,7 +811,7 @@ if __name__ == "__main__":
 
     from stable_baselines3.common.env_checker import check_env
 
-    config = load_env_config('configs/shorterepisodes.json')
+    config = load_env_config('configs/bigmap.json')
     config['eval_freq'] = 4900
 
     config['obs_type'] = 'absolute'
@@ -826,7 +838,7 @@ if __name__ == "__main__":
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
+        test_env_heuristic(improved_heuristic_policy, config, render=False, test_dir=shared_test_dir)
         #test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)

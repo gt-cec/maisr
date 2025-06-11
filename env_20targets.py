@@ -40,20 +40,20 @@ class MAISREnvVec(gym.Env):
 
         self.use_buttons = False # TODO make configurable in config
 
-        if seed is not None:
-            np.random.seed(seed)
-            random.seed(seed)
+        # if seed is not None:
+        #     np.random.seed(seed)
+        #     random.seed(seed)
 
-        self.start_location_list = [(-0.040025224653889024, -0.9625879446233576), (-0.7540669154968491, -0.7678726873009407),
-                                    (0.9345335196185689, -0.39997004285253945), (-0.5163174741656262, 0.5376409004137273),
-                                    (0.6583087133274226, 0.5564162525991561), (0.7272350284428963, 0.18485499597619803),
-                                    (0.30589404581350754, -0.290256375901367), (0.79881559364427, 0.9301793065831461),
-                                    (0.8434517570450266, 0.2828723363229593), (0.0450388363149643, 0.6458992596871613)]
-        #print(self.start_location_list)
-        self.level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0, 1337, 2023, 9876, 5432, 8888, 1234, 7777, 3141,
-                            2718, 9999, 1111, 6666, 4444, 8080, 3333, 7890, 1029, 5678, 9012, 2468, 1357, 8642, 9753,
-                            1470, 2581, 3692, 7410, 8520, 9630, 1590, 7531, 4682, 9173, 2640, 5791, 8462, 3951, 6284,
-                            7395, 1683, 4729, 5064, 8317, 9428, 2756, 6049, 3870, 7152, 4681]
+        # self.start_location_list = [(-0.040025224653889024, -0.9625879446233576), (-0.7540669154968491, -0.7678726873009407),
+        #                             (0.9345335196185689, -0.39997004285253945), (-0.5163174741656262, 0.5376409004137273),
+        #                             (0.6583087133274226, 0.5564162525991561), (0.7272350284428963, 0.18485499597619803),
+        #                             (0.30589404581350754, -0.290256375901367), (0.79881559364427, 0.9301793065831461),
+        #                             (0.8434517570450266, 0.2828723363229593), (0.0450388363149643, 0.6458992596871613)]
+        # #print(self.start_location_list)
+        # self.level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0, 1337, 2023, 9876, 5432, 8888, 1234, 7777, 3141,
+        #                     2718, 9999, 1111, 6666, 4444, 8080, 3333, 7890, 1029, 5678, 9012, 2468, 1357, 8642, 9753,
+        #                     1470, 2581, 3692, 7410, 8520, 9630, 1590, 7531, 4682, 9173, 2640, 5791, 8462, 3951, 6284,
+        #                     7395, 1683, 4729, 5064, 8317, 9428, 2756, 6049, 3870, 7152, 4681]
 
         self.difficulty = self.config['starting_difficulty'] # Curriculum learning level (starts at 0)
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
@@ -71,7 +71,7 @@ class MAISREnvVec(gym.Env):
         #print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
 
         self.num_agents = num_agents
-        self.max_targets = 5
+        self.max_targets = 30
 
         ######################################### OBSERVATION AND ACTION SPACES ########################################
         if self.config['action_type'] == 'waypoint-direction':
@@ -92,12 +92,6 @@ class MAISREnvVec(gym.Env):
                 shape=(self.obs_size,),
                 dtype=np.float32)
 
-        elif self.config['obs_type'] == 'absolute-1target':
-            self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
-            self.observation_space = gym.spaces.Box(
-                low=-1, high=1,
-                shape=(self.obs_size,),
-                dtype=np.float32)
         else: raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
@@ -221,24 +215,24 @@ class MAISREnvVec(gym.Env):
 
         # Load settings based on difficulty level
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
-        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+        #self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
         #print(f'using {self.num_levels} levels for difficulty {self.difficulty}')
 
-        self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
+        #self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
         #print(f'using {len(self.start_locations)} start locations for difficulty {self.difficulty}')
 
         self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
         # Set seed for this level
-        seed_list = self.level_seeds[0:self.num_levels]
-        if self.tag in ['eval','test_suite']:
-            current_seed_index = self.episode_counter % len(seed_list)
-        else:
-            current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
-        current_seed = seed_list[current_seed_index]
+        # seed_list = self.level_seeds[0:self.num_levels]
+        # if self.tag in ['eval','test_suite']:
+        #     current_seed_index = self.episode_counter % len(seed_list)
+        # else:
+        #     current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
+        # current_seed = seed_list[current_seed_index]
         #print(f'Seed index = {current_seed_index}, seed = {current_seed}')
-        np.random.seed(current_seed)
-        random.seed(current_seed)
+        #np.random.seed(current_seed)
+        #random.seed(current_seed)
 
         self.agents = [] # List of names of all current agents. Typically integers
         self.possible_agents = [0, 1] # PettingZoo format. List of possible agents
@@ -281,15 +275,16 @@ class MAISREnvVec(gym.Env):
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
 
         # Set agent start location
-        if self.tag in ['eval','test_suite']:
-            start_loc_index = self.episode_counter % len(self.start_locations)
-            #print(f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
-        else:
-            start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
-            #print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
+        # if self.tag in ['eval','test_suite']:
+        #     start_loc_index = self.episode_counter % len(self.start_locations)
+        #     #print(f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
+        # else:
+        #     start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+        #     #print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
 
         map_half_size = self.config["gameboard_size"] / 2
-        agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
+        agent_x = np.random.uniform(-map_half_size + 10, map_half_size - 10)
+        agent_y = np.random.uniform(-map_half_size + 10, map_half_size - 10)
         #print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
@@ -628,7 +623,7 @@ class MAISREnvVec(gym.Env):
             pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
 
         # Resize to 84x84 using OpenCV for consistency
-        pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
+        #pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
 
         # Add channel dimension for grayscale
         pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
