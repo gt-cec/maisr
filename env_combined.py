@@ -331,9 +331,9 @@ class MAISREnvVec(gym.Env):
             if self.terminated or self.truncated:
                 break
 
-        #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
         info["outerstep_potential_gain"] = total_potential_gain
+        #print(f'#### OUTER STEP: dP = {total_potential_gain:.2f} | R_p = {total_potential_gain*self.config['shaping_coeff_prox']:.2f}')
 
         return observation, total_reward, self.terminated, self.truncated, info
 
@@ -346,10 +346,10 @@ class MAISREnvVec(gym.Env):
         """
 
         self.step_count_inner += 1
-        if self.potential:
-            last_potential = self.potential
+        if self.potential is None:
+            last_potential = self.get_potential()
         else:
-            last_potential = 0
+            last_potential = self.potential
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking human-understandable reward
@@ -450,9 +450,9 @@ class MAISREnvVec(gym.Env):
         self.observation = self.get_observation()  # Get observation
 
         # Calculate potential (distance improvement to target)
-        self.potential = self.get_potential(self.observation)
-        potential_gain = max(-10, min(10, self.potential - last_potential))  # Cap between -10 and +10
-        #print(round(potential_gain,2))
+        self.potential = self.get_potential()
+        potential_gain = max(-0.2, min(0.2, self.potential - last_potential))  # Cap between -10 and +10
+        # print(f'dPotential = {potential_gain:.2f} -> R_p = {potential_gain*self.config['shaping_coeff_prox']:.2f} (Projected outer dP = {potential_gain*30:.2f})') # {self.potential:.2f} - {last_potential:.2f} # DEBUG
 
         # Calculate reward
         reward = self.get_reward(new_reward, potential_gain)  # For agent
@@ -480,12 +480,19 @@ class MAISREnvVec(gym.Env):
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
-                 (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
+                 (potential_gain * self.config['shaping_coeff_prox']) + \
                  (self.config['shaping_time_penalty'])
-
+        # gain = (potential_gain * self.config['shaping_coeff_prox'])
+        # if gain > 0:
+        #     print(f'POSITIVE {gain}')
+        #
+        # elif gain < 0:
+        #     print(f'NEGATIVE {gain}')
+        # else:
+        #     print('NEUTRAL')
         return reward
 
-    def get_potential(self, observation):
+    def get_potential(self):
         """
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
@@ -494,8 +501,8 @@ class MAISREnvVec(gym.Env):
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
 
-        agent_x = (self.agents[self.aircraft_ids[0]].x) / map_half_size #observation[0] * map_half_size
-        agent_y = (self.agents[self.aircraft_ids[0]].y) / map_half_size #observation[1] * map_half_size
+        agent_x = (self.agents[self.aircraft_ids[0]].x)# / map_half_size #observation[0] * map_half_size
+        agent_y = (self.agents[self.aircraft_ids[0]].y)# / map_half_size #observation[1] * map_half_size
         agent_pos = np.array([agent_x, agent_y])
 
         # Get target positions and info levels
@@ -517,6 +524,8 @@ class MAISREnvVec(gym.Env):
         targets_remaining = np.sum(unidentified_mask)
         total_targets = len(target_info_levels)
         progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
+
+        #print(f"Agent: ({agent_x:.1f}, {agent_y:.1f}), Nearest target: {nearest_distance:.1f}") # DEBUG
 
         return -nearest_distance * progress_multiplier
 

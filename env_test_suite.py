@@ -250,8 +250,8 @@ def test_env_heuristic(heuristic, config, test_dir=None):
         all_actions.extend(episode_actions)
 
         print(f"Heuristic episode {episode + 1}/20 completed. Reward: {episode_reward:.2f} ({round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
-        #print(f'Total potential = {sum(potential_gain_history)} - {potential_gain_history}')
-        #print(f'Total potential reward = {round(all_potential_gain,1)}*{config['shaping_coeff_prox']}={round(all_potential_gain * config["shaping_coeff_prox"],2)} (% of total reward)')
+        print(f'Total potential gain = {sum(potential_gain_history)}. History: ({potential_gain_history}')
+        print(f'Total potential reward = {round(all_potential_gain,1)}*{config['shaping_coeff_prox']}={round(all_potential_gain * config["shaping_coeff_prox"],2)}\n')
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "heuristic")
@@ -263,16 +263,38 @@ def test_env_heuristic(heuristic, config, test_dir=None):
     print(f"Heuristic test completed. Results saved to {test_dir}")
 
 
-def test_env_badheuristic(badheuristic, config, test_dir=None):
+def test_env_badheuristic(badheuristic, config, render=False,test_dir=None):
     """Run env for 20 episodes using the provided heuristic function"""
     print("\nStarting badheuristic test...")
 
-    # Create environment
-    env = MAISREnvVec(
-        config=config,
-        render_mode='headless',
-        tag='test_suite'
-    )
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        config['obs_type'] = 'absolute'
+        ctypes.windll.user32.SetProcessDPIAware()
+
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = 80
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
+
+        env = MAISREnvVec(
+            config=config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            num_agents=1,
+            tag='test_suite',
+            seed=config['seed']
+        )
+
+    else:
+        env = MAISREnvVec(
+            config=config,
+            render_mode='headless',
+            tag='test_suite'
+        )
 
     all_observations = []
     episode_rewards = []
@@ -305,6 +327,7 @@ def test_env_badheuristic(badheuristic, config, test_dir=None):
             potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
+            if render: env.render()
 
         # Store episode data
         all_observations.extend(episode_observations)
@@ -412,8 +435,9 @@ def test_env_humanplaytest(config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            print(f'Agent: {obs[0]}, {obs[1]} | Target 1: {obs[2]} | Target 2: {obs[3]}')
+            #print(f'Agent: {obs[0]}, {obs[1]} | Target 1: {obs[2]} | Target 2: {obs[3]}')
             episode_reward += reward# * (config['gamma'] ** step_count)
+            print(info["outerstep_potential_gain"])
             potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
@@ -452,6 +476,7 @@ def test_env_humanplaytest(config, test_dir=None):
         all_potential_gain = sum(potential_gain_history)
 
         print(f"Human episode {episode + 1}/3 completed. Reward: {episode_reward:.2f} (Shaping: {round((all_potential_gain * config["shaping_coeff_prox"]),1)} / {episode_reward} = {round(100*(all_potential_gain * config["shaping_coeff_prox"])/abs(episode_reward),1)}% from shaping), Steps: {step_count}")
+        print(f'SHAPING {all_potential_gain}')
 
     # Generate and save histograms
     save_histograms(all_observations, episode_rewards, all_actions, test_dir, "human")
@@ -803,14 +828,14 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        #test_env_humanplaytest(config, test_dir=shared_test_dir)
+        test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
         #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
         #test_env_random(config, test_dir=shared_test_dir)
-        #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
         #test_env_train(config)
-        test_env_overfit(config)
+        #test_env_overfit(config)
         pass
 
     except KeyboardInterrupt: print("\nTest suite interrupted by user.")
