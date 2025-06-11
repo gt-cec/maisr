@@ -428,7 +428,6 @@ def train(
         seed=env_config['seed'],
         device='cpu',
         gamma=env_config['gamma'],
-        gae_lambda=env_config['gae_lambda'],
         ent_coef=env_config['entropy_regularization'],
         clip_range=env_config['clip_range']
     )

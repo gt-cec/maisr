@@ -333,6 +333,8 @@ def test_env_humanplaytest(config, test_dir=None):
     pygame.init()
     clock = pygame.time.Clock()
 
+    config['obs_type'] = 'absolute'
+
     # Disable display scaling for high-res monitors
     ctypes.windll.user32.SetProcessDPIAware()
 
@@ -410,6 +412,7 @@ def test_env_humanplaytest(config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
+            print(f'Agent: {obs[0]}, {obs[1]} | Target 1: {obs[2]} | Target 2: {obs[3]}')
             episode_reward += reward# * (config['gamma'] ** step_count)
             potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
@@ -422,16 +425,16 @@ def test_env_humanplaytest(config, test_dir=None):
             ##################### TEMP TESTING ##########################################
             # Calculate and draw value arrows
             current_obs = obs  # obs from the last step
-            potentials = get_directional_potential_gains(env, current_obs)
+            #potentials = get_directional_potential_gains(env, current_obs)
 
             # Get agent position for arrow drawing
-            if env.agents and len(env.aircraft_ids) > 0:
-                agent = env.agents[env.aircraft_ids[0]]
-                map_half_size = config["gameboard_size"] / 2
-                draw_value_arrows(window, env, potentials, agent.x, agent.y, map_half_size)
+            # if env.agents and len(env.aircraft_ids) > 0:
+            #     agent = env.agents[env.aircraft_ids[0]]
+            #     map_half_size = config["gameboard_size"] / 2
+            #     draw_value_arrows(window, env, potentials, agent.x, agent.y, map_half_size)
 
             # Add a legend in the corner
-            font = pygame.font.Font(None, 24)
+            #font = pygame.font.Font(None, 24)
             # legend_text = ["Value Arrows:", "Green = Positive", "Red = Negative", "Length = Magnitude"]
             # for i, text in enumerate(legend_text):
             #     color = (255, 255, 255) if i == 0 else (200, 200, 200)
@@ -656,8 +659,8 @@ def test_env_overfit(config):
     """Test if agent can overfit to 1 level"""
     print("Starting training test...")
 
-    machine_name = 'pace_overfittests'#'testenv'
-    project_name = 'maisr-rl-tests'
+    machine_name = 'home_overfittests'#'testenv'
+    project_name = 'maisr-rl'
 
     config['n_envs'] = multiprocessing.cpu_count()
     #config["levels_per_lesson"] = {"0": 1, "1": 1, "2":  1}
@@ -670,7 +673,7 @@ def test_env_overfit(config):
     config["num_timesteps"] = 2e6 # Temp
 
     for levels_per_lesson in [{"0": 1, "1": 1, "2":  1}, {"0": 3, "1": 3, "2":  3}]:
-        for obs_type in ['absolute-1target', 'pixel']:
+        for obs_type in ['absolute-1target', 'absolute','pixel']:
             config['obs_type'] = obs_type
             config["levels_per_lesson"] = levels_per_lesson
 
@@ -802,8 +805,8 @@ if __name__ == "__main__":
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
-        test_env_random(config, test_dir=shared_test_dir)
+        #test_env_heuristic(heuristic_policy, config, test_dir=shared_test_dir)
+        #test_env_random(config, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config, test_dir=shared_test_dir)
         #test_cnn_observations(config)
         #test_env_train(config)
