@@ -837,13 +837,13 @@ if __name__ == "__main__":
 
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
-        #test_curriculum(config)
+        test_curriculum(config)
         test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
-        #test_env_random(config, test_dir=shared_test_dir)
-        #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
+        test_env_random(config, test_dir=shared_test_dir)
+        test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
         #test_env_train(config)
-        test_env_overfit(config)
+        #test_env_overfit(config)
         pass
 
     except KeyboardInterrupt: print("\nTest suite interrupted by user.")
