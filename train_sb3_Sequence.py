@@ -382,7 +382,7 @@ def train(
             tag='train',
             run_name=run_name,
         )
-        SequenceMAISRWrapper(env, sequence_policy, num_targets=env_config['num_targets'])
+        env = SequenceMAISRWrapper(env, sequence_policy, num_targets=env_config['num_targets'])
         env = Monitor(env)
 
     eval_env = MAISREnvVec(
@@ -392,7 +392,7 @@ def train(
         tag='eval',
         run_name=run_name,
     )
-    SequenceMAISRWrapper(env, sequence_policy, num_targets=env_config['num_targets'])
+    eval_env = SequenceMAISRWrapper(eval_env, sequence_policy, num_targets=env_config['num_targets'])
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
     if env_config['obs_type'] != 'pixel':
@@ -500,8 +500,8 @@ if __name__ == "__main__":
 
         env_config['n_envs'] = multiprocessing.cpu_count()
         env_config['config_filename'] = config_filename
-        final_run_name = generate_run_name(env_config) + f'{"".join('_'+str(name)+'-'+str(env_config[name]) for name in param_names)}'
-        print(f"Running with config: {final_run_name}")
+        #final_run_name = generate_run_name(env_config) + f'{"".join('_'+str(name)+'-'+str(env_config[name]) for name in param_names)}'
+        #print(f"Running with config: {final_run_name}")
 
         train(
             env_config,
