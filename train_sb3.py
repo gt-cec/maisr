@@ -476,7 +476,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     # Specify a checkpoint to load
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june9b.json'
+    config_filename = 'configs/june12a.json'
     ###############################################
 
     # Get machine name to add to run name

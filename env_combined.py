@@ -66,6 +66,7 @@ class MAISREnvVec(gym.Env):
         self.render_mode = render_mode
 
         self.generate_plot_list()
+
         self.check_valid_config()
 
         #print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
@@ -227,7 +228,8 @@ class MAISREnvVec(gym.Env):
         self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
         #print(f'using {len(self.start_locations)} start locations for difficulty {self.difficulty}')
 
-        self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
+        if self.config['use_curriculum']:
+            self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
         # Set seed for this level
         seed_list = self.level_seeds[0:self.num_levels]
@@ -451,7 +453,7 @@ class MAISREnvVec(gym.Env):
 
         # Calculate potential (distance improvement to target)
         self.potential = self.get_potential(self.observation)
-        potential_gain = max(-0.3, min(0.3, self.potential - last_potential))  # Cap between -10 and +10
+        potential_gain = max(-0.1, min(0.1, self.potential - last_potential))  # Cap between -10 and +10
         #print(round(potential_gain,2))
 
         # Calculate reward
@@ -494,8 +496,11 @@ class MAISREnvVec(gym.Env):
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
 
-        agent_x = (self.agents[self.aircraft_ids[0]].x) / map_half_size #observation[0] * map_half_size
-        agent_y = (self.agents[self.aircraft_ids[0]].y) / map_half_size #observation[1] * map_half_size
+        #agent_x = (self.agents[self.aircraft_ids[0]].x) / map_half_size #observation[0] * map_half_size
+        #agent_y = (self.agents[self.aircraft_ids[0]].y) / map_half_size #observation[1] * map_half_size
+        #agent_pos = np.array([agent_x, agent_y])
+        agent_x = self.agents[self.aircraft_ids[0]].x
+        agent_y = self.agents[self.aircraft_ids[0]].y
         agent_pos = np.array([agent_x, agent_y])
 
         # Get target positions and info levels
@@ -518,7 +523,7 @@ class MAISREnvVec(gym.Env):
         total_targets = len(target_info_levels)
         progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
 
-        return -nearest_distance * progress_multiplier
+        return -nearest_distance #* progress_multiplier
 
     def get_observation(self):
         """Main function to return the observation vector. Calls specific observation functions depending on obs type. """
@@ -1319,15 +1324,23 @@ class MAISREnvVec(gym.Env):
 
 
     def generate_plot_list(self):
+
+        # TODO Temp workaround
+        self.episodes_to_plot = [1, 2, 5, 10, 20, 40, 50, 80, 100, 150, 200]
+        self.episodes_to_plot.extend([200 * i for i in range(80)])
+        #print(f'episodes to plot: {self.episodes_to_plot}')
+        return
+
         """Generate list of env episodes to plot using save_action_history_plot"""
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+        print(f'num_levels: {self.num_levels}')
         base_episodes = []
         if self.tag == 'bc':
             self.episodes_to_plot = [10*i for i in range(20)]
         else:
             for i in range(self.num_levels):
                 base_episodes.extend(
-                    [0 + i, 2 + i, 5 + i, 10 + i, 20 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
+                    [0 + i, 2 + i, 5 + i, 10 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
                      1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
                      4000 + i, 5000 + i, 6000 + i, 7000 + i])
             for j in range(self.num_levels):

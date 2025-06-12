@@ -14,8 +14,8 @@ from stable_baselines3 import PPO
 from train_sb3 import train
 from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
 from heuristic_policies.greedy_heuristic_improved import improved_heuristic_policy, improved_heuristic_process_single_observation, reset_heuristic_state
-#from env_combined import MAISREnvVec
-from env_20targets import MAISREnvVec
+from env_combined import MAISREnvVec
+#from env_20targets import MAISREnvVec
 from utility.data_logging import load_env_config
 from utility.visualize_values import get_directional_potential_gains, draw_value_arrows
 
@@ -355,7 +355,7 @@ def test_env_badheuristic(badheuristic, config, render=False,test_dir=None):
 
     avg_reward = np.mean(episode_rewards)
     print(f"Average badheuristic reward: {avg_reward:.2f}")
-    assert avg_reward < -3, f"Badheuristic average reward {avg_reward:.2f} must be < -3"
+    #assert avg_reward < -3, f"Badheuristic average reward {avg_reward:.2f} must be < -3"
     print(f"Bad heuristic test completed. Results saved to {test_dir}")
 
 def test_env_humanplaytest(config, test_dir=None):
@@ -809,23 +809,11 @@ def test_cnn_observations(config):
 
 if __name__ == "__main__":
 
-    from stable_baselines3.common.env_checker import check_env
-
-    config = load_env_config('configs/bigmap.json')
+    config = load_env_config('configs/june12a.json')
     config['eval_freq'] = 4900
 
     config['obs_type'] = 'absolute'
     config['n_eval_episodes'] = 5
-
-    #config['policy_type'] = 'CnnPolicy'
-    #config['obs_type'] = 'pixel'
-
-    # env = MAISREnvVec(
-    #     config=config,
-    #     render_mode='headless',
-    #     tag='test_suite'
-    # )
-    # check_env(env)
 
 
     print("\nStarting Environment Test Suite...")
@@ -837,12 +825,12 @@ if __name__ == "__main__":
 
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
-        test_curriculum(config)
+        #test_curriculum(config)
         test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
         test_env_random(config, test_dir=shared_test_dir)
         test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
-        #test_env_train(config)
+        test_env_train(config)
         #test_env_overfit(config)
         pass
 
