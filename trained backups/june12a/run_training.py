@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     for learning_rate in [0.005]:
         for batch_size in [256]:
-            for levels_per_lesson in [{"0": 3, "1": 3, "2":  3}]: # {"0": 1, "1": 1, "2":  1}
+            for levels_per_lesson in [{"0": 1, "1": 1, "2":  1},{"0": 3, "1": 3, "2":  3}]:
                 config['learning_rate'] = learning_rate
                 config['batch_size'] = batch_size
                 config["levels_per_lesson"] = levels_per_lesson

@@ -1,0 +1,1 @@
+June12a successfully trained to overfit to 1 level in approximately 600,000 timesteps (1280 episodes across 16 subprocesses, 1280 episodes total)

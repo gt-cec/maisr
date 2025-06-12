@@ -1326,19 +1326,14 @@ class MAISREnvVec(gym.Env):
     def generate_plot_list(self):
 
         # TODO Temp workaround
-        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
-        #print(f'num_levels: {self.num_levels}')
-        self.episodes_to_plot = []
-        for j in range(self.num_levels):
-            self.episodes_to_plot.extend([1+j, 2+j, 5+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
-            self.episodes_to_plot.extend([(50 * i) + j for i in range(80)])
-        self.episodes_to_plot = list(set(self.episodes_to_plot))
-        self.episodes_to_plot.sort()
+        self.episodes_to_plot = [1, 2, 5, 10, 20, 40, 50, 80, 100, 150, 200]
+        self.episodes_to_plot.extend([200 * i for i in range(80)])
         #print(f'episodes to plot: {self.episodes_to_plot}')
         return
 
         """Generate list of env episodes to plot using save_action_history_plot"""
-
+        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+        print(f'num_levels: {self.num_levels}')
         base_episodes = []
         if self.tag == 'bc':
             self.episodes_to_plot = [10*i for i in range(20)]
