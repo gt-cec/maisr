@@ -135,7 +135,7 @@ class SequenceMAISRWrapper(gym.Wrapper):
                     'step': step_count,
                     'reward': reward,
                     'total_reward': info['episode']['r'],#total_reward,
-                    'targets_identified': info.get('target_ids', 0)
+                    'target_ids': info.get('target_ids', 0)
                 })
             
             # Safety check for maximum steps
@@ -147,7 +147,7 @@ class SequenceMAISRWrapper(gym.Wrapper):
         # Update execution info with final results
         execution_info.update({
             'total_steps': step_count,
-            'targets_identified': info.get('target_ids', 0),
+            'target_ids': info.get('target_ids', 0),
             'final_episode_info': info,
             'max_steps_reached': self.max_steps_reached
         })

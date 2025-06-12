@@ -193,6 +193,9 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
+                    print(f'model output: {action} (len {len(action)})')
+                    if len(action) == 1:
+                        action=action[0]
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
@@ -440,7 +443,11 @@ def train(
         clip_range=env_config['clip_range']
     )
     print('Model instantiated')
-    print(model.policy)
+    #print(model.policy)
+
+    print(f"Training env action space: {env.action_space}")
+    print(f"Eval env action space: {eval_env.action_space}")
+    print(f"Model action space: {model.action_space}")
 
     ################################################# Load checkpoint ##################################################
     if load_path:
@@ -478,36 +485,36 @@ def train(
     run.finish()
 
 
-if __name__ == "__main__":
-    ############## ---- SETTINGS ---- ##############
-    # Specify a checkpoint to load
-    load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june9b.json'
-    ###############################################
-
-    # Get machine name to add to run name
-    #print(f'machine is {socket.gethostname()}')
-    machine_name = 'home-sequence' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'
-    project_name = 'maisr-rl' if machine_name in ['home', 'lab_pc'] else 'maisr-rl-pace'
-    print(f'Setting machine_name to {machine_name}. Using project {project_name}')
-
-    print(f'\n############################ STARTING TRAINING RUN ############################')
-
-    all_configs, param_names = load_env_config_with_sweeps(config_filename)
-
-    for i, env_config in enumerate(all_configs):
-        print(f'\n--- Starting training run {i + 1}/{len(all_configs)} ---')
-
-        env_config['n_envs'] = multiprocessing.cpu_count()
-        env_config['config_filename'] = config_filename
-        #final_run_name = generate_run_name(env_config) + f'{"".join('_'+str(name)+'-'+str(env_config[name]) for name in param_names)}'
-        #print(f"Running with config: {final_run_name}")
-
-        train(
-            env_config,
-            n_envs=multiprocessing.cpu_count(),
-            load_path=load_path,
-            machine_name=machine_name,
-            project_name=project_name
-        )
-        print(f"✓ Completed training run {i + 1}/{len(all_configs)}")
+# if __name__ == "__main__":
+#     ############## ---- SETTINGS ---- ##############
+#     # Specify a checkpoint to load
+#     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
+#     config_filename = 'configs/june9b.json'
+#     ###############################################
+#
+#     # Get machine name to add to run name
+#     #print(f'machine is {socket.gethostname()}')
+#     machine_name = 'home-sequence' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'
+#     project_name = 'maisr-rl' if machine_name in ['home', 'lab_pc'] else 'maisr-rl-pace'
+#     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
+#
+#     print(f'\n############################ STARTING TRAINING RUN ############################')
+#
+#     all_configs, param_names = load_env_config_with_sweeps(config_filename)
+#
+#     for i, env_config in enumerate(all_configs):
+#         print(f'\n--- Starting training run {i + 1}/{len(all_configs)} ---')
+#
+#         env_config['n_envs'] = multiprocessing.cpu_count()
+#         env_config['config_filename'] = config_filename
+#         #final_run_name = generate_run_name(env_config) + f'{"".join('_'+str(name)+'-'+str(env_config[name]) for name in param_names)}'
+#         #print(f"Running with config: {final_run_name}")
+#
+#         train(
+#             env_config,
+#             n_envs=multiprocessing.cpu_count(),
+#             load_path=load_path,
+#             machine_name=machine_name,
+#             project_name=project_name
+#         )
+#         print(f"✓ Completed training run {i + 1}/{len(all_configs)}")
