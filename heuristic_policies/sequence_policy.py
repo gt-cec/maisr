@@ -13,7 +13,7 @@ _current_target_pos = None
 _last_action = None
 _action_repeat_count = 0
 _max_repeat_count = 3  # Minimum steps to take in same direction
-_target_reached_threshold = 0.1  # Distance threshold to consider target "reached"
+_target_reached_threshold = 0.025  # Distance threshold to consider target "reached"
 
 
 def sequence_policy(observation, target_sequence, state=None, dones=None):
@@ -68,9 +68,13 @@ def sequence_process_single_observation(observation, target_sequence):
 
     agent_pos = obs[:2]
 
+    remaining_obs_size = len(obs) - 2
+    actual_num_targets = remaining_obs_size // 3
+    target_data = obs[2:2 + actual_num_targets * 3].reshape(actual_num_targets, 3)
+
     # Extract target information (matching the environment structure)
-    max_targets = 5  # Match environment's max_targets
-    target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
+    #max_targets = 20  # Match environment's max_targets
+    #target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
     
     # Find valid targets
     valid_mask = (target_data[:, 1] != 0) | (target_data[:, 2] != 0)
@@ -104,28 +108,42 @@ def sequence_process_single_observation(observation, target_sequence):
         return sequence_process_single_observation(observation, target_sequence)
 
     # Get target position
+    target_idx_in_sequence = _current_sequence[_sequence_index]
+
+    # Get valid target positions
+    valid_targets = target_data[valid_mask]
     target_positions = valid_targets[:, 1:3]
-    
-    # Check if target index is within bounds
+
     if target_idx_in_sequence < len(target_positions):
         target_pos = target_positions[target_idx_in_sequence]
     else:
-        # Target not available, advance sequence
+        # Target index out of bounds, advance sequence
         _sequence_index += 1
-        return sequence_process_single_observation(observation, target_sequence)
+        if _sequence_index < len(_current_sequence):
+            return sequence_process_single_observation(observation, target_sequence)
+        else:
+            return _last_action if _last_action is not None else 0
+    
+    # # Check if target index is within bounds
+    # if target_idx_in_sequence < len(target_positions):
+    #     target_pos = target_positions[target_idx_in_sequence]
+    # else:
+    #     # Target not available, advance sequence
+    #     _sequence_index += 1
+    #     return sequence_process_single_observation(observation, target_sequence)
 
     # Update current target position
     _current_target_pos = target_pos.copy()
 
     # Check if we've reached the current target
     distance_to_target = np.linalg.norm(_current_target_pos - agent_pos)
-    print(f'Distance to target is {distance_to_target}')
+    #print(f'Distance to target is {distance_to_target}')
     
     if distance_to_target <= _target_reached_threshold:
         # Target reached, advance to next in sequence
         _sequence_index += 1
         _action_repeat_count = 0
-        print(f"Target {target_idx_in_sequence} reached! Moving to next target. Progress: {_sequence_index}/{len(_current_sequence)}")
+        #print(f"Target {target_idx_in_sequence} reached! Moving to next target. Progress: {_sequence_index}/{len(_current_sequence)}")
         
         # If sequence not complete, recursively call to get next target
         if _sequence_index < len(_current_sequence):
@@ -245,8 +263,12 @@ def generate_nearest_neighbor_sequence(observation, start_target=0):
     obs = np.array(observation)
     
     # Extract target information
-    max_targets = 30
-    target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
+    remaining_obs_size = len(obs) - 2
+    actual_num_targets = remaining_obs_size // 3
+
+    #max_targets = 20
+    #target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
+    target_data = obs[2:2 + actual_num_targets * 3].reshape(actual_num_targets, 3)
     valid_mask = (target_data[:, 1] != 0) | (target_data[:, 2] != 0)
     
     if not np.any(valid_mask):
@@ -282,9 +304,9 @@ def generate_nearest_neighbor_sequence(observation, start_target=0):
 
 if __name__ == '__main__':
 
-    config = load_env_config('../configs/june11a.json')
+    config = load_env_config('../configs/sequence_june11.json')
 
-    target_sequence = [3,2,3,2,4]
+    target_sequence = [1, 13, 8, 5, 4, 14, 19, 7, 3, 6, 2, 12, 17, 9, 15, 10, 16, 18, 11, 0]#[3,2,3,2,4]
 
     pygame.display.init()
     pygame.font.init()

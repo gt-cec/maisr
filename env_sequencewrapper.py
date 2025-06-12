@@ -2,6 +2,9 @@ import gymnasium as gym
 import numpy as np
 from gymnasium.spaces import MultiDiscrete, Box
 
+from env_combined import MAISREnvVec
+from utility.data_logging import load_env_config
+
 
 class SequenceMAISRWrapper(gym.Wrapper):
     """
@@ -131,7 +134,7 @@ class SequenceMAISRWrapper(gym.Wrapper):
                 execution_info['execution_details'].append({
                     'step': step_count,
                     'reward': reward,
-                    'total_reward': total_reward,
+                    'total_reward': info['episode']['r'],#total_reward,
                     'targets_identified': info.get('target_ids', 0)
                 })
             
@@ -158,7 +161,7 @@ class SequenceMAISRWrapper(gym.Wrapper):
         
         self.episode_steps = step_count
         
-        return final_obs, total_reward, terminated, truncated, execution_info
+        return final_obs, info['episode']['r'], terminated, truncated, execution_info
     
     def get_sequence_action_meanings(self):
         """
@@ -311,38 +314,38 @@ def create_sequence_env(base_env, sequence_policy_func, **wrapper_kwargs):
     return SequenceMAISRWrapper(base_env, sequence_policy_func, **wrapper_kwargs)
 
 
-def test_sequence_wrapper(env_wrapper, num_test_episodes=5):
-    """
-    Test the sequence wrapper with random sequences.
-    
-    Args:
-        env_wrapper: SequenceMAISRWrapper instance
-        num_test_episodes (int): Number of episodes to test
-    """
-    print(f"Testing Sequence Wrapper for {num_test_episodes} episodes")
-    print(f"Action space: {env_wrapper.action_space}")
-    print(f"Observation space: {env_wrapper.observation_space}")
-    print("-" * 50)
-    
-    for episode in range(num_test_episodes):
-        obs, info = env_wrapper.reset()
-        print(f"\nEpisode {episode + 1}:")
-        print(f"Initial observation shape: {obs.shape}")
-        
-        # Sample a random sequence
-        sequence = env_wrapper.sample_valid_sequence()
-        print(f"Testing sequence: {sequence}")
-        
-        # Execute the sequence
-        final_obs, reward, terminated, truncated, exec_info = env_wrapper.step(sequence)
-        
-        print(f"Final reward: {reward:.2f}")
-        print(f"Targets identified: {exec_info.get('targets_identified', 0)}")
-        print(f"Total steps: {exec_info.get('total_steps', 0)}")
-        print(f"Sequence completion: {exec_info.get('sequence_completion', 0.0):.2%}")
-        print(f"Episode ended: terminated={terminated}, truncated={truncated}")
-    
-    print("\nWrapper test completed!")
+# def test_sequence_wrapper(env_wrapper, num_test_episodes=5):
+#     """
+#     Test the sequence wrapper with random sequences.
+#
+#     Args:
+#         env_wrapper: SequenceMAISRWrapper instance
+#         num_test_episodes (int): Number of episodes to test
+#     """
+#     print(f"Testing Sequence Wrapper for {num_test_episodes} episodes")
+#     print(f"Action space: {env_wrapper.action_space}")
+#     print(f"Observation space: {env_wrapper.observation_space}")
+#     print("-" * 50)
+#
+#     for episode in range(num_test_episodes):
+#         obs, info = env_wrapper.reset()
+#         print(f"\nEpisode {episode + 1}:")
+#         print(f"Initial observation shape: {obs.shape}")
+#
+#         # Sample a random sequence
+#         sequence = env_wrapper.sample_valid_sequence()
+#         print(f"Testing sequence: {sequence}")
+#
+#         # Execute the sequence
+#         final_obs, reward, terminated, truncated, exec_info = env_wrapper.step(sequence)
+#
+#         print(f"Final reward: {reward:.2f}")
+#         print(f"Targets identified: {exec_info.get('targets_identified', 0)}")
+#         print(f"Total steps: {exec_info.get('total_steps', 0)}")
+#         print(f"Sequence completion: {exec_info.get('sequence_completion', 0.0):.2%}")
+#         print(f"Episode ended: terminated={terminated}, truncated={truncated}")
+#
+#     print("\nWrapper test completed!")
 
 
 # Example with different sequence generation strategies
@@ -394,3 +397,36 @@ def compare_sequence_strategies(env_wrapper, strategies, num_episodes_per_strate
         print(f"  Success rate: {results[strategy_name]['success_rate']:.2%}")
     
     return results
+
+
+if __name__ == '__main__':
+
+    config = load_env_config('./configs/sequence_june11.json')
+
+    base_env = MAISREnvVec(
+        config=config,
+        render_mode='headless',
+        num_agents=1,
+        tag='test_suite',
+        #seed=config['seed']
+    )
+
+    # Create the wrapper
+    from heuristic_policies.sequence_policy import sequence_policy  # Your sequence policy function
+
+    wrapped_env = SequenceMAISRWrapper(base_env, sequence_policy, num_targets=config['num_targets'])
+
+
+
+    # Agent chooses a sequence (this is what the RL agent learns)
+    #sequence_action = [1, 0, 4, 3, 2]  # Visit targets in this order
+    for trial in range(10):
+        sequence_action = wrapped_env.sample_valid_sequence()
+
+        # Execute the entire sequence
+        final_obs, total_reward, done, truncated, exec_info = wrapped_env.step(sequence_action)
+
+        print(f"Total reward: {total_reward}")
+        print(f"Targets identified: {exec_info['targets_identified']}\n")
+        #print(f"Steps taken: {exec_info['total_steps']}")
+        obs, info = wrapped_env.reset()

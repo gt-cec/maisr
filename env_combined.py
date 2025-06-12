@@ -71,7 +71,7 @@ class MAISREnvVec(gym.Env):
         #print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
 
         self.num_agents = num_agents
-        self.max_targets = 5
+        self.max_targets = 30
 
         ######################################### OBSERVATION AND ACTION SPACES ########################################
         if self.config['action_type'] == 'waypoint-direction':
