@@ -77,6 +77,11 @@ class MAISREnvVec(gym.Env):
         ######################################### OBSERVATION AND ACTION SPACES ########################################
         if self.config['action_type'] == 'waypoint-direction':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
+        elif self.config['action_type'] == 'continuous-normalized':
+            self.action_space = gym.spaces.Box(
+                low=np.array([-1, -1], dtype=np.float32),
+                high=np.array([1, 1], dtype=np.float32),
+                dtype=np.float32)
         else: raise ValueError("Invalid action type")
 
         if self.config['obs_type'] == 'pixel':  # CNN observation space - grayscale 84x84
@@ -85,14 +90,12 @@ class MAISREnvVec(gym.Env):
                 shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
                 dtype=np.uint8  # Change from np.float32 to np.uint8
             )
-
         elif self.config['obs_type'] == 'absolute':
             self.obs_size = 2 + 3 * self.max_targets
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
                 shape=(self.obs_size,),
                 dtype=np.float32)
-
         elif self.config['obs_type'] == 'absolute-1target':
             self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
             self.observation_space = gym.spaces.Box(
@@ -369,6 +372,11 @@ class MAISREnvVec(gym.Env):
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = waypoint
 
+        elif self.config['action_type'] == 'continuous-normalized':
+            waypoint = self.process_action(actions)
+            self.agents[0].waypoint_override = waypoint
+
+
         elif isinstance(actions, dict): # Action is passed in as a dict {agent_id: action}
             for agent_id, action_value in actions.items():
                 waypoint = self.process_action(action_value)
@@ -378,10 +386,6 @@ class MAISREnvVec(gym.Env):
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
 
-        # elif isinstance(actions, (np.int64, np.float32, int)) and self.config['action_type'] == 'waypoint-direction':
-        #     waypoint = self.process_action(actions)
-        #     self.agents[0].waypoint_override = waypoint
-
         else:
             print(f'Action type: {type(actions)}')
             raise ValueError('Actions input is an unknown type')
@@ -389,7 +393,6 @@ class MAISREnvVec(gym.Env):
         # Log actions to action_history plot
         self.action_history.append(self.agents[0].waypoint_override)
         self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
-
 
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
@@ -951,7 +954,7 @@ class MAISREnvVec(gym.Env):
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target']
-        valid_action_types = ['waypoint-direction']  # 'continuous_normalized
+        valid_action_types = ['waypoint-direction', 'continuous-normalized']  # 'continuous_normalized
         valid_render_modes = ['headless', 'human', 'rgb_array']
 
         if self.config['obs_type'] not in valid_obs_types:
@@ -1187,8 +1190,15 @@ class MAISREnvVec(gym.Env):
             x_coord = np.clip(x_coord, -map_half_size, map_half_size)
             y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
-        else:
-            raise ValueError(f'Error in process_action: action type "{self.config['action_type']}" not recognized')
+        elif self.config['action_type'] == 'continuous-normalized':
+            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
+            map_half_size = self.config["gameboard_size"] / 2
+            x_coord = action[0] * map_half_size
+            y_coord = action[1] * map_half_size
+
+        else: raise ValueError(f'Error in process_action: action type "{self.config['action_type']}" not recognized')
 
         waypoint = (float(x_coord), float(y_coord))
 

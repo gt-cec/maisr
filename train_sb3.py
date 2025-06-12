@@ -13,7 +13,7 @@ import torch
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
@@ -411,21 +411,40 @@ def train(
             vf=[env_config['value_network_size'], env_config['value_network_size']]
         ))
 
-    model = PPO(
-        "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
-        env,
-        policy_kwargs=policy_kwargs,
-        verbose=2,
-        tensorboard_log=f"logs/tb_runs/{run.id}",
-        batch_size=env_config['batch_size'],
-        n_steps=env_config['ppo_update_steps'],
-        learning_rate=env_config['lr'],
-        seed=env_config['seed'],
-        device='cpu',
-        gamma=env_config['gamma'],
-        ent_coef=env_config['entropy_regularization'],
-        clip_range=env_config['clip_range']
-    )
+    if env_config['algo'] == 'PPO':
+        model = PPO(
+            "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
+            env,
+            policy_kwargs=policy_kwargs,
+            verbose=2,
+            tensorboard_log=f"logs/tb_runs/{run.id}",
+            batch_size=env_config['batch_size'],
+            n_steps=env_config['ppo_update_steps'],
+            learning_rate=env_config['lr'],
+            seed=env_config['seed'],
+            device='cpu',
+            gamma=env_config['gamma'],
+            ent_coef=env_config['entropy_regularization'],
+            clip_range=env_config['clip_range']
+        )
+    elif env_config['algo'] == 'SAC':
+        model = SAC(
+            "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
+            env,
+            policy_kwargs=policy_kwargs,
+            verbose=2,
+            tensorboard_log=f"logs/tb_runs/{run.id}",
+            batch_size=env_config['batch_size'],
+            n_steps=env_config['ppo_update_steps'],
+            learning_rate=env_config['lr'],
+            seed=env_config['seed'],
+            device='cpu',
+            gamma=env_config['gamma'],
+            ent_coef=env_config['entropy_regularization'],
+            clip_range=env_config['clip_range']
+        )
+    else: raise ValueError('Unsupported algo')
+
     print('Model instantiated')
     print(model.policy)
 

@@ -498,16 +498,38 @@ def test_env_humanplaytest(config, test_dir=None):
     print(f"Human playtest completed. Results saved to {test_dir}")
 
 
-def test_env_random(config, test_dir=None):
+def test_env_random(config, render=False,test_dir=None):
     """Run env for 20 episodes, taking actions by randomly sampling from the action space"""
     print("\nStarting random test...")
 
-    # Create environment
-    env = MAISREnvVec(
-        config=config,
-        render_mode='headless',
-        tag='test_suite'
-    )
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        config['obs_type'] = 'absolute'
+        ctypes.windll.user32.SetProcessDPIAware()
+
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = 80
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
+
+        env = MAISREnvVec(
+            config=config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            num_agents=1,
+            tag='test_suite',
+            seed=config['seed']
+        )
+
+    else:
+        env = MAISREnvVec(
+            config=config,
+            render_mode='headless',
+            tag='test_suite'
+        )
 
     all_observations = []
     episode_rewards = []
@@ -527,6 +549,7 @@ def test_env_random(config, test_dir=None):
 
         while not done and step_count < max_steps:
             # Random action from action space (0-7 for discrete)
+            pygame.event.get()
             action = env.action_space.sample()
             episode_actions.append(action)
 
@@ -535,6 +558,8 @@ def test_env_random(config, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
+            if render:
+                env.render()
             episode_reward += reward * (config['gamma'] ** step_count)
             potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
@@ -809,7 +834,7 @@ def test_cnn_observations(config):
 
 if __name__ == "__main__":
 
-    config = load_env_config('configs/june12a.json')
+    config = load_env_config('configs/sac_test.json')
     config['eval_freq'] = 4900
 
     config['obs_type'] = 'absolute'
@@ -826,9 +851,9 @@ if __name__ == "__main__":
     try:
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
-        test_env_random(config, test_dir=shared_test_dir)
-        test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
+        #test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
+        test_env_random(config, render=True, test_dir=shared_test_dir)
+        #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
         test_env_train(config)
         #test_env_overfit(config)
