@@ -34,7 +34,7 @@
 	"ppo_update_steps": 2048,
 	"entropy_regularization": 0.02,
 	"vf_coef":0.5,
-	"n_epochs":10,
+	"n_epochs":15,
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 

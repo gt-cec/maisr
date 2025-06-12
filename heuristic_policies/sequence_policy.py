@@ -1,5 +1,11 @@
 # Global state to maintain sequence progress and target persistence
+import ctypes
+
 import numpy as np
+import pygame
+
+from env_combined import MAISREnvVec
+from utility.data_logging import load_env_config
 
 _current_sequence = None
 _sequence_index = 0
@@ -7,7 +13,7 @@ _current_target_pos = None
 _last_action = None
 _action_repeat_count = 0
 _max_repeat_count = 3  # Minimum steps to take in same direction
-_target_reached_threshold = 35.0  # Distance threshold to consider target "reached"
+_target_reached_threshold = 0.1  # Distance threshold to consider target "reached"
 
 
 def sequence_policy(observation, target_sequence, state=None, dones=None):
@@ -63,7 +69,7 @@ def sequence_process_single_observation(observation, target_sequence):
     agent_pos = obs[:2]
 
     # Extract target information (matching the environment structure)
-    max_targets = 30  # Match environment's max_targets
+    max_targets = 5  # Match environment's max_targets
     target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
     
     # Find valid targets
@@ -113,6 +119,7 @@ def sequence_process_single_observation(observation, target_sequence):
 
     # Check if we've reached the current target
     distance_to_target = np.linalg.norm(_current_target_pos - agent_pos)
+    print(f'Distance to target is {distance_to_target}')
     
     if distance_to_target <= _target_reached_threshold:
         # Target reached, advance to next in sequence
@@ -272,3 +279,44 @@ def generate_nearest_neighbor_sequence(observation, start_target=0):
         remaining_targets.remove(nearest_target)
     
     return sequence
+
+if __name__ == '__main__':
+
+    config = load_env_config('../configs/june11a.json')
+
+    target_sequence = [3,2,3,2,4]
+
+    pygame.display.init()
+    pygame.font.init()
+    clock = pygame.time.Clock()
+    config['obs_type'] = 'absolute'
+    ctypes.windll.user32.SetProcessDPIAware()
+
+    window_width, window_height = config['window_size'][0], config['window_size'][1]
+    config['tick_rate'] = 80
+    window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+    pygame.display.set_caption("MAISR Human Interface")
+
+    env = MAISREnvVec(
+        config=config,
+        clock=clock,
+        window=window,
+        render_mode='human',
+        num_agents=1,
+        tag='test_suite',
+        seed=config['seed']
+    )
+
+
+    while True:
+        terminated, truncated = False, False
+        while not (terminated or truncated):
+            pygame.event.get()
+            current_obs = env.get_observation() if hasattr(env, 'get_observation') else env.observation
+
+            sequence_action = sequence_policy(current_obs, target_sequence)
+
+            obs, reward, terminated, truncated, info = env.step(sequence_action)
+            env.render()
+
+        env.reset()

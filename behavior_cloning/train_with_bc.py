@@ -224,10 +224,10 @@ def evaluate_bc_policy(
 if __name__ == "__main__":
 
     ################### Set parameters ###################
-    config_name = '../config_files/june9_cloning.json'
-    train_new = False
+    config_name = '../config_files/bigmap.json'
+    train_new = True
     sweep = False
-    evaluate = True
+    evaluate = False
 
     # For eval, load trained BC model from path
     load_path = 'bc_models/bcpolicy_5keps_10rewardavg.zip'
@@ -289,8 +289,9 @@ if __name__ == "__main__":
     print('#######################################################################')
 
     if train_new:
+        print(f'Training policy with saved trajectories... ')
         train_with_bc(
-            expert_trajectory_path = './expert_trajectories/expert_trajectory_200episodes_0609_1408',
+            expert_trajectory_path = './expert_trajectories/experttraj_mp_1000map_30tgts_10000eps_0611_1745',
             env_config=env_config,
             bc_config=bc_config,
             run_name=run_name
