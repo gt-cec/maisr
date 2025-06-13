@@ -1495,8 +1495,8 @@ class MAISREnvVec(gym.Env):
                             label='End Position')
 
             # Add a colorbar to show time progression
-            cbar = plt.colorbar(aspect=50)
-            cbar.set_label('Episode progress')
+            cbar = plt.colorbar(aspect=70)
+            cbar.set_label('Episode Progress')
 
             # Add grid lines centered at origin
             plt.grid(True, alpha=0.3)
@@ -1513,17 +1513,18 @@ class MAISREnvVec(gym.Env):
             plt.title(plot_title)
 
             # Add a legend
-            plt.legend(loc='upper right', fontsize='small')
+            #plt.legend(loc='upper right', fontsize='x-small')
+            plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3, fontsize='x-small')
 
             # Add centered quadrant lines (origin at center)
             plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Horizontal line at y=0
             plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Vertical line at x=0
 
             # Optional: Add boundary lines to show map edges
-            plt.axhline(y=map_half_size, color='red', linestyle='--', alpha=0.3, label='Map Boundary')
-            plt.axhline(y=-map_half_size, color='red', linestyle='--', alpha=0.3)
-            plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
-            plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
+            #plt.axhline(y=map_half_size, color='red', linestyle='--', alpha=0.3, label='Map Boundary')
+            #plt.axhline(y=-map_half_size, color='red', linestyle='--', alpha=0.3)
+            #plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
+            #plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
             
             # Save the figure with a timestamp
             filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
