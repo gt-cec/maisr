@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 1,
-	"max_steps": 9000,
+	"max_steps": 15000,
 
 	"num_targets": 15,
 	"time_to_id": 0,
@@ -16,7 +16,7 @@
 
 	"obs_type": "nearest",
 	"num_observed_targets": 4,
-	"action_type": "waypoint-direction",
+	"action_type": "Discrete16",
 
 	"highqual_regulartarget_reward": 0,
 	"highqual_highvaltarget_reward": 0,

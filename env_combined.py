@@ -75,8 +75,12 @@ class MAISREnvVec(gym.Env):
         self.max_targets = 30
 
         ######################################### OBSERVATION AND ACTION SPACES ########################################
-        if self.config['action_type'] == 'waypoint-direction':
+        if self.config['action_type'] == 'Discrete8':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
+
+        elif self.config['action_type'] == 'Discrete16':
+            self.action_space = gym.spaces.Discrete(16)  # 8 directions
+
         elif self.config['action_type'] == 'continuous-normalized':
             self.action_space = gym.spaces.Box(
                 low=np.array([-1, -1], dtype=np.float32),
@@ -379,14 +383,13 @@ class MAISREnvVec(gym.Env):
 
 
         ############################################### Process actions ################################################
-        if self.config['action_type'] == 'waypoint-direction' and isinstance(actions, (np.int64, np.float32, int)):
+        if self.config['action_type'] in ['Discrete8', 'Discrete16'] and isinstance(actions, (np.int64, np.float32, int)):
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = waypoint
 
         elif self.config['action_type'] == 'continuous-normalized':
             waypoint = self.process_action(actions)
             self.agents[0].waypoint_override = waypoint
-
 
         elif isinstance(actions, dict): # Action is passed in as a dict {agent_id: action}
             for agent_id, action_value in actions.items():
@@ -1060,7 +1063,7 @@ class MAISREnvVec(gym.Env):
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
-        valid_action_types = ['waypoint-direction', 'continuous-normalized']  # 'continuous_normalized
+        valid_action_types = ['Discrete8', 'Discrete16', 'continuous-normalized']  # 'continuous_normalized
         valid_render_modes = ['headless', 'human', 'rgb_array']
 
         if self.config['obs_type'] not in valid_obs_types:
@@ -1246,7 +1249,7 @@ class MAISREnvVec(gym.Env):
     
     def process_action(self, action):
         """
-        If the action type is waypoint-direction, this converts the discrete action chosen into an x,y in the appropriate direction
+        If the action type is Discrete8, this converts the discrete action chosen into an x,y in the appropriate direction
 
         Args:
             action (ndarray, size 1): Agent discrete action to convert to waypoint coords
@@ -1261,7 +1264,7 @@ class MAISREnvVec(gym.Env):
             if action.ndim == 0 or (action.ndim == 1 and action.size == 1):
                 action = action.item()  # Use .item() instead of indexing
 
-        if self.config['action_type'] == 'waypoint-direction':
+        if self.config['action_type'] == 'Discrete8':
             # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
             direction_map = {
                 0: (0, 1),  # up
@@ -1277,15 +1280,9 @@ class MAISREnvVec(gym.Env):
             # Get current agent position
             current_x = self.agents[self.aircraft_ids[0]].x
             current_y = self.agents[self.aircraft_ids[0]].y
-
-            # Get direction vector and normalize it
-
             if isinstance(action, np.ndarray):
-                #print(f'Action came into proc_ac as {action} {type(action)}')
-                try:
-                    action = int(action)
-                except:
-                    action = int(action[0])
+                try: action = int(action)
+                except: action = int(action[0])
 
             dx, dy = direction_map[action]
             length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
@@ -1293,6 +1290,49 @@ class MAISREnvVec(gym.Env):
             dy_norm = dy / length
 
             # Calculate waypoint 50 pixels away in chosen direction
+            waypoint_distance = 50
+            x_coord = current_x + (dx_norm * waypoint_distance)
+            y_coord = current_y + (dy_norm * waypoint_distance)
+
+            # Clip to map boundaries
+            map_half_size = self.config["gameboard_size"] / 2
+            x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+            y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+
+        if self.config['action_type'] == 'Discrete16':
+            direction_map = {
+                0: (0, 1),  # North (0°)
+                1: (0.383, 0.924),  # NNE (22.5°)
+                2: (0.707, 0.707),  # NE (45°)
+                3: (0.924, 0.383),  # ENE (67.5°)
+                4: (1, 0),  # East (90°)
+                5: (0.924, -0.383),  # ESE (112.5°)
+                6: (0.707, -0.707),  # SE (135°)
+                7: (0.383, -0.924),  # SSE (157.5°)
+                8: (0, -1),  # South (180°)
+                9: (-0.383, -0.924),  # SSW (202.5°)
+                10: (-0.707, -0.707),  # SW (225°)
+                11: (-0.924, -0.383),  # WSW (247.5°)
+                12: (-1, 0),  # West (270°)
+                13: (-0.924, 0.383),  # WNW (292.5°)
+                14: (-0.707, 0.707),  # NW (315°)
+                15: (-0.383, 0.924)  # NNW (337.5°)
+            }
+
+            current_x = self.agents[self.aircraft_ids[0]].x
+            current_y = self.agents[self.aircraft_ids[0]].y
+
+            # Get normalized direction vector
+            if isinstance(action, np.ndarray):
+                try: action = int(action)
+                except: action = int(action[0])
+
+            # Handle actions outside the 16-direction range
+            #action = action % 16
+
+            dx_norm, dy_norm = direction_map[action]
+
+            # Calculate waypoint at fixed distance in chosen direction
             waypoint_distance = 50
             x_coord = current_x + (dx_norm * waypoint_distance)
             y_coord = current_y + (dy_norm * waypoint_distance)
