@@ -501,11 +501,27 @@ class MAISREnvVec(gym.Env):
 
 
     def get_reward(self, new_reward, potential_gain):
+
+        # Check if agent is inside threat radius and apply penalty # TODO make this per agent
+        apply_threat_penalty = False
+        if hasattr(self, 'threat'):
+            for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+                aircraft_pos = np.array([aircraft.x, aircraft.y])
+                threat_pos = np.array([self.threat[0], self.threat[1]])
+                distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+
+                if distance_to_threat <= self.threat[2]:  # threat[2] is the radius
+                    apply_threat_penalty = True
+
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty'])
+
+        if apply_threat_penalty:
+            reward -= self.config['inside_threat_penalty']
+            print(f'Penalty for being inside threat range')
 
         return reward
 

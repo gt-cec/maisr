@@ -1,6 +1,6 @@
 {
 	"notes": "1 target, agent observes vector to nearest target",
-	"window_size": [500,500],
+	"window_size": [1000,1000],
 	"tick_rate": 10,
 	"time_limit": 245,
 	"game_speed": 0.07,
@@ -11,6 +11,7 @@
 	"num_targets": 15,
 	"time_to_id": 0,
 	"prob_detect": 0,
+
 
 	"seed": 42,
 
@@ -24,6 +25,7 @@
 	"shaping_coeff_prox": 0.21,
 	"shaping_coeff_earlyfinish": 0.0000,
 	"shaping_time_penalty": -0.0000,
+	"inside_threat_penalty": 0.01,
 
 	"verbose": false,
 	"algo": "PPO",

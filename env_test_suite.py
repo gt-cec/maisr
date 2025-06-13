@@ -402,16 +402,38 @@ def test_env_humanplaytest(config, test_dir=None):
     )
 
     # Mapping numpad keys to actions
-    key_to_action = {
-        pygame.K_KP8: 4,  # up
-        pygame.K_KP9: 3,  # up-right
-        pygame.K_KP6: 2,  # right
-        pygame.K_KP3: 1,  # down-right
-        pygame.K_KP2: 0,  # down
-        pygame.K_KP1: 7,  # down-left
-        pygame.K_KP4: 6,  # left
-        pygame.K_KP7: 5  # up-left
-    }
+    if config['action_type'] == 'Discrete16':
+        key_to_action = {
+            pygame.K_KP8: 4,  # up
+            pygame.K_KP9: 3,  # up-right
+            pygame.K_KP6: 2,  # right
+            pygame.K_KP3: 1,  # down-right
+            pygame.K_KP2: 0,  # down
+            pygame.K_KP1: 7,  # down-left
+            pygame.K_KP4: 6,  # left
+            pygame.K_KP7: 5,  # up-left
+            pygame.K_1: 8,
+            pygame.K_2: 9,
+            pygame.K_3: 10,
+            pygame.K_4: 11,
+            pygame.K_5: 12,
+            pygame.K_6: 13,
+            pygame.K_7: 14,
+            pygame.K_8: 15,
+        }
+    elif config['action_type'] == 'Discrete8':
+        key_to_action = {
+            pygame.K_KP8: 4,  # up
+            pygame.K_KP9: 3,  # up-right
+            pygame.K_KP6: 2,  # right
+            pygame.K_KP3: 1,  # down-right
+            pygame.K_KP2: 0,  # down
+            pygame.K_KP1: 7,  # down-left
+            pygame.K_KP4: 6,  # left
+            pygame.K_KP7: 5  # up-left
+        }
+    else:
+        raise ValueError('ENV TEST: Unknown action type')
 
     all_observations = []
     episode_rewards = []
@@ -1105,11 +1127,9 @@ def plot_reward_surface_3d(config, test_dir=None):
 #     return fig, ax
 
 
-
-
 if __name__ == "__main__":
 
-    config = load_env_config('configs/june13_greedy.json')
+    config = load_env_config('configs/june13_nearest_n.json')
 
     shared_test_dir = create_test_directory()
     print("\nStarting Environment Test Suite...")
@@ -1117,8 +1137,8 @@ if __name__ == "__main__":
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
-        plot_reward_surface_3d(config, test_dir=shared_test_dir)
-        #test_env_humanplaytest(config, test_dir=shared_test_dir)
+        #plot_reward_surface_3d(config, test_dir=shared_test_dir)
+        test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
         #test_env_heuristic(improved_heuristic_policy, config, render=False, test_dir=shared_test_dir)
         #test_env_random(config, render=True, test_dir=shared_test_dir)
