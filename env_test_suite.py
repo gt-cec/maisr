@@ -206,7 +206,6 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
         pygame.display.init()
         pygame.font.init()
         clock = pygame.time.Clock()
-        config['obs_type'] = 'absolute'
         ctypes.windll.user32.SetProcessDPIAware()
 
         window_width, window_height = config['window_size'][0], config['window_size'][1]
@@ -224,6 +223,14 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
             seed=config['seed']
         )
 
+    else:
+        env = MAISREnvVec(
+            config=config,
+            render_mode='headless',
+            num_agents=1,
+            tag='test_suite',
+            seed=config['seed']
+        )
     all_observations = []
     episode_rewards = []
     all_actions = []
@@ -239,7 +246,8 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
         done = False
 
         while not done:
-            pygame.event.get()
+            if render:
+                pygame.event.get()
             # Get action from heuristic
             action = heuristic(obs, None, False)
             episode_actions.append(action)
@@ -249,7 +257,7 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
-            env.render()
+            if render: env.render()
             reward_history.append(reward)
             potential_gain_history.append(info["outerstep_potential_gain"])
             episode_reward += reward
@@ -283,7 +291,6 @@ def test_env_badheuristic(badheuristic, config, render=False,test_dir=None):
         pygame.display.init()
         pygame.font.init()
         clock = pygame.time.Clock()
-        config['obs_type'] = 'absolute'
         ctypes.windll.user32.SetProcessDPIAware()
 
         window_width, window_height = config['window_size'][0], config['window_size'][1]
@@ -368,7 +375,6 @@ def test_env_humanplaytest(config, test_dir=None):
     pygame.init()
     clock = pygame.time.Clock()
 
-    config['obs_type'] = 'absolute'
 
     # Disable display scaling for high-res monitors
     ctypes.windll.user32.SetProcessDPIAware()
@@ -449,7 +455,7 @@ def test_env_humanplaytest(config, test_dir=None):
             obs, reward, terminated, truncated, info = env.step(action)
             #print(f'Agent: {obs[0]}, {obs[1]} | Target 1: {obs[2]} | Target 2: {obs[3]}')
             episode_reward += reward# * (config['gamma'] ** step_count)
-            print(info["outerstep_potential_gain"])
+            #print(info["outerstep_potential_gain"])
             potential_gain_history.append(info["outerstep_potential_gain"])
             done = terminated or truncated
             step_count += 1
@@ -832,32 +838,294 @@ def test_cnn_observations(config):
     env_vector.close()
     print("\n✓ CNN observation test completed successfully!")
 
+
+def plot_reward_surface_3d(config, test_dir=None):
+    """
+    Plot a 3D surface showing reward as a function of targets identified and steps taken,
+    including potential-based shaping reward applied every step.
+
+    Args:
+        config: Configuration dictionary containing reward parameters
+        test_dir: Directory to save the plot (optional)
+    """
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    import numpy as np
+    from scipy.interpolate import RectBivariateSpline
+
+    # Create ranges for the two variables
+    max_targets = 5
+    max_steps = 490
+    gameboard_size = config.get('gameboard_size', 300)
+
+    targets_range = np.arange(0, max_targets + 1)
+    steps_range = np.linspace(1, max_steps, 100)
+
+    # Create meshgrid
+    targets_mesh, steps_mesh = np.meshgrid(targets_range, steps_range)
+
+    # Calculate reward for each combination
+    reward_mesh = np.zeros_like(targets_mesh, dtype=float)
+
+    for i, steps in enumerate(steps_range):
+        for j, targets in enumerate(targets_range):
+            # Calculate main reward components
+            target_reward = targets * config['highqual_regulartarget_reward']
+
+            # Time penalty (accumulated over steps)
+            time_penalty = steps * config['shaping_time_penalty']
+
+            # Early finish bonus (if all targets found before max steps)
+            early_finish_bonus = 0
+            if targets >= max_targets and steps < max_steps:
+                early_finish_bonus = (max_steps - steps) * config['shaping_coeff_earlyfinish']
+
+            # SHAPING REWARD: Estimate potential-based reward over the episode
+            # This simulates the cumulative shaping reward from approaching targets
+            remaining_targets = max_targets - targets
+
+            if remaining_targets > 0:
+                # Estimate average distance improvement per step
+                # Assume agent starts at distance ~0.7 from nearest target and moves optimally
+                avg_initial_distance = 0.7  # Normalized distance
+                avg_final_distance = 0.1  # Close enough to identify target
+
+                # Total distance improvement needed for remaining targets
+                total_distance_improvement = remaining_targets * (avg_initial_distance - avg_final_distance)
+
+                # Distribute this improvement over the steps taken
+                steps_per_target = steps / max(1, targets)  # Average steps per identified target
+                estimated_steps_remaining = remaining_targets * steps_per_target
+
+                # Calculate potential-based shaping reward
+                # This represents cumulative reward from getting closer to targets
+                potential_shaping = (total_distance_improvement *
+                                     config['shaping_coeff_prox'] *
+                                     (300 / gameboard_size) *
+                                     steps)
+            else:
+                potential_shaping = 0
+
+            # Total reward including shaping
+            total_reward = (target_reward +
+                            time_penalty +
+                            early_finish_bonus +
+                            potential_shaping)
+
+            reward_mesh[i, j] = total_reward
+
+    # Create interpolation for smoother surface
+    spline = RectBivariateSpline(steps_range, targets_range, reward_mesh)
+
+    # Create finer grid for smooth visualization
+    steps_fine = np.linspace(1, max_steps, 200)
+    targets_fine = np.linspace(0, max_targets, 200)
+    steps_mesh_fine, targets_mesh_fine = np.meshgrid(steps_fine, targets_fine)
+
+    # Interpolate to fine grid
+    reward_mesh_fine = spline(steps_fine, targets_fine).T
+
+    # Create the 3D plot
+    fig = plt.figure(figsize=(14, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the surface with interpolated data
+    surf = ax.plot_surface(targets_mesh_fine, steps_mesh_fine, reward_mesh_fine,
+                           cmap='coolwarm', alpha=0.7, edgecolor='none')
+
+    # Add filled contours for rich color gradations
+    contourf = ax.contourf(targets_mesh_fine, steps_mesh_fine, reward_mesh_fine,
+                           levels=40, cmap='coolwarm', alpha=0.9,
+                           offset=np.min(reward_mesh_fine))
+
+    # Add contour lines
+    # contours = ax.contour(targets_mesh_fine, steps_mesh_fine, reward_mesh_fine,
+    #                       levels=20, cmap='coolwarm', alpha=0.6,
+    #                       offset=np.min(reward_mesh_fine), linewidths=0.5)
+
+    # Labels and title
+    ax.set_xlabel('Targets Identified')
+    ax.set_ylabel('Steps Taken')
+    ax.set_zlabel('Reward Value (Including Shaping)')
+    ax.set_title('Reward Function Surface with Per-Step Shaping\n(Targets Identified vs Steps Taken)')
+
+    # Add colorbar
+    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='Total Reward')
+
+    # Add key points
+    max_reward_targets = max_targets
+    min_steps_for_all_targets = 70
+
+    # Calculate rewards for key points using original mesh
+    optimal_idx_targets = max_targets
+    optimal_idx_steps = np.argmin(np.abs(steps_range - min_steps_for_all_targets))
+    max_reward = reward_mesh[optimal_idx_steps, optimal_idx_targets]
+
+    worst_idx_steps = -1  # Last element (max steps)
+    worst_idx_targets = 0
+    worst_reward = reward_mesh[worst_idx_steps, worst_idx_targets]
+
+    ax.scatter([max_reward_targets], [min_steps_for_all_targets], [max_reward],
+               color='gold', s=150, label='Optimal (All targets, min steps)')
+
+    ax.scatter([0], [max_steps], [worst_reward],
+               color='black', s=150, label='Worst case (No targets, max steps)')
+
+    ax.legend()
+
+    # Adjust viewing angle for better visualization
+    ax.view_init(elev=30, azim=135)
+
+    plt.tight_layout()
+
+    # Save the plot if directory provided
+    if test_dir:
+        plt.savefig(f"{test_dir}/reward_surface_3d_with_shaping.png", dpi=300, bbox_inches='tight')
+        print(f"3D reward surface with shaping plot saved to {test_dir}/reward_surface_3d_with_shaping.png")
+
+    plt.show()
+
+    # Print detailed statistics
+    print(f"\nReward Surface Statistics (Including Shaping):")
+    print(f"Maximum possible reward: {np.max(reward_mesh_fine):.2f}")
+    print(f"Minimum possible reward: {np.min(reward_mesh_fine):.2f}")
+    print(f"Reward range: {np.max(reward_mesh_fine) - np.min(reward_mesh_fine):.2f}")
+    print(f"Optimal strategy reward: {max_reward:.2f}")
+    print(f"Worst case reward: {worst_reward:.2f}")
+
+    # Show the impact of shaping
+    print(f"\nShaping Coefficient: {config['shaping_coeff_prox']}")
+    print(f"Time Penalty per step: {config['shaping_time_penalty']}")
+    print(f"Target reward: {config['highqual_regulartarget_reward']} per target")
+
+    return fig, ax
+
+# def plot_reward_surface_3d(config, test_dir=None):
+#     """
+#     Plot a 3D surface showing reward as a function of targets identified and steps taken.
+#
+#     Args:
+#         config: Configuration dictionary containing reward parameters
+#         test_dir: Directory to save the plot (optional)
+#     """
+#     import matplotlib.pyplot as plt
+#     from mpl_toolkits.mplot3d import Axes3D
+#     import numpy as np
+#
+#     # Create ranges for the two variables
+#     max_targets = 5
+#     max_steps = 490  # Convert to outer steps
+#
+#     targets_range = np.arange(0, max_targets + 1)
+#     steps_range = np.linspace(1, max_steps, 50)  # 50 points for smooth surface
+#
+#     # Create meshgrid
+#     targets_mesh, steps_mesh = np.meshgrid(targets_range, steps_range)
+#
+#     # Calculate reward for each combination
+#     reward_mesh = np.zeros_like(targets_mesh, dtype=float)
+#
+#     for i, steps in enumerate(steps_range):
+#         for j, targets in enumerate(targets_range):
+#             # Calculate reward components based on get_reward function
+#             target_reward = targets * config['highqual_regulartarget_reward']
+#
+#             # Time penalty (accumulated over steps)
+#             time_penalty = steps * config['shaping_time_penalty']
+#
+#             # Early finish bonus (if all targets found before max steps)
+#             early_finish_bonus = 0
+#             if targets >= max_targets and steps < max_steps:
+#                 early_finish_bonus = (max_steps - steps) * config['shaping_coeff_earlyfinish']
+#
+#             # Total reward (excluding potential-based shaping which varies by position)
+#             total_reward = target_reward + time_penalty + early_finish_bonus
+#             reward_mesh[i, j] = total_reward
+#
+#     # Create the 3D plot
+#     fig = plt.figure(figsize=(12, 9))
+#     ax = fig.add_subplot(111, projection='3d')
+#
+#     # Plot the surface with red-to-blue colormap
+#     surf = ax.plot_surface(targets_mesh, steps_mesh, reward_mesh,
+#                            cmap='coolwarm', alpha=0.8, edgecolor='none')
+#
+#     # Add contour lines at the bottom with matching colormap
+#     contours = ax.contour(targets_mesh, steps_mesh, reward_mesh,
+#                           levels=100, cmap='coolwarm', alpha=0.6, offset=np.min(reward_mesh))
+#
+#
+#     # Labels and title
+#     ax.set_xlabel('Targets Identified')
+#     ax.set_ylabel('Steps Taken')
+#     ax.set_zlabel('Reward Value')
+#     ax.set_title('Reward Function Surface\n(Targets Identified vs Steps Taken)')
+#
+#     # Add colorbar
+#     fig.colorbar(surf, ax=ax, shrink=0.5, aspect=20, label='Reward')
+#
+#     # Add some key points
+#     # Maximum reward point (all targets, minimum steps)
+#     max_reward_targets = max_targets
+#     min_steps_for_all_targets = 70
+#     max_reward = max_reward_targets * config['highqual_regulartarget_reward'] + \
+#                  min_steps_for_all_targets * config['shaping_time_penalty'] + \
+#                  (max_steps - min_steps_for_all_targets) * config['shaping_coeff_earlyfinish']
+#
+#     ax.scatter([max_reward_targets], [min_steps_for_all_targets], [max_reward],
+#                color='gold', s=100, label='Optimal (All targets, min steps)')
+#
+#     # Zero targets, max steps (worst case)
+#     worst_reward = 0 * config['highqual_regulartarget_reward'] + \
+#                    max_steps * config['shaping_time_penalty']
+#     ax.scatter([0], [max_steps], [worst_reward],
+#                color='black', s=100, label='Worst case (No targets, max steps)')
+#
+#     ax.legend()
+#
+#     # Adjust viewing angle for better visualization
+#     ax.view_init(elev=30, azim=135)
+#
+#     plt.tight_layout()
+#
+#     # Save the plot if directory provided
+#     if test_dir:
+#         plt.savefig(f"{test_dir}/reward_surface_3d.png", dpi=300, bbox_inches='tight')
+#         print(f"3D reward surface plot saved to {test_dir}/reward_surface_3d.png")
+#
+#     plt.show()
+#
+#     # Print some key statistics
+#     print(f"\nReward Surface Statistics:")
+#     print(f"Maximum possible reward: {np.max(reward_mesh):.2f}")
+#     print(f"Minimum possible reward: {np.min(reward_mesh):.2f}")
+#     print(f"Reward range: {np.max(reward_mesh) - np.min(reward_mesh):.2f}")
+#     print(f"Optimal strategy: Identify all {max_targets} targets in minimum steps")
+#
+#     return fig, ax
+
+
+
+
 if __name__ == "__main__":
 
-    config = load_env_config('configs/sac_test.json')
-    config['eval_freq'] = 4900
+    config = load_env_config('configs/june13_greedy.json')
 
-    config['obs_type'] = 'absolute'
-    config['n_eval_episodes'] = 5
-
-
+    shared_test_dir = create_test_directory()
     print("\nStarting Environment Test Suite...")
     print("=" * 50)
-
-    # Create shared test directory for all tests
-    shared_test_dir = create_test_directory()
     print(f"All test results will be saved to: {shared_test_dir}")
 
     try:
+        plot_reward_surface_3d(config, test_dir=shared_test_dir)
         #test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        #test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
-        test_env_random(config, render=True, test_dir=shared_test_dir)
+        #test_env_heuristic(improved_heuristic_policy, config, render=False, test_dir=shared_test_dir)
+        #test_env_random(config, render=True, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)
-        test_env_train(config)
+        #test_env_train(config)
         #test_env_overfit(config)
-        pass
 
     except KeyboardInterrupt: print("\nTest suite interrupted by user.")
     except Exception as e:

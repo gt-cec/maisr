@@ -96,12 +96,22 @@ class MAISREnvVec(gym.Env):
                 low=-1, high=1,
                 shape=(self.obs_size,),
                 dtype=np.float32)
-        elif self.config['obs_type'] == 'absolute-1target':
-            self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
+
+        elif self.config['obs_type'] == 'nearest':
+            self.obs_size = 2 * self.config['num_observed_targets']  # x,y components of unit vector
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
                 shape=(self.obs_size,),
                 dtype=np.float32)
+            if self.tag == 'train_mp0':
+                print(f'Using obs space size {self.obs_size}')
+
+        # elif self.config['obs_type'] == 'absolute-1target':
+        #     self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
+        #     self.observation_space = gym.spaces.Box(
+        #         low=-1, high=1,
+        #         shape=(self.obs_size,),
+        #         dtype=np.float32)
         else: raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
@@ -228,8 +238,7 @@ class MAISREnvVec(gym.Env):
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
         #print(f'using {self.num_levels} levels for difficulty {self.difficulty}')
 
-        self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
-        #print(f'using {len(self.start_locations)} start locations for difficulty {self.difficulty}')
+
 
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
@@ -286,16 +295,18 @@ class MAISREnvVec(gym.Env):
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
 
         # Set agent start location
-        if self.tag in ['eval','test_suite']:
-            start_loc_index = self.episode_counter % len(self.start_locations)
-            #print(f'start loc index = {(self.episode_counter)} % {len(self.start_locations)} = {start_loc_index}')
-        else:
-            start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
-            #print(f'start loc index = {(self.episode_counter + int(self.tag[-1]))} % {len(self.start_locations)} = {start_loc_index}')
-
         map_half_size = self.config["gameboard_size"] / 2
-        agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
-        #print(f'Agent spawned at {agent_x}, {agent_y}')
+        if self.config["agent_start_locations_per_lesson"][str(self.difficulty)] == 99:
+            agent_x, agent_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
+        else:
+            self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
+
+            if self.tag in ['eval','test_suite']: start_loc_index = self.episode_counter % len(self.start_locations)
+            else: start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+
+            #map_half_size = self.config["gameboard_size"] / 2
+            agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
+            #print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
         ############################################# Create the aircraft ##############################################
@@ -533,6 +544,9 @@ class MAISREnvVec(gym.Env):
         if self.config['obs_type'] == 'absolute':
             self.observation = self.get_observation_alltargets()
 
+        elif self.config['obs_type'] == 'nearest':
+            self.observation = self.get_observation_nearest_n()
+
         elif self.config['obs_type'] == 'absolute-1target':
             self.observation = self.get_observation_1target()
 
@@ -541,6 +555,98 @@ class MAISREnvVec(gym.Env):
 
         return self.observation
 
+    def get_observation_nearest(self):
+        """
+        State will include the following features:
+            0 unit_vector_x,           # (-1 to +1) x component of unit vector to nearest unknown target
+            1 unit_vector_y,           # (-1 to +1) y component of unit vector to nearest unknown target
+        """
+
+        self.observation = np.zeros(2, dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:self.num_targets, 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.num_targets, 2]  # info levels
+
+        unknown_mask = target_info_levels < 1.0 # Create mask for unknown targets (info_level < 1.0)
+
+        if np.any(unknown_mask):
+            unknown_positions = target_positions[unknown_mask]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+            nearest_idx = np.argmin(distances)
+
+            nearest_target_pos = unknown_positions[nearest_idx]
+            vector_to_target = nearest_target_pos - agent_pos
+
+            distance = np.linalg.norm(vector_to_target)
+
+            if distance > 0:
+                unit_vector = vector_to_target / distance
+                self.observation[0] = unit_vector[0]
+                self.observation[1] = unit_vector[1]
+            else: # Agent is exactly at target position
+
+                self.observation[0] = 0.0
+                self.observation[1] = 0.0
+        else: # No unknown targets remaining, return zero vector
+
+            self.observation[0] = 0.0
+            self.observation[1] = 0.0
+
+        #print(self.observation)
+        return self.observation
+
+    def get_observation_nearest_n(self):
+        """
+        State will include the following features:
+            For each of the N nearest unknown targets:
+                unit_vector_x,           # (-1 to +1) x component of unit vector to target
+                unit_vector_y,           # (-1 to +1) y component of unit vector to target
+        """
+
+        # Get N from config
+        N = self.config['num_observed_targets']
+
+        # Initialize observation array (2 * N for x,y components of N targets)
+        self.observation = np.zeros(2 * N, dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:self.num_targets, 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.num_targets, 2]  # info levels
+
+        unknown_mask = target_info_levels < 1.0  # Create mask for unknown targets (info_level < 1.0)
+
+        if np.any(unknown_mask):
+            unknown_positions = target_positions[unknown_mask]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+
+            # Get indices of N nearest targets (or all if fewer than N)
+            num_targets_to_use = min(N, len(distances))
+            nearest_indices = np.argsort(distances)[:num_targets_to_use]
+
+            # Fill observation with unit vectors to nearest N targets
+            for i in range(num_targets_to_use):
+                target_idx = nearest_indices[i]
+                target_pos = unknown_positions[target_idx]
+                vector_to_target = target_pos - agent_pos
+
+                distance = np.linalg.norm(vector_to_target)
+
+                if distance > 0:
+                    unit_vector = vector_to_target
+                    self.observation[i * 2] = unit_vector[0]  # x component
+                    self.observation[i * 2 + 1] = unit_vector[1]  # y component
+                else:
+                    # Agent is exactly at target position
+                    self.observation[i * 2] = 0.0
+                    self.observation[i * 2 + 1] = 0.0
+
+        # If no unknown targets remaining, observation stays all zeros
+        return self.observation
 
     def get_observation_1target(self):
         """
@@ -953,7 +1059,7 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
     def check_valid_config(self):
-        valid_obs_types = ['absolute', 'pixel', 'absolute-1target']
+        valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
         valid_action_types = ['waypoint-direction', 'continuous-normalized']  # 'continuous_normalized
         valid_render_modes = ['headless', 'human', 'rgb_array']
 
@@ -1051,7 +1157,7 @@ class MAISREnvVec(gym.Env):
 
         # Render title
         if self.config['num aircraft'] > 1:
-            if self.detections >= 5:
+            if self.detections >= 3:
                 title_surface = title_font.render('GAME OVER (>5 DETECTIONS)', True, (0, 0, 0))
         elif self.display_time/1000 >= self.config['time_limit']:
             title_surface = title_font.render('GAME COMPLETE: TIME UP', True, (0, 0, 0))
@@ -1148,6 +1254,12 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
+
+        if isinstance(action, np.ndarray):
+            if action.ndim > 1:
+                action = action.flatten()
+            if action.ndim == 0 or (action.ndim == 1 and action.size == 1):
+                action = action.item()  # Use .item() instead of indexing
 
         if self.config['action_type'] == 'waypoint-direction':
             # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
@@ -1339,7 +1451,7 @@ class MAISREnvVec(gym.Env):
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
         #print(f'num_levels: {self.num_levels}')
         self.episodes_to_plot = []
-        for j in range(self.num_levels):
+        for j in range(min(self.num_levels,5)):
             self.episodes_to_plot.extend([1+j, 2+j, 5+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
             self.episodes_to_plot.extend([(50 * i) + j for i in range(80)])
         self.episodes_to_plot = list(set(self.episodes_to_plot))

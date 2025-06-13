@@ -182,6 +182,7 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
+                    #print(f'agent action: {action} (type: {type(action)})')
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
@@ -431,17 +432,15 @@ def train(
         model = SAC(
             "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
             env,
-            policy_kwargs=policy_kwargs,
+            #policy_kwargs=policy_kwargs,
             verbose=2,
             tensorboard_log=f"logs/tb_runs/{run.id}",
             batch_size=env_config['batch_size'],
-            n_steps=env_config['ppo_update_steps'],
             learning_rate=env_config['lr'],
             seed=env_config['seed'],
             device='cpu',
             gamma=env_config['gamma'],
             ent_coef=env_config['entropy_regularization'],
-            clip_range=env_config['clip_range']
         )
     else: raise ValueError('Unsupported algo')
 
