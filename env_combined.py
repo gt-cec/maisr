@@ -242,8 +242,6 @@ class MAISREnvVec(gym.Env):
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
         #print(f'using {self.num_levels} levels for difficulty {self.difficulty}')
 
-
-
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
@@ -294,6 +292,13 @@ class MAISREnvVec(gym.Env):
         self.target_timers = np.zeros(self.num_targets, dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
+
+        # Create a single threat at random location
+        self.threat = np.zeros(3, dtype=np.float32)  # [x_pos, y_pos, radius]
+        margin = map_half_size * 0.03  # 3% margin from edges
+        self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # x position
+        self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
+        self.threat[2] = 50.0  # radius in pixels
 
         # Decay shaping rewards
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
@@ -793,6 +798,24 @@ class MAISREnvVec(gym.Env):
                 # Add black border to make them stand out against white background
                 pygame.draw.circle(surface, (0, 0, 0), (int(screen_x), int(screen_y)), base_size, 2)
 
+        # Draw the threat for pixel observations
+        if hasattr(self, 'threat'):
+            threat_screen_x = int(self.threat[0] + map_half_size)
+            threat_screen_y = int(self.threat[1] + map_half_size)
+            threat_radius = int(self.threat[2])
+
+            # Draw circle (lighter for pixel obs)
+            pygame.draw.circle(surface, (200, 200, 0), (threat_screen_x, threat_screen_y), threat_radius, 2)
+
+            # Draw upside-down triangle
+            triangle_size = 12
+            triangle_points = [
+                (threat_screen_x, threat_screen_y + triangle_size),
+                (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+                (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+            ]
+            pygame.draw.polygon(surface, (200, 200, 0), triangle_points)
+
     def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
         """Utility function for drawing a square box to a specific surface"""
         pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge),
@@ -842,6 +865,26 @@ class MAISREnvVec(gym.Env):
             screen_x = target[3] + map_half_size
             screen_y = target[4] + map_half_size
             pygame.draw.circle(self.window, target_color, (float(screen_x), float(screen_y)), target_width)
+
+        # Draw the threat (gold upside-down triangle with circle)
+        if hasattr(self, 'threat'):
+            map_half_size = self.config["gameboard_size"] / 2
+            threat_screen_x = int(self.threat[0] + map_half_size)
+            threat_screen_y = int(self.threat[1] + map_half_size)
+            threat_radius = int(self.threat[2])
+
+            # Draw the circle around the threat
+            pygame.draw.circle(self.window, (255, 215, 0), (threat_screen_x, threat_screen_y), threat_radius,
+                               3)  # Gold circle outline
+
+            # Draw upside-down triangle (pointing down)
+            triangle_size = 15
+            triangle_points = [
+                (threat_screen_x, threat_screen_y + triangle_size),  # Bottom point
+                (threat_screen_x - triangle_size, threat_screen_y - triangle_size),  # Top left
+                (threat_screen_x + triangle_size, threat_screen_y - triangle_size)  # Top right
+            ]
+            pygame.draw.polygon(self.window, (255, 215, 0), triangle_points)  # Gold triangle
 
         # Draw green lines and black crossbars
         self.__render_box__(35, (0, 128, 0), 2)  # inner box
@@ -1399,6 +1442,21 @@ class MAISREnvVec(gym.Env):
 
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 
+            # Plot the threat if it exists
+            if hasattr(self, 'threat'):
+                threat_x = self.threat[0]
+                threat_y = self.threat[1]
+                threat_radius = self.threat[2] * (1000 / self.config["gameboard_size"])  # Scale for plot
+
+                # Draw threat circle
+                circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color='gold', linewidth=2,
+                                    alpha=0.7)
+                plt.gca().add_patch(circle)
+
+                # Draw upside-down triangle marker
+                plt.scatter(threat_x, threat_y, s=200, color='gold', marker='v', alpha=0.8, label='Threat',
+                            edgecolors='black')
+
             # Plot agent trajectory (actual location history) as a line with points
             if agent_x_coords and agent_y_coords:
                 plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
@@ -1437,17 +1495,17 @@ class MAISREnvVec(gym.Env):
                             label='End Position')
 
             # Add a colorbar to show time progression
-            cbar = plt.colorbar()
-            cbar.set_label('Timestep')
+            cbar = plt.colorbar(aspect=50)
+            cbar.set_label('Episode progress')
 
             # Add grid lines centered at origin
             plt.grid(True, alpha=0.3)
-            plt.gca().set_xticks(range(int(-map_half_size), int(map_half_size) + 1, 25))
-            plt.gca().set_yticks(range(int(-map_half_size), int(map_half_size) + 1, 25))
+            plt.gca().set_xticks(range(int(-map_half_size), int(map_half_size) + 1, 100))
+            plt.gca().set_yticks(range(int(-map_half_size), int(map_half_size) + 1, 100))
 
             # Add labels and title
-            plt.xlabel('X Coordinate')
-            plt.ylabel('Y Coordinate')
+            #plt.xlabel('X Coordinate')
+            #plt.ylabel('Y Coordinate')
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
             action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config['action_type']

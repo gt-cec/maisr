@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 1,
-	"max_steps": 15000,
+	"max_steps": 30000,
 
 	"num_targets": 15,
 	"time_to_id": 0,
@@ -50,7 +50,7 @@
 	"use_curriculum": true,
 	"cl_lr_decrease": 1,
 	"levels_per_lesson": {"0": 50, "1": 50, "2":  50},
-	"gameboard_size_per_lesson": {"0": 700, "1": 700, "2": 700},
+	"gameboard_size_per_lesson": {"0": 1000, "1": 1000, "2": 1000},
 	"agent_start_locations_per_lesson": {"0": 99, "1": 99, "2": 99},
 
 	"min_target_ids_to_advance": 8,
