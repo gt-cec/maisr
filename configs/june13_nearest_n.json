@@ -45,7 +45,7 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 1e6,
+	"num_timesteps": 3e6,
 	"save_freq": 13500,
 	"n_eval_episodes": 5,
 	"eval_freq": 13500,

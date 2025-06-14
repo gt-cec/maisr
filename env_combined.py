@@ -108,7 +108,7 @@ class MAISREnvVec(gym.Env):
                 shape=(self.obs_size,),
                 dtype=np.float32)
             if self.tag == 'train_mp0':
-                print(f'Using obs space size {self.obs_size}')
+                print(f'Using obs space size {self.obs_size} ({self.config['num_observed_targets']} nearest targets and {self.config['num_observed_threats']} nearest threats')
 
         # elif self.config['obs_type'] == 'absolute-1target':
         #     self.obs_size = 4  # Changed from 2 + 3 * self.max_targets to 4
@@ -294,12 +294,52 @@ class MAISREnvVec(gym.Env):
         self.targets_identified = 0
 
         # Create a single threat at random location
-        #self.threat = np.zeros(3, dtype=np.float32)  # [x_pos, y_pos, radius]
-        self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
+        #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
+        #margin = map_half_size * 0.03  # 3% margin from edges
+        #self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # x position
+        #self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
+
+        # Create a single threat at strategic location (likely to be on greedy search path)
+        self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos]
         margin = map_half_size * 0.03  # 3% margin from edges
-        self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # x position
-        self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
-        #self.threat[2] = 50.0  # radius in pixels
+        ############################################################################################################
+        if self.num_targets >= 2:
+            # Find centroid of all targets
+            target_centroid_x = np.mean(self.targets[:, 3])
+            target_centroid_y = np.mean(self.targets[:, 4])
+
+            # Find the two targets closest to the centroid
+            target_positions = self.targets[:, 3:5]
+            centroid_pos = np.array([target_centroid_x, target_centroid_y])
+            distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
+            closest_indices = np.argsort(distances_to_centroid)[:2]
+
+            # Get positions of the two most central targets
+            target1_pos = self.targets[closest_indices[0], 3:5]
+            target2_pos = self.targets[closest_indices[1], 3:5]
+
+            # Place threat somewhere along the line between these central targets
+            # Add some randomness to avoid being exactly on the line
+            interpolation_factor = np.random.uniform(0.3, 0.7)  # Bias toward middle
+            threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
+
+            # Add small random offset to avoid being exactly on the line
+            offset_distance = min(50.0, np.linalg.norm(target2_pos - target1_pos) * 0.2)
+            random_angle = np.random.uniform(0, 2 * np.pi)
+            offset_x = offset_distance * np.cos(random_angle)
+            offset_y = offset_distance * np.sin(random_angle)
+
+            self.threat[0] = threat_base_pos[0] + offset_x
+            self.threat[1] = threat_base_pos[1] + offset_y
+
+            # Ensure threat stays within map bounds
+            self.threat[0] = np.clip(self.threat[0], -map_half_size + margin, map_half_size - margin)
+            self.threat[1] = np.clip(self.threat[1], -map_half_size + margin, map_half_size - margin)
+        else:
+            # Fallback to random placement if fewer than 2 targets
+            self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+            self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+        ############################################################################################################
 
         # Decay shaping rewards
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
