@@ -35,6 +35,12 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
+        self.render_mode = self.env.render_mode
+        self.run_name = self.env.run_name  # For logging
+        self.tag = self.env.tag
+
+        print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
+
 
     def reset(self):
         raw_obs, _ = self.env.reset()

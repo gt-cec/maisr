@@ -35,6 +35,10 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.action_space = gym.spaces.Discrete(3)
         self.action_rate = 20
 
+        self.render_mode = self.env.render_mode
+        self.run_name = self.env.run_name  # For logging
+        self.tag = self.env.tag
+
         # Set rewards for mode selector
         self.reward_per_target_id = 1
         self.reward_per_threat_id = 3
