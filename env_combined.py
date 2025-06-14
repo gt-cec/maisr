@@ -526,7 +526,7 @@ class MAISREnvVec(gym.Env):
                 distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
 
                 threat_radius = self.config['threat_radius']
-                warning_radius = threat_radius * 2  # 50% larger than threat radius
+                warning_radius = threat_radius * 1.5  # 50% larger than threat radius
 
                 if distance_to_threat <= threat_radius:
                     # Maximum penalty when at center, decreasing linearly to zero at radius edge
@@ -537,7 +537,7 @@ class MAISREnvVec(gym.Env):
                 elif distance_to_threat <= warning_radius:
                     # Warning zone - penalty decreases from 50% to 0% as distance increases
                     normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-                    penalty_multiplier = 0.5 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
+                    penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
                     threat_penalty += self.config['inside_threat_penalty'] * penalty_multiplier
 
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \

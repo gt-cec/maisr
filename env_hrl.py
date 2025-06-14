@@ -50,10 +50,25 @@ class MAISREnvCore(CoreEnv):
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
-
         self.run_name = run_name # For logging
-
+        self.tag = tag  # Name for differentiating envs for training, eval, software testing etc.
+        self.render_mode = render_mode
         self.use_buttons = False # TODO make configurable in config
+
+        # Hierarchical control state
+        self.current_mode = None  # Current high-level mode (0-3)
+        self.mode_timer = 0  # Steps remaining in current mode
+        self.min_mode_duration = config.get('min_mode_duration', 5)  # Minimum steps per mode
+        self.max_mode_duration = config.get('max_mode_duration', 20)  # Maximum steps per mode
+
+        # Mode definitions
+        self.MODES = {
+            0: "go_to_nearest_target",
+            1: "evade_detection",
+            2: "local_search",
+            3: "change_regions"
+        }
+
 
         if seed is not None:
             np.random.seed(seed)
@@ -77,8 +92,7 @@ class MAISREnvCore(CoreEnv):
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
-        self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
-        self.render_mode = render_mode
+
 
         self.generate_plot_list() # Generate list of levels to plot
 
@@ -240,14 +254,35 @@ class MAISREnvCore(CoreEnv):
         self.episode_counter = 0
         self.reset()
 
-
     def actor_id(self) -> ActorID:
-        # TODO make more detailed
-        return ActorID(step_key=0,agent_id=0)
+        """Determine which policy should act next"""
+        # TODO
+
+        # Check if we need to select a new mode
+        if self.current_mode is None or self.mode_timer <= 0:
+            # Time to select a new high-level mode
+            return ActorID(step_key=0, agent_id=0)  # Mode selector
+        else:
+            # Execute current mode's sub-policy
+            return ActorID(step_key=1, agent_id=self.current_mode)
 
     def is_actor_done(self) -> bool:
+        """Check if current actor's turn is complete"""
         # TODO
-        return # TODO
+
+        if self.terminated or self.truncated:
+            return True
+
+        current_actor = self.actor_id()
+
+        # Mode selector is done after one action
+        if current_actor.step_key == 0:
+            return True
+
+        # Sub-policy is done when mode timer expires or termination condition met
+        if current_actor.step_key == 1:
+            return self.mode_timer <= 0
+
 
     def reset(self, seed=None, options=None) -> MaisrMazeState:
 
@@ -257,6 +292,10 @@ class MAISREnvCore(CoreEnv):
 
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
+
+        # Reset hierarchical state
+        self.current_mode = None
+        self.mode_timer = 0
 
         # Set seed for this level
         seed_list = self.level_seeds[0:self.num_levels]
@@ -380,7 +419,7 @@ class MAISREnvCore(CoreEnv):
         #self.observation = self.get_observation()
         #info = {}
 
-        return self.get_maze_state() #self.observation, info
+        return self.get_maze_state()
 
     def get_maze_state(self) -> MaisrMazeState:
         # TODO return current MazeState of the env
@@ -391,23 +430,159 @@ class MAISREnvCore(CoreEnv):
         """ Skip frames by repeating the action multiple times """
         # TODO use MaisrMazeAction
 
-        total_reward, info, total_potential_gain = 0, None, 0
+        current_actor = self.actor_id()
+
+        if current_actor.step_key == 0:
+            # Mode selector action
+            reward = self._process_mode_selection(maze_action) # TODO why reward?
+
+        elif current_actor.step_key == 1:
+            # Sub-policy action
+            reward = self._process_sub_policy_action(maze_action) # TODO why reward?
+
+        total_reward, info = 0, None
 
         for frame in range(self.config['frame_skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
             total_reward += reward
-            total_potential_gain += info["potential_gain"]
+            #total_potential_gain += info["potential_gain"]
 
             # Break early if the episode is done to avoid unnecessary computation
             if self.terminated or self.truncated:
                 break
 
-        #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
-        info["outerstep_potential_gain"] = total_potential_gain
+
+        self._check_termination() # Check subpolicy termination conditions
 
         return observation, total_reward, self.terminated, self.truncated, info
 
+
+    def _process_mode_selection(self, maze_action: MaisrMazeAction) -> float:
+        """Process high-level mode selection"""
+        mode_action = maze_action.action_value
+
+        # Validate mode selection
+        if not isinstance(mode_action, (int, np.integer)) or mode_action not in range(4): raise ValueError(f"Invalid mode action: {mode_action}. Must be 0-3.")
+
+        # Set new mode
+        old_mode = self.current_mode
+        self.current_mode = mode_action
+
+        # Set mode duration (could be learned or fixed)
+        self.mode_timer = np.random.randint(self.min_mode_duration, self.max_mode_duration + 1)
+
+        # Reward for mode selection (sparse reward based on appropriateness)
+        mode_reward = self._evaluate_mode_selection(old_mode, self.current_mode)
+        return mode_reward
+
+    def _process_sub_policy_action(self, maze_action: MaisrMazeAction) -> float:
+        """Process low-level sub-policy action"""
+
+        # TODO ID selection is missing
+
+        # Decode action based on current mode
+        #if self.current_mode == 0:  # Go to nearest target
+            #reward = self._execute_go_to_target(maze_action.action_value)
+
+        if self.current_mode == 1:  # Local search
+            reward = self._execute_local_search(maze_action.action_value)
+
+        elif self.current_mode == 2:  # Change regions
+            reward = self._execute_change_regions(maze_action.action_value)
+
+            if self.current_mode == 3:  # Go to high risk target
+                reward = self._execute_go_to_highrisk_target(maze_action.action_value)
+
+        else:
+            reward = 0.0
+
+        #elif self.current_mode == 1:  # Evade detection
+            #reward = self._execute_evade_detection(maze_action.action_value)
+
+        # Decrement mode timer
+        self.mode_timer -= 1
+
+        return reward
+
+    def _execute_go_to_highrisk_target(self, action) -> float:
+        """Execute go-to-nearest-target behavior"""
+        # Convert action to waypoint and move agent
+        waypoint = self.process_action(action)
+        self.agents[0].waypoint_override = waypoint
+
+        # Move agent and check for target identification
+        reward = self._move_agent_and_check_targets()
+
+        # Additional reward shaping for moving toward targets
+        agent_pos = np.array([self.agents[0].x, self.agents[0].y])
+        target_positions = self.targets[:, 3:5]
+        unknown_mask = self.targets[:, 2] < 1.0
+
+        if np.any(unknown_mask):
+            unknown_positions = target_positions[unknown_mask]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+            nearest_distance = np.min(distances)
+            reward += 0.01 * (100 - nearest_distance) / 100  # Proximity reward
+
+        return reward
+
+    def _execute_evade_detection(self,action) -> float:
+        # TODO: https://claude.ai/chat/8b85619a-bb4c-456c-a22c-902cc19f939e
+        return reward
+
+    def _execute_local_search(self, action) -> float:
+        # TODO
+        return reward
+
+    def _execute_change_regions(self, action) -> float:
+        # TODO
+        # Use _get_region_center
+        return reward
+
+    def _get_region_center(self, region: int) -> Tuple[float, float]:
+        """Get center coordinates for specified map region"""
+        map_half_size = self.config["gameboard_size"] / 2
+
+        # Define quadrant centers
+        region_centers = {
+            0: (-map_half_size / 2, map_half_size / 2),  # NW
+            1: (map_half_size / 2, map_half_size / 2),  # NE
+            2: (-map_half_size / 2, -map_half_size / 2),  # SW
+            3: (map_half_size / 2, -map_half_size / 2)  # SE
+        }
+
+        return region_centers.get(region, (0, 0))
+
+    def _check_termination(self):
+        # TODO update single_step to use this
+        """Check if episode should terminate"""
+        # All targets identified
+        self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
+
+        if self.all_targets_identified:
+            self.terminated = True
+
+        # Maximum steps reached
+        if self.step_count_inner >= self.config.get('max_steps', 1000):
+            self.truncated = True
+
+    def get_maze_state(self) -> MaisrMazeState:
+        """Get current maze state"""
+        agent_positions = {}
+        for i, agent_id in enumerate(self.aircraft_ids):
+            if i < len(self.agents):
+                agent_positions[agent_id] = (self.agents[agent_id].x, self.agents[agent_id].y)
+
+        return MaisrMazeState(
+            targets=self.targets.copy(),
+            agent_positions=agent_positions,
+            time_left=self.config.get('time_limit', 600) - self.display_time / 1000,
+            threats=self.threat.copy(),
+            detections=self.detections,
+            current_mode=self.current_mode,
+            mode_timer=self.mode_timer
+        )
 
     def _single_step(self, actions:dict):
         """
@@ -1564,22 +1739,137 @@ class MAISREnvCore(CoreEnv):
 
 
 class MaisrMazeState(MazeStateType):
-    def __init__(self, targets, agents, time_left, threats, detections):
+    def __init__(self,
+                 targets:np.ndarray,
+                 agent_positions:Dict[int, Tuple[float, float]],
+                 steps_left: int,
+                 threats:np.ndarray,
+                 detections:int,
+                 current_mode: Optional[int] = None,
+                 mode_timer: int = 0
+                 ):
         super().__init__()
         # TODO define state here. Targets, other agents, time, detections etc
         self.targets = targets
         self.agents = agents
-        self.time_left = time_left
+        self.steps_left = steps_left
         self.threats = threats
         self.detections = detections
-
+        self.current_mode = current_mode # Current high level submode (1,2,3)
+        self.mode_timer = mode_timer # Steps remaining in current mode (TODO Use this to implement low action rate)
 
 class MaisrMazeAction(MazeActionType):
-    def __init__(self, actor_type:str):
+    def __init__(self, actor_type:str, action_value:Any, agent_id:int):
         super().__init__()
-        self.actor_type = actor_type # 'high level" or "low level"
-        #self.agent = agent # Which agent the action applies to
+        self.actor_type = actor_type # 'mode_selector' or 'sub_policy'
+        self.action_value = action_value # The action taken. int for mode selector, Discrete(16) index for sub-policy,
+        self.agent_id = agent_id # Which agent the action applies to
+
 
 class ObservationConversion(ObservationConversionInterface):
-    def __init__(self):
-        # TODO https://maze-rl.readthedocs.io/en/latest/getting_started/maze_env/maze_env.html
+    """Convert maze state to policy-specific observations"""
+
+    def __init__(self, observation_type: str = "nearest"):
+        self.observation_type = observation_type
+
+    def maze_to_space(self, maze_state: MaisrMazeState) -> gym.Space:
+        """Define observation space based on type"""
+        if self.observation_type == "mode_selector":
+            # High-level state for mode selection
+            return gym.spaces.Box(
+                low=-1, high=1,
+                shape=(8,),
+                # [agent_x, agent_y, nearest_target_x, nearest_target_y, threat_x, threat_y, targets_remaining, time_left]
+                dtype=np.float32
+            )
+        elif self.observation_type == "sub_policy":
+            # Detailed state for sub-policies
+            return gym.spaces.Box(
+                low=-1, high=1,
+                shape=(10,),  # More detailed observation
+                dtype=np.float32
+            )
+        else:
+            raise ValueError(f"Unknown observation type: {self.observation_type}")
+
+    def maze_to_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
+        """Convert maze state to observation"""
+        if self.observation_type == "mode_selector":
+            return self._get_high_level_observation(maze_state)
+        elif self.observation_type == "sub_policy":
+            return self._get_detailed_observation(maze_state)
+
+    def _get_high_level_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
+        """Get high-level observation for mode selector"""
+        obs = np.zeros(8, dtype=np.float32)
+
+        # Agent position (normalized)
+        if 0 in maze_state.agent_positions:
+            agent_pos = maze_state.agent_positions[0]
+            obs[0] = agent_pos[0] / 150.0  # Assuming map size 300x300
+            obs[1] = agent_pos[1] / 150.0
+
+        # Nearest unknown target
+        unknown_mask = maze_state.targets[:, 2] < 1.0
+        if np.any(unknown_mask):
+            unknown_targets = maze_state.targets[unknown_mask]
+            if 0 in maze_state.agent_positions:
+                agent_pos = np.array(maze_state.agent_positions[0])
+                distances = np.sqrt(np.sum((unknown_targets[:, 3:5] - agent_pos) ** 2, axis=1))
+                nearest_idx = np.argmin(distances)
+                nearest_target = unknown_targets[nearest_idx]
+                obs[2] = nearest_target[3] / 150.0
+                obs[3] = nearest_target[4] / 150.0
+
+        # Threat position
+        obs[4] = maze_state.threats[0] / 150.0
+        obs[5] = maze_state.threats[1] / 150.0
+
+        # Targets remaining (normalized)
+        total_targets = len(maze_state.targets)
+        identified_targets = np.sum(maze_state.targets[:, 2] == 1.0)
+        obs[6] = (total_targets - identified_targets) / total_targets
+
+        # Time remaining (normalized)
+        obs[7] = maze_state.time_left / 600.0  # Assuming 600s max time
+
+        return obs
+
+    def _get_detailed_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
+        """Get detailed observation for sub-policies"""
+        # Implement more detailed observation for sub-policies
+        # This would be similar to your existing get_observation methods
+        obs = np.zeros(10, dtype=np.float32)
+        # ... implement detailed observation logic
+        return obs
+
+
+class ActionConversion(ActionConversionInterface):
+    """Convert policy actions to maze actions"""
+
+    def __init__(self, action_type: str = "discrete"):
+        self.action_type = action_type
+
+    def space_to_maze(self, action: Any, maze_state: MaisrMazeState) -> MaisrMazeAction:
+        """Convert policy action to maze action"""
+        current_actor = self._get_current_actor(maze_state)
+
+        if current_actor.step_key == 0:  # Mode selector
+            return MaisrMazeAction(
+                actor_type="mode_selector",
+                action_value=int(action),
+                agent_id=0
+            )
+        else:  # Sub-policy
+            return MaisrMazeAction(
+                actor_type="sub_policy",
+                action_value=action,
+                agent_id=0
+            )
+
+    def _get_current_actor(self, maze_state: MaisrMazeState) -> ActorID:
+        """Determine current actor from maze state"""
+        if maze_state.current_mode is None or maze_state.mode_timer <= 0:
+            return ActorID(step_key=0, agent_id=0)
+        else:
+            return ActorID(step_key=1, agent_id=maze_state.current_mode)
