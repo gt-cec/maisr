@@ -25,17 +25,7 @@ class MaisrMazeEnv(MazeEnv[MAISREnvCore]):
                          observation_conversion_dict={0:observation_conversion})
 
 
-def maze_env_factory(self, config, window=None, clock=None, render_mode='headless',tag='none', run_name='no name',seed=None) -> MaisrMazeEnv:
-    core_env = MAISREnvCore(
-        config=config, window=None, clock=clock, render_mode=render_mode,
-        tag=tag,
-        run_name=run_name,
-        seed=seed,
-    )
-    action_conversion = ActionConversion() # TODO define
-    observation_conversion = ObservationConversion() # TODO define
 
-    return MaisrMazeEnv(core_env, action_conversion, observation_conversion)
 
 
 class MAISREnvCore(CoreEnv):
@@ -443,6 +433,7 @@ class MAISREnvCore(CoreEnv):
         total_reward, info = 0, None
 
         for frame in range(self.config['frame_skip']):
+            # TODO fix the flow here. Single step might need to be called somewhere else (or it needs to call each submode)
             observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
             total_reward += reward
             #total_potential_gain += info["potential_gain"]
@@ -1751,7 +1742,7 @@ class MaisrMazeState(MazeStateType):
         super().__init__()
         # TODO define state here. Targets, other agents, time, detections etc
         self.targets = targets
-        self.agents = agents
+        self.agent_positions = agent_positions
         self.steps_left = steps_left
         self.threats = threats
         self.detections = detections
@@ -1873,3 +1864,33 @@ class ActionConversion(ActionConversionInterface):
             return ActorID(step_key=0, agent_id=0)
         else:
             return ActorID(step_key=1, agent_id=maze_state.current_mode)
+
+
+# Factory function
+def maze_env_factory(config, **kwargs) -> MazeEnv:
+    """Factory function to create the complete Maze environment"""
+
+    core_env = MAISREnvCore(config=config, **kwargs)
+
+    # Create conversion interfaces for different actor types
+    action_conversion_dict = {
+        (0,0): ActionConversion("mode_select"),  # Mode selector (discrete 4 actions)
+        (0,1): ActionConversion("movement"),  # Sub-policies (movement actions) (local search)
+        (0,2): ActionConversion("movement"),  # Sub-policies (movement actions) (Change region)
+        (0,3): ActionConversion("movement"),  # Sub-policies (movement actions) (Go to nearest high risk target)
+        (1,0): ActionConversion("id_select"),  # ID selector
+        (2,0): ActionConversion("movement"), # Human
+    }
+
+    observation_conversion_dict = {
+        0: ObservationConversion("mode_selector"),  # High-level obs
+        1: ObservationConversion("sub_policy"),  # Detailed obs
+        2: ObservationConversion("sub_policy"),  # Detailed obs
+        3: ObservationConversion("sub_policy")  # Detailed obs
+    }
+
+    return MazeEnv(
+        core_env=core_env,
+        action_conversion_dict=action_conversion_dict,
+        observation_conversion_dict=observation_conversion_dict
+    )
