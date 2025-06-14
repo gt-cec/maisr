@@ -33,13 +33,15 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Action space: 3 possible sub-policies to choose from
         self.action_space = gym.spaces.Discrete(3)
-        self.action_rate = 30
+        self.action_rate = 20
 
         # Set rewards for mode selector
         self.reward_per_target_id = 1
         self.reward_per_threat_id = 3
         self.penalty_for_policy_switch = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
+
+        self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
 
     def reset(self):
@@ -52,12 +54,12 @@ class MaisrModeSelectorWrapper(gym.Env):
         return raw_obs, _
 
 
-    def step(self, action: int):
+    def step(self, action: np.int32):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
         if self.current_subpolicy is None or self.steps_since_last_selection >= self.action_rate:
             self.steps_since_last_selection = 0
-            print(f'SELECTOR TOOK ACTION {action}')
+            print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
 
             # Track policy switching for penalty later
             self.switched_policies = False
@@ -67,7 +69,6 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             # Activate selected subpolicy and generate its action
             self.current_subpolicy = action
-
 
         subpolicy_observation = self.get_subpolicy_observation(self.current_subpolicy)
 
@@ -161,7 +162,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             observation = self.get_observation_changeregion()
 
         elif selected_subpolicy == 2: # Go to nearest
-            observation = self.get_observation_nearest_highvalue()
+            observation = self.get_observation_nearest_threat()
 
         return observation
 
@@ -240,15 +241,39 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         return obs
 
-    def get_observation_nearest_highvalue(self):
+    def get_observation_nearest_threat(self):
         """
         Contents:
             obs[0] - dx to nearest threat
-            obs[1] - dx to nearest threat
+            obs[1] - dy to nearest threat
             obs[2] - dx to 2nd nearest threat
-            obs[3] - dx to 2nd nearest threat
+            obs[3] - dy to 2nd nearest threat
         """
-        obs = np.zeros(4, dtype=np.float32)
+        obs = np.zeros(2, dtype=np.float32)
+
+        # Get agent position
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x,
+                              self.env.agents[self.env.aircraft_ids[0]].y])
+
+        # Get threat
+        threat_position = self.env.threat
+
+        # Get vector to nearest high-value target
+        vector_to_threat = threat_position - agent_pos
+        obs = vector_to_threat
+        # if len(sorted_indices) >= 1:
+        #     nearest_pos = highvalue_positions[sorted_indices[0]]
+        #     vector_to_nearest = nearest_pos - agent_pos
+        #     obs[0] = vector_to_nearest[0]  # dx to nearest
+        #     obs[1] = vector_to_nearest[1]  # dy to nearest
+        #
+        # # Get vector to second nearest high-value target
+        # if len(sorted_indices) >= 2:
+        #     second_nearest_pos = highvalue_positions[sorted_indices[1]]
+        #     vector_to_second = second_nearest_pos - agent_pos
+        #     obs[2] = vector_to_second[0]  # dx to 2nd nearest
+        #     obs[3] = vector_to_second[1]  # dy to 2nd nearest
+
         return obs
 
 

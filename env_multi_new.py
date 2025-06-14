@@ -1337,11 +1337,11 @@ class MAISREnvVec(gym.Env):
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
         #print(f'Subpolicy action is {action} ({type(action)}')
-        if isinstance(action, np.int32): # Discrete direction action
+        if isinstance(action, (np.int32, int)): # Discrete direction action
             # Get normalized direction vector
-            action = action.item()
-            try:  action = int(action)
-            except: action = int(action[0])
+            #action = action.item()
+            #try:  action = int(action)
+            #except: action = int(action[0])
 
             direction_map = {
                 0: (0, 1),  # North (0°)
@@ -1378,51 +1378,18 @@ class MAISREnvVec(gym.Env):
             y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
         elif isinstance(action, np.ndarray):
+            #print(f'Action is {action} (ndim {action.ndim}')
             if action.ndim > 1: # x,y waypoint
                 action = action.flatten()
-                if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                    raise ValueError('ERROR: Actions are not normalized to -1, +1')
+            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                raise ValueError('ERROR: Actions are not normalized to -1, +1')
 
-                map_half_size = self.config["gameboard_size"] / 2
-                x_coord = action[0] * map_half_size
-                y_coord = action[1] * map_half_size
+            map_half_size = self.config["gameboard_size"] / 2
+            x_coord = action[0] * map_half_size
+            y_coord = action[1] * map_half_size
 
-        # if self.config['action_type'] == 'Discrete8':
-        #     # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
-        #     direction_map = {
-        #         0: (0, 1),  # up
-        #         1: (1, 1),  # up-right
-        #         2: (1, 0),  # right
-        #         3: (1, -1),  # down-right
-        #         4: (0, -1),  # down
-        #         5: (-1, -1),  # down-left
-        #         6: (-1, 0),  # left
-        #         7: (-1, 1)  # up-left
-        #     }
-        #
-        #     # Get current agent position
-        #     current_x = self.agents[self.aircraft_ids[0]].x
-        #     current_y = self.agents[self.aircraft_ids[0]].y
-        #     if isinstance(action, np.ndarray):
-        #         try: action = int(action)
-        #         except: action = int(action[0])
-        #
-        #     dx, dy = direction_map[action]
-        #     length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
-        #     dx_norm = dx / length
-        #     dy_norm = dy / length
-        #
-        #     # Calculate waypoint 50 pixels away in chosen direction
-        #     waypoint_distance = 50
-        #     x_coord = current_x + (dx_norm * waypoint_distance)
-        #     y_coord = current_y + (dy_norm * waypoint_distance)
-        #
-        #     # Clip to map boundaries
-        #     map_half_size = self.config["gameboard_size"] / 2
-        #     x_coord = np.clip(x_coord, -map_half_size, map_half_size)
-        #     y_coord = np.clip(y_coord, -map_half_size, map_half_size)
         else:
-            raise ValueError(f'Error in process_action: action type "{self.config['action_type']}" not recognized')
+            raise ValueError(f'Error in process action, action is a {type(action)}')
 
         waypoint = (float(x_coord), float(y_coord))
         return waypoint

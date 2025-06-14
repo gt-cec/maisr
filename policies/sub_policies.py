@@ -24,6 +24,9 @@ class SubPolicy(ABC):
     def act(self, observation):
         pass
 
+    def is_terminated(self, observation):
+        pass
+
     # @abstractmethod
     # def get_action_space(self) -> gym.Space:
     #     """Return the action space for this sub-policy"""
@@ -81,19 +84,33 @@ class GoToNearestThreat(SubPolicy):
         self._max_repeat_count = 3  # Minimum steps to take in same direction
         self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
 
-    def act(self, observation):
-        # TODO: Action = discrete direction toward nearest high val target
-        if self.target_region is None or self.steps_since_update >= self.update_rate:
-            if self.model:
-                self.target_region = self.model.predict(observation)
-            else:
-                self.target_region = self.heuristic(observation)
+        self.is_terminated = False
 
-    def heuristic(self, observation):
+
+    def act(self, observation):
+        # if not self.has_threats_remaining(observation):
+        #     self.is_terminated = True
+        #     return 0  # Default action when no threats remain
+
+        if self.model:
+            action = self.model.predict(observation)
+        else:
+            action = self.heuristic(observation)
+        print(f'GOTOTHREAT: Obs {observation} -> action {action}')
+        return action
+
+
+    def heuristic(self, observation) -> np.int32:
         """
         Input: Observation vector of the dx, dy vector to the nearest two threats (4 elements total)
         Output:
         Pick the """
+
+        # Check if any threats remain
+        if not self.has_threats_remaining(observation):
+            self.reset_heuristic_state()
+            self.is_terminated = True
+            return np.int32(0)
 
         obs = np.array(observation)
 
@@ -170,6 +187,7 @@ class GoToNearestThreat(SubPolicy):
             best_action = adjacent_actions[best_adjacent_idx]
 
         _last_action = best_action
+        print(f'Heuristic chose action {best_action} (type {type(best_action)}')
         return np.int32(best_action)
 
     def reset_heuristic_state(self):
@@ -180,9 +198,22 @@ class GoToNearestThreat(SubPolicy):
         self._last_action = None
         self._action_repeat_count = 0
 
-    def is_terminated(self, env_state: Dict[str, Any]) -> bool:
-        # Terminate if no more high-value targets
-        return len(env_state['high_value_targets']) == 0
+    def has_threats_remaining(self, observation) -> bool:
+        """
+        Check if there are any high-value threats remaining to pursue
+        Args:
+            observation: The observation vector containing dx/dy to nearest threats
+        Returns:
+            bool: True if threats remain, False if no threats available
+        """
+        obs = np.array(observation)
+
+        target_vector_x = obs[0]
+        target_vector_y = obs[1]
+
+        # Check if there's a valid target (non-zero vector)
+        return not (target_vector_x == 0.0 and target_vector_y == 0.0)
+
 
 
 class EvadeDetection(SubPolicy):
@@ -379,22 +410,63 @@ class ChangeRegions(SubPolicy):
         self.target_region = None
         self.arrival_threshold = 0.05
 
+    # def act(self, observation):
+    #     # TODO need to add action masking
+    #     """
+    #     1. Select the region of the map (4-tile grid) to fly to
+    #     2. Fly to the edge of the selected region
+    #     """
+    #     #if not self.is_terminated():
+    #     if self.target_region is None or self.steps_since_update >= self.update_rate:
+    #         self.steps_since_update = 0
+    #         if self.model:
+    #             self.target_region = self.model.predict(observation)
+    #         else:
+    #             self.target_region = self.heuristic(observation)
+    #
+    #     # Set waypoint directly to center of new region
+    #     action = self._get_region_center(self.target_region)
+    #
+    #     self.steps_since_update += 1
+    #
+    #     return action
+
     def act(self, observation):
-        # TODO need to add action masking
-        """
-        1. Select the region of the map (4-tile grid) to fly to
-        2. Fly to the edge of the selected region
-        """
+        # Check if we've reached the current target region
+        if self.target_region is not None and self._has_reached_target(observation):
+            print(f'Reached target region {self.target_region}, selecting new region')
+            self.target_region = None  # Force new selection
+            self.steps_since_update = self.update_rate  # Force immediate update
+
+        # Select new target region if needed
         if self.target_region is None or self.steps_since_update >= self.update_rate:
+            self.steps_since_update = 0
             if self.model:
                 self.target_region = self.model.predict(observation)
             else:
                 self.target_region = self.heuristic(observation)
+            print(f'Selected new target region: {self.target_region}')
 
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
-
+        self.steps_since_update += 1
         return action
+
+    def _has_reached_target(self, observation):
+        """Check if agent has reached the current target region"""
+        if self.target_region is None:
+            return False
+
+        # Extract agent distance to the target region from observation
+        # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
+        target_region_info_idx = self.target_region * 3 + 1  # +1 to get the agent distance
+        agent_distance_to_target = observation[target_region_info_idx]
+
+        # Check if agent is close enough to the target region
+        # The distance is normalized, so we use a small threshold
+        distance_threshold = 0.15  # Adjust this value as needed (normalized distance)
+
+        return agent_distance_to_target <= distance_threshold
 
     def heuristic(self, observation):
         """Simple heuristic to choose a region. Can be used if model is not provided"""
@@ -444,21 +516,33 @@ class ChangeRegions(SubPolicy):
 
         return target_region
 
-
     def is_terminated(self, env_state: Dict[str, Any]) -> bool:
         """Terminate when arrived at target region"""
-        # TODO check this
-        agent_pos = env_state['agent_position']
+        if self.target_region is None:
+            return False
+
+        # Get agent position from env_state
+        agent_pos = np.array([env_state['agent_x'], env_state['agent_y']])
         region_center = self._get_region_center(self.target_region)
-        distance_to_region = np.linalg.norm(region_center - agent_pos)
-        return distance_to_region <= self.arrival_threshold
+
+        # Convert region center from normalized coordinates to actual coordinates
+        map_half_size = 500
+        region_center_actual = region_center * map_half_size
+
+        distance_to_region = np.linalg.norm(region_center_actual - agent_pos)
+        print(f'Distance to region: {distance_to_region}')
+        arrival_threshold = self.arrival_threshold  # Convert normalized threshold to actual distance
+
+        terminated = distance_to_region <= arrival_threshold
+        #print(terminated)
+        return terminated
 
     def _get_region_center(self, region_id: int) -> np.ndarray:
         """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
         centers = {
-            0: np.array([-0.25, 0.25]),  # NW
-            1: np.array([0.25, 0.25]),  # NE
-            2: np.array([-0.25, -0.25]),  # SW
-            3: np.array([0.25, -0.25])  # SE
+            0: np.array([-0.5, 0.5]),  # NW
+            1: np.array([0.5, 0.5]),  # NE
+            2: np.array([-0.5, -0.5]),  # SW
+            3: np.array([0.5, -0.5])  # SE
         }
         return centers.get(region_id, np.array([0.0, 0.0]))

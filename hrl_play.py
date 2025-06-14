@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     ###################################################################################################################
 
-    key_to_action = {pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 3}
+    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2}
     all_observations = []
     episode_rewards = []
     all_actions = []
