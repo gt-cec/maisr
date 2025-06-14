@@ -4,12 +4,42 @@ import pygame
 import random
 import math
 
+import utility.gui
 import utility.agents as agents
 from utility.gui import Button, HealthWindow, TimeWindow
 
+from maze.core.env.core_env import CoreEnv
+from maze.core.env.maze_env import MazeEnv
+from maze.core.env.structured_env import ActorID
+from maze.core.env.maze_state import MazeStateType
+from maze.core.env.maze_action import MazeActionType
+from maze.core.env.observation_conversion import ObservationConversionInterface
 
-class MAISREnvVec(gym.Env):
-    """Multi-Agent ISR Environment following the Gym format"""
+class MaisrMazeEnv(MazeEnv[MAISREnvCore]):
+    def __init__(self,
+                 core_env: CoreEnv,
+                 action_conversion: ActionConversionInterface,
+                 observation_conversion: ObservationConversionInterface):
+        super().__init__(core_env = core_env,
+                         action_conversion_dict={0:action_conversion},
+                         observation_conversion_dict={0:observation_conversion})
+
+
+def maze_env_factory(self, config, window=None, clock=None, render_mode='headless',tag='none', run_name='no name',seed=None) -> MaisrMazeEnv:
+    core_env = MAISREnvCore(
+        config=config, window=None, clock=clock, render_mode=render_mode,
+        tag=tag,
+        run_name=run_name,
+        seed=seed,
+    )
+    action_conversion = ActionConversion() # TODO define
+    observation_conversion = ObservationConversion() # TODO define
+
+    return MaisrMazeEnv(core_env, action_conversion, observation_conversion)
+
+
+class MAISREnvCore(CoreEnv):
+    """Multi-Agent ISR Environment following Gymnasium and Maze-RL standards for hierarchical and multi-agent envs"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  tag='none',
@@ -211,7 +241,15 @@ class MAISREnvVec(gym.Env):
         self.reset()
 
 
-    def reset(self, seed=None, options=None):
+    def actor_id(self) -> ActorID:
+        # TODO make more detailed
+        return ActorID(step_key=0,agent_id=0)
+
+    def is_actor_done(self) -> bool:
+        # TODO
+        return # TODO
+
+    def reset(self, seed=None, options=None) -> MaisrMazeState:
 
         # Load settings based on difficulty level
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
@@ -318,17 +356,15 @@ class MAISREnvVec(gym.Env):
             if self.tag in ['eval','test_suite']: start_loc_index = self.episode_counter % len(self.start_locations)
             else: start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
 
-            #map_half_size = self.config["gameboard_size"] / 2
             agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
-            #print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
         ############################################# Create the aircraft ##############################################
-        for i in range(self.config['num_aircraft']):
+        for i in range(self.config['num_agents']):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
-        if self.config['num_aircraft'] == 2: # TODO delete
+        if self.config['num_agents'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         # Reset step, episode, and reward counters
@@ -341,14 +377,19 @@ class MAISREnvVec(gym.Env):
         self.terminated = False
         self.truncated = False
 
-        self.observation = self.get_observation()
+        #self.observation = self.get_observation()
+        #info = {}
 
-        info = {}
-        return self.observation, info
+        return self.get_maze_state() #self.observation, info
 
+    def get_maze_state(self) -> MaisrMazeState:
+        # TODO return current MazeState of the env
 
-    def step(self, actions:dict):
+        return MaisrMazeState() # TODO add state elements here
+
+    def step(self, maze_action: MaisrMazeAction):
         """ Skip frames by repeating the action multiple times """
+        # TODO use MaisrMazeAction
 
         total_reward, info, total_potential_gain = 0, None, 0
 
@@ -599,8 +640,6 @@ class MAISREnvVec(gym.Env):
         elif self.config['obs_type'] == 'absolute-1target':
             self.observation = self.get_observation_1target()
 
-        elif self.config['obs_type'] == 'pixel':
-            self.observation = self.get_pixel_observation()
 
         return self.observation
 
@@ -775,95 +814,6 @@ class MAISREnvVec(gym.Env):
 
         return self.observation
 
-    def get_pixel_observation(self):
-        """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
-
-        # Use existing render surface if in human mode, otherwise create temporary surface
-        if self.render_mode == 'human' and hasattr(self, 'window'):
-            # Capture the main game area from the existing window
-            game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
-            pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
-        else:
-            # Create offscreen surface and render to it with enhanced target visibility
-            self.pixel_surface.fill((255, 255, 255))  # White background
-            self._render_game_to_surface_enhanced(self.pixel_surface)
-            pixel_array = pygame.surfarray.array3d(self.pixel_surface)
-
-        # Pygame arrays are (width, height, channels), we need (height, width, channels)
-        pixel_array = np.transpose(pixel_array, (1, 0, 2))
-
-        # Convert to grayscale using weighted average for better contrast
-        if len(pixel_array.shape) == 3:
-            # Use standard RGB to grayscale conversion
-            pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
-
-        # Resize to 84x84 using OpenCV for consistency
-        pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
-
-        # Add channel dimension for grayscale
-        pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
-
-        return pixel_array_resized.astype(np.uint8)
-
-    def _render_game_to_surface_enhanced(self, surface):
-        """
-        Render game elements to a pygame surface with enhanced target visibility for pixel observations.
-        Uses distinct grayscale values and shapes to ensure unknown vs known targets are clearly differentiable.
-        """
-
-        # Draw outer box (same as human render)
-        self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
-
-        # Draw aircraft (same as human render)
-        for agent in self.agents:
-            agent.draw(surface)
-
-        # Enhanced target rendering with clear grayscale differentiation
-        map_half_size = self.config["gameboard_size"] / 2
-
-        for target in self.targets:
-            screen_x = target[3] + map_half_size
-            screen_y = target[4] + map_half_size
-
-            # Base size for targets
-            base_size = 10 if target[1] == 1 else 7  # High-value vs regular targets
-
-            if target[2] == 1.0:  # Known/identified targets
-                # Use very dark gray (almost black) for known targets - will be ~51 in grayscale
-                target_color = (11, 11, 11)
-                # Draw filled circle for known targets
-                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
-
-                # Add a white center dot to make them even more distinct
-                pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), max(2, base_size // 3))
-
-            else:  # Unknown targets (info_level < 1.0)
-                # Use light gray for unknown targets - will be ~204 in grayscale
-                target_color = (204, 204, 204)
-                # Draw filled circle for unknown targets
-                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
-
-                # Add black border to make them stand out against white background
-                pygame.draw.circle(surface, (0, 0, 0), (int(screen_x), int(screen_y)), base_size, 2)
-
-        # Draw the threat for pixel observations
-        if hasattr(self, 'threat'):
-            threat_screen_x = int(self.threat[0] + map_half_size)
-            threat_screen_y = int(self.threat[1] + map_half_size)
-            threat_radius = self.config['threat_radius']
-
-            # Draw circle (lighter for pixel obs)
-            pygame.draw.circle(surface, (200, 200, 0), (threat_screen_x, threat_screen_y), threat_radius, 2)
-
-            # Draw upside-down triangle
-            triangle_size = 12
-            triangle_points = [
-                (threat_screen_x, threat_screen_y + triangle_size),
-                (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
-                (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
-            ]
-            pygame.draw.polygon(surface, (200, 200, 0), triangle_points)
-
     def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
         """Utility function for drawing a square box to a specific surface"""
         pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge),
@@ -877,9 +827,7 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge),
                          (distance_from_edge, distance_from_edge), width)
 
-
     def render(self):
-
         window_width, window_height = self.config['window_size'][0], self.config['window_size'][0]
         game_width = self.config["gameboard_size"]
         ui_width = window_width - game_width
@@ -890,7 +838,7 @@ class MAISREnvVec(gym.Env):
 
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
-        self.__render_box__(1, (0, 0, 0), 3)  # outer box
+        utility.gui.__render_box__(1, (0, 0, 0), 3)  # outer box
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
@@ -935,7 +883,7 @@ class MAISREnvVec(gym.Env):
             pygame.draw.polygon(self.window, (255, 215, 0), triangle_points)  # Gold triangle
 
         # Draw green lines and black crossbars
-        self.__render_box__(35, (0, 128, 0), 2)  # inner box
+        utility.gui.__render_box__(35, (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard_size"] // 2, 0),(self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard_size"] // 2),(self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
 
@@ -1143,14 +1091,7 @@ class MAISREnvVec(gym.Env):
         if self.render_mode == 'human' and pygame.get_init():
             pygame.quit()
 
-    # utility function for drawing a square box
-    def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
-        """Utility function for drawing a square box"""
-        surface = surface if surface is not None else self.window
-        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
-        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
-        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
-        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
+
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
@@ -1596,14 +1537,12 @@ class MAISREnvVec(gym.Env):
 
         # TODO Temp workaround
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
-        #print(f'num_levels: {self.num_levels}')
         self.episodes_to_plot = []
         for j in range(min(self.num_levels,5)):
             self.episodes_to_plot.extend([1+j, 2+j, 5+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
             self.episodes_to_plot.extend([(50 * i) + j for i in range(80)])
         self.episodes_to_plot = list(set(self.episodes_to_plot))
         self.episodes_to_plot.sort()
-        #print(f'episodes to plot: {self.episodes_to_plot}')
         return
 
         """Generate list of env episodes to plot using save_action_history_plot"""
@@ -1622,3 +1561,25 @@ class MAISREnvVec(gym.Env):
             base_episodes.sort()
             self.episodes_to_plot = list(set(base_episodes))
             self.episodes_to_plot.sort()
+
+
+class MaisrMazeState(MazeStateType):
+    def __init__(self, targets, agents, time_left, threats, detections):
+        super().__init__()
+        # TODO define state here. Targets, other agents, time, detections etc
+        self.targets = targets
+        self.agents = agents
+        self.time_left = time_left
+        self.threats = threats
+        self.detections = detections
+
+
+class MaisrMazeAction(MazeActionType):
+    def __init__(self, actor_type:str):
+        super().__init__()
+        self.actor_type = actor_type # 'high level" or "low level"
+        #self.agent = agent # Which agent the action applies to
+
+class ObservationConversion(ObservationConversionInterface):
+    def __init__(self):
+        # TODO https://maze-rl.readthedocs.io/en/latest/getting_started/maze_env/maze_env.html

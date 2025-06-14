@@ -624,3 +624,12 @@ class AgentInfoDisplay:
 
     def update_text(self, new_text):
         self.text = new_text
+
+# utility function for drawing a square box
+def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
+    """Utility function for drawing a square box"""
+    surface = surface if surface is not None else self.window
+    pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+    pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+    pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
+    pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
