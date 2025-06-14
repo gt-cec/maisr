@@ -63,87 +63,122 @@ class SubPolicy(ABC):
     #     return False
 
 
-class GoToNearestHighValueTarget(SubPolicy):
+class GoToNearestThreat(SubPolicy):
     """Sub-policy that navigates to the nearest high-value target"""
 
-    def __init__(self, heuristic = None, model = None):
-        super().__init__()
+    def __init__(self, model=None):
+        super().__init__("go_to_nearest_threat")
+
         self.model = model
-        self.heuristic = heuristic
-        if heuristic is None and model is None:
-            raise ValueError('ERROR (GoToNearestHighValueTarget): Neither heuristic nor model provided')
+        if model: print('[GoToNearestThreat]: Using provided model for inference')
+        else: print('[GoToNearestThreat]: No model provided, using internal heuristic')
 
-        if heuristic is not None and model is not None:
-            raise ValueError('ERROR (GoToNearestHighValueTarget): Both heuristic and model provided')
-
+        # Internal state of heuristic
+        self._current_target_id = None
+        self._current_target_pos = None
+        self._last_action = None
+        self._action_repeat_count = 0
+        self._max_repeat_count = 3  # Minimum steps to take in same direction
+        self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
 
     def act(self, observation):
         # TODO: Action = discrete direction toward nearest high val target
-        action = self.heuristic(observation)
-        return action
+        if self.target_region is None or self.steps_since_update >= self.update_rate:
+            if self.model:
+                self.target_region = self.model.predict(observation)
+            else:
+                self.target_region = self.heuristic(observation)
 
-    def get_action_space(self) -> gym.Space:
-        return gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+    def heuristic(self, observation):
+        """
+        Input: Observation vector of the dx, dy vector to the nearest two threats (4 elements total)
+        Output:
+        Pick the """
 
-    def get_observation_space(self) -> gym.Space:
-        # Agent pos (2) + nearest high-val target pos (2) + distance (1) + angle (1)
-        return gym.spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32)
+        obs = np.array(observation)
 
-    def get_observation(self, base_obs: np.ndarray, env_state: Dict[str, Any]) -> np.ndarray:
-        agent_pos = env_state['agent_position']
-        high_val_targets = env_state['high_value_targets']
-        map_half_size = env_state['map_half_size']
+        directions = np.array([
+            (0, 1),  # North (0°)
+            (0.383, 0.924),  # NNE (22.5°)
+            (0.707, 0.707),  # NE (45°)
+            (0.924, 0.383),  # ENE (67.5°)
+            (1, 0),  # East (90°)
+            (0.924, -0.383),  # ESE (112.5°)
+            (0.707, -0.707),  # SE (135°)
+            (0.383, -0.924),  # SSE (157.5°)
+            (0, -1),  # South (180°)
+            (-0.383, -0.924),  # SSW (202.5°)
+            (-0.707, -0.707),  # SW (225°)
+            (-0.924, -0.383),  # WSW (247.5°)
+            (-1, 0),  # West (270°)
+            (-0.924, 0.383),  # WNW (292.5°)
+            (-0.707, 0.707),  # NW (315°)
+            (-0.383, 0.924),  # NNW (337.5°)
+        ], dtype=float)
 
-        # Normalize agent position
-        agent_pos_norm = agent_pos / map_half_size
+        # Extract nearest target vector (first two components)
+        target_vector_x = obs[0]
+        target_vector_y = obs[1]
 
-        if len(high_val_targets) > 0:
-            # Find nearest high-value target
-            distances = np.linalg.norm(high_val_targets[:, 3:5] - agent_pos, axis=1)
-            nearest_idx = np.argmin(distances)
-            nearest_target = high_val_targets[nearest_idx, 3:5]
+        # Check if there's a valid target (non-zero vector)
+        if target_vector_x == 0.0 and target_vector_y == 0.0:
+            # No targets or at target location
+            self.reset_heuristic_state()
+            return 0
 
-            # Normalize target position
-            target_pos_norm = nearest_target / map_half_size
+        # The observation already gives us the vector to the nearest target
+        direction_to_target = np.array([target_vector_x, target_vector_y])
 
-            # Calculate normalized distance and angle
-            vector_to_target = nearest_target - agent_pos
-            distance_norm = np.linalg.norm(vector_to_target) / (map_half_size * 2)
-            angle = np.arctan2(vector_to_target[1], vector_to_target[0]) / np.pi
+        # Normalize direction vectors
+        direction_norms = np.linalg.norm(directions, axis=1)
+        normalized_directions = directions / direction_norms[:, np.newaxis]
 
-            obs = np.array([
-                agent_pos_norm[0], agent_pos_norm[1],
-                target_pos_norm[0], target_pos_norm[1],
-                distance_norm, angle
-            ], dtype=np.float32)
+        # Normalize target direction
+        target_norm = np.linalg.norm(direction_to_target)
+        if target_norm > 0:
+            direction_to_target_norm = direction_to_target / target_norm
         else:
-            # No high-value targets, return zeros for target info
-            obs = np.array([
-                agent_pos_norm[0], agent_pos_norm[1],
-                0.0, 0.0, 0.0, 0.0
-            ], dtype=np.float32)
+            return self._last_action if self._last_action is not None else 0
 
-        return obs
+        # Calculate dot products
+        dot_products = np.dot(normalized_directions, direction_to_target_norm)
 
-    def get_reward(self, base_reward: float, env_state: Dict[str, Any],
-                   info: Dict[str, Any], progress: Dict[str, Any]) -> float:
-        # Reward for getting closer to high-value targets
-        high_val_targets = env_state['high_value_targets']
-        if len(high_val_targets) == 0:
-            return base_reward
+        # Find best action
+        best_action = np.argmax(dot_products)
 
-        agent_pos = env_state['agent_position']
-        distances = np.linalg.norm(high_val_targets[:, 3:5] - agent_pos, axis=1)
-        min_distance = np.min(distances)
+        # Anti-oscillation: if we just took an action, continue for minimum steps
+        if (self._last_action is not None and
+                self._action_repeat_count < self._max_repeat_count and
+                self._last_action != best_action):
 
-        # Normalize distance reward
-        map_half_size = env_state['map_half_size']
-        distance_reward = -min_distance / (map_half_size * 2)
+            # Check if last action is still reasonable (dot product > 0.5)
+            last_dot_product = dot_products[self._last_action]
+            if last_dot_product > 0.5:  # Still pointing roughly toward target
+                best_action = self._last_action
+                self._action_repeat_count += 1
+            else:
+                _action_repeat_count = 0  # Reset if direction is too far off
+        else:
+            _action_repeat_count = 0
 
-        # Bonus for identifying high-value targets
-        high_val_bonus = info.get('reward_components', {}).get('high val target id', 0) * 2.0
+        # Additional anti-oscillation: prevent direct opposite actions
+        if (self._last_action is not None and abs(self._last_action - best_action) == 4):  # Opposite directions
+            # Choose a compromise direction
+            adjacent_actions = [(self._last_action + 1) % 8, (self._last_action - 1) % 8]
+            adjacent_dots = [dot_products[a] for a in adjacent_actions]
+            best_adjacent_idx = np.argmax(adjacent_dots)
+            best_action = adjacent_actions[best_adjacent_idx]
 
-        return base_reward + 0.1 * distance_reward + high_val_bonus
+        _last_action = best_action
+        return np.int32(best_action)
+
+    def reset_heuristic_state(self):
+        """Reset the global state for the heuristic policy."""
+        #global _current_target_id, _current_target_pos, _last_action, _action_repeat_count
+        self._current_target_id = None
+        self._current_target_pos = None
+        self._last_action = None
+        self._action_repeat_count = 0
 
     def is_terminated(self, env_state: Dict[str, Any]) -> bool:
         # Terminate if no more high-value targets
@@ -214,160 +249,216 @@ class LocalSearch(SubPolicy):
     # TODO replace with trained
     """Sub-policy that searches locally for unknown targets"""
 
-    def __init__(self, heuristic=None, model=None):
+    def __init__(self, model=None):
         super().__init__("local_search")
         self.search_radius = 300.0  # Search within this radius
         self.model = model
-        self.heuristic = heuristic
-        if heuristic is None and model is None:
-            raise ValueError('ERROR (LocalSearch): Neither heuristic nor model provided')
+        if model:
+            print('Using provided model for inference')
+        else:
+            print('No model provided, using internal heuristic')
 
-        if heuristic is not None and model is not None:
-            raise ValueError('ERROR (LocalSearch): Both heuristic and model provided')
+        self._current_target_id = None
+        self._current_target_pos = None
+        self._last_action = None
+        self._action_repeat_count = 0
+        self._max_repeat_count = 3  # Minimum steps to take in same direction
+        self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
 
     def act(self, observation):
         if self.model:
             action = self.model.predict(observation)
-        elif self.heuristic:
+        else:
             action = self.heuristic(observation)
-
         return action
 
     def destroy(self):
         # TODO
         pass
 
-    # def get_action_space(self) -> gym.Space:
-    #     return gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
-    #
-    # def get_observation_space(self) -> gym.Space:
-    #     # Agent pos (2) + local unknown targets (up to 5 targets * 2 coords = 10) + search progress (1)
-    #     return gym.spaces.Box(low=-1, high=1, shape=(13,), dtype=np.float32)
+    def heuristic(self, observation):
+        """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
 
-    def get_observation(self, base_obs: np.ndarray, env_state: Dict[str, Any]) -> np.ndarray:
-        # TODO replace with env.get_observation_nearest_n
+        obs = np.array(observation)
 
-        agent_pos = env_state['agent_position']
-        unknown_targets = env_state['unknown_targets']
-        map_half_size = env_state['map_half_size']
+        # Direction mapping
+        directions = np.array([
+            (0, 1),  # North (0°)
+            (0.383, 0.924),  # NNE (22.5°)
+            (0.707, 0.707),  # NE (45°)
+            (0.924, 0.383),  # ENE (67.5°)
+            (1, 0),  # East (90°)
+            (0.924, -0.383),  # ESE (112.5°)
+            (0.707, -0.707),  # SE (135°)
+            (0.383, -0.924),  # SSE (157.5°)
+            (0, -1),  # South (180°)
+            (-0.383, -0.924),  # SSW (202.5°)
+            (-0.707, -0.707),  # SW (225°)
+            (-0.924, -0.383),  # WSW (247.5°)
+            (-1, 0),  # West (270°)
+            (-0.924, 0.383),  # WNW (292.5°)
+            (-0.707, 0.707),  # NW (315°)
+            (-0.383, 0.924),  # NNW (337.5°)
+        ], dtype=float)
 
-        # Normalize agent position
-        agent_pos_norm = agent_pos / map_half_size
+        # Extract nearest target vector (first two components)
+        target_vector_x = obs[0]
+        target_vector_y = obs[1]
 
-        # Find local unknown targets within search radius
-        if len(unknown_targets) > 0:
-            distances = np.linalg.norm(unknown_targets[:, 3:5] - agent_pos, axis=1)
-            local_mask = distances <= self.search_radius
-            local_targets = unknown_targets[local_mask]
+        # Check if there's a valid target (non-zero vector)
+        if target_vector_x == 0.0 and target_vector_y == 0.0:
+            # No targets or at target location
+            self.reset_heuristic_state()
+            return 0
+
+        # The observation already gives us the vector to the nearest target
+        direction_to_target = np.array([target_vector_x, target_vector_y])
+
+        # Normalize direction vectors
+        direction_norms = np.linalg.norm(directions, axis=1)
+        normalized_directions = directions / direction_norms[:, np.newaxis]
+
+        # Normalize target direction
+        target_norm = np.linalg.norm(direction_to_target)
+        if target_norm > 0:
+            direction_to_target_norm = direction_to_target / target_norm
         else:
-            local_targets = np.array([]).reshape(0, 5)
+            return self._last_action if self._last_action is not None else 0
 
-        # Include up to 5 closest local targets
-        target_obs = np.zeros(10)  # 5 targets * 2 coordinates
-        if len(local_targets) > 0:
-            # Sort by distance and take closest 5
-            distances = np.linalg.norm(local_targets[:, 3:5] - agent_pos, axis=1)
-            sorted_indices = np.argsort(distances)[:5]
+        # Calculate dot products
+        dot_products = np.dot(normalized_directions, direction_to_target_norm)
 
-            for i, idx in enumerate(sorted_indices):
-                target_pos_norm = local_targets[idx, 3:5] / map_half_size
-                target_obs[i * 2:(i + 1) * 2] = target_pos_norm
+        # Find best action
+        best_action = np.argmax(dot_products)
 
-        # Search progress (fraction of total targets identified)
-        search_progress = env_state['targets_identified'] / max(1, env_state['total_targets'])
+        # Anti-oscillation: if we just took an action, continue for minimum steps
+        if (self._last_action is not None and
+                self._action_repeat_count < self._max_repeat_count and
+                self._last_action != best_action):
 
-        obs = np.concatenate([
-            agent_pos_norm,
-            target_obs,
-            [search_progress]
-        ]).astype(np.float32)
-
-        return obs
-
-    def get_reward(self, base_reward: float, env_state: Dict[str, Any],
-                   info: Dict[str, Any], progress: Dict[str, Any]) -> float:
-        # TODO rewrite
-
-        # Reward for identifying any targets
-        identification_bonus = info.get('reward_components', {}).get('regular val target id', 0) * 1.5
-
-        # Small reward for staying in areas with unknown targets
-        agent_pos = env_state['agent_position']
-        unknown_targets = env_state['unknown_targets']
-
-        if len(unknown_targets) > 0:
-            distances = np.linalg.norm(unknown_targets[:, 3:5] - agent_pos, axis=1)
-            local_targets = np.sum(distances <= self.search_radius)
-            exploration_bonus = min(0.05, local_targets * 0.01)
+            # Check if last action is still reasonable (dot product > 0.5)
+            last_dot_product = dot_products[self._last_action]
+            if last_dot_product > 0.5:  # Still pointing roughly toward target
+                best_action = self._last_action
+                self._action_repeat_count += 1
+            else:
+                _action_repeat_count = 0  # Reset if direction is too far off
         else:
-            exploration_bonus = 0
+            _action_repeat_count = 0
 
-        return base_reward + identification_bonus + exploration_bonus
+        # Additional anti-oscillation: prevent direct opposite actions
+        if (self._last_action is not None and abs(self._last_action - best_action) == 4):  # Opposite directions
+            # Choose a compromise direction
+            adjacent_actions = [(self._last_action + 1) % 8, (self._last_action - 1) % 8]
+            adjacent_dots = [dot_products[a] for a in adjacent_actions]
+            best_adjacent_idx = np.argmax(adjacent_dots)
+            best_action = adjacent_actions[best_adjacent_idx]
+
+        _last_action = best_action
+        return np.int32(best_action)
+
+    def reset_heuristic_state(self):
+        """Reset the global state for the heuristic policy."""
+        #global _current_target_id, _current_target_pos, _last_action, _action_repeat_count
+        self._current_target_id = None
+        self._current_target_pos = None
+        self._last_action = None
+        self._action_repeat_count = 0
 
 
 class ChangeRegions(SubPolicy):
     """Sub-policy that moves to a specific region of the map"""
 
-    def __init__(self, model=None, heuristic=None):
+    def __init__(self, model=None):
         super().__init__(f"change_region")
         self.model = model
-        self.heuristic = heuristic
-        if heuristic is None and model is None:
-            raise ValueError('ERROR (LocalSearch): Neither heuristic nor model provided')
 
-        if heuristic is not None and model is not None:
-            raise ValueError('ERROR (LocalSearch): Both heuristic and model provided')
+        self.update_rate = 10 # Recalculate every 10 steps to reduce computation cost
+        self.steps_since_update = 0
+
+        self.target_region = None
+        self.arrival_threshold = 0.05
 
     def act(self, observation):
-        # TODO figure out how this should be handled. I don't want agent
+        # TODO need to add action masking
         """
-        1. Select the region of the map (9-tile grid) to fly to
+        1. Select the region of the map (4-tile grid) to fly to
         2. Fly to the edge of the selected region
         """
-        if self.heuristic:
-            new_region = self.heuristic(observation)
-        elif self.model:
-            new_region = self.model.predict(observation)
+        if self.target_region is None or self.steps_since_update >= self.update_rate:
+            if self.model:
+                self.target_region = self.model.predict(observation)
+            else:
+                self.target_region = self.heuristic(observation)
 
-        # TODO set waypoint directly to center of new region
+        # Set waypoint directly to center of new region
+        action = self._get_region_center(self.target_region)
 
-        action = new_region
         return action
 
-    def get_action_space(self) -> gym.Space:
-        return gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32)
+    def heuristic(self, observation):
+        """Simple heuristic to choose a region. Can be used if model is not provided"""
 
-    def get_observation_space(self) -> gym.Space:
-        # Agent pos (2) + target region center (2) + distance to target (1) + current region (1)
-        return gym.spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32)
+        obs = np.array(observation)
 
-    def get_observation(self, base_obs: np.ndarray, env_state: Dict[str, Any]) -> np.ndarray:
-        # TODO:
-        #  Densities of all regions
-        #  Distances to each region
-        #  Location of human (in relation to agent and all regions)
+        # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
+        regions_info = []
 
-        return obs
+        for region_id in range(4):  # 4 regions: NW, NE, SW, SE
+            base_idx = region_id * 3
+            target_ratio = obs[base_idx]  # Ratio of unknown targets in this region
+            agent_distance = obs[base_idx + 1]  # Agent distance to region center
+            teammate_distance = obs[base_idx + 2]  # Teammate distance to region center
 
-    def get_reward(self):
-        # TODO
-        return reward
+            regions_info.append({
+                'region_id': region_id,
+                'target_ratio': target_ratio,
+                'agent_distance': agent_distance,
+                'teammate_distance': teammate_distance
+            })
+
+        # Determine which region teammate is likely in
+        # Teammate is probably in the region they're closest to
+        teammate_distances = [info['teammate_distance'] for info in regions_info]
+        teammate_region = np.argmin(teammate_distances)
+
+        # Sort regions by target density (highest ratio first)
+        regions_info.sort(key=lambda x: x['target_ratio'], reverse=True)
+
+        # Choose the highest density region that doesn't have teammate
+        target_region = None
+        for region_info in regions_info:
+            region_id = region_info['region_id']
+
+            # Skip if teammate is in this region (with small tolerance for distance comparison)
+            if region_id == teammate_region and region_info[
+                'teammate_distance'] < 0.3:  # 0.3 is normalized distance threshold
+                continue
+
+            target_region = region_id
+            break
+
+        # Fallback: if all regions have teammate or no targets anywhere, choose the region with highest density
+        if target_region is None:
+            target_region = regions_info[0]['region_id']
+
+        return target_region
+
 
     def is_terminated(self, env_state: Dict[str, Any]) -> bool:
-        # Terminate when arrived at target region
+        """Terminate when arrived at target region"""
+        # TODO check this
         agent_pos = env_state['agent_position']
-        map_half_size = env_state['map_half_size']
-        region_center = self._get_region_center(self.target_region, map_half_size)
+        region_center = self._get_region_center(self.target_region)
         distance_to_region = np.linalg.norm(region_center - agent_pos)
         return distance_to_region <= self.arrival_threshold
 
-    def _get_region_center(self, region_id: int, map_half_size: float) -> np.ndarray:
+    def _get_region_center(self, region_id: int) -> np.ndarray:
         """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
-        quarter_size = map_half_size * 0.5
         centers = {
-            0: np.array([-quarter_size, quarter_size]),  # NW
-            1: np.array([quarter_size, quarter_size]),  # NE
-            2: np.array([-quarter_size, -quarter_size]),  # SW
-            3: np.array([quarter_size, -quarter_size])  # SE
+            0: np.array([-0.25, 0.25]),  # NW
+            1: np.array([0.25, 0.25]),  # NE
+            2: np.array([-0.25, -0.25]),  # SW
+            3: np.array([0.25, -0.25])  # SE
         }
         return centers.get(region_id, np.array([0.0, 0.0]))

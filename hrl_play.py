@@ -3,8 +3,8 @@ import pygame
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
-from policies.sub_policies import GoToNearestHighValueTarget, LocalSearch, ChangeRegions
+#from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
+from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     ctypes.windll.user32.SetProcessDPIAware()
     window_width, window_height = config['window_size'][0], config['window_size'][1]
-    config['tick_rate'] = 60
+    config['tick_rate'] = 30
     window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
     pygame.display.set_caption("MAISR Human Interface")
 
@@ -32,9 +32,9 @@ if __name__ == "__main__":
     )
 
     # Instantiate subpolicies
-    local_search_policy = LocalSearch(heuristic = greedy_heuristic_nearest_n, model=None)
-    go_to_highvalue_policy = GoToNearestHighValueTarget
-    change_region_subpolicy = ChangeRegions
+    local_search_policy = LocalSearch(model=None)
+    go_to_highvalue_policy = GoToNearestThreat(model=None)
+    change_region_subpolicy = ChangeRegions(model=None)
 
     env = MaisrModeSelectorWrapper(
         base_env,
