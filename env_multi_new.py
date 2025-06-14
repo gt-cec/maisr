@@ -4,332 +4,12 @@ import pygame
 import random
 import math
 
-from maze.core.env.structured_env_spaces_mixin import StructuredEnvSpacesMixin
-
-import utility.gui
 import utility.agents as agents
 from utility.gui import Button, HealthWindow, TimeWindow
 
-from maze.core.env.core_env import CoreEnv
-from maze.core.env.maze_env import MazeEnv
-from maze.core.env.structured_env import ActorID
-from maze.core.env.maze_state import MazeStateType
-from maze.core.env.maze_action import MazeActionType
-from maze.core.env.observation_conversion import ObservationConversionInterface
-from maze.core.env.action_conversion import ActionConversionInterface
-from maze.core.wrappers.wrapper import Wrapper
-from maze.core.env.structured_env import StructuredEnv
 
-
-class StructuredMAISREnv(Wrapper[MazeEnv], StructuredEnv, StructuredEnvSpacesMixin):
-    """Structured environment to handle heterogeneous agents at different sub-steps. Follows Maze-RL standards
-    https://maze-rl.readthedocs.io/en/latest/best_practices_and_tutorials/struct_env/flat_to_structured.html#flat-to-structured
-    """
-    def __init__(self, maze_env: MazeEnv):
-        Wrapper.__init__(self, maze_env)
-
-        # # Define actor's action and observation spaces
-        self._action_spaces_dict = {
-            0: gym.spaces.Dict({
-                "mode_select": gym.spaces.Discrete(3),  # 4 modes: local_search, go_to_highvalue, change_regions
-                "id_select": gym.spaces.Discrete(3),  # Placeholder for ID selection actions
-                "human_action": maze_env.action_space["waypoint"] # Human selects waypoints
-            }),
-
-            1: gym.spaces.Dict({
-                "discrete16": gym.spaces.Discrete(16),
-                "waypoint": gym.spaces.Box(low=-1, high=1, shape=(2,), dtype=np.float32),
-                "region_select": gym.spaces.Discrete(4)  # 4 regions: NW, NE, SW, SE
-            })
-        }
-
-        change_region_obs_size = # TODO
-        go_to_highvalue_obs_Size = # TODO
-
-        self._observation_spaces_dict = {
-            0: gym.spaces.Dict({
-                "mode_selector": gym.spaces.Box(low=-1, high=1, shape=(self._get_alltargets_obs_size(),),dtype=np.float32),  # TODO decide size/contents
-                "id_selector": gym.spaces.Box(low=-1, high=1, shape=(self._get_alltargets_obs_size(),),dtype=np.float32),  # TODO decide size/contents
-                "human": gym.spaces.Box(low=-1, high=1, shape=(self._get_alltargets_obs_size(),), dtype=np.float32),  # TODO decide size/contents
-                }),
-
-            1: gym.spaces.Dict({
-                "local_search": gym.spaces.Box(low=-1, high=1, shape=(self._get_nearest_n_obs_size(),), dtype=np.float32),  # TODO decide size/contents
-                "go_to_highvalue": gym.spaces.Box(low=-1, high=1, shape=(self._get_alltargets_obs_size(),), dtype=np.float32),  # TODO decide size/contents
-                "change_regions": gym.spaces.Box(low=-1, high=1, shape=(10,), dtype=np.float32)  # Placeholder size  # TODO decide size/contents
-                })
-        }
-
-        self._sub_step_key = 0
-        self._mode_selected = None
-        self._mode_timer = 0
-        self._mode_duration = 20 # How long the subpolicy runs before choosing a new mode TODO change
-        self._last_reward = 0.0  # Last reward received from the Core Env
-        self._flat_obs = None  # Raw obs from the core env
-
-    def reset(self):
-        """Reset the structured environment."""
-        self._flat_obs = self.env.reset()
-        self._sub_step_key = 0
-        self._mode_selected = None
-        self._mode_timer = 0
-        return self._get_mode_selection_observation()
-
-########################################################################################################################
-################################################    Step functions    ##################################################
-########################################################################################################################
-
-    def step(self, action):
-        """Generic step function alternating between mode selection and sub-policy execution."""
-
-        if self._sub_step_key == 0:  # Mode selection step
-            return self._mode_selection_step(action)
-        elif self._sub_step_key == 1:  # Sub-policy execution step
-            return self._sub_policy_step(action)
-        else:
-            raise ValueError(f"Sub-step id {self._sub_step_key} not allowed for this environment!")
-
-    def _mode_selection_step(self, action):
-        """Handle mode selection sub-step."""
-        self._mode_selected = action["mode_select"]
-        self._mode_timer = self._mode_duration
-
-        # Switch to sub-policy step
-        self._sub_step_key = 1
-
-        # Return observation for sub-policy without stepping core env
-        obs = self._get_sub_policy_observation()
-        return obs, 0.0, False, False, {}
-
-    def _sub_policy_step(self, action):
-        """Handle sub-policy execution sub-step."""
-        # Convert structured action to core env action
-        core_action = self._convert_to_core_action(action)
-
-        # Step the core environment
-        self._flat_obs, reward, done, truncated, info = self.env.step(core_action)
-        self._last_reward = reward
-
-        # Decrement mode timer
-        self._mode_timer -= 1
-
-        # Check if we should switch back to mode selection
-        if self._mode_timer <= 0:
-            self._sub_step_key = 0
-            obs = self._get_mode_selection_observation()
-        else:
-            obs = self._get_sub_policy_observation()
-
-        return obs, reward, done, truncated, info
-
-########################################################################################################################
-########################################################################################################################
-
-    def _convert_to_core_action(self, action):
-        """Convert structured sub-policy action to core environment action."""
-        if self._mode_selected == 1:  # Local search
-            return {"discrete16": action["discrete16"]}
-        elif self._mode_selected == 2:  # Change regions
-            return {"waypoint": action["waypoint"]}
-        elif self._mode_selected == 3:  # Go to high value
-            return {"waypoint": action["waypoint"]}
-        else:
-            raise ValueError(f"Unknown mode: {self._mode_selected}")
-
-    def _get_mode_selection_observation(self): # TODO change to the mode selector's obs
-        """Get observation for mode selection."""
-        return self.env.get_observation_alltargets()
-
-    def _get_id_selection_observation(self):
-        # TODO set up the ID method's observation
-        return self.env.get_idmethod_observation()
-
-    def _get_sub_policy_observation(self):
-        """Get observation for current sub-policy."""
-        # TODO change to actual obs for each policy
-
-        if self._mode_selected == 1:  # Local search
-            return self.env.get_observation_nearest_n()
-        elif self._mode_selected == 2:  # Change regions
-            return self._get_change_regions_observation()
-        elif self._mode_selected == 3:  # Go to high value
-            return self.env.get_observation_alltargets()
-        else:
-            return np.zeros(self._get_mode_specific_obs_size(), dtype=np.float32)
-
-########################################################################################################################
-##################################################   Handle actors   ###################################################
-########################################################################################################################
-
-    def actor_id(self) -> ActorID:
-        """Returns the currently executed actor along with the policy id."""
-        if self._sub_step_key == 0:
-            return ActorID(step_key=0, agent_id=0)  # Mode selector
-        else:
-            return ActorID(step_key=1, agent_id=self._mode_selected)  # Sub-policy
-
-    def is_actor_done(self) -> bool:
-        """Check if current actor's turn is complete"""
-
-        if self.terminated or self.truncated:
-            return True
-
-        current_actor = self.actor_id()
-
-        # Mode selector is done after one action
-        if current_actor.step_key == 0:
-            return True
-
-        # Sub-policy is done when mode timer expires or termination condition met
-        if current_actor.step_key == 1:
-            return self.mode_timer <= 0
-
-    def get_actor_rewards(self) -> Optional[np.ndarray]:
-        """Returns rewards attributed to individual actors after the step has been done."""
-        # Only return reward for the actor that actually executed an action
-        if self._sub_step_key == 1:  # Sub-policy gets the reward
-            return np.array([self._last_reward])
-        return np.array([0.0])  # Mode selector gets no reward
-
-    @property
-    def agent_counts_dict(self) -> Dict[Union[str, int], int]:
-        """Returns the count of agents for individual sub-steps."""
-        return {0: 1, 1: 1}  # One agent acts per sub-step
-
-########################################################################################################################
-########################################################################################################################
-
-    @property
-    def action_space(self) -> gym.spaces.Dict:
-        """Implementation of StructuredEnvSpacesMixin interface."""
-        return self._action_spaces_dict[self._sub_step_key]
-
-    @property
-    def observation_space(self) -> gym.spaces.Dict:
-        """Implementation of StructuredEnvSpacesMixin interface."""
-        return self._observation_spaces_dict[self._sub_step_key]
-
-    @property
-    def action_spaces_dict(self) -> Dict[Union[int, str], gym.spaces.Dict]:
-        """Implementation of StructuredEnvSpacesMixin interface."""
-        return self._action_spaces_dict
-
-    @property
-    def observation_spaces_dict(self) -> Dict[Union[int, str], gym.spaces.Dict]:
-        """Implementation of StructuredEnvSpacesMixin interface."""
-        return self._observation_spaces_dict
-
-
-
-    def get_agent_rewards(self): # TODO necessary?
-        pass
-
-
-    def action_space(self, actor_id: ActorID) -> gym.spaces.Space:
-        """Return action space for specific actor"""
-        if actor_id.step_key == 0:
-            if actor_id.agent_id == 0:  # Mode selector
-                return gym.spaces.Discrete(4)
-            elif actor_id.agent_id == 4:  # ID selector
-                return gym.spaces.Discrete(3)  # Placeholder
-            elif actor_id.agent_id == 5:  # Human
-                return self.env.action_space
-        elif actor_id.step_key == 1:
-            if actor_id.agent_id == 1:  # Local search
-                return gym.spaces.Discrete(16)
-            elif actor_id.agent_id == 2:  # Go to high value
-                return gym.spaces.Box(low=-150, high=150, shape=(2,), dtype=np.float32)
-            elif actor_id.agent_id == 3:  # Change regions
-                return gym.spaces.Discrete(4)
-
-        raise ValueError(f"Unknown actor_id: {actor_id}")
-
-
-    def observation_space(self, actor_id: ActorID) -> gym.spaces.Space:
-        """Return observation space for specific actor"""
-        if actor_id.step_key == 0:
-            if actor_id.agent_id in [0, 4, 5]:  # Mode selector, ID selector, Human
-                obs_size = 2 + 3 * self.env.config['num_targets']
-                return gym.spaces.Box(low=-1, high=1, shape=(obs_size,), dtype=np.float32)
-        elif actor_id.step_key == 1:
-            if actor_id.agent_id == 1:  # Local search
-                N = self.env.config['num_observed_targets']
-                M = self.env.config['num_observed_threats']
-                obs_size = 2 * (N + M)
-                return gym.spaces.Box(low=-1, high=1, shape=(obs_size,), dtype=np.float32)
-            elif actor_id.agent_id == 2:  # Go to high value
-                obs_size = 2 + 3 * self.env.config['num_targets']
-                return gym.spaces.Box(low=-1, high=1, shape=(obs_size,), dtype=np.float32)
-            elif actor_id.agent_id == 3:  # Change regions
-                return gym.spaces.Box(low=-1, high=1, shape=(10,), dtype=np.float32)
-
-        raise ValueError(f"Unknown actor_id: {actor_id}")
-
-    def _get_alltargets_obs_size(self):
-        """Calculate observation size for get_observation_alltargets()"""
-        return 2 + 3 * self.env.config['num_targets']  # agent_x, agent_y + 3 features per target
-
-    def _get_nearest_n_obs_size(self):
-        """Calculate observation size for get_observation_nearest_n()"""
-        N = self.env.config['num_observed_targets']
-        M = self.env.config['num_observed_threats']
-        return 2 * (N + M)  # x,y components for N targets + M threats
-
-    # TODO consolidate with the other one in the core env
-    def get_observation_and_action_dicts(self, maze_state: MazeStateType, maze_action: MazeActionType,
-                                         first_step_in_episode: bool) -> Tuple[
-        Optional[Dict[Union[int, str], Any]], Optional[Dict[Union[int, str], Any]]]:
-        """Convert the flat action and MazeAction from Maze env into the structured ones."""
-
-        current_actor = self.actor_id()
-        obs_dict = {}
-        act_dict = {}
-
-        # Create observation for current actor only
-        if current_actor.step_key == 0:
-            if current_actor.agent_id == 0:  # Mode selector
-                obs_dict[current_actor] = self.env.get_observation_alltargets()
-            elif current_actor.agent_id == 4:  # ID selector
-                obs_dict[current_actor] = self.env.get_observation_alltargets()
-            elif current_actor.agent_id == 5:  # Human player
-                obs_dict[current_actor] = self.env.get_observation_alltargets()
-
-        elif current_actor.step_key == 1:
-            if current_actor.agent_id == 1:  # Local search
-                obs_dict[current_actor] = self.env.get_observation_nearest_n()
-            elif current_actor.agent_id == 2:  # Go to high value
-                obs_dict[current_actor] = self.env.get_observation_alltargets()
-            elif current_actor.agent_id == 3:  # Change regions
-                obs_dict[current_actor] = self.env.get_observation_change_regions()
-
-        # Action dict is typically None for observations, will be filled by policy
-        act_dict[current_actor] = None
-
-        return obs_dict, act_dict
-
-
-
-
-
-    def seed(self, seed:int=None) -> None:
-        self.env.seed(seed)
-
-    def close(self) -> None:
-        self.env.close()
-
-
-class MaisrMazeEnv(MazeEnv[MAISREnvCore]):
-    def __init__(self,
-                 core_env: CoreEnv,
-                 action_conversion: ActionConversionInterface,
-                 observation_conversion: ObservationConversionInterface):
-        super().__init__(core_env = core_env,
-                         action_conversion_dict={0:action_conversion},
-                         observation_conversion_dict={0:observation_conversion})
-
-
-class MAISREnvCore(CoreEnv):
-    """Multi-Agent ISR Environment following Gymnasium and Maze-RL standards for hierarchical and multi-agent envs"""
+class MAISREnvVec(gym.Env):
+    """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
                  tag='none',
@@ -340,23 +20,10 @@ class MAISREnvCore(CoreEnv):
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
+
         self.run_name = run_name # For logging
-        self.tag = tag  # Name for differentiating envs for training, eval, software testing etc.
-        self.render_mode = render_mode
+
         self.use_buttons = False # TODO make configurable in config
-
-        # Hierarchical control state
-        self.current_mode = None  # Current high-level mode (0-3)
-        self.mode_timer = 0  # Steps remaining in current mode
-        self.min_mode_duration = config.get('min_mode_duration', 5)  # Minimum steps per mode
-        self.max_mode_duration = config.get('max_mode_duration', 20)  # Maximum steps per mode
-
-        # Mode definitions
-        self.MODES = {
-            1: "go_to_nearest_target",
-            2: "local_search",
-            3: "change_regions"
-        }
 
         if seed is not None:
             np.random.seed(seed)
@@ -377,12 +44,14 @@ class MAISREnvCore(CoreEnv):
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
 
         self.max_steps = self.config['max_steps'] # Max inner steps of the environment (before frame stacking)
+        self.max_detections = 10
 
         self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
+        self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
+        self.render_mode = render_mode
 
-
-        self._generate_plot_list() # Generate list of levels to plot
+        self.generate_plot_list() # Generate list of levels to plot
 
         self.check_valid_config() # Check that config parameters are valid
 
@@ -543,18 +212,14 @@ class MAISREnvCore(CoreEnv):
         self.reset()
 
 
-    def reset(self, seed=None, options=None) -> MaisrMazeState:
+    def reset(self, seed=None, options=None):
 
         # Load settings based on difficulty level
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
 
         if self.config['use_curriculum']:
-            self._generate_plot_list()  # Generate list of episodes to plot using _save_action_history_plot()
-
-        # Reset hierarchical state
-        self.current_mode = None
-        self.mode_timer = 0
+            self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
         # Set seed for this level
         seed_list = self.level_seeds[0:self.num_levels]
@@ -592,6 +257,7 @@ class MAISREnvCore(CoreEnv):
         self.target_timers = np.zeros(self.config['num_targets'], dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
+        self.threats_identified = 0
 
         # Create a single threat at random location
         #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
@@ -654,15 +320,17 @@ class MAISREnvCore(CoreEnv):
             if self.tag in ['eval','test_suite']: start_loc_index = self.episode_counter % len(self.start_locations)
             else: start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
 
+            #map_half_size = self.config["gameboard_size"] / 2
             agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
+            #print(f'Agent spawned at {agent_x}, {agent_y}')
 
 
         ############################################# Create the aircraft ##############################################
-        for i in range(self.config['num_agents']):
+        for i in range(self.config['num_aircraft']):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
 
-        if self.config['num_agents'] == 2: # TODO delete
+        if self.config['num_aircraft'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
         # Reset step, episode, and reward counters
@@ -675,182 +343,57 @@ class MAISREnvCore(CoreEnv):
         self.terminated = False
         self.truncated = False
 
-        #self.observation = self.get_observation()
-        #info = {}
+        self.observation = self.get_observation()
 
-        return self.get_maze_state()
+        info = {}
+        return self.observation, info
 
-    def get_maze_state(self) -> MaisrMazeState:
-        # TODO return current MazeState of the env
 
-        return MaisrMazeState() # TODO add state elements here
-
-    def step(self, maze_action: MaisrMazeAction):
+    def step(self, action):
         """ Skip frames by repeating the action multiple times """
-        # TODO use MaisrMazeAction
 
-        total_reward, info = 0, None
+        total_reward, info, total_potential_gain = 0, None, 0
+        
+        # Track status from prior step for info gathering later
+        prev_targets_identified = self.targets_identified
+        prev_threats_identified = self.threats_identified
+        prev_detections = self.detections
 
         for frame in range(self.config['frame_skip']):
-            # TODO fix the flow here. Single step might need to be called somewhere else (or it needs to call each submode)
-            observation, reward, self.terminated, self.truncated, info = self._single_step(actions)
+            observation, reward, self.terminated, self.truncated, info = self._single_step(action)
             total_reward += reward
-            #total_potential_gain += info["potential_gain"]
+            total_potential_gain += info["potential_gain"]
 
             # Break early if the episode is done to avoid unnecessary computation
             if self.terminated or self.truncated:
                 break
 
+        #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
-
-        self._check_termination() # Check subpolicy termination conditions
+        info["outerstep_potential_gain"] = total_potential_gain
+        
+        info['new_target_ids'] = self.targets_identified - prev_targets_identified
+        info['new_threat_ids'] = self.threats_identified - prev_threats_identified
+        info['new_detections'] = self.detections - prev_detections
 
         return observation, total_reward, self.terminated, self.truncated, info
 
 
-    def _process_mode_selection(self, maze_action: MaisrMazeAction) -> float:
-        """Process high-level mode selection"""
-        mode_action = maze_action.action_value
-
-        # Validate mode selection
-        if not isinstance(mode_action, (int, np.integer)) or mode_action not in range(4): raise ValueError(f"Invalid mode action: {mode_action}. Must be 0-3.")
-
-        # Set new mode
-        old_mode = self.current_mode
-        self.current_mode = mode_action
-
-        # Set mode duration (could be learned or fixed)
-        self.mode_timer = np.random.randint(self.min_mode_duration, self.max_mode_duration + 1)
-
-        # Reward for mode selection (sparse reward based on appropriateness)
-        mode_reward = self._evaluate_mode_selection(old_mode, self.current_mode)
-        return mode_reward
-
-    def _process_sub_policy_action(self, maze_action: MaisrMazeAction) -> float:
-        """Process low-level sub-policy action"""
-
-        # TODO ID selection is missing
-
-        # Decode action based on current mode
-        #if self.current_mode == 0:  # Go to nearest target
-            #reward = self._execute_go_to_target(maze_action.action_value)
-
-        if self.current_mode == 1:  # Local search
-            reward = self._execute_local_search(maze_action.action_value)
-
-        elif self.current_mode == 2:  # Change regions
-            reward = self._execute_change_regions(maze_action.action_value)
-
-            if self.current_mode == 3:  # Go to high risk target
-                reward = self._execute_go_to_highrisk_target(maze_action.action_value)
-
-        else:
-            reward = 0.0
-
-        #elif self.current_mode == 1:  # Evade detection
-            #reward = self._execute_evade_detection(maze_action.action_value)
-
-        # Decrement mode timer
-        self.mode_timer -= 1
-
-        return reward
-
-    def _execute_go_to_highrisk_target(self, action) -> float:
-        """Execute go-to-nearest-target behavior"""
-        # Convert action to waypoint and move agent
-        waypoint = self.process_action(action)
-        self.agents[0].waypoint_override = waypoint
-
-        # Move agent and check for target identification
-        reward = self._move_agent_and_check_targets()
-
-        # Additional reward shaping for moving toward targets
-        agent_pos = np.array([self.agents[0].x, self.agents[0].y])
-        target_positions = self.targets[:, 3:5]
-        unknown_mask = self.targets[:, 2] < 1.0
-
-        if np.any(unknown_mask):
-            unknown_positions = target_positions[unknown_mask]
-            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
-            nearest_distance = np.min(distances)
-            reward += 0.01 * (100 - nearest_distance) / 100  # Proximity reward
-
-        return reward
-
-    def _execute_evade_detection(self,action) -> float:
-        # TODO: https://claude.ai/chat/8b85619a-bb4c-456c-a22c-902cc19f939e
-        return reward
-
-    def _execute_local_search(self, action) -> float:
-        # TODO
-        return reward
-
-    def _execute_change_regions(self, action) -> float:
-        # TODO
-        # Use _get_region_center
-        return reward
-
-    def _get_region_center(self, region: int) -> Tuple[float, float]:
-        """Get center coordinates for specified map region"""
-        map_half_size = self.config["gameboard_size"] / 2
-
-        # Define quadrant centers
-        region_centers = {
-            0: (-map_half_size / 2, map_half_size / 2),  # NW
-            1: (map_half_size / 2, map_half_size / 2),  # NE
-            2: (-map_half_size / 2, -map_half_size / 2),  # SW
-            3: (map_half_size / 2, -map_half_size / 2)  # SE
-        }
-
-        return region_centers.get(region, (0, 0))
-
-    def _check_termination(self):
-        # TODO update single_step to use this
-        """Check if episode should terminate"""
-        # All targets identified
-        self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
-
-        if self.all_targets_identified:
-            self.terminated = True
-
-        # Maximum steps reached
-        if self.step_count_inner >= self.config.get('max_steps', 1000):
-            self.truncated = True
-
-    def get_maze_state(self) -> MaisrMazeState:
-        """Get current maze state"""
-        agent_positions = {}
-        for i, agent_id in enumerate(self.aircraft_ids):
-            if i < len(self.agents):
-                agent_positions[agent_id] = (self.agents[agent_id].x, self.agents[agent_id].y)
-
-        return MaisrMazeState(
-            targets=self.targets.copy(),
-            agent_positions=agent_positions,
-            time_left=self.config.get('time_limit', 600) - self.display_time / 1000,
-            threats=self.threat.copy(),
-            detections=self.detections,
-            current_mode=self.current_mode,
-            mode_timer=self.mode_timer
-        )
-
-    def _single_step(self, actions:dict):
+    def _single_step(self, action):
         """
         args:
-            actions: (Option 1) Dictionary of {agent_id: action(ndarray)}.
-                     (Option 2) A single ndarray
+            action: A single np.ndarray
         """
 
         self.step_count_inner += 1
-        if self.potential:
-            last_potential = self.potential
-        else:
-            last_potential = 0
+
+        if self.potential: last_potential = self.potential
+        else: last_potential = 0
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
-        new_score = 0 # For tracking human-understandable reward
+        new_score = 0 # For tracking score to display to the human
         info = {
-            "new_identifications": [],  # List to track newly identified targets/threats
+            "new_identifications": [], # List to track newly identified targets/threats
             "reward_components": {},
             "detections": self.detections,  # Current detection count
             "target_ids": 0,
@@ -858,35 +401,18 @@ class MAISREnvCore(CoreEnv):
             "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
 
-        ############################################### Process actions ################################################
-        if self.config['action_type'] in ['Discrete8', 'Discrete16'] and isinstance(actions, (np.int64, np.float32, int)):
-            waypoint = self.process_action(actions)
-            self.agents[0].waypoint_override = waypoint
-
-        elif self.config['action_type'] == 'continuous-normalized':
-            waypoint = self.process_action(actions)
-            self.agents[0].waypoint_override = waypoint
-
-        elif isinstance(actions, dict): # Action is passed in as a dict {agent_id: action}
-            for agent_id, action_value in actions.items():
-                waypoint = self.process_action(action_value)
-                self.agents[agent_id].waypoint_override = waypoint
-
-        elif isinstance(actions, np.ndarray): # Single agent, action passed in directly as an array instead of list(arrays)
-            waypoint = self.process_action(actions)
-            self.agents[0].waypoint_override = (float(waypoint[0]), float(waypoint[1]))
-
-        else:
-            print(f'Action type: {type(actions)}')
-            raise ValueError('Actions input is an unknown type')
+        ############################################### Process action ################################################
+        waypoint = self.process_action(action)
+        self.agents[0].waypoint_override = waypoint
 
         # Log actions to action_history plot
         self.action_history.append(self.agents[0].waypoint_override)
         self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
+
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-            aircraft.move() # First, move using the waypoint override set above
+            aircraft.move() # Move using the waypoint override set above
 
             # # Calculate distances to all targets
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
@@ -895,6 +421,12 @@ class MAISREnvCore(CoreEnv):
 
             # Find targets within ISR range (for identification)
             in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
+
+            # Check if in range of a threat
+            threat_pos = np.array([self.threat[0], self.threat[1]])
+            distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+            in_threat_range = distance_to_threat <= self.config['threat_radius']
+
 
             # Process newly identified targets
             for target_idx in range(self.config['num_targets']):
@@ -919,13 +451,12 @@ class MAISREnvCore(CoreEnv):
                         "time": self.display_time
                     })
 
-                # # Handle aircraft being detected by high value targets
-                # if self.config['prob_detect'] > 0.0: # If prob detect is zero, skip
-                #     if in_isr_range[target_idx] and self.targets[target_idx, 1] == 1.0: # Only if we're in range of high value targets
-                #         if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
-                #             self.detections += 1
-                #             new_reward['detections'] += 1
-                #             info["detections"] = self.detections
+                # Handle aircraft being detected by high value targets
+                if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
+                    if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
+                        self.detections += 1
+                        new_reward['detections'] += 1
+                        info["detections"] = self.detections
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
 
@@ -960,10 +491,13 @@ class MAISREnvCore(CoreEnv):
         info["target_ids"] = self.targets_identified
         info["potential_gain"] = potential_gain
 
+        info['done'] = self.terminated or self.truncated
+        info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
+
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.max_steps/self.config['frame_skip'] - self.step_count_outer,0)} outer steps early')
             if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
-                self._save_action_history_plot()
+                self.save_action_history_plot()
             if self.render_mode == 'human':
                 pygame.time.wait(50)
 
@@ -971,20 +505,10 @@ class MAISREnvCore(CoreEnv):
 
 
     def get_reward(self, new_reward, potential_gain):
+        # TODO threat penalty should only be applied for the local_search training wrapper
 
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
-        # apply_threat_penalty = False
-        # if hasattr(self, 'threat'):
-        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
-        #         threat_pos = np.array([self.threat[0], self.threat[1]])
-        #         distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-        #
-        #         if distance_to_threat <= self.config['threat_radius']:
-        #             apply_threat_penalty = True
-
-        # Calculate gradual threat penalty based on distance
-        threat_penalty = 0
+        threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
         if hasattr(self, 'threat'):
             for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
                 aircraft_pos = np.array([aircraft.x, aircraft.y])
@@ -992,30 +516,28 @@ class MAISREnvCore(CoreEnv):
                 distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
 
                 threat_radius = self.config['threat_radius']
-                warning_radius = threat_radius * 2  # 50% larger than threat radius
+                warning_radius = threat_radius * 1.5  # 50% larger than threat radius
 
                 if distance_to_threat <= threat_radius:
                     # Maximum penalty when at center, decreasing linearly to zero at radius edge
                     normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
                     penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
-                    threat_penalty += self.config['inside_threat_penalty'] * penalty_multiplier
+                    threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
                 elif distance_to_threat <= warning_radius:
                     # Warning zone - penalty decreases from 50% to 0% as distance increases
                     normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-                    penalty_multiplier = 0.5 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
-                    threat_penalty += self.config['inside_threat_penalty'] * penalty_multiplier
+                    penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
+                    threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+
 
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty']) - \
-                 threat_penalty
+                 threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
 
-        # if apply_threat_penalty:
-        #     reward -= self.config['inside_threat_penalty']
-        #     #print(f'Penalty for being inside threat range')
 
         return reward
 
@@ -1065,6 +587,8 @@ class MAISREnvCore(CoreEnv):
         elif self.config['obs_type'] == 'absolute-1target':
             self.observation = self.get_observation_1target()
 
+        elif self.config['obs_type'] == 'pixel':
+            self.observation = self.get_pixel_observation()
 
         return self.observation
 
@@ -1168,14 +692,43 @@ class MAISREnvCore(CoreEnv):
         # If no unknown targets remaining, observation stays all zeros
         return self.observation
 
-    def get_observation_change_regions(self):
-        """Placeholder for change_regions specific observation.
-        TODO: Implement region-based observation logic here.
+    def get_observation_1target(self):
         """
-        # For now, return a placeholder observation that matches the expected shape
-        # You can implement the actual region-based logic later
-        return np.zeros(10, dtype=np.float32)  # Adjust size as needed
+        State will include the following features:
+            Absolute mode:
+                0 agent_x,                 # (-1 to +1) normalized position
+                1 agent_y,                 # (-1 to +1) normalized position
+                2 nearest_target_x,        # (-1 to +1) normalized position
+                3 nearest_target_y,        # (-1 to +1) normalized position
+        """
 
+        # New observation size: agent (x,y) + nearest target (x,y) = 4 elements
+        self.observation = np.zeros(4, dtype=np.float32)
+
+        map_half_size = self.config["gameboard_size"] / 2
+
+        # Agent position (normalized)
+        self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
+        self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
+
+        # Find nearest target
+        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates of existing targets
+
+        if self.config['num_targets'] > 0:
+            # Calculate distances to all targets
+            distances = np.sqrt(np.sum((target_positions - agent_pos) ** 2, axis=1))
+            nearest_idx = np.argmin(distances)
+
+            # Nearest target position (normalized)
+            self.observation[2] = self.targets[nearest_idx, 3] / map_half_size
+            self.observation[3] = self.targets[nearest_idx, 4] / map_half_size
+        else:
+            # No targets exist, set to agent position
+            self.observation[2] = self.observation[0]
+            self.observation[3] = self.observation[1]
+
+        return self.observation
 
     def get_observation_alltargets(self):
         """
@@ -1210,9 +763,94 @@ class MAISREnvCore(CoreEnv):
 
         return self.observation
 
-    ####################################################################################################################
-    ####################################################  Rendering  ###################################################
-    ####################################################################################################################
+    def get_pixel_observation(self):
+        """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
+
+        # Use existing render surface if in human mode, otherwise create temporary surface
+        if self.render_mode == 'human' and hasattr(self, 'window'):
+            # Capture the main game area from the existing window
+            game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
+            pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
+        else:
+            # Create offscreen surface and render to it with enhanced target visibility
+            self.pixel_surface.fill((255, 255, 255))  # White background
+            self._render_game_to_surface_enhanced(self.pixel_surface)
+            pixel_array = pygame.surfarray.array3d(self.pixel_surface)
+
+        # Pygame arrays are (width, height, channels), we need (height, width, channels)
+        pixel_array = np.transpose(pixel_array, (1, 0, 2))
+
+        # Convert to grayscale using weighted average for better contrast
+        if len(pixel_array.shape) == 3:
+            # Use standard RGB to grayscale conversion
+            pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
+
+        # Resize to 84x84 using OpenCV for consistency
+        pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
+
+        # Add channel dimension for grayscale
+        pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
+
+        return pixel_array_resized.astype(np.uint8)
+
+    def _render_game_to_surface_enhanced(self, surface):
+        """
+        Render game elements to a pygame surface with enhanced target visibility for pixel observations.
+        Uses distinct grayscale values and shapes to ensure unknown vs known targets are clearly differentiable.
+        """
+
+        # Draw outer box (same as human render)
+        self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
+
+        # Draw aircraft (same as human render)
+        for agent in self.agents:
+            agent.draw(surface)
+
+        # Enhanced target rendering with clear grayscale differentiation
+        map_half_size = self.config["gameboard_size"] / 2
+
+        for target in self.targets:
+            screen_x = target[3] + map_half_size
+            screen_y = target[4] + map_half_size
+
+            # Base size for targets
+            base_size = 10 if target[1] == 1 else 7  # High-value vs regular targets
+
+            if target[2] == 1.0:  # Known/identified targets
+                # Use very dark gray (almost black) for known targets - will be ~51 in grayscale
+                target_color = (11, 11, 11)
+                # Draw filled circle for known targets
+                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+
+                # Add a white center dot to make them even more distinct
+                pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), max(2, base_size // 3))
+
+            else:  # Unknown targets (info_level < 1.0)
+                # Use light gray for unknown targets - will be ~204 in grayscale
+                target_color = (204, 204, 204)
+                # Draw filled circle for unknown targets
+                pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+
+                # Add black border to make them stand out against white background
+                pygame.draw.circle(surface, (0, 0, 0), (int(screen_x), int(screen_y)), base_size, 2)
+
+        # Draw the threat for pixel observations
+        if hasattr(self, 'threat'):
+            threat_screen_x = int(self.threat[0] + map_half_size)
+            threat_screen_y = int(self.threat[1] + map_half_size)
+            threat_radius = self.config['threat_radius']
+
+            # Draw circle (lighter for pixel obs)
+            pygame.draw.circle(surface, (200, 200, 0), (threat_screen_x, threat_screen_y), threat_radius, 2)
+
+            # Draw upside-down triangle
+            triangle_size = 12
+            triangle_points = [
+                (threat_screen_x, threat_screen_y + triangle_size),
+                (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+                (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+            ]
+            pygame.draw.polygon(surface, (200, 200, 0), triangle_points)
 
     def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
         """Utility function for drawing a square box to a specific surface"""
@@ -1227,7 +865,9 @@ class MAISREnvCore(CoreEnv):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge),
                          (distance_from_edge, distance_from_edge), width)
 
+
     def render(self):
+
         window_width, window_height = self.config['window_size'][0], self.config['window_size'][0]
         game_width = self.config["gameboard_size"]
         ui_width = window_width - game_width
@@ -1238,7 +878,7 @@ class MAISREnvCore(CoreEnv):
 
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
-        utility.gui.__render_box__(1, (0, 0, 0), 3)  # outer box
+        self.__render_box__(1, (0, 0, 0), 3)  # outer box
         pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
         pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
@@ -1283,7 +923,7 @@ class MAISREnvCore(CoreEnv):
             pygame.draw.polygon(self.window, (255, 215, 0), triangle_points)  # Gold triangle
 
         # Draw green lines and black crossbars
-        utility.gui.__render_box__(35, (0, 128, 0), 2)  # inner box
+        self.__render_box__(35, (0, 128, 0), 2)  # inner box
         pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard_size"] // 2, 0),(self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
         pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard_size"] // 2),(self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
 
@@ -1491,6 +1131,14 @@ class MAISREnvCore(CoreEnv):
         if self.render_mode == 'human' and pygame.get_init():
             pygame.quit()
 
+    # utility function for drawing a square box
+    def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
+        """Utility function for drawing a square box"""
+        surface = surface if surface is not None else self.window
+        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
@@ -1688,49 +1336,14 @@ class MAISREnvCore(CoreEnv):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
+        print(f'Subpolicy action is {action} ({type(action)}')
+        if isinstance(action, np.int32):
+            #elif action.ndim == 0 or (action.ndim == 1 and action.size == 1): # Discrete direction action
+            # Get normalized direction vector
+            action = action.item()
+            try:  action = int(action)
+            except: action = int(action[0])
 
-        if isinstance(action, np.ndarray):
-            if action.ndim > 1:
-                action = action.flatten()
-            if action.ndim == 0 or (action.ndim == 1 and action.size == 1):
-                action = action.item()  # Use .item() instead of indexing
-
-        if self.config['action_type'] == 'Discrete8':
-            # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
-            direction_map = {
-                0: (0, 1),  # up
-                1: (1, 1),  # up-right
-                2: (1, 0),  # right
-                3: (1, -1),  # down-right
-                4: (0, -1),  # down
-                5: (-1, -1),  # down-left
-                6: (-1, 0),  # left
-                7: (-1, 1)  # up-left
-            }
-
-            # Get current agent position
-            current_x = self.agents[self.aircraft_ids[0]].x
-            current_y = self.agents[self.aircraft_ids[0]].y
-            if isinstance(action, np.ndarray):
-                try: action = int(action)
-                except: action = int(action[0])
-
-            dx, dy = direction_map[action]
-            length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
-            dx_norm = dx / length
-            dy_norm = dy / length
-
-            # Calculate waypoint 50 pixels away in chosen direction
-            waypoint_distance = 50
-            x_coord = current_x + (dx_norm * waypoint_distance)
-            y_coord = current_y + (dy_norm * waypoint_distance)
-
-            # Clip to map boundaries
-            map_half_size = self.config["gameboard_size"] / 2
-            x_coord = np.clip(x_coord, -map_half_size, map_half_size)
-            y_coord = np.clip(y_coord, -map_half_size, map_half_size)
-
-        if self.config['action_type'] == 'Discrete16':
             direction_map = {
                 0: (0, 1),  # North (0°)
                 1: (0.383, 0.924),  # NNE (22.5°)
@@ -1753,14 +1366,6 @@ class MAISREnvCore(CoreEnv):
             current_x = self.agents[self.aircraft_ids[0]].x
             current_y = self.agents[self.aircraft_ids[0]].y
 
-            # Get normalized direction vector
-            if isinstance(action, np.ndarray):
-                try: action = int(action)
-                except: action = int(action[0])
-
-            # Handle actions outside the 16-direction range
-            #action = action % 16
-
             dx_norm, dy_norm = direction_map[action]
 
             # Calculate waypoint at fixed distance in chosen direction
@@ -1773,21 +1378,57 @@ class MAISREnvCore(CoreEnv):
             x_coord = np.clip(x_coord, -map_half_size, map_half_size)
             y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
-        elif self.config['action_type'] == 'continuous-normalized':
-            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                raise ValueError('ERROR: Actions are not normalized to -1, +1')
+        elif isinstance(action, np.ndarray):
+            if action.ndim > 1: # x,y waypoint
+                action = action.flatten()
+                if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                    raise ValueError('ERROR: Actions are not normalized to -1, +1')
 
-            map_half_size = self.config["gameboard_size"] / 2
-            x_coord = action[0] * map_half_size
-            y_coord = action[1] * map_half_size
+                map_half_size = self.config["gameboard_size"] / 2
+                x_coord = action[0] * map_half_size
+                y_coord = action[1] * map_half_size
 
-        else: raise ValueError(f'Error in process_action: action type "{self.config['action_type']}" not recognized')
+        # if self.config['action_type'] == 'Discrete8':
+        #     # Define 8 directions: 0=up, 1=up-right, 2=right, 3=down-right, 4=down, 5=down-left, 6=left, 7=up-left
+        #     direction_map = {
+        #         0: (0, 1),  # up
+        #         1: (1, 1),  # up-right
+        #         2: (1, 0),  # right
+        #         3: (1, -1),  # down-right
+        #         4: (0, -1),  # down
+        #         5: (-1, -1),  # down-left
+        #         6: (-1, 0),  # left
+        #         7: (-1, 1)  # up-left
+        #     }
+        #
+        #     # Get current agent position
+        #     current_x = self.agents[self.aircraft_ids[0]].x
+        #     current_y = self.agents[self.aircraft_ids[0]].y
+        #     if isinstance(action, np.ndarray):
+        #         try: action = int(action)
+        #         except: action = int(action[0])
+        #
+        #     dx, dy = direction_map[action]
+        #     length = math.sqrt(dx * dx + dy * dy)  # Normalize diagonal directions
+        #     dx_norm = dx / length
+        #     dy_norm = dy / length
+        #
+        #     # Calculate waypoint 50 pixels away in chosen direction
+        #     waypoint_distance = 50
+        #     x_coord = current_x + (dx_norm * waypoint_distance)
+        #     y_coord = current_y + (dy_norm * waypoint_distance)
+        #
+        #     # Clip to map boundaries
+        #     map_half_size = self.config["gameboard_size"] / 2
+        #     x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+        #     y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+        else:
+            raise ValueError(f'Error in process_action: action type "{self.config['action_type']}" not recognized')
 
         waypoint = (float(x_coord), float(y_coord))
-
         return waypoint
 
-    def _save_action_history_plot(self, note=''):
+    def save_action_history_plot(self, note=''):
         """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
         try:
             import matplotlib.pyplot as plt
@@ -1932,19 +1573,21 @@ class MAISREnvCore(CoreEnv):
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
 
-    def _generate_plot_list(self):
+    def generate_plot_list(self):
 
         # TODO Temp workaround
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+        #print(f'num_levels: {self.num_levels}')
         self.episodes_to_plot = []
         for j in range(min(self.num_levels,5)):
             self.episodes_to_plot.extend([1+j, 2+j, 5+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
             self.episodes_to_plot.extend([(50 * i) + j for i in range(80)])
         self.episodes_to_plot = list(set(self.episodes_to_plot))
         self.episodes_to_plot.sort()
+        #print(f'episodes to plot: {self.episodes_to_plot}')
         return
 
-        """Generate list of env episodes to plot using _save_action_history_plot"""
+        """Generate list of env episodes to plot using save_action_history_plot"""
 
         base_episodes = []
         if self.tag == 'bc':
@@ -1960,229 +1603,3 @@ class MAISREnvCore(CoreEnv):
             base_episodes.sort()
             self.episodes_to_plot = list(set(base_episodes))
             self.episodes_to_plot.sort()
-
-
-class MaisrMazeState(MazeStateType):
-    def __init__(self,
-                 targets: np.ndarray = None,
-                 agent_positions: Dict[int, Tuple[float, float]] = None,
-                 time_left: int = None,
-                 threats: np.ndarray = None,
-                 detections: int = 0,
-                 current_mode: Optional[int] = None,
-                 mode_timer: int = 0
-                 ):
-        super().__init__()
-        # TODO Define state here. Targets, other agents, time, detections etc
-        self.targets = targets if targets is not None else np.array([])
-        self.agent_positions = agent_positions if agent_positions is not None else {}
-        self.time_left = time_left if time_left is not None else 0
-        self.threats = threats if threats is not None else np.array([])
-        self.detections = detections
-        self.current_mode = current_mode  # Current high level submode (1,2,3)
-        self.mode_timer = mode_timer  # Steps remaining in current mode
-
-class MaisrMazeAction(MazeActionType):
-    def __init__(self,
-                 step_key: int,
-                 mode_selection: Optional[int] = None,
-                 sub_action: Optional[Dict[str, Any]] = None,
-                 agent_id: int = 0):
-        super().__init__()
-        self.step_key = step_key  # 0 for mode selection, 1 for sub-policy
-        self.mode_selection = mode_selection  # Mode selection (0-3) when step_key=0
-        self.sub_action = sub_action  # Sub-policy action when step_key=1
-        self.agent_id = agent_id  # Which agent the action applies to
-
-
-class ObservationConversion(ObservationConversionInterface):
-    """Convert maze state to policy-specific observations"""
-
-    def __init__(self, observation_type: str = "mode_selector"):
-        self.observation_type = observation_type
-
-    def maze_to_space(self, maze_state: MaisrMazeState) -> gym.Space:
-        """Define observation space based on type"""
-        if self.observation_type == "mode_selector":
-            # High-level state for mode selection - all targets observation
-            obs_size = 2 + 3 * 10  # Assuming max 10 targets, adjust as needed
-            return gym.spaces.Box(
-                low=-1, high=1,
-                shape=(obs_size,),
-                dtype=np.float32
-            )
-        elif self.observation_type == "local_search":
-            # Nearest targets observation for local search
-            N = 5  # num_observed_targets
-            M = 1  # num_observed_threats
-            obs_size = 2 * (N + M)
-            return gym.spaces.Box(
-                low=-1, high=1,
-                shape=(obs_size,),
-                dtype=np.float32
-            )
-        elif self.observation_type == "go_to_highvalue":
-            # All targets observation for going to high value targets
-            obs_size = 2 + 3 * 10  # Assuming max 10 targets
-            return gym.spaces.Box(
-                low=-1, high=1,
-                shape=(obs_size,),
-                dtype=np.float32
-            )
-        elif self.observation_type == "change_regions":
-            # Region-based observation
-            return gym.spaces.Box(
-                low=-1, high=1,
-                shape=(10,),  # Placeholder size
-                dtype=np.float32
-            )
-        else:
-            raise ValueError(f"Unknown observation type: {self.observation_type}")
-
-    def maze_to_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
-        """Convert maze state to observation"""
-        if self.observation_type == "mode_selector":
-            return self._get_all_targets_observation(maze_state)
-        elif self.observation_type == "local_search":
-            return self._get_nearest_targets_observation(maze_state)
-        elif self.observation_type == "go_to_highvalue":
-            return self._get_all_targets_observation(maze_state)
-        elif self.observation_type == "change_regions":
-            return self._get_change_regions_observation(maze_state)
-        else:
-            raise ValueError(f"Unknown observation type: {self.observation_type}")
-
-    def _get_all_targets_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
-        """Get observation with all targets information"""
-        obs_size = 2 + 3 * len(maze_state.targets) if len(maze_state.targets) > 0 else 2
-        obs = np.zeros(obs_size, dtype=np.float32)
-
-        # Agent position (normalized)
-        if 0 in maze_state.agent_positions:
-            agent_pos = maze_state.agent_positions[0]
-            obs[0] = agent_pos[0] / 150.0  # Normalize to [-1, 1]
-            obs[1] = agent_pos[1] / 150.0
-
-        # Target information
-        if len(maze_state.targets) > 0:
-            for i, target in enumerate(maze_state.targets):
-                if i * 3 + 4 < len(obs):  # Bounds check
-                    obs[2 + i * 3] = target[2]  # info_level
-                    obs[2 + i * 3 + 1] = target[3] / 150.0  # x position (normalized)
-                    obs[2 + i * 3 + 2] = target[4] / 150.0  # y position (normalized)
-
-        return obs
-
-    def _get_nearest_targets_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
-        """Get observation with nearest targets for local search"""
-        N = 5  # num_observed_targets
-        M = 1  # num_observed_threats
-        obs = np.zeros(2 * (N + M), dtype=np.float32)
-
-        if 0 in maze_state.agent_positions and len(maze_state.targets) > 0:
-            agent_pos = np.array(maze_state.agent_positions[0])
-
-            # Get unknown targets
-            unknown_mask = maze_state.targets[:, 2] < 1.0
-            if np.any(unknown_mask):
-                unknown_targets = maze_state.targets[unknown_mask]
-                target_positions = unknown_targets[:, 3:5]
-
-                # Calculate distances and get nearest N targets
-                distances = np.sqrt(np.sum((target_positions - agent_pos) ** 2, axis=1))
-                nearest_indices = np.argsort(distances)[:min(N, len(distances))]
-
-                # Fill observation with unit vectors to nearest targets
-                for i, idx in enumerate(nearest_indices):
-                    if i < N:
-                        target_pos = target_positions[idx]
-                        vector_to_target = target_pos - agent_pos
-                        obs[i * 2] = vector_to_target[0]
-                        obs[i * 2 + 1] = vector_to_target[1]
-
-            # Add threat information
-            if len(maze_state.threats) > 0:
-                threat_pos = maze_state.threats[:2]  # x, y
-                vector_to_threat = threat_pos - agent_pos
-                obs[-2] = vector_to_threat[0]
-                obs[-1] = vector_to_threat[1]
-
-        return obs
-
-    def _get_change_regions_observation(self, maze_state: MaisrMazeState) -> np.ndarray:
-        """Get observation for change regions policy"""
-        # Placeholder implementation
-        obs = np.zeros(10, dtype=np.float32)
-
-        if 0 in maze_state.agent_positions:
-            agent_pos = maze_state.agent_positions[0]
-            obs[0] = agent_pos[0] / 150.0
-            obs[1] = agent_pos[1] / 150.0
-
-        # Add region-specific features here
-        # e.g., targets per quadrant, density, etc.
-
-        return obs
-
-
-class ActionConversion(ActionConversionInterface):
-    """Convert policy actions to maze actions"""
-
-    def __init__(self, action_type: str = "mode_select"):
-        self.action_type = action_type
-
-    def space_to_maze(self, action: Any, maze_state: MaisrMazeState) -> MaisrMazeAction:
-        """Convert policy action to maze action"""
-        current_actor = self._get_current_actor(maze_state)
-
-        if current_actor.step_key == 0:  # Mode selector
-            return MaisrMazeAction(
-                step_key=0,
-                mode_selection=int(action["mode_select"]),
-                agent_id=0
-            )
-        else:  # Sub-policy
-            return MaisrMazeAction(
-                step_key=1,
-                sub_action=action,
-                agent_id=0
-            )
-
-    def _get_current_actor(self, maze_state: MaisrMazeState) -> ActorID:
-        """Determine current actor from maze state"""
-        if maze_state.current_mode is None or maze_state.mode_timer <= 0:
-            return ActorID(step_key=0, agent_id=0)
-        else:
-            return ActorID(step_key=1, agent_id=maze_state.current_mode)
-
-
-# Factory function
-
-def maze_env_factory(config, **kwargs) -> StructuredMAISREnv:
-    """Factory function to create the complete structured Maze environment"""
-
-    # Create core environment
-    core_env = MAISREnvCore(config=config, **kwargs)
-
-    # Create conversion interfaces for different sub-steps
-    action_conversion_dict = {
-        0: ActionConversion("mode_select"),  # Mode selector
-        1: ActionConversion("sub_policy"),  # Sub-policies
-    }
-
-    observation_conversion_dict = {
-        0: ObservationConversion("mode_selector"),  # High-level observation
-        1: ObservationConversion("local_search"),  # Local search observation (default)
-    }
-
-    # Create the base MazeEnv
-    maze_env = MazeEnv(
-        core_env=core_env,
-        action_conversion_dict=action_conversion_dict,
-        observation_conversion_dict=observation_conversion_dict
-    )
-
-    # Wrap it in the structured environment
-    structured_env = StructuredMAISREnv(maze_env)
-
-    return structured_env
