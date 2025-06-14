@@ -64,7 +64,7 @@ class MAISREnvVec(gym.Env):
         if self.config['action_type'] == 'Discrete8':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
         elif self.config['action_type'] == 'Discrete16':
-            self.action_space = gym.spaces.Discrete(16)  # 8 directions
+            self.action_space = gym.spaces.Discrete(16)  # 16 directions
         elif self.config['action_type'] == 'continuous-normalized':
             self.action_space = gym.spaces.Box(
                 low=np.array([-1, -1], dtype=np.float32),

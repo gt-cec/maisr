@@ -141,7 +141,7 @@ class GoToNearestThreat(SubPolicy):
         if target_vector_x == 0.0 and target_vector_y == 0.0:
             # No targets or at target location
             self.reset_heuristic_state()
-            return 0
+            return np.int32(0)
 
         # The observation already gives us the vector to the nearest target
         direction_to_target = np.array([target_vector_x, target_vector_y])
@@ -277,7 +277,6 @@ class EvadeDetection(SubPolicy):
 
 
 class LocalSearch(SubPolicy):
-    # TODO replace with trained
     """Sub-policy that searches locally for unknown targets"""
 
     def __init__(self, model=None):
@@ -302,10 +301,6 @@ class LocalSearch(SubPolicy):
         else:
             action = self.heuristic(observation)
         return action
-
-    def destroy(self):
-        # TODO
-        pass
 
     def heuristic(self, observation):
         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
@@ -410,26 +405,6 @@ class ChangeRegions(SubPolicy):
         self.target_region = None
         self.arrival_threshold = 0.05
 
-    # def act(self, observation):
-    #     # TODO need to add action masking
-    #     """
-    #     1. Select the region of the map (4-tile grid) to fly to
-    #     2. Fly to the edge of the selected region
-    #     """
-    #     #if not self.is_terminated():
-    #     if self.target_region is None or self.steps_since_update >= self.update_rate:
-    #         self.steps_since_update = 0
-    #         if self.model:
-    #             self.target_region = self.model.predict(observation)
-    #         else:
-    #             self.target_region = self.heuristic(observation)
-    #
-    #     # Set waypoint directly to center of new region
-    #     action = self._get_region_center(self.target_region)
-    #
-    #     self.steps_since_update += 1
-    #
-    #     return action
 
     def act(self, observation):
         # Check if we've reached the current target region
