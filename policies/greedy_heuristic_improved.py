@@ -46,8 +46,8 @@ def improved_heuristic_process_single_observation(observation):
     agent_pos = obs[:2]
 
     # Extract target information
-    max_targets = 30  # Match your max_targets from env
-    target_data = obs[2:2 + max_targets * 3].reshape(max_targets, 3)
+    max_targets = 15  # Match your max_targets from env
+    target_data = obs#obs[2:2 + max_targets * 3].reshape(max_targets, 3)
 
     # Find valid targets
     valid_mask = (target_data[:, 1] != 0) | (target_data[:, 2] != 0)

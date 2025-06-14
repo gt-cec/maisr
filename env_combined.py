@@ -102,7 +102,7 @@ class MAISREnvVec(gym.Env):
                 dtype=np.float32)
 
         elif self.config['obs_type'] == 'nearest':
-            self.obs_size = 2 * self.config['num_observed_targets']  # x,y components of unit vector
+            self.obs_size = 2 * self.config['num_observed_targets'] + 2*self.config['num_observed_threats'] # x,y components of unit vector
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
                 shape=(self.obs_size,),
@@ -294,11 +294,12 @@ class MAISREnvVec(gym.Env):
         self.targets_identified = 0
 
         # Create a single threat at random location
-        self.threat = np.zeros(3, dtype=np.float32)  # [x_pos, y_pos, radius]
+        #self.threat = np.zeros(3, dtype=np.float32)  # [x_pos, y_pos, radius]
+        self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
         margin = map_half_size * 0.03  # 3% margin from edges
         self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # x position
         self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
-        self.threat[2] = 50.0  # radius in pixels
+        #self.threat[2] = 50.0  # radius in pixels
 
         # Decay shaping rewards
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
@@ -503,25 +504,49 @@ class MAISREnvVec(gym.Env):
     def get_reward(self, new_reward, potential_gain):
 
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
-        apply_threat_penalty = False
+        # apply_threat_penalty = False
+        # if hasattr(self, 'threat'):
+        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
+        #         threat_pos = np.array([self.threat[0], self.threat[1]])
+        #         distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+        #
+        #         if distance_to_threat <= self.config['threat_radius']:
+        #             apply_threat_penalty = True
+
+        # Calculate gradual threat penalty based on distance
+        threat_penalty = 0
         if hasattr(self, 'threat'):
             for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
                 aircraft_pos = np.array([aircraft.x, aircraft.y])
                 threat_pos = np.array([self.threat[0], self.threat[1]])
                 distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
 
-                if distance_to_threat <= self.threat[2]:  # threat[2] is the radius
-                    apply_threat_penalty = True
+                threat_radius = self.config['threat_radius']
+                warning_radius = threat_radius * 2  # 50% larger than threat radius
+
+                if distance_to_threat <= threat_radius:
+                    # Maximum penalty when at center, decreasing linearly to zero at radius edge
+                    normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
+                    penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
+                    threat_penalty += self.config['inside_threat_penalty'] * penalty_multiplier
+
+                elif distance_to_threat <= warning_radius:
+                    # Warning zone - penalty decreases from 50% to 0% as distance increases
+                    normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+                    penalty_multiplier = 0.5 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
+                    threat_penalty += self.config['inside_threat_penalty'] * penalty_multiplier
 
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
-                 (self.config['shaping_time_penalty'])
+                 (self.config['shaping_time_penalty']) - \
+                 threat_penalty
 
-        if apply_threat_penalty:
-            reward -= self.config['inside_threat_penalty']
-            print(f'Penalty for being inside threat range')
+        # if apply_threat_penalty:
+        #     reward -= self.config['inside_threat_penalty']
+        #     #print(f'Penalty for being inside threat range')
 
         return reward
 
@@ -632,9 +657,10 @@ class MAISREnvVec(gym.Env):
 
         # Get N from config
         N = self.config['num_observed_targets']
+        M = self.config['num_observed_threats']
 
         # Initialize observation array (2 * N for x,y components of N targets)
-        self.observation = np.zeros(2 * N, dtype=np.float32)
+        self.observation = np.zeros(2 * (N+M), dtype=np.float32)
 
         agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
 
@@ -668,6 +694,12 @@ class MAISREnvVec(gym.Env):
                     # Agent is exactly at target position
                     self.observation[i * 2] = 0.0
                     self.observation[i * 2 + 1] = 0.0
+
+            # dx, dy vector to threat as last two elements of the observation
+            threat_pos = np.array([self.threat[0], self.threat[1]])
+            vector_to_threat = threat_pos - agent_pos
+            self.observation[-2] = vector_to_threat[0]  # x component
+            self.observation[-1] = vector_to_threat[1]  # y component
 
         # If no unknown targets remaining, observation stays all zeros
         return self.observation
@@ -818,7 +850,7 @@ class MAISREnvVec(gym.Env):
         if hasattr(self, 'threat'):
             threat_screen_x = int(self.threat[0] + map_half_size)
             threat_screen_y = int(self.threat[1] + map_half_size)
-            threat_radius = int(self.threat[2])
+            threat_radius = self.config['threat_radius']
 
             # Draw circle (lighter for pixel obs)
             pygame.draw.circle(surface, (200, 200, 0), (threat_screen_x, threat_screen_y), threat_radius, 2)
@@ -887,7 +919,7 @@ class MAISREnvVec(gym.Env):
             map_half_size = self.config["gameboard_size"] / 2
             threat_screen_x = int(self.threat[0] + map_half_size)
             threat_screen_y = int(self.threat[1] + map_half_size)
-            threat_radius = int(self.threat[2])
+            threat_radius = self.config['threat_radius']
 
             # Draw the circle around the threat
             pygame.draw.circle(self.window, (255, 215, 0), (threat_screen_x, threat_screen_y), threat_radius,
@@ -1036,7 +1068,7 @@ class MAISREnvVec(gym.Env):
 
         if self.render_mode == 'human':
 
-            corner_round_text = f"ROUND {self.round_number + 1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+            corner_round_text = f'STEP {self.step_count_outer}'#f"ROUND {self.round_number + 1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
             corner_round_font = pygame.font.SysFont(None, 36)
             corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
             corner_round_rect = corner_round_text_surface.get_rect(
@@ -1462,7 +1494,7 @@ class MAISREnvVec(gym.Env):
             if hasattr(self, 'threat'):
                 threat_x = self.threat[0]
                 threat_y = self.threat[1]
-                threat_radius = self.threat[2] * (1000 / self.config["gameboard_size"])  # Scale for plot
+                threat_radius = self.config['threat_radius'] * (1000 / self.config["gameboard_size"])  # Scale for plot
 
                 # Draw threat circle
                 circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color='gold', linewidth=2,

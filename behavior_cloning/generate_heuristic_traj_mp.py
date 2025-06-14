@@ -9,7 +9,7 @@ from imitation.data import rollout
 from imitation.data.wrappers import RolloutInfoWrapper
 
 from env_20targets import MAISREnvVec
-from heuristic_policies.greedy_heuristic_improved import improved_heuristic_policy
+from policies.greedy_heuristic_improved import improved_heuristic_policy
 from utility.data_logging import load_env_config
 import multiprocessing as mp
 from multiprocessing import Pool

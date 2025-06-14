@@ -13,7 +13,7 @@ from stable_baselines3 import PPO
 
 from train_sb3 import train
 from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
-from heuristic_policies.greedy_heuristic_improved import improved_heuristic_policy, improved_heuristic_process_single_observation, reset_heuristic_state
+from policies.greedy_heuristic_improved import improved_heuristic_policy, improved_heuristic_process_single_observation, reset_heuristic_state
 from env_combined import MAISREnvVec
 #from env_20targets import MAISREnvVec
 from utility.data_logging import load_env_config
@@ -372,7 +372,9 @@ def test_env_humanplaytest(config, test_dir=None):
     print("Diagonals: 7=Up-Left, 9=Up-Right, 1=Down-Left, 3=Down-Right")
     print("Press ESC to quit early")
 
-    pygame.init()
+    #pygame.init()
+    pygame.display.init()
+    pygame.font.init()
     clock = pygame.time.Clock()
 
 
@@ -1140,7 +1142,7 @@ if __name__ == "__main__":
         #plot_reward_surface_3d(config, test_dir=shared_test_dir)
         test_env_humanplaytest(config, test_dir=shared_test_dir)
         #test_curriculum(config)
-        #test_env_heuristic(improved_heuristic_policy, config, render=False, test_dir=shared_test_dir)
+        #test_env_heuristic(improved_heuristic_policy, config, render=True, test_dir=shared_test_dir)
         #test_env_random(config, render=True, test_dir=shared_test_dir)
         #test_env_badheuristic(badheuristic_policy, config,test_dir=shared_test_dir)
         #test_cnn_observations(config)

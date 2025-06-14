@@ -104,53 +104,59 @@ class SequenceMAISRWrapper(gym.Wrapper):
         execution_info = {
             'sequence_executed': target_sequence,
             'total_steps': 0,
-            'targets_identified': 0,
+            'target_ids': 0,
             'sequence_completion': 0.0,
             'execution_details': [],
             'final_episode_info': {}
         }
         
-        # Keep stepping until episode ends or max steps reached
-        while not (terminated or truncated):
-            # Get current observation
-            current_obs = self.env.get_observation() if hasattr(self.env, 'get_observation') else self.env.observation
-            
-            # Get action from sequence policy
-            try:
-                sequence_action = self.sequence_policy_func(current_obs, target_sequence)
-            except Exception as e:
-                print(f"Error in sequence policy: {e}")
-                sequence_action = 0  # Default action
-            
-            # Step the environment
-            obs, reward, terminated, truncated, info = self.env.step(sequence_action)
-            
-            total_reward += reward
-            step_count += 1
-            final_obs = obs
-            
-            # Track execution details
-            if step_count % 50 == 0:  # Log every 50 steps to avoid too much data
-                execution_info['execution_details'].append({
-                    'step': step_count,
-                    'reward': reward,
-                    'total_reward': info['episode']['r'],#total_reward,
-                    'target_ids': info.get('target_ids', 0)
-                })
-            
-            # Safety check for maximum steps
-            if self.max_episode_steps and step_count >= self.max_episode_steps:
-                truncated = True
-                self.max_steps_reached = True
-                break
-        
-        # Update execution info with final results
-        execution_info.update({
-            'total_steps': step_count,
-            'target_ids': info.get('target_ids', 0),
-            'final_episode_info': info,
-            'max_steps_reached': self.max_steps_reached
-        })
+        # # Keep stepping until episode ends or max steps reached
+        # while not (terminated or truncated):
+        #     # Get current observation
+        #     current_obs = self.env.get_observation() if hasattr(self.env, 'get_observation') else self.env.observation
+        #
+        #     # Get action from sequence policy
+        #     try:
+        #         sequence_action = self.sequence_policy_func(current_obs, target_sequence)
+        #     except Exception as e:
+        #         print(f"Error in sequence policy: {e}")
+        #         sequence_action = 0  # Default action
+        #
+        #     # Step the environment
+        #     obs, reward, terminated, truncated, info = self.env.step(sequence_action)
+        #
+        #     total_reward += reward
+        #     step_count += 1
+        #     final_obs = obs
+        #
+        #     # Track execution details
+        #     if step_count % 50 == 0:  # Log every 50 steps to avoid too much data
+        #         execution_info['execution_details'].append({
+        #             'step': step_count,
+        #             'reward': reward,
+        #             'total_reward': info['episode']['r'],#total_reward,
+        #             'target_ids': info.get('target_ids', 0)
+        #         })
+        #
+        #     # Safety check for maximum steps
+        #     if self.max_episode_steps and step_count >= self.max_episode_steps:
+        #         truncated = True
+        #         self.max_steps_reached = True
+        #         break
+        #
+        # # Update execution info with final results
+        # execution_info.update({
+        #     'total_steps': step_count,
+        #     'target_ids': info.get('target_ids', 0),
+        #     'final_episode_info': info,
+        #     'max_steps_reached': self.max_steps_reached
+        # })
+
+        final_obs, reset_info = self.env.reset() # TODO TEMP
+
+        # reward = info['episode']['r'] # OLD
+        #reward = execution_info['target_ids']/execution_info['total_steps'] # NEW
+        reward = self.get_sequence_distance_reward(target_sequence)
         
         # Calculate sequence completion rate
         if hasattr(self.sequence_policy_func, '__globals__'):
@@ -160,8 +166,11 @@ class SequenceMAISRWrapper(gym.Wrapper):
                 execution_info['sequence_completion'] = current_idx / max(total_length, 1) if total_length > 0 else 0.0
         
         self.episode_steps = step_count
+        self.env.reset()
+        #final_obs = None
+        #terminated, truncated = True, False
         
-        return final_obs, info['episode']['r'], terminated, truncated, execution_info
+        return final_obs, reward, terminated, truncated, execution_info
     
     def get_sequence_action_meanings(self):
         """
@@ -181,7 +190,8 @@ class SequenceMAISRWrapper(gym.Wrapper):
         """
         # Generate a random permutation of target indices
         return np.random.permutation(self.num_targets)
-    
+
+
     def evaluate_sequence(self, sequence, num_episodes=10, verbose=False):
         """
         Evaluate a specific sequence over multiple episodes.
@@ -234,6 +244,132 @@ class SequenceMAISRWrapper(gym.Wrapper):
             print(f"Mean Steps: {results['mean_steps']:.0f}")
         
         return results
+
+    def get_sequence_distance_reward(self, target_sequence):
+        """
+        Calculate reward based on how close the sequence is to the optimal (minimum distance) path.
+        Uses the ratio of optimal distance to actual sequence distance.
+
+        Args:
+            target_sequence: List of target indices representing the order to visit targets
+
+        Returns:
+            float: Reward value (higher when closer to optimal path)
+        """
+        if len(target_sequence) == 0:
+            return 0.0
+
+        # Get agent starting position
+        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+
+        # Calculate actual sequence distance
+        actual_distance = self._calculate_sequence_distance(agent_pos, target_sequence)
+
+        # Calculate optimal (minimum) distance
+        optimal_distance = self._calculate_optimal_distance(agent_pos, target_sequence)
+
+        if optimal_distance == 0:
+            return 10
+
+        # Reward is the ratio of optimal to actual distance
+        # Perfect optimal path gets ratio of 1.0, worse paths get lower ratios
+        distance_ratio = optimal_distance / actual_distance
+
+        # Scale the reward
+        reward = distance_ratio * 10
+        print(f'Reward = {reward:.2f} ({distance_ratio:.2f} ratio above optimal)')
+
+        return reward
+
+    def _calculate_sequence_distance(self, start_pos, target_sequence):
+        """Calculate total distance for a given sequence of targets."""
+        total_distance = 0.0
+        current_pos = start_pos.copy()
+
+        for target_idx in target_sequence:
+            if target_idx >= self.num_targets:
+                continue
+
+            target_pos = np.array([self.targets[target_idx, 3], self.targets[target_idx, 4]])
+            distance = np.sqrt(np.sum((target_pos - current_pos) ** 2))
+            total_distance += distance
+            current_pos = target_pos.copy()
+
+        return total_distance
+
+    def _calculate_optimal_distance(self, start_pos, target_indices):
+        """
+        Calculate the optimal (minimum) distance to visit all targets.
+        Uses nearest neighbor heuristic for efficiency, or brute force for small sets.
+        """
+        if len(target_indices) == 0:
+            return 0.0
+
+        # Get positions of targets in the sequence
+        target_positions = []
+        for target_idx in target_indices:
+            if target_idx < self.num_targets:
+                target_positions.append(np.array([self.targets[target_idx, 3], self.targets[target_idx, 4]]))
+
+        if len(target_positions) == 0:
+            return 0.0
+
+        # For small numbers of targets, use brute force (exact solution)
+        if len(target_positions) <= 8:
+            return self._brute_force_tsp(start_pos, target_positions)
+        else:
+            # For larger sets, use nearest neighbor heuristic (approximation)
+            return self._nearest_neighbor_tsp(start_pos, target_positions)
+
+    def _brute_force_tsp(self, start_pos, target_positions):
+        """Calculate exact minimum distance using brute force for small target sets."""
+        from itertools import permutations
+
+        if len(target_positions) == 0:
+            return 0.0
+
+        min_distance = float('inf')
+
+        # Try all possible permutations
+        for perm in permutations(range(len(target_positions))):
+            distance = 0.0
+            current_pos = start_pos.copy()
+
+            for target_idx in perm:
+                target_pos = target_positions[target_idx]
+                distance += np.sqrt(np.sum((target_pos - current_pos) ** 2))
+                current_pos = target_pos.copy()
+
+            min_distance = min(min_distance, distance)
+
+        return min_distance
+
+    def _nearest_neighbor_tsp(self, start_pos, target_positions):
+        """Calculate approximate minimum distance using nearest neighbor heuristic."""
+        if len(target_positions) == 0:
+            return 0.0
+
+        unvisited = list(range(len(target_positions)))
+        current_pos = start_pos.copy()
+        total_distance = 0.0
+
+        while unvisited:
+            # Find nearest unvisited target
+            min_distance = float('inf')
+            nearest_idx = None
+
+            for idx in unvisited:
+                distance = np.sqrt(np.sum((target_positions[idx] - current_pos) ** 2))
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_idx = idx
+
+            # Move to nearest target
+            total_distance += min_distance
+            current_pos = target_positions[nearest_idx].copy()
+            unvisited.remove(nearest_idx)
+
+        return total_distance
 
 
 class SequenceMAISRMultiWrapper(SequenceMAISRWrapper):
@@ -296,6 +432,8 @@ class SequenceMAISRMultiWrapper(SequenceMAISRWrapper):
             self.num_targets = original_num_targets
         
         return result
+
+
 
 
 # Example usage and testing functions
@@ -412,7 +550,7 @@ if __name__ == '__main__':
     )
 
     # Create the wrapper
-    from heuristic_policies.sequence_policy import sequence_policy  # Your sequence policy function
+    from policies.sequence_policy import sequence_policy  # Your sequence policy function
 
     wrapped_env = SequenceMAISRWrapper(base_env, sequence_policy, num_targets=config['num_targets'])
 
@@ -427,6 +565,6 @@ if __name__ == '__main__':
         final_obs, total_reward, done, truncated, exec_info = wrapped_env.step(sequence_action)
 
         print(f"Total reward: {total_reward}")
-        print(f"Targets identified: {exec_info['targets_identified']}\n")
+        print(f"Targets identified: {exec_info['target_ids']}\n")
         #print(f"Steps taken: {exec_info['total_steps']}")
         obs, info = wrapped_env.reset()

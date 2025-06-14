@@ -600,35 +600,35 @@ class MAISREnvVec(gym.Env):
 
         return self.observation
 
-    def get_pixel_observation(self):
-        """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
-
-        # Use existing render surface if in human mode, otherwise create temporary surface
-        if self.render_mode == 'human' and hasattr(self, 'window'):
-            # Capture the main game area from the existing window
-            game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
-            pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
-        else:
-            # Create offscreen surface and render to it with enhanced target visibility
-            self.pixel_surface.fill((255, 255, 255))  # White background
-            self._render_game_to_surface_enhanced(self.pixel_surface)
-            pixel_array = pygame.surfarray.array3d(self.pixel_surface)
-
-        # Pygame arrays are (width, height, channels), we need (height, width, channels)
-        pixel_array = np.transpose(pixel_array, (1, 0, 2))
-
-        # Convert to grayscale using weighted average for better contrast
-        if len(pixel_array.shape) == 3:
-            # Use standard RGB to grayscale conversion
-            pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
-
-        # Resize to 84x84 using OpenCV for consistency
-        #pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
-
-        # Add channel dimension for grayscale
-        pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
-
-        return pixel_array_resized.astype(np.uint8)
+    # def get_pixel_observation(self):
+    #     """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
+    #
+    #     # Use existing render surface if in human mode, otherwise create temporary surface
+    #     if self.render_mode == 'human' and hasattr(self, 'window'):
+    #         # Capture the main game area from the existing window
+    #         game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
+    #         pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
+    #     else:
+    #         # Create offscreen surface and render to it with enhanced target visibility
+    #         self.pixel_surface.fill((255, 255, 255))  # White background
+    #         self._render_game_to_surface_enhanced(self.pixel_surface)
+    #         pixel_array = pygame.surfarray.array3d(self.pixel_surface)
+    #
+    #     # Pygame arrays are (width, height, channels), we need (height, width, channels)
+    #     pixel_array = np.transpose(pixel_array, (1, 0, 2))
+    #
+    #     # Convert to grayscale using weighted average for better contrast
+    #     if len(pixel_array.shape) == 3:
+    #         # Use standard RGB to grayscale conversion
+    #         pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
+    #
+    #     # Resize to 84x84 using OpenCV for consistency
+    #     #pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
+    #
+    #     # Add channel dimension for grayscale
+    #     pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
+    #
+    #     return pixel_array_resized.astype(np.uint8)
 
     def _render_game_to_surface_enhanced(self, surface):
         """

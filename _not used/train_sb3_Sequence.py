@@ -3,7 +3,7 @@ Renamed to prepare for future training pipelines using RLlib etc, and also imple
 
 import warnings
 
-from heuristic_policies.sequence_policy import sequence_policy
+from policies.sequence_policy import sequence_policy
 
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
