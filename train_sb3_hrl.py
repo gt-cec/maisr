@@ -515,18 +515,14 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june13_nearest_n.json'
+    config_filename = 'configs/june14.json'
 
     print(f'\n############################ STARTING TRAINING ############################')
     config = load_env_config(config_filename)
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    #for learning_rate in [0.005]:
     for batch_size in [1024]:
-        #for levels_per_lesson in [{"0": 3, "1": 3, "2":  3}]: # {"0": 1, "1": 1, "2":  1}
-        #config['learning_rate'] = learning_rate
-        # config["levels_per_lesson"] = levels_per_lesson
 
         config['batch_size'] = batch_size
 

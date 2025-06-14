@@ -1,5 +1,4 @@
 import gymnasium as gym
-import gym.spaces
 import numpy as np
 from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
@@ -42,7 +41,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
 
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
         self.num_switches = 0 # How many times the agent has switch policies in this round. Slight penalty to encourage consistency
         self.last_action = 0

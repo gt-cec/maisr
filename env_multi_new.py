@@ -174,6 +174,21 @@ class MAISREnvVec(gym.Env):
                 self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
                 self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
 
+                # ID request button cluster
+                self.info_button_1 = Button("Button 1", self.right_pane_edge + 15, 750, 120, 80)
+                self.info_button_2 = Button("Button 2", self.right_pane_edge + 150, 750, 120, 80)
+                self.info_button_3 = Button("Button 3", self.right_pane_edge + 285, 750, 120, 80)
+
+                # Add to button latch dict
+                self.button_latch_dict.update({
+                    'info_button_1': False,
+                    'info_button_2': False,
+                    'info_button_3': False
+                })
+
+                # Initialize id_requested attribute
+                self.id_requested = False
+
                 self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
                 self.human_quadrant = None
 
@@ -237,7 +252,9 @@ class MAISREnvVec(gym.Env):
         self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
         self.total_pause_time = 0
-        self.init = True        
+        self.init = True
+
+        self.id_requested = False
 
         self.potential = None # Initialize potential for reward shaping
 
@@ -257,7 +274,7 @@ class MAISREnvVec(gym.Env):
         self.target_timers = np.zeros(self.config['num_targets'], dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
-        self.threats_identified = 0
+        self.num_threats_identified = 0
 
         # Create a single threat at random location
         #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
@@ -266,45 +283,65 @@ class MAISREnvVec(gym.Env):
         #self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
 
         # Create a single threat at strategic location (likely to be on greedy search path)
-        self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos]
+        #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos]
+        self.threats = np.zeros((2, 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
+        self.threat_timers = np.zeros(2, dtype=np.int32)  # How long each threat has been in range
+        self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
         margin = map_half_size * 0.03  # 3% margin from edges
+
         ############################################################################################################
         if self.config['num_targets'] >= 2:
             # Find centroid of all targets
             target_centroid_x = np.mean(self.targets[:, 3])
             target_centroid_y = np.mean(self.targets[:, 4])
 
-            # Find the two targets closest to the centroid
+            # Find the two targets closest to the centroid for first threat
             target_positions = self.targets[:, 3:5]
             centroid_pos = np.array([target_centroid_x, target_centroid_y])
             distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
             closest_indices = np.argsort(distances_to_centroid)[:2]
 
-            # Get positions of the two most central targets
+            # Place first threat between central targets
             target1_pos = self.targets[closest_indices[0], 3:5]
             target2_pos = self.targets[closest_indices[1], 3:5]
-
-            # Place threat somewhere along the line between these central targets
-            # Add some randomness to avoid being exactly on the line
-            interpolation_factor = np.random.uniform(0.3, 0.7)  # Bias toward middle
+            interpolation_factor = np.random.uniform(0.3, 0.7)
             threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
 
-            # Add small random offset to avoid being exactly on the line
             offset_distance = min(50.0, np.linalg.norm(target2_pos - target1_pos) * 0.2)
             random_angle = np.random.uniform(0, 2 * np.pi)
             offset_x = offset_distance * np.cos(random_angle)
             offset_y = offset_distance * np.sin(random_angle)
 
-            self.threat[0] = threat_base_pos[0] + offset_x
-            self.threat[1] = threat_base_pos[1] + offset_y
+            self.threats[0, 0] = threat_base_pos[0] + offset_x
+            self.threats[0, 1] = threat_base_pos[1] + offset_y
 
-            # Ensure threat stays within map bounds
-            self.threat[0] = np.clip(self.threat[0], -map_half_size + margin, map_half_size - margin)
-            self.threat[1] = np.clip(self.threat[1], -map_half_size + margin, map_half_size - margin)
+            # Place second threat at a different strategic location
+            # Find two targets farthest from the first threat
+            threat1_pos = np.array([self.threats[0, 0], self.threats[0, 1]])
+            distances_from_threat1 = np.sqrt(np.sum((target_positions - threat1_pos) ** 2, axis=1))
+            farthest_indices = np.argsort(distances_from_threat1)[-2:]  # Two farthest targets
+
+            target3_pos = self.targets[farthest_indices[0], 3:5]
+            target4_pos = self.targets[farthest_indices[1], 3:5]
+            interpolation_factor = np.random.uniform(0.3, 0.7)
+            threat2_base_pos = target3_pos + interpolation_factor * (target4_pos - target3_pos)
+
+            random_angle = np.random.uniform(0, 2 * np.pi)
+            offset_x = offset_distance * np.cos(random_angle)
+            offset_y = offset_distance * np.sin(random_angle)
+
+            self.threats[1, 0] = threat2_base_pos[0] + offset_x
+            self.threats[1, 1] = threat2_base_pos[1] + offset_y
+
+            # Ensure both threats stay within map bounds
+            for i in range(2):
+                self.threats[i, 0] = np.clip(self.threats[i, 0], -map_half_size + margin, map_half_size - margin)
+                self.threats[i, 1] = np.clip(self.threats[i, 1], -map_half_size + margin, map_half_size - margin)
         else:
             # Fallback to random placement if fewer than 2 targets
-            self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-            self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+            for i in range(2):
+                self.threats[i, 0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                self.threats[i, 1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
         ############################################################################################################
 
         # Decay shaping rewards
@@ -356,7 +393,7 @@ class MAISREnvVec(gym.Env):
         
         # Track status from prior step for info gathering later
         prev_targets_identified = self.targets_identified
-        prev_threats_identified = self.threats_identified
+        prev_threats_identified = self.num_threats_identified
         prev_detections = self.detections
 
         for frame in range(self.config['frame_skip']):
@@ -373,7 +410,7 @@ class MAISREnvVec(gym.Env):
         info["outerstep_potential_gain"] = total_potential_gain
         
         info['new_target_ids'] = self.targets_identified - prev_targets_identified
-        info['new_threat_ids'] = self.threats_identified - prev_threats_identified
+        info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
         info['new_detections'] = self.detections - prev_detections
 
         return observation, total_reward, self.terminated, self.truncated, info
@@ -422,10 +459,36 @@ class MAISREnvVec(gym.Env):
             # Find targets within ISR range (for identification)
             in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
 
-            # Check if in range of a threat
-            threat_pos = np.array([self.threat[0], self.threat[1]])
-            distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-            in_threat_range = distance_to_threat <= self.config['threat_radius']
+            # Check if in range of threats and update identification
+            for threat_idx in range(self.config['num_threats']):
+                threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+                in_threat_range = distance_to_threat <= self.config['threat_radius']
+
+                if in_threat_range:
+                    self.threat_timers[threat_idx] += 1
+
+                    # Check if threat should be identified (10+ consecutive steps in range)
+                    if self.threat_timers[threat_idx] >= 10 and not self.threat_identified[threat_idx]:
+                        self.threat_identified[threat_idx] = True
+                        self.num_threats_identified += 1
+
+                        # Add reward for identifying threat
+                        new_reward['threat_identification'] = new_reward.get('threat_identification', 0) + 1
+                        new_score += self.config.get('threat_identification_reward', 50)  # Add config for this
+
+                        info["new_identifications"].append({
+                            "type": "threat identified",
+                            "threat_id": threat_idx,
+                            "aircraft": aircraft.agent_idx,
+                            "time": self.display_time
+                        })
+                else:
+                    # Reset timer if not in range
+                    self.threat_timers[threat_idx] = 0
+            #threat_pos = np.array([self.threat[0], self.threat[1]])
+            #distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+            #in_threat_range = distance_to_threat <= self.config['threat_radius']
 
 
             # Process newly identified targets
@@ -509,26 +572,46 @@ class MAISREnvVec(gym.Env):
 
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
         threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
-        if hasattr(self, 'threat'):
+        if hasattr(self, 'threats'):
             for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
                 aircraft_pos = np.array([aircraft.x, aircraft.y])
-                threat_pos = np.array([self.threat[0], self.threat[1]])
-                distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
 
-                threat_radius = self.config['threat_radius']
-                warning_radius = threat_radius * 1.5  # 50% larger than threat radius
+                for threat_idx in range(2):
+                    threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                    distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
 
-                if distance_to_threat <= threat_radius:
-                    # Maximum penalty when at center, decreasing linearly to zero at radius edge
-                    normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
-                    penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
-                    threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+                    threat_radius = self.config['threat_radius']
+                    warning_radius = threat_radius * 1.5
 
-                elif distance_to_threat <= warning_radius:
-                    # Warning zone - penalty decreases from 50% to 0% as distance increases
-                    normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-                    penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
-                    threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+                    if distance_to_threat <= threat_radius:
+                        normalized_distance = distance_to_threat / threat_radius
+                        penalty_multiplier = 1.0 - normalized_distance
+                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+                    elif distance_to_threat <= warning_radius:
+                        normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+                        penalty_multiplier = 0.4 * (1.0 - normalized_distance)
+                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+
+        # if hasattr(self, 'threat'):
+        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
+        #         threat_pos = np.array([self.threat[0], self.threat[1]])
+        #         distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+        #
+        #         threat_radius = self.config['threat_radius']
+        #         warning_radius = threat_radius * 1.5  # 50% larger than threat radius
+        #
+        #         if distance_to_threat <= threat_radius:
+        #             # Maximum penalty when at center, decreasing linearly to zero at radius edge
+        #             normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
+        #             penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
+        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+        #
+        #         elif distance_to_threat <= warning_radius:
+        #             # Warning zone - penalty decreases from 50% to 0% as distance increases
+        #             normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+        #             penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
+        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
 
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
@@ -688,6 +771,12 @@ class MAISREnvVec(gym.Env):
             vector_to_threat = threat_pos - agent_pos
             self.observation[-2] = vector_to_threat[0]  # x component
             self.observation[-1] = vector_to_threat[1]  # y component
+
+        for threat_idx in range(2):
+            threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+            vector_to_threat = threat_pos - agent_pos
+            self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
+            self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
 
         # If no unknown targets remaining, observation stays all zeros
         return self.observation
@@ -903,24 +992,29 @@ class MAISREnvVec(gym.Env):
             pygame.draw.circle(self.window, target_color, (float(screen_x), float(screen_y)), target_width)
 
         # Draw the threat (gold upside-down triangle with circle)
-        if hasattr(self, 'threat'):
+        if hasattr(self, 'threats'):
             map_half_size = self.config["gameboard_size"] / 2
-            threat_screen_x = int(self.threat[0] + map_half_size)
-            threat_screen_y = int(self.threat[1] + map_half_size)
-            threat_radius = self.config['threat_radius']
 
-            # Draw the circle around the threat
-            pygame.draw.circle(self.window, (255, 215, 0), (threat_screen_x, threat_screen_y), threat_radius,
-                               3)  # Gold circle outline
+            for threat_idx in range(2):
+                threat_screen_x = int(self.threats[threat_idx, 0] + map_half_size)
+                threat_screen_y = int(self.threats[threat_idx, 1] + map_half_size)
+                threat_radius = self.config['threat_radius']
 
-            # Draw upside-down triangle (pointing down)
-            triangle_size = 15
-            triangle_points = [
-                (threat_screen_x, threat_screen_y + triangle_size),  # Bottom point
-                (threat_screen_x - triangle_size, threat_screen_y - triangle_size),  # Top left
-                (threat_screen_x + triangle_size, threat_screen_y - triangle_size)  # Top right
-            ]
-            pygame.draw.polygon(self.window, (255, 215, 0), triangle_points)  # Gold triangle
+                # Change color based on identification status
+                threat_color = (0, 255, 0) if self.threat_identified[threat_idx] else (
+                255, 215, 0)  # Green if identified, gold if not
+
+                # Draw the circle around the threat
+                pygame.draw.circle(self.window, threat_color, (threat_screen_x, threat_screen_y), threat_radius, 3)
+
+                # Draw upside-down triangle (pointing down)
+                triangle_size = 12
+                triangle_points = [
+                    (threat_screen_x, threat_screen_y + triangle_size),
+                    (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+                    (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+                ]
+                pygame.draw.polygon(self.window, threat_color, triangle_points)
 
         # Draw green lines and black crossbars
         self.__render_box__(35, (0, 128, 0), 2)  # inner box
@@ -1032,6 +1126,55 @@ class MAISREnvVec(gym.Env):
                 self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
                 self.autonomous_button.color = (50, 180, 180)
                 self.autonomous_button.draw(self.window)
+
+                # Draw new button cluster
+                pygame.draw.rect(self.window, (230, 230, 230),
+                                 pygame.Rect(self.right_pane_edge, 730, 405, 130))  # Button cluster background
+                cluster_text_surface = pygame.font.SysFont(None, 36).render('Info Cluster', True, (0, 0, 0))
+                self.window.blit(cluster_text_surface,
+                                 cluster_text_surface.get_rect(center=(self.right_pane_edge + 202, 745)))
+
+                # Draw border around button cluster
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 730), (self.right_pane_edge + 405, 730),
+                                 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 730), (self.right_pane_edge, 860), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 730),
+                                 (self.right_pane_edge + 405, 860), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 860), (self.right_pane_edge + 405, 860),
+                                 4)
+
+                # Draw the three buttons
+                self.info_button_1.is_latched = self.button_latch_dict['info_button_1']
+                self.info_button_1.color = (100, 150, 200)
+                self.info_button_1.draw(self.window)
+
+                self.info_button_2.is_latched = self.button_latch_dict['info_button_2']
+                self.info_button_2.color = (100, 150, 200)
+                self.info_button_2.draw(self.window)
+
+                self.info_button_3.is_latched = self.button_latch_dict['info_button_3']
+                self.info_button_3.color = (100, 150, 200)
+                self.info_button_3.draw(self.window)
+
+                # Draw info display area (blue box at top)
+                info_display_rect = pygame.Rect(self.right_pane_edge + 15, 20, 375, 200)
+                pygame.draw.rect(self.window, (70, 130, 180), info_display_rect)  # Blue background
+                pygame.draw.rect(self.window, (0, 0, 0), info_display_rect, 3)  # Black border
+
+                # Display info when id_requested is True
+                if self.id_requested:
+                    info_font = pygame.font.SysFont(None, 32)
+                    info_text = "TODO: Add ID request"
+                    info_surface = info_font.render(info_text, True, (255, 255, 255))
+                    info_rect = info_surface.get_rect(center=info_display_rect.center)
+                    self.window.blit(info_surface, info_rect)
+                else:
+                    # Show placeholder text
+                    placeholder_font = pygame.font.SysFont(None, 28)
+                    placeholder_text = "No requests"
+                    placeholder_surface = placeholder_font.render(placeholder_text, True, (200, 200, 200))
+                    placeholder_rect = placeholder_surface.get_rect(center=info_display_rect.center)
+                    self.window.blit(placeholder_surface, placeholder_rect)
 
                 # Draw Comm Log
                 pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
