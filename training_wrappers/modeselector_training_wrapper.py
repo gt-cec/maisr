@@ -1,5 +1,4 @@
 import gymnasium as gym
-import gym.spaces
 import numpy as np
 from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
@@ -49,7 +48,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
         self.num_switches = 0 # How many times the agent has switch policies in this round. Slight penalty to encourage consistency
         self.last_action = 0
@@ -63,6 +62,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
         if self.current_subpolicy is None or self.steps_since_last_selection >= self.action_rate:
+            print(f'Selector action: {action} (type({action}')
             self.steps_since_last_selection = 0
             print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
 
@@ -93,6 +93,9 @@ class MaisrModeSelectorWrapper(gym.Env):
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.current_subpolicy}')
 
         # TODO add logic for teammate policy to act
+
+        if isinstance(subpolicy_action, tuple):
+            subpolicy_action = subpolicy_action[0]
 
         # Step the environment
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)

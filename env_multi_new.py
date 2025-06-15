@@ -1480,7 +1480,7 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
-        #print(f'Subpolicy action is {action} ({type(action)}')
+        print(f'Subpolicy action is {action} ({type(action)}')
         if action.ndim < 2:
             if isinstance(action, (np.int32, int, np.ndarray)): # Discrete direction action
                 action = int(action)

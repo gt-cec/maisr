@@ -1,6 +1,8 @@
 import ctypes
 import pygame
-
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
@@ -8,10 +10,9 @@ from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNea
 from utility.data_logging import load_env_config
 
 
-
-
 if __name__ == "__main__":
-    config = load_env_config('configs/june13_nearest_n.json')
+
+    config = load_env_config('configs/june14.json')
 
     pygame.display.init()
     pygame.font.init()
@@ -32,7 +33,10 @@ if __name__ == "__main__":
     )
 
     # Instantiate subpolicies
-    local_search_policy = LocalSearch(model=None)
+    load_path = 'trained_models/PPO_maisr_final_diff.zip'
+    localsearch_model = PPO.load(load_path)
+
+    local_search_policy = LocalSearch(model=localsearch_model)
     go_to_highvalue_policy = GoToNearestThreat(model=None)
     change_region_subpolicy = ChangeRegions(model=None)
 
@@ -42,6 +46,8 @@ if __name__ == "__main__":
         go_to_highvalue_policy,
         change_region_subpolicy
     )
+    #env = DummyVecEnv([lambda: env])
+    #env = VecNormalize(env, norm_reward=False, training=False)
 
 
     ###################################################################################################################
@@ -52,7 +58,7 @@ if __name__ == "__main__":
     all_actions = []
 
     for episode in range(3):
-        obs, info = env.reset()
+        obs = env.reset()[0]
         episode_reward = 0
         episode_observations, episode_actions, potential_gain_history = [], [], []
 
@@ -84,9 +90,13 @@ if __name__ == "__main__":
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
+            # obses, rewards, dones, infos = env.step(action)
+            # obs = obses[0]
+            # reward = rewards[0]
+            # info = infos[0]
+            # done = dones[0]
             episode_reward += reward
 
-            done = terminated or truncated
             step_count += 1
             env.render()
 

@@ -51,14 +51,7 @@ if __name__ == "__main__":
     env = DummyVecEnv([lambda: env])
     env = VecNormalize(env, norm_reward=False, training=False)
 
-    # model = PPO(
-    #     "MlpPolicy",
-    #     env,
-    #     verbose=2,
-    #     device='cpu',
-    # )
     load_path = 'trained_models/PPO_maisr_final_diff.zip'
-    #model = model.__class__.load(load_path, env=env)
     model = PPO.load(load_path)
 
 
