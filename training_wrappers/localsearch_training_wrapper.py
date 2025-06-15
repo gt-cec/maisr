@@ -11,7 +11,7 @@ class MaisrLocalSearchWrapper(gym.Env):
     """Wrapper for training the mode selector
     Subpolicies are treated as part of the environment dynamics.
     """
-    def __init__(self, env,):
+    def __init__(self, env):
 
         self.env = env
 

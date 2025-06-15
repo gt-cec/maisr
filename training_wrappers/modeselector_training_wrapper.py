@@ -16,14 +16,15 @@ class MaisrModeSelectorWrapper(gym.Env):
                  env,
                  local_search_policy: SubPolicy,
                  go_to_highvalue_policy: SubPolicy,
-                 change_region_subpolicy: SubPolicy
+                 change_region_subpolicy: SubPolicy,
+                 teammate_policy: SubPolicy=None,
                  ):
 
         self.env = env
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
-
+        self.teammate_policy = teammate_policy
 
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
@@ -90,6 +91,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.current_subpolicy}')
+
+        # TODO add logic for teammate policy to act
 
         # Step the environment
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)

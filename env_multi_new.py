@@ -179,12 +179,7 @@ class MAISREnvVec(gym.Env):
                 self.info_button_2 = Button("Button 2", self.right_pane_edge + 150, 750, 120, 80)
                 self.info_button_3 = Button("Button 3", self.right_pane_edge + 285, 750, 120, 80)
 
-                # Add to button latch dict
-                self.button_latch_dict.update({
-                    'info_button_1': False,
-                    'info_button_2': False,
-                    'info_button_3': False
-                })
+
 
                 # Initialize id_requested attribute
                 self.id_requested = False
@@ -203,6 +198,11 @@ class MAISREnvVec(gym.Env):
                 #self.pause_start_time = 0
                 #self.total_pause_time = 0
                 self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+                self.button_latch_dict.update({
+                    'info_button_1': False,
+                    'info_button_2': False,
+                    'info_button_3': False
+                })
                 self.pause_font = pygame.font.SysFont(None, 74)
                 self.pause_subtitle_font = pygame.font.SysFont(None, 40)
 
@@ -767,10 +767,11 @@ class MAISREnvVec(gym.Env):
                     self.observation[i * 2 + 1] = 0.0
 
             # dx, dy vector to threat as last two elements of the observation
-            threat_pos = np.array([self.threat[0], self.threat[1]])
-            vector_to_threat = threat_pos - agent_pos
-            self.observation[-2] = vector_to_threat[0]  # x component
-            self.observation[-1] = vector_to_threat[1]  # y component
+            for j in range(len(self.threats)):
+                threat_pos = np.array([self.threats[j][0], self.threats[j][1]])
+                vector_to_threat = threat_pos - agent_pos
+                self.observation[-2*(j+1)] = vector_to_threat[0]  # x component
+                self.observation[-1*(j+1)] = vector_to_threat[1]  # y component
 
         for threat_idx in range(2):
             threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
@@ -1480,59 +1481,57 @@ class MAISREnvVec(gym.Env):
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
         #print(f'Subpolicy action is {action} ({type(action)}')
-        if isinstance(action, (np.int32, int)): # Discrete direction action
-            # Get normalized direction vector
-            #action = action.item()
-            #try:  action = int(action)
-            #except: action = int(action[0])
+        if action.ndim < 2:
+            if isinstance(action, (np.int32, int, np.ndarray)): # Discrete direction action
+                action = int(action)
 
-            direction_map = {
-                0: (0, 1),  # North (0°)
-                1: (0.383, 0.924),  # NNE (22.5°)
-                2: (0.707, 0.707),  # NE (45°)
-                3: (0.924, 0.383),  # ENE (67.5°)
-                4: (1, 0),  # East (90°)
-                5: (0.924, -0.383),  # ESE (112.5°)
-                6: (0.707, -0.707),  # SE (135°)
-                7: (0.383, -0.924),  # SSE (157.5°)
-                8: (0, -1),  # South (180°)
-                9: (-0.383, -0.924),  # SSW (202.5°)
-                10: (-0.707, -0.707),  # SW (225°)
-                11: (-0.924, -0.383),  # WSW (247.5°)
-                12: (-1, 0),  # West (270°)
-                13: (-0.924, 0.383),  # WNW (292.5°)
-                14: (-0.707, 0.707),  # NW (315°)
-                15: (-0.383, 0.924)  # NNW (337.5°)
-            }
+                direction_map = {
+                    0: (0, 1),  # North (0°)
+                    1: (0.383, 0.924),  # NNE (22.5°)
+                    2: (0.707, 0.707),  # NE (45°)
+                    3: (0.924, 0.383),  # ENE (67.5°)
+                    4: (1, 0),  # East (90°)
+                    5: (0.924, -0.383),  # ESE (112.5°)
+                    6: (0.707, -0.707),  # SE (135°)
+                    7: (0.383, -0.924),  # SSE (157.5°)
+                    8: (0, -1),  # South (180°)
+                    9: (-0.383, -0.924),  # SSW (202.5°)
+                    10: (-0.707, -0.707),  # SW (225°)
+                    11: (-0.924, -0.383),  # WSW (247.5°)
+                    12: (-1, 0),  # West (270°)
+                    13: (-0.924, 0.383),  # WNW (292.5°)
+                    14: (-0.707, 0.707),  # NW (315°)
+                    15: (-0.383, 0.924)  # NNW (337.5°)
+                }
 
-            current_x = self.agents[self.aircraft_ids[0]].x
-            current_y = self.agents[self.aircraft_ids[0]].y
+                current_x = self.agents[self.aircraft_ids[0]].x
+                current_y = self.agents[self.aircraft_ids[0]].y
 
-            dx_norm, dy_norm = direction_map[action]
+                dx_norm, dy_norm = direction_map[action]
 
-            # Calculate waypoint at fixed distance in chosen direction
-            waypoint_distance = 50
-            x_coord = current_x + (dx_norm * waypoint_distance)
-            y_coord = current_y + (dy_norm * waypoint_distance)
+                # Calculate waypoint at fixed distance in chosen direction
+                waypoint_distance = 50
+                x_coord = current_x + (dx_norm * waypoint_distance)
+                y_coord = current_y + (dy_norm * waypoint_distance)
 
-            # Clip to map boundaries
-            map_half_size = self.config["gameboard_size"] / 2
-            x_coord = np.clip(x_coord, -map_half_size, map_half_size)
-            y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+                # Clip to map boundaries
+                map_half_size = self.config["gameboard_size"] / 2
+                x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+                y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
-        elif isinstance(action, np.ndarray):
-            #print(f'Action is {action} (ndim {action.ndim}')
-            if action.ndim > 1: # x,y waypoint
-                action = action.flatten()
-            if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                raise ValueError('ERROR: Actions are not normalized to -1, +1')
+        else:
+            print(f'Action is {action} (type {type(action)}')
+            #if action.ndim > 1: # x,y waypoint
+            action = action.flatten()
+            #if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                #raise ValueError('ERROR: Actions are not normalized to -1, +1')
 
             map_half_size = self.config["gameboard_size"] / 2
             x_coord = action[0] * map_half_size
             y_coord = action[1] * map_half_size
 
-        else:
-            raise ValueError(f'Error in process action, action is a {type(action)}')
+        #else:
+            #raise ValueError(f'Error in process action, action is a {type(action)}')
 
         waypoint = (float(x_coord), float(y_coord))
         return waypoint
