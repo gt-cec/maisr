@@ -1,3 +1,5 @@
+import warnings
+
 import gymnasium as gym
 import numpy as np
 from sympy import trunc
@@ -47,13 +49,21 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
+        # Load normalization stats
+        try:
+            self.norm_stats = np.load(local_search_policy.norm_stats_filepath, allow_pickle=True).item()
+            print("Loaded normalization stats for local search policy")
+        except FileNotFoundError:
+            print("Warning: No normalization stats found, using raw observations")
+            self.norm_stats = None
+
 
     def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
         self.num_switches = 0 # How many times the agent has switch policies in this round. Slight penalty to encourage consistency
         self.last_action = 0
         self.steps_since_last_selection = 0
-        self.current_subpolicy = None
+        self.subpolicy_choice = None
 
         return raw_obs, _
 
@@ -61,7 +71,8 @@ class MaisrModeSelectorWrapper(gym.Env):
     def step(self, action: np.int32):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
-        if self.current_subpolicy is None or self.steps_since_last_selection >= self.action_rate:
+        ######################## Choose a subpolicy ########################
+        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
             print(f'Selector action: {action} (type({action}')
             self.steps_since_last_selection = 0
             print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
@@ -72,38 +83,53 @@ class MaisrModeSelectorWrapper(gym.Env):
                 self.num_switches += 1 # Not used yet
                 self.switched_policies = True
 
-            # Activate selected subpolicy and generate its action
-            self.current_subpolicy = action
+            self.subpolicy_choice = action # Activate selected subpolicy and generate its action
 
-        subpolicy_observation = self.get_subpolicy_observation(self.current_subpolicy)
 
-        if self.current_subpolicy == 0: # Local search
+        ######################## Process subpolicy's action ########################
+
+        subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice)
+        if self.subpolicy_choice == 0: # Local search
+            # TODO local search is returning (action, none)
             direction_to_move = self.local_search_policy.act(subpolicy_observation)
             subpolicy_action = direction_to_move
 
-        elif self.current_subpolicy == 1: # Change region
+        elif self.subpolicy_choice == 1: # Change region
             waypoint_to_go = self.change_region_subpolicy.act(subpolicy_observation)
             subpolicy_action = waypoint_to_go
 
-        elif self.current_subpolicy == 2: # go to high value target
+        elif self.subpolicy_choice == 2: # go to high value target
             waypoint_to_go = self.go_to_highvalue_policy.act(subpolicy_observation)
             subpolicy_action = waypoint_to_go
 
         else:
-            raise ValueError(f'ERROR: Got invalid subpolicy selection {self.current_subpolicy}')
-
-        # TODO add logic for teammate policy to act
-
+            raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
+        
         if isinstance(subpolicy_action, tuple):
+            #warnings.warn(f"WARNING: Agent's action was a tuple {subpolicy_action}. Taking first element. This is likely a bug in how agent actions are being accessed.")
             subpolicy_action = subpolicy_action[0]
+        
 
-        # Step the environment
+        ########################################## Process teammate's action ###########################################
+
+        if self.teammate_policy is not None and len(self.env.aircraft_ids) >= 2:
+            teammate_idx = self.env.aircraft_ids[1]  # Second aircraft
+            teammate_agent = self.env.agents[teammate_idx]
+
+            #if teammate_agent.alive:
+            teammate_observation = self.env.get_observation() # TODO
+            teammate_action = self.teammate_policy.act(teammate_observation)[0]
+            teammate_waypoint = self.env.process_action(teammate_action)
+            teammate_agent.waypoint_override = teammate_waypoint
+
+
+        ############################################ Step the environment #############################################
+
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
 
+        # Convert base_env elements to wrapper elements if needed
         observation = self.get_observation()
         reward = self.get_reward(base_info)
-
-        # Convert base_env elements to wrapper elements if needed
         info = base_info
         terminated = base_terminated
         truncated = base_truncated
@@ -167,6 +193,7 @@ class MaisrModeSelectorWrapper(gym.Env):
     def get_subpolicy_observation(self, selected_subpolicy):
         if selected_subpolicy == 0: # Get obs for local search
             observation = self.env.get_observation_nearest_n()
+            #observation = self.normalize_local_search_obs(observation)
 
         elif selected_subpolicy == 1: # Change region
             observation = self.get_observation_changeregion()
@@ -175,6 +202,13 @@ class MaisrModeSelectorWrapper(gym.Env):
             observation = self.get_observation_nearest_threat()
 
         return observation
+
+    def normalize_local_search_obs(self, obs):
+        """Normalize local search observations using training stats"""
+        if self.norm_stats is not None:
+            obs_normalized = (obs - self.norm_stats['obs_mean']) / np.sqrt(self.norm_stats['obs_var'] + 1e-8)
+            return np.clip(obs_normalized, -10, 10)  # Prevent extreme values
+        return obs
 
 
     def get_observation_changeregion(self):
@@ -259,30 +293,35 @@ class MaisrModeSelectorWrapper(gym.Env):
             obs[2] - dx to 2nd nearest threat
             obs[3] - dy to 2nd nearest threat
         """
-        obs = np.zeros(2, dtype=np.float32)
+        obs = np.zeros(4, dtype=np.float32)  # Changed from 2 to 4
 
         # Get agent position
         agent_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x,
                               self.env.agents[self.env.aircraft_ids[0]].y])
 
-        # Get threat
-        threat_position = self.env.threat
+        # Get threat positions
+        threat_positions = self.env.threats
 
-        # Get vector to nearest high-value target
-        vector_to_threat = threat_position - agent_pos
-        obs = vector_to_threat
-        # if len(sorted_indices) >= 1:
-        #     nearest_pos = highvalue_positions[sorted_indices[0]]
-        #     vector_to_nearest = nearest_pos - agent_pos
-        #     obs[0] = vector_to_nearest[0]  # dx to nearest
-        #     obs[1] = vector_to_nearest[1]  # dy to nearest
-        #
-        # # Get vector to second nearest high-value target
-        # if len(sorted_indices) >= 2:
-        #     second_nearest_pos = highvalue_positions[sorted_indices[1]]
-        #     vector_to_second = second_nearest_pos - agent_pos
-        #     obs[2] = vector_to_second[0]  # dx to 2nd nearest
-        #     obs[3] = vector_to_second[1]  # dy to 2nd nearest
+        if len(threat_positions) == 0:
+            return obs  # Return zeros if no threats
+
+        # Calculate distances to all threats
+        distances = np.linalg.norm(threat_positions - agent_pos, axis=1)
+        sorted_indices = np.argsort(distances)
+
+        # Get vector to nearest threat
+        if len(sorted_indices) >= 1:
+            nearest_pos = threat_positions[sorted_indices[0]]
+            vector_to_nearest = nearest_pos - agent_pos
+            obs[0] = vector_to_nearest[0]  # dx to nearest
+            obs[1] = vector_to_nearest[1]  # dy to nearest
+
+        # Get vector to second nearest threat
+        if len(sorted_indices) >= 2:
+            second_nearest_pos = threat_positions[sorted_indices[1]]
+            vector_to_second = second_nearest_pos - agent_pos
+            obs[2] = vector_to_second[0]  # dx to 2nd nearest
+            obs[3] = vector_to_second[1]  # dy to 2nd nearest
 
         return obs
 

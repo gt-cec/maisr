@@ -366,6 +366,7 @@ class MAISREnvVec(gym.Env):
         for i in range(self.config['num_aircraft']):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
+            print(f'Agent {i} spawned at {agent_x, agent_y}')
 
         if self.config['num_aircraft'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
@@ -1480,9 +1481,24 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
-        print(f'Subpolicy action is {action} ({type(action)}')
+        #print(f'Subpolicy action is {action} ({type(action)}')
+        try:
+            if len(action) == 2:
+                #print(f'Action is {action} (type {type(action)}')
+                action = action.flatten()
+                if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                    raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
+                map_half_size = self.config["gameboard_size"] / 2
+                x_coord = action[0] * map_half_size
+                y_coord = action[1] * map_half_size
+                waypoint = (float(x_coord), float(y_coord))
+                return waypoint
+        except:
+            pass
+
         if action.ndim < 2:
-            if isinstance(action, (np.int32, int, np.ndarray)): # Discrete direction action
+            if isinstance(action, (np.int32, np.int64, int, np.ndarray)): # Discrete direction action
                 action = int(action)
 
                 direction_map = {
@@ -1519,22 +1535,25 @@ class MAISREnvVec(gym.Env):
                 x_coord = np.clip(x_coord, -map_half_size, map_half_size)
                 y_coord = np.clip(y_coord, -map_half_size, map_half_size)
 
-        else:
-            print(f'Action is {action} (type {type(action)}')
-            #if action.ndim > 1: # x,y waypoint
-            action = action.flatten()
-            #if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
-                #raise ValueError('ERROR: Actions are not normalized to -1, +1')
+                waypoint = (float(x_coord), float(y_coord))
+                return waypoint
 
-            map_half_size = self.config["gameboard_size"] / 2
-            x_coord = action[0] * map_half_size
-            y_coord = action[1] * map_half_size
+        # else:
+        #     print(f'Action is {action} (type {type(action)}')
+        #     #if action.ndim > 1: # x,y waypoint
+        #     action = action.flatten()
+        #     #if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+        #         #raise ValueError('ERROR: Actions are not normalized to -1, +1')
+        #
+        #     map_half_size = self.config["gameboard_size"] / 2
+        #     x_coord = action[0] * map_half_size
+        #     y_coord = action[1] * map_half_size
 
         #else:
             #raise ValueError(f'Error in process action, action is a {type(action)}')
 
-        waypoint = (float(x_coord), float(y_coord))
-        return waypoint
+        # waypoint = (float(x_coord), float(y_coord))
+        # return waypoint
 
     def save_action_history_plot(self, note=''):
         """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
@@ -1580,19 +1599,20 @@ class MAISREnvVec(gym.Env):
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
 
             # Plot the threat if it exists
-            if hasattr(self, 'threat'):
-                threat_x = self.threat[0]
-                threat_y = self.threat[1]
-                threat_radius = self.config['threat_radius'] * (1000 / self.config["gameboard_size"])  # Scale for plot
+            if hasattr(self, 'threats'):
+                for threat in self.threats:
+                    threat_x = threat[0]
+                    threat_y = threat[1]
+                    threat_radius = self.config['threat_radius'] * (1000 / self.config["gameboard_size"])  # Scale for plot
 
-                # Draw threat circle
-                circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color='gold', linewidth=2,
-                                    alpha=0.7)
-                plt.gca().add_patch(circle)
+                    # Draw threat circle
+                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color='gold', linewidth=2,
+                                        alpha=0.7)
+                    plt.gca().add_patch(circle)
 
-                # Draw upside-down triangle marker
-                plt.scatter(threat_x, threat_y, s=200, color='gold', marker='v', alpha=0.8, label='Threat',
-                            edgecolors='black')
+                    # Draw upside-down triangle marker
+                    plt.scatter(threat_x, threat_y, s=200, color='gold', marker='v', alpha=0.8, label='Threat',
+                                edgecolors='black')
 
             # Plot agent trajectory (actual location history) as a line with points
             if agent_x_coords and agent_y_coords:

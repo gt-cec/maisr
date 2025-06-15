@@ -5,7 +5,7 @@
 	"time_limit": 245,
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
-	"num_aircraft": 1,
+	"num_aircraft": 2,
 	"max_steps": 30000,
 
 	"num_targets": 15,
@@ -36,7 +36,7 @@
 	"value_network_size": 64,
 	"activation_fn": "Tanh",
 	"lr": 0.0005,
-	"batch_size": 512,
+	"batch_size": 1024,
 	"gamma": 0.99,
 	"frame_skip": 30,
 	"ppo_update_steps": 2048,
@@ -46,7 +46,7 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 5e5,
+	"num_timesteps": 2e6,
 	"save_freq": 13500,
 	"n_eval_episodes": 5,
 	"eval_freq": 13500,

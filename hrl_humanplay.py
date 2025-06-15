@@ -12,8 +12,11 @@ from utility.data_logging import load_env_config
 
 if __name__ == "__main__":
 
-    config = load_env_config('configs/june14.json')
+    config_filename = 'configs/june15.json'
 
+
+    config = load_env_config(config_filename)
+    print(f'LOADED CONFIG {config_filename}')
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -33,10 +36,9 @@ if __name__ == "__main__":
     )
 
     # Instantiate subpolicies
-    load_path = 'trained_models/PPO_maisr_final_diff.zip'
-    localsearch_model = PPO.load(load_path)
+    localsearch_model = PPO.load('trained_models/0615_1009_6envs_maisr_trained_model.zip')
 
-    local_search_policy = LocalSearch(model=localsearch_model)
+    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath = 'trained_models/0615_1009_6envslocal_search_norm_stats.npy')
     go_to_highvalue_policy = GoToNearestThreat(model=None)
     change_region_subpolicy = ChangeRegions(model=None)
 

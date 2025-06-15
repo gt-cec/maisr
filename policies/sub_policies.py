@@ -279,14 +279,17 @@ class EvadeDetection(SubPolicy):
 class LocalSearch(SubPolicy):
     """Sub-policy that searches locally for unknown targets"""
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, norm_stats_filepath=None):
         super().__init__("local_search")
         self.search_radius = 300.0  # Search within this radius
         self.model = model
         if model:
-            print('Using provided model for inference')
+            print('[LocalSearch] Using provided model for inference')
         else:
-            print('No model provided, using internal heuristic')
+            print('[LocalSearch] No model provided, using internal heuristic')
+
+        self.norm_stats_filepath = norm_stats_filepath
+        print(f'Loaded training normalization stats from {norm_stats_filepath}')
 
         self._current_target_id = None
         self._current_target_pos = None

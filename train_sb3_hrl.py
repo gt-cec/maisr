@@ -1,5 +1,4 @@
 import warnings
-
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
 import gymnasium as gym
@@ -18,7 +17,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import BaseCallback
 
-from env_combined import MAISREnvVec
+from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 
@@ -319,6 +318,8 @@ def train_hrl(
         n_envs,
         project_name,
         policy_to_train,
+        use_normalize,
+        run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
         log_dir="./logs/",
@@ -338,8 +339,7 @@ def train_hrl(
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
-    # Generate run name (To be consistent between WandB, model saving, and action history plots)
-    run_name = generate_run_name(env_config)
+
 
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
@@ -381,7 +381,7 @@ def train_hrl(
                        range(n_envs)]
             env = SubprocVecEnv(env_fns)
             env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-            if env_config['obs_type'] != 'pixel':
+            if use_normalize:
                 env = VecNormalize(env)
 
         else:
@@ -407,7 +407,7 @@ def train_hrl(
         eval_env = MaisrLocalSearchWrapper(base_eval_env)
         eval_env = Monitor(eval_env)
         eval_env = DummyVecEnv([lambda: eval_env])
-        if env_config['obs_type'] != 'pixel':
+        if use_normalize:
             eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
             eval_env.obs_rms = env.obs_rms
             eval_env.ret_rms = env.ret_rms
@@ -493,12 +493,27 @@ def train_hrl(
         reset_num_timesteps=True if load_path else False  # TODO check this
     )
 
+    # Save normalization stats for deployment
+    stats = {
+        'obs_mean': env.obs_rms.mean,
+        'obs_var': env.obs_rms.var,
+        'obs_count': env.obs_rms.count,
+        'ret_mean': env.ret_rms.mean,
+        'ret_var': env.ret_rms.var,
+    }
+    np.save(f"trained_models/{run_name}local_search_norm_stats.npy", stats)
+    env.save(f"trained_models/{run_name}local_search_vecnormalize.pkl")
+    print("Training Normalization Stats:")
+    print(f"Obs mean: {env.obs_rms.mean}")
+    print(f"Obs std: {np.sqrt(env.obs_rms.var + 1e-8)}")
+    print(f"Obs count: {env.obs_rms.count}")
+
     print('########################################## TRAINING COMPLETE ############################################\n')
     env.close()
     eval_env.close()
 
     # Save the final model
-    final_model_path = os.path.join(save_dir, f"{env_config['algo']}_maisr_final_diff")
+    final_model_path = os.path.join(save_dir, f"{run_name}_maisr_trained_model")
     model.save(final_model_path)
     print(f"Training completed! Final model saved to {final_model_path}")
 
@@ -515,25 +530,34 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june14.json'
+    config_filename = 'configs/june15.json'
+
+    ################################################
 
     print(f'\n############################ STARTING TRAINING ############################')
     config = load_env_config(config_filename)
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
+    config['policy_to_train'] = 'local-search'
 
-    for batch_size in [1024]:
+    for num_timesteps in [5e5, 2e6]:
+        for inside_threat_penalty in [0.03, 0.1, 0.15, 0.25]:
+            config['num_timesteps'] = num_timesteps
+            config['inside_threat_penalty'] = inside_threat_penalty
 
-        config['batch_size'] = batch_size
+            # Generate run name (To be consistent between WandB, model saving, and action history plots)
+            run_name = f'local_search_{num_timesteps}timesteps_{inside_threat_penalty}threatpenalty_'+generate_run_name(config)
 
-        print(f'\n--- Starting training run  ---')
-        train_hrl(
-            config,
-            n_envs=multiprocessing.cpu_count(),
-            policy_to_train = 'local_search',
-            load_path=load_path,
-            machine_name='nearestvector'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-            project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-            save_model = False,
-        )
-        print(f"✓ Completed training run")
+            print(f'\n--- Starting training run  ---')
+            train_hrl(
+                config,
+                run_name=run_name,
+                use_normalize=True,
+                n_envs=multiprocessing.cpu_count(),
+                policy_to_train = 'local_search',
+                load_path=load_path,
+                machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+                save_model = False,
+            )
+            print(f"✓ Completed training run")
