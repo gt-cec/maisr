@@ -1,5 +1,6 @@
 import ctypes
 import pygame
+from stable_baselines3 import PPO
 from wandb.cli.cli import local
 
 from env_multi_new import MAISREnvVec
@@ -11,9 +12,8 @@ from utility.data_logging import load_env_config
 
 
 
-
 if __name__ == "__main__":
-    config = load_env_config('configs/june13_nearest_n.json')
+    config = load_env_config('configs/june15.json')
 
     pygame.display.init()
     pygame.font.init()
@@ -34,11 +34,15 @@ if __name__ == "__main__":
     )
 
     # Instantiate subpolicies
-    local_search_policy = LocalSearch(model=None)
+    #local_search_policy = LocalSearch(model=None)
+    #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+    #local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
 
     env = MaisrLocalSearchWrapper(
         base_env,
     )
+    # env = DummyVecEnv([lambda: env])
+    # env = VecNormalize(env, norm_reward=False, training=False)
 
 
     ###################################################################################################################
