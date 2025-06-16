@@ -1,6 +1,8 @@
+import numpy as np
 import ctypes
 import pygame
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from wandb.cli.cli import local
 
 from env_multi_new import MAISREnvVec
@@ -13,6 +15,8 @@ from utility.data_logging import load_env_config
 
 
 if __name__ == "__main__":
+
+    use_normalize = True
     config = load_env_config('configs/june15.json')
 
     pygame.display.init()
@@ -35,14 +39,18 @@ if __name__ == "__main__":
 
     # Instantiate subpolicies
     #local_search_policy = LocalSearch(model=None)
-    #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
-    #local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
+    localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
 
     env = MaisrLocalSearchWrapper(
         base_env,
     )
-    # env = DummyVecEnv([lambda: env])
-    # env = VecNormalize(env, norm_reward=False, training=False)
+    if use_normalize:
+        env = DummyVecEnv([lambda: env])
+        env = VecNormalize.load('./trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_vecnormalize.pkl', env)
+        env.training = False
+        env.norm_Reward = False
+        #env = VecNormalize(env, norm_reward=False, training=False)
 
 
     ###################################################################################################################
@@ -53,7 +61,11 @@ if __name__ == "__main__":
     all_actions = []
 
     for episode in range(3):
-        obs, info = env.reset()
+        if use_normalize:
+            obs = env.reset()
+        else:
+            obs, info = env.reset()
+
         episode_reward = 0
         episode_observations, episode_actions, potential_gain_history = [], [], []
 
@@ -64,7 +76,6 @@ if __name__ == "__main__":
         print(f"\nStarting human episode {episode + 1}/3")
 
         while not done:
-            # Handle pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True
@@ -73,9 +84,6 @@ if __name__ == "__main__":
                     if event.key == pygame.K_ESCAPE:
                         done = True
                         break
-                    # elif event.key in key_to_action:
-                    #     action = key_to_action[event.key]
-                    #     print(f"Selected subpolicy {action}")
             if done:
                 break
 
@@ -86,11 +94,15 @@ if __name__ == "__main__":
             episode_actions.append(action)
 
             # Take step
-            obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
+            if use_normalize:
+                obses, rewards, dones, infos = env.step(action)
+                obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
+            else:
+                obs, reward, terminated, truncated, info = env.step(action)
+                episode_reward += reward
 
-            done = terminated or truncated
-            step_count += 1
+                done = terminated or truncated
+                step_count += 1
             env.render()
 
     env.close()
