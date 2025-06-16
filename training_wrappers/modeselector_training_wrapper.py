@@ -6,8 +6,7 @@ from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
 
 from policies.sub_policies import SubPolicy, GoToNearestThreat, LocalSearch, ChangeRegions
-from utility.league_management import TeammateManager
-
+from utility.league_management import TeammateManager, TeammatePolicy
 
 
 class MaisrModeSelectorWrapper(gym.Env):
@@ -19,16 +18,24 @@ class MaisrModeSelectorWrapper(gym.Env):
                  local_search_policy: SubPolicy,
                  go_to_highvalue_policy: SubPolicy,
                  change_region_subpolicy: SubPolicy,
-                 teammate_policy: SubPolicy=None,
+                 teammate_policy: TeammatePolicy=None,
                  teammate_manager: TeammateManager = None,
                  ):
 
         self.env = env
+
+        # Load primary agent subpolicies and teammate policies
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
-        self.teammate_policy = teammate_policy
+        if teammate_policy is not None:
+            self.current_teammate = teammate_policy
+
         self.teammate_manager = teammate_manager
+
+        if teammate_policy and teammate_manager:
+            raise ValueError('Cannot specify a teammate policy and a teammate manager at the same time')
+
 
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
@@ -67,6 +74,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
+        self.teammate_subpolicy_choice = 0
 
         # Instantiate teammate for this episode
         if self.teammate_manager:
@@ -83,7 +91,6 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ######################## Choose a subpolicy ########################
         if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
-            print(f'Selector action: {action} (type({action}')
             self.steps_since_last_selection = 0
             print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
 
@@ -98,9 +105,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ######################## Process subpolicy's action ########################
 
-        subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice)
+        subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
         if self.subpolicy_choice == 0: # Local search
-            # TODO local search is returning (action, none)
             direction_to_move = self.local_search_policy.act(subpolicy_observation)
             subpolicy_action = direction_to_move
 
@@ -122,28 +128,30 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ########################################## Process teammate's action ###########################################
 
+        # TODO rewrite to accept either mode-selector teammate, greedy, or human
         if self.current_teammate and self.env.config['num_aircraft'] >= 2:
-            teammate_obs = self.get_teammate_observation()
-            env_state = self.get_env_state_for_teammate()
-            teammate_mode_action = self.current_teammate.get_action(teammate_obs, env_state)
+            teammate_obs = self.get_observation(1)
+            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
 
-            # Execute teammate's selected subpolicy
-            teammate_subpolicy_obs = self.get_subpolicy_observation_for_teammate(teammate_mode_action)
-            teammate_subpolicy_action = self.teammate_subpolicies[teammate_mode_action].act(teammate_subpolicy_obs)
+            teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
+            if self.teammate_subpolicy_choice == 0:  # Local search
+                direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
+                teammate_subpolicy_action = direction_to_move
+
+            elif self.teammate_subpolicy_choice == 1:  # Change region
+                waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
+                teammate_subpolicy_action = waypoint_to_go
+
+            elif self.teammate_subpolicy_choice == 2:  # go to high value target
+                waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
+                teammate_subpolicy_action = waypoint_to_go
+
+            if isinstance(teammate_subpolicy_action, tuple):
+                teammate_subpolicy_action = teammate_subpolicy_action[0]
 
             # Apply teammate action to aircraft[1]
             teammate_waypoint = self.env.process_action(teammate_subpolicy_action)
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
-
-        # if self.teammate_policy is not None and len(self.env.aircraft_ids) >= 2:
-        #     teammate_idx = self.env.aircraft_ids[1]  # Second aircraft
-        #     teammate_agent = self.env.agents[teammate_idx]
-        #
-        #     #if teammate_agent.alive:
-        #     teammate_observation = self.env.get_observation() # TODO
-        #     teammate_action = self.teammate_policy.act(teammate_observation)[0]
-        #     teammate_waypoint = self.env.process_action(teammate_action)
-        #     teammate_agent.waypoint_override = teammate_waypoint
 
 
         ############################################ Step the environment #############################################
@@ -151,7 +159,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
 
         # Convert base_env elements to wrapper elements if needed
-        observation = self.get_observation()
+        observation = self.get_observation(0)
         reward = self.get_reward(base_info)
         info = base_info
         terminated = base_terminated
@@ -215,6 +223,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 ########################################################################################################################
 
     def get_subpolicy_observation(self, selected_subpolicy, agent_id):
+        #print(f'[get_subpolicy_observation] selected_subpolicy: {selected_subpolicy}')
         if selected_subpolicy == 0: # Get obs for local search
             observation = self.get_observation_localsearch(agent_id)
             #observation = self.normalize_local_search_obs(observation)

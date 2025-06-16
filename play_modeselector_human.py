@@ -6,13 +6,13 @@ import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
-from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+#from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
-
+from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june15.json'
+    config_filename = 'configs/june16_2ship.json'
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -41,15 +41,24 @@ if __name__ == "__main__":
         model_path = localsearch_model_path,
         norm_stats_filepath = localsearch_normstats_path
     )
+    go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+    change_region_subpolicy = ChangeRegions(model_path=None)
 
-    go_to_highvalue_policy = GoToNearestThreat(model=None)
-    change_region_subpolicy = ChangeRegions(model=None)
+    # Instantiate teammate
+    teammate = GenericTeammatePolicy(
+        base_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        'human',
+        False)
 
     env = MaisrModeSelectorWrapper(
         base_env,
         local_search_policy,
         go_to_highvalue_policy,
-        change_region_subpolicy
+        change_region_subpolicy,
+        teammate_policy=teammate
     )
 
 
@@ -70,6 +79,7 @@ if __name__ == "__main__":
         action = 0  # Default action (up)
 
         print(f"\nStarting human episode {episode + 1}/3")
+
 
         while not done:
             # Handle pygame events
@@ -99,6 +109,7 @@ if __name__ == "__main__":
             # info = infos[0]
             # done = dones[0]
             episode_reward += reward
+            done = terminated or truncated
 
             step_count += 1
             env.render()

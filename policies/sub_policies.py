@@ -1,11 +1,3 @@
-"""
-Hierarchical MAISR Environment Wrapper
-Implements a two-level hierarchical RL system where:
-- High-level policy selects from sub-policies at 2 Hz
-- Sub-policies execute until changed by high-level policy
-- Each sub-policy has specialized observations, actions, and rewards
-"""
-
 import gymnasium as gym
 import numpy as np
 import math
@@ -29,45 +21,6 @@ class SubPolicy(ABC):
 
     def is_terminated(self, observation):
         pass
-
-    # @abstractmethod
-    # def get_action_space(self) -> gym.Space:
-    #     """Return the action space for this sub-policy"""
-    #     pass
-    #
-    # @abstractmethod
-    # def get_observation_space(self) -> gym.Space:
-    #     """Return the observation space for this sub-policy"""
-    #     pass
-
-    # @abstractmethod
-    # def get_observation(self, base_obs: np.ndarray, env_state: Dict[str, Any]) -> np.ndarray:
-    #     """Transform base observation into sub-policy specific observation"""
-    #     pass
-
-    # @abstractmethod
-    # def get_reward(self, base_reward: float, env_state: Dict[str, Any],
-    #                info: Dict[str, Any], progress: Dict[str, Any]) -> float:
-    #     """Calculate sub-policy specific reward"""
-    #     pass
-    #
-    # def get_action(self, obs: np.ndarray, model=None) -> np.ndarray:
-    #     """Get action from sub-policy (can be overridden for trained models)"""
-    #     if model is not None:
-    #         action, _ = model.predict(obs, deterministic=True)
-    #         return action
-    #     else:
-    #         # Default random action
-    #         return self.get_action_space().sample()
-    #
-    # def is_terminated(self, env_state: Dict[str, Any]) -> bool:
-    #     """Check if sub-policy wants to terminate early"""
-    #     return False
-    #
-    # def should_interrupt(self, env_state: Dict[str, Any]) -> bool:
-    #     """Check if this sub-policy should interrupt current execution"""
-    #     return False
-
 
 class GoToNearestThreat(SubPolicy):
     """Sub-policy that navigates to the nearest high-value target"""
@@ -401,90 +354,6 @@ class LocalSearch(SubPolicy):
         else:
             action = self.heuristic(observation)
         return action
-
-    # def heuristic(self, observation):
-    #     """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
-    #     obs = np.array(observation)[0]
-    #     if obs.ndim > 1:
-    #         obs = obs[0]  # Extract first environment's observation
-    #     obs = np.atleast_1d(obs)
-    #     #print(f'[heuristic]obs: {obs}')
-    #
-    #     # Direction mapping
-    #     directions = np.array([
-    #         (0, 1),  # North (0°)
-    #         (0.383, 0.924),  # NNE (22.5°)
-    #         (0.707, 0.707),  # NE (45°)
-    #         (0.924, 0.383),  # ENE (67.5°)
-    #         (1, 0),  # East (90°)
-    #         (0.924, -0.383),  # ESE (112.5°)
-    #         (0.707, -0.707),  # SE (135°)
-    #         (0.383, -0.924),  # SSE (157.5°)
-    #         (0, -1),  # South (180°)
-    #         (-0.383, -0.924),  # SSW (202.5°)
-    #         (-0.707, -0.707),  # SW (225°)
-    #         (-0.924, -0.383),  # WSW (247.5°)
-    #         (-1, 0),  # West (270°)
-    #         (-0.924, 0.383),  # WNW (292.5°)
-    #         (-0.707, 0.707),  # NW (315°)
-    #         (-0.383, 0.924),  # NNW (337.5°)
-    #     ], dtype=float)
-    #
-    #     # Extract nearest target vector (first two components)
-    #     target_vector_x = obs[0]
-    #     target_vector_y = obs[1]
-    #
-    #     # Check if there's a valid target (non-zero vector)
-    #     if target_vector_x == 0.0 and target_vector_y == 0.0:
-    #         # No targets or at target location
-    #         self.reset_heuristic_state()
-    #         return 0
-    #
-    #     # The observation already gives us the vector to the nearest target
-    #     direction_to_target = np.array([target_vector_x, target_vector_y])
-    #
-    #     # Normalize direction vectors
-    #     direction_norms = np.linalg.norm(directions, axis=1)
-    #     normalized_directions = directions / direction_norms[:, np.newaxis]
-    #
-    #     # Normalize target direction
-    #     target_norm = np.linalg.norm(direction_to_target)
-    #     if target_norm > 0:
-    #         direction_to_target_norm = direction_to_target / target_norm
-    #     else:
-    #         return self._last_action if self._last_action is not None else 0
-    #
-    #     # Calculate dot products
-    #     dot_products = np.dot(normalized_directions, direction_to_target_norm)
-    #
-    #     # Find best action
-    #     best_action = np.argmax(dot_products)
-    #
-    #     # Anti-oscillation: if we just took an action, continue for minimum steps
-    #     if (self._last_action is not None and
-    #             self._action_repeat_count < self._max_repeat_count and
-    #             self._last_action != best_action):
-    #
-    #         # Check if last action is still reasonable (dot product > 0.5)
-    #         last_dot_product = dot_products[self._last_action]
-    #         if last_dot_product > 0.5:  # Still pointing roughly toward target
-    #             best_action = self._last_action
-    #             self._action_repeat_count += 1
-    #         else:
-    #             _action_repeat_count = 0  # Reset if direction is too far off
-    #     else:
-    #         _action_repeat_count = 0
-    #
-    #     # Additional anti-oscillation: prevent direct opposite actions
-    #     if (self._last_action is not None and abs(self._last_action - best_action) == 4):  # Opposite directions
-    #         # Choose a compromise direction
-    #         adjacent_actions = [(self._last_action + 1) % 8, (self._last_action - 1) % 8]
-    #         adjacent_dots = [dot_products[a] for a in adjacent_actions]
-    #         best_adjacent_idx = np.argmax(adjacent_dots)
-    #         best_action = adjacent_actions[best_adjacent_idx]
-    #
-    #     _last_action = best_action
-    #     return np.int32(best_action)
 
     def heuristic(self, observation):
         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""

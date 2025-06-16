@@ -441,7 +441,8 @@ class MAISREnvVec(gym.Env):
 
         ############################################### Process action ################################################
         waypoint = self.process_action(action)
-        self.agents[0].waypoint_override = waypoint
+        #self.agents[0].waypoint_override = waypoint
+        self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
 
         # Log actions to action_history plot
         self.action_history.append(self.agents[0].waypoint_override)
@@ -719,7 +720,7 @@ class MAISREnvVec(gym.Env):
         #print(self.observation)
         return self.observation
 
-    def get_observation_nearest_n(self):
+    def get_observation_nearest_n(self, agent_id=0):
         """
         State will include the following features:
             For each of the N nearest unknown targets:
@@ -734,7 +735,7 @@ class MAISREnvVec(gym.Env):
         # Initialize observation array (2 * N for x,y components of N targets)
         self.observation = np.zeros(2 * (N+M), dtype=np.float32)
 
-        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
 
         # Get target positions and info levels
         target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
