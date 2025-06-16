@@ -368,6 +368,8 @@ class MAISREnvVec(gym.Env):
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
             print(f'Agent {i} spawned at {agent_x, agent_y}')
 
+        self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y = agent_y, agent_x
+
         if self.config['num_aircraft'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
 
@@ -397,6 +399,9 @@ class MAISREnvVec(gym.Env):
         prev_threats_identified = self.num_threats_identified
         prev_detections = self.detections
 
+        print(f'[Agent {self.agents[self.aircraft_ids[0]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[0]].waypoint_override}')
+        print(f'[Agent {self.agents[self.aircraft_ids[1]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[1]].waypoint_override}')
+
         for frame in range(self.config['frame_skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(action)
             total_reward += reward
@@ -419,8 +424,6 @@ class MAISREnvVec(gym.Env):
 
     def _single_step(self, action):
         """
-        args:
-            action: A single np.ndarray
         """
 
         self.step_count_inner += 1
@@ -451,6 +454,7 @@ class MAISREnvVec(gym.Env):
 
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+
             aircraft.move() # Move using the waypoint override set above
 
             # # Calculate distances to all targets
@@ -784,44 +788,6 @@ class MAISREnvVec(gym.Env):
         # If no unknown targets remaining, observation stays all zeros
         return self.observation
 
-    def get_observation_1target(self):
-        """
-        State will include the following features:
-            Absolute mode:
-                0 agent_x,                 # (-1 to +1) normalized position
-                1 agent_y,                 # (-1 to +1) normalized position
-                2 nearest_target_x,        # (-1 to +1) normalized position
-                3 nearest_target_y,        # (-1 to +1) normalized position
-        """
-
-        # New observation size: agent (x,y) + nearest target (x,y) = 4 elements
-        self.observation = np.zeros(4, dtype=np.float32)
-
-        map_half_size = self.config["gameboard_size"] / 2
-
-        # Agent position (normalized)
-        self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
-        self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
-
-        # Find nearest target
-        agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
-        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates of existing targets
-
-        if self.config['num_targets'] > 0:
-            # Calculate distances to all targets
-            distances = np.sqrt(np.sum((target_positions - agent_pos) ** 2, axis=1))
-            nearest_idx = np.argmin(distances)
-
-            # Nearest target position (normalized)
-            self.observation[2] = self.targets[nearest_idx, 3] / map_half_size
-            self.observation[3] = self.targets[nearest_idx, 4] / map_half_size
-        else:
-            # No targets exist, set to agent position
-            self.observation[2] = self.observation[0]
-            self.observation[3] = self.observation[1]
-
-        return self.observation
-
     def get_observation_alltargets(self):
         """
         State will include the following features:
@@ -854,36 +820,6 @@ class MAISREnvVec(gym.Env):
         self.observation[target_start_idx:target_start_idx + self.config['num_targets'] * targets_per_entry] = target_features.flatten()
 
         return self.observation
-
-    def get_pixel_observation(self):
-        """Render the game state to an 84x84 grayscale pixel array for CNN input with clear target differentiation"""
-
-        # Use existing render surface if in human mode, otherwise create temporary surface
-        if self.render_mode == 'human' and hasattr(self, 'window'):
-            # Capture the main game area from the existing window
-            game_rect = pygame.Rect(0, 0, self.config["gameboard_size"], self.config["gameboard_size"])
-            pixel_array = pygame.surfarray.array3d(self.window.subsurface(game_rect))
-        else:
-            # Create offscreen surface and render to it with enhanced target visibility
-            self.pixel_surface.fill((255, 255, 255))  # White background
-            self._render_game_to_surface_enhanced(self.pixel_surface)
-            pixel_array = pygame.surfarray.array3d(self.pixel_surface)
-
-        # Pygame arrays are (width, height, channels), we need (height, width, channels)
-        pixel_array = np.transpose(pixel_array, (1, 0, 2))
-
-        # Convert to grayscale using weighted average for better contrast
-        if len(pixel_array.shape) == 3:
-            # Use standard RGB to grayscale conversion
-            pixel_array = np.dot(pixel_array[..., :3], [0.2989, 0.5870, 0.1140])
-
-        # Resize to 84x84 using OpenCV for consistency
-        pixel_array_resized = cv2.resize(pixel_array, (84, 84), interpolation=cv2.INTER_AREA)
-
-        # Add channel dimension for grayscale
-        pixel_array_resized = np.expand_dims(pixel_array_resized, axis=-1)
-
-        return pixel_array_resized.astype(np.uint8)
 
     def _render_game_to_surface_enhanced(self, surface):
         """
@@ -1472,7 +1408,7 @@ class MAISREnvVec(gym.Env):
         return hostile, friendly, unknown
 
     
-    def process_action(self, action):
+    def process_action(self, action, agent_id=0):
         """
         If the action type is Discrete8, this converts the discrete action chosen into an x,y in the appropriate direction
 
@@ -1521,8 +1457,8 @@ class MAISREnvVec(gym.Env):
                     15: (-0.383, 0.924)  # NNW (337.5°)
                 }
 
-                current_x = self.agents[self.aircraft_ids[0]].x
-                current_y = self.agents[self.aircraft_ids[0]].y
+                current_x = self.agents[self.aircraft_ids[agent_id]].x
+                current_y = self.agents[self.aircraft_ids[agent_id]].y
 
                 dx_norm, dy_norm = direction_map[action]
 

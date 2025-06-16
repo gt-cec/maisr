@@ -92,7 +92,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         ######################## Choose a subpolicy ########################
         if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
             self.steps_since_last_selection = 0
-            print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
+            #print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
 
             # Track policy switching for penalty later
             self.switched_policies = False
@@ -150,9 +150,8 @@ class MaisrModeSelectorWrapper(gym.Env):
                 teammate_subpolicy_action = teammate_subpolicy_action[0]
 
             # Apply teammate action to aircraft[1]
-            teammate_waypoint = self.env.process_action(teammate_subpolicy_action)
+            teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
-
 
         ############################################ Step the environment #############################################
 
