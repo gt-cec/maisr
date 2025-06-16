@@ -37,8 +37,8 @@ if __name__ == "__main__":
 
     # Instantiate subpolicies
     # TODO after 0615 runs: Modify here and test
-    localsearch_model = PPO.load('trained_models/0615_1009_6envs_maisr_trained_model.zip')
-    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath = 'trained_models/0615_1009_6envslocal_search_norm_stats.npy')
+    localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
 
     go_to_highvalue_policy = GoToNearestThreat(model=None)
     change_region_subpolicy = ChangeRegions(model=None)
