@@ -1,27 +1,13 @@
 import ctypes
-import os
-from datetime import datetime
 
 import pygame
-import torch
 import numpy as np
-import datasets
-import glob
-from pathlib import Path
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
-
-from imitation.algorithms import bc
-from imitation.data import rollout
-from imitation.data.wrappers import RolloutInfoWrapper
-from imitation.data import serialize
-from imitation.data.huggingface_utils import TrajectoryDatasetSequence
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
-from train_sb3 import make_env
 
 
 def evaluate_bc_policy(

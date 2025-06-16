@@ -11,13 +11,11 @@ from PIL import Image
 import glob
 from stable_baselines3 import PPO
 
-from train_sb3 import train
-from behavior_cloning.generate_heuristic_traj import heuristic_policy, heuristic_process_single_observation_vectorized, badheuristic_policy, badheuristic_process_single_observation_vectorized, reset_badheuristic_state
-from policies.greedy_heuristic_improved import improved_heuristic_policy, improved_heuristic_process_single_observation, reset_heuristic_state
+from train_sb3_old import train
+from behavior_cloning.generate_heuristic_traj import reset_badheuristic_state
 from env_combined import MAISREnvVec
 #from env_20targets import MAISREnvVec
 from utility.data_logging import load_env_config
-from utility.visualize_values import get_directional_potential_gains, draw_value_arrows
 
 
 def combine_and_display_plots(test_dir):
@@ -614,7 +612,7 @@ def test_curriculum(config):
     """Test curriculum advancement by running episodes and manually incrementing difficulty"""
     print("Starting curriculum test...")
 
-    # Create environments similar to train_sb3.py
+    # Create environments similar to train_sb3_old.py
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
     from stable_baselines3.common.monitor import Monitor
 
@@ -868,7 +866,6 @@ def plot_reward_surface_3d(config, test_dir=None):
         test_dir: Directory to save the plot (optional)
     """
     import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
     import numpy as np
     from scipy.interpolate import RectBivariateSpline
 

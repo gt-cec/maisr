@@ -1,6 +1,6 @@
 import socket
 import multiprocessing
-from train_sb3 import train, generate_run_name
+from train_sb3_old import train, generate_run_name
 from utility.data_logging import load_env_config
 
 

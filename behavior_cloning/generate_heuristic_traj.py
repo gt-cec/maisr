@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-import math
 
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -10,9 +9,6 @@ from imitation.data.wrappers import RolloutInfoWrapper
 
 from env_combined import MAISREnvVec
 from utility.data_logging import load_env_config
-from train_sb3 import make_env
-
-import numpy as np
 
 
 def heuristic_policy(observation, state, dones):

@@ -8,13 +8,9 @@ import warnings
 
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
-import gymnasium as gym
 import os
-import numpy as np
 import multiprocessing
 import socket
-import torch
-import torch.nn as nn
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
@@ -23,15 +19,12 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMoni
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from env_combined import MAISREnvVec
-from utility.data_logging import load_env_config
-from utility.config_management import load_env_config_with_sweeps, generate_sweep_run_name
+from utility.config_management import load_env_config_with_sweeps
 
 # Import the enhanced wandb callback from your existing training file
-from train_sb3 import EnhancedWandbCallback
+from train_sb3_old import EnhancedWandbCallback
 
 
 def generate_run_name_cnn(config):
