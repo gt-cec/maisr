@@ -39,12 +39,14 @@ if __name__ == "__main__":
 
     # Instantiate subpolicies
     #local_search_policy = LocalSearch(model=None)
-    localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
-    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
-
-    env = MaisrLocalSearchWrapper(
-        base_env,
+    localsearch_model_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
+    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
+    local_search_policy = LocalSearch(
+        #model_path = localsearch_model_path,
+        norm_stats_filepath = localsearch_normstats_path
     )
+
+    env = MaisrLocalSearchWrapper(base_env)
     if use_normalize:
         env = DummyVecEnv([lambda: env])
         env = VecNormalize.load('./trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_vecnormalize.pkl', env)
@@ -87,7 +89,7 @@ if __name__ == "__main__":
             if done:
                 break
 
-            action = local_search_policy.act(obs)
+            action, _ = local_search_policy.act(obs)
 
             # Store data
             episode_observations.append(obs.copy())
@@ -95,7 +97,9 @@ if __name__ == "__main__":
 
             # Take step
             if use_normalize:
-                obses, rewards, dones, infos = env.step(action)
+                print(f'action: {action}')
+                obses, rewards, dones, infos = env.step([action])
+                #print(f'obses: {obses}')
                 obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
             else:
                 obs, reward, terminated, truncated, info = env.step(action)

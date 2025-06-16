@@ -2,21 +2,19 @@ import ctypes
 import pygame
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-import gymnasium as gym
+
 from env_multi_new import MAISREnvVec
+from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
 from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
+
 if __name__ == "__main__":
+    config = load_env_config('../configs/june14.json')
 
-    config_filename = 'configs/june15.json'
-
-
-    config = load_env_config(config_filename)
-    print(f'LOADED CONFIG {config_filename}')
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -36,20 +34,25 @@ if __name__ == "__main__":
     )
 
     # Instantiate subpolicies
-    # TODO after 0615 runs: Modify here and test
-    localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
-    local_search_policy = LocalSearch(model=localsearch_model, norm_stats_filepath = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
-    go_to_highvalue_policy = GoToNearestThreat(model=None)
-    change_region_subpolicy = ChangeRegions(model=None)
+    #local_search_policy = LocalSearch(model=None)
+    #go_to_highvalue_policy = GoToNearestThreat(model=None)
+    #change_region_subpolicy = ChangeRegions(model=None)
 
-    env = MaisrModeSelectorWrapper(
+    # env = MaisrModeSelectorWrapper(
+    #     base_env,
+    #     local_search_policy,
+    #     go_to_highvalue_policy,
+    #     change_region_subpolicy
+    # )
+
+    env = MaisrLocalSearchWrapper(
         base_env,
-        local_search_policy,
-        go_to_highvalue_policy,
-        change_region_subpolicy
     )
-    #env = DummyVecEnv([lambda: env])
-    #env = VecNormalize(env, norm_reward=False, training=False)
+    env = DummyVecEnv([lambda: env])
+    env = VecNormalize(env, norm_reward=False, training=False)
+
+    load_path = '../trained_models/PPO_maisr_final_diff.zip'
+    model = PPO.load(load_path)
 
 
     ###################################################################################################################
@@ -59,16 +62,15 @@ if __name__ == "__main__":
     episode_rewards = []
     all_actions = []
 
-    for episode in range(3):
+    for episode in range(10):
         obs = env.reset()[0]
+        print(f'Env.reset[0] = {obs}')
         episode_reward = 0
         episode_observations, episode_actions, potential_gain_history = [], [], []
 
         done = False
         step_count = 0
         action = 0  # Default action (up)
-
-        print(f"\nStarting human episode {episode + 1}/3")
 
         while not done:
             # Handle pygame events
@@ -80,25 +82,26 @@ if __name__ == "__main__":
                     if event.key == pygame.K_ESCAPE:
                         done = True
                         break
-                    elif event.key in key_to_action:
-                        action = key_to_action[event.key]
-                        print(f"Selected subpolicy {action}")
             if done:
                 break
 
+
+            action, _ = model.predict(obs, deterministic=True)
+            #print(f'Model predicts action {action}')
             # Store data
             episode_observations.append(obs.copy())
             episode_actions.append(action)
 
             # Take step
-            obs, reward, terminated, truncated, info = env.step(action)
-            # obses, rewards, dones, infos = env.step(action)
-            # obs = obses[0]
-            # reward = rewards[0]
-            # info = infos[0]
-            # done = dones[0]
+            #obs, reward, terminated, truncated, info = env.step(action)[0]
+            obses, rewards, dones, infos = env.step([action])
+            obs = obses[0]
+            reward = rewards[0]
+            info = infos[0]
+            done = dones[0]
             episode_reward += reward
 
+            #done = terminated or truncated
             step_count += 1
             env.render()
 
