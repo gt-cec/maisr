@@ -6,6 +6,7 @@ from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
 
 from policies.sub_policies import SubPolicy, GoToNearestThreat, LocalSearch, ChangeRegions
+from utility.league_management import TeammateManager
 
 
 
@@ -19,6 +20,7 @@ class MaisrModeSelectorWrapper(gym.Env):
                  go_to_highvalue_policy: SubPolicy,
                  change_region_subpolicy: SubPolicy,
                  teammate_policy: SubPolicy=None,
+                 teammate_manager: TeammateManager = None,
                  ):
 
         self.env = env
@@ -26,6 +28,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
         self.teammate_policy = teammate_policy
+        self.teammate_manager = teammate_manager
 
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
@@ -64,6 +67,13 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
+
+        # Instantiate teammate for this episode
+        if self.teammate_manager:
+            self.teammate_manager.reset_for_episode()
+            # Choose selection strategy: 'random' or 'curriculum'
+            self.current_teammate = self.teammate_manager.select_random_teammate()
+            print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
 
         return raw_obs, _
 
@@ -112,15 +122,28 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ########################################## Process teammate's action ###########################################
 
-        if self.teammate_policy is not None and len(self.env.aircraft_ids) >= 2:
-            teammate_idx = self.env.aircraft_ids[1]  # Second aircraft
-            teammate_agent = self.env.agents[teammate_idx]
+        if self.current_teammate and self.env.config['num_aircraft'] >= 2:
+            teammate_obs = self.get_teammate_observation()
+            env_state = self.get_env_state_for_teammate()
+            teammate_mode_action = self.current_teammate.get_action(teammate_obs, env_state)
 
-            #if teammate_agent.alive:
-            teammate_observation = self.env.get_observation() # TODO
-            teammate_action = self.teammate_policy.act(teammate_observation)[0]
-            teammate_waypoint = self.env.process_action(teammate_action)
-            teammate_agent.waypoint_override = teammate_waypoint
+            # Execute teammate's selected subpolicy
+            teammate_subpolicy_obs = self.get_subpolicy_observation_for_teammate(teammate_mode_action)
+            teammate_subpolicy_action = self.teammate_subpolicies[teammate_mode_action].act(teammate_subpolicy_obs)
+
+            # Apply teammate action to aircraft[1]
+            teammate_waypoint = self.env.process_action(teammate_subpolicy_action)
+            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
+
+        # if self.teammate_policy is not None and len(self.env.aircraft_ids) >= 2:
+        #     teammate_idx = self.env.aircraft_ids[1]  # Second aircraft
+        #     teammate_agent = self.env.agents[teammate_idx]
+        #
+        #     #if teammate_agent.alive:
+        #     teammate_observation = self.env.get_observation() # TODO
+        #     teammate_action = self.teammate_policy.act(teammate_observation)[0]
+        #     teammate_waypoint = self.env.process_action(teammate_action)
+        #     teammate_agent.waypoint_override = teammate_waypoint
 
 
         ############################################ Step the environment #############################################
@@ -150,8 +173,9 @@ class MaisrModeSelectorWrapper(gym.Env):
 ######################################    Observations and sub-observations     ########################################
 ########################################################################################################################
 
-    def get_observation(self):
+    def get_observation(self, agent_id):
         """Generates the observation for the mode selector using env attributes"""
+        # TODO use agent_id to return observation relative to that agent
 
         # Core state: observation vector
         targets_left = self.env.config['num_targets'] - self.env.targets_identified
@@ -190,28 +214,25 @@ class MaisrModeSelectorWrapper(gym.Env):
 ############################################    Subpolicy Observations     #############################################
 ########################################################################################################################
 
-    def get_subpolicy_observation(self, selected_subpolicy):
+    def get_subpolicy_observation(self, selected_subpolicy, agent_id):
         if selected_subpolicy == 0: # Get obs for local search
-            observation = self.env.get_observation_nearest_n()
+            observation = self.get_observation_localsearch(agent_id)
             #observation = self.normalize_local_search_obs(observation)
 
         elif selected_subpolicy == 1: # Change region
-            observation = self.get_observation_changeregion()
+            observation = self.get_observation_changeregion(agent_id)
 
         elif selected_subpolicy == 2: # Go to nearest
-            observation = self.get_observation_nearest_threat()
+            observation = self.get_observation_nearest_threat(agent_id)
 
         return observation
 
-    def normalize_local_search_obs(self, obs):
-        """Normalize local search observations using training stats"""
-        if self.norm_stats is not None:
-            obs_normalized = (obs - self.norm_stats['obs_mean']) / np.sqrt(self.norm_stats['obs_var'] + 1e-8)
-            return np.clip(obs_normalized, -10, 10)  # Prevent extreme values
-        return obs
+    def get_observation_localsearch(self, agent_id):
+        # TODO use agent_id to return observation relative to that agent
+        return self.env.get_observation_nearest_n(agent_id)
 
 
-    def get_observation_changeregion(self):
+    def get_observation_changeregion(self, agent_id):
         """Get observation for the change_region policy.
         obs[0] = # Ratio of targets in quadrant NW
         obs[1] = # Agent distance to quadrant NW
@@ -229,6 +250,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         obs[10] =  # Agent distance to quadrant NW
         obs[11] =  # Teammate distance to quadrant NW
         """
+        # TODO use agent_id to return observation relative to that agent
         obs = np.zeros(12, dtype=np.float32)
 
         # Get agent position
@@ -285,7 +307,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         return obs
 
-    def get_observation_nearest_threat(self):
+    def get_observation_nearest_threat(self, agent_id):
         """
         Contents:
             obs[0] - dx to nearest threat
@@ -293,6 +315,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             obs[2] - dx to 2nd nearest threat
             obs[3] - dy to 2nd nearest threat
         """
+        # TODO use agent_id to return observation relative to that agent
         obs = np.zeros(4, dtype=np.float32)  # Changed from 2 to 4
 
         # Get agent position
@@ -325,6 +348,9 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         return obs
 
+########################################################################################################################
+###############################################    Teammate Methods     ################################################
+########################################################################################################################
 
 
 ########################################################################################################################

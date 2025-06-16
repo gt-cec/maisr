@@ -317,7 +317,6 @@ def train_hrl(
         env_config,
         n_envs,
         project_name,
-        policy_to_train,
         use_normalize,
         run_name='norunname',
         save_dir="./trained_models/",
@@ -355,65 +354,63 @@ def train_hrl(
     run.log_code(".")
 
     ################################################ Initialize envs ################################################
-    if policy_to_train == 'local_search':
-        if n_envs > 1:
-            print(f"Training with {n_envs} environments in parallel")
 
-            def make_wrapped_env(env_config, rank, seed, run_name='no_name'):
-                def _init():
-                    # Create base environment
-                    base_env = MAISREnvVec(
-                        config=env_config,
-                        render_mode='headless',
-                        run_name=run_name,
-                        tag=f'train_mp{rank}',
-                        seed=seed + rank,
-                    )
-                    # Wrap with local search wrapper
-                    wrapped_env = MaisrLocalSearchWrapper(base_env)
-                    wrapped_env = Monitor(wrapped_env)
-                    wrapped_env.reset()
-                    return wrapped_env
+    if n_envs > 1:
+        print(f"Training with {n_envs} environments in parallel")
 
-                return _init
+        def make_wrapped_env(env_config, rank, seed, run_name='no_name'):
+            def _init():
+                # Create base environment
+                base_env = MAISREnvVec(
+                    config=env_config,
+                    render_mode='headless',
+                    run_name=run_name,
+                    tag=f'train_mp{rank}',
+                    seed=seed + rank,
+                )
+                # Wrap with local search wrapper
+                wrapped_env = MaisrLocalSearchWrapper(base_env)
+                wrapped_env = Monitor(wrapped_env)
+                wrapped_env.reset()
+                return wrapped_env
 
-            env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in
-                       range(n_envs)]
-            env = SubprocVecEnv(env_fns)
-            env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-            if use_normalize:
-                env = VecNormalize(env)
+            return _init
 
-        else:
-            # Single environment setup
-            base_env = MAISREnvVec(
-                env_config,
-                None,
-                render_mode='headless',
-                tag='train',
-                run_name=run_name,
-            )
-            env = MaisrLocalSearchWrapper(base_env)
-            env = Monitor(env)
+        env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in
+                   range(n_envs)]
+        env = SubprocVecEnv(env_fns)
+        env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+        if use_normalize:
+            env = VecNormalize(env)
 
-        # Create eval environment with wrapper
-        base_eval_env = MAISREnvVec(
+    else:
+        # Single environment setup
+        base_env = MAISREnvVec(
             env_config,
             None,
             render_mode='headless',
-            tag='eval',
+            tag='train',
             run_name=run_name,
         )
-        eval_env = MaisrLocalSearchWrapper(base_eval_env)
-        eval_env = Monitor(eval_env)
-        eval_env = DummyVecEnv([lambda: eval_env])
-        if use_normalize:
-            eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
-            eval_env.obs_rms = env.obs_rms
-            eval_env.ret_rms = env.ret_rms
+        env = MaisrLocalSearchWrapper(base_env)
+        env = Monitor(env)
 
-    else:
-        raise ValueError('Invalid policy to train')
+    # Create eval environment with wrapper
+    base_eval_env = MAISREnvVec(
+        env_config,
+        None,
+        render_mode='headless',
+        tag='eval',
+        run_name=run_name,
+    )
+    eval_env = MaisrLocalSearchWrapper(base_eval_env)
+    eval_env = Monitor(eval_env)
+    eval_env = DummyVecEnv([lambda: eval_env])
+    if use_normalize:
+        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        eval_env.obs_rms = env.obs_rms
+        eval_env.ret_rms = env.ret_rms
+
 
     print('Envs created')
 
