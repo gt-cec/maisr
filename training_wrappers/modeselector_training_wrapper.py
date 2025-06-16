@@ -18,6 +18,7 @@ class MaisrModeSelectorWrapper(gym.Env):
                  local_search_policy: SubPolicy,
                  go_to_highvalue_policy: SubPolicy,
                  change_region_subpolicy: SubPolicy,
+                 evade_policy: SubPolicy,
                  teammate_policy: TeammatePolicy=None,
                  teammate_manager: TeammateManager = None,
                  ):
@@ -28,6 +29,8 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
+        self.evade_policy = evade_policy
+
         if teammate_policy is not None:
             self.current_teammate = teammate_policy
 
@@ -59,6 +62,11 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
+        # Goal tracking for evade policy
+        self.evade_goal = None
+        self.evade_goal_threshold = 30.0  # Distance threshold to consider goal "reached"
+        self.last_evade_step = -1  # Track when we last used evade to detect continuous usage
+
         # Load normalization stats
         try:
             self.norm_stats = np.load(local_search_policy.norm_stats_filepath, allow_pickle=True).item()
@@ -70,11 +78,15 @@ class MaisrModeSelectorWrapper(gym.Env):
 
     def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
-        self.num_switches = 0 # How many times the agent has switch policies in this round. Slight penalty to encourage consistency
+        self.num_switches = 0
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
         self.teammate_subpolicy_choice = 0
+
+        # Reset evade goal tracking
+        self.evade_goal = None
+        self.last_evade_step = -1
 
         # Instantiate teammate for this episode
         if self.teammate_manager:
@@ -90,7 +102,27 @@ class MaisrModeSelectorWrapper(gym.Env):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
         ######################## Choose a subpolicy ########################
-        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+        # TODO temp testing
+        # Check if we need to evade
+        if self.near_threat():
+            # Set goal if this is the first step of evading
+            if self.subpolicy_choice != 3 or self.last_evade_step != self.env.step_count_outer - 1:
+                self.set_evade_goal()
+
+            self.subpolicy_choice = 3
+            self.last_evade_step = self.env.step_count_outer
+
+        elif self.subpolicy_choice == 3:  # We were evading but no longer near threat
+            # Check if we've reached our evade goal
+            if self.evade_goal is not None and self.reached_evade_goal():
+                print("Reached evade goal, clearing goal and allowing new subpolicy selection")
+                self.evade_goal = None
+                self.subpolicy_choice = None  # Allow new selection
+            else:
+                # Continue evading until we reach the goal
+                print("Still evading toward goal")
+
+        elif self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
             self.steps_since_last_selection = 0
             #print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
 
@@ -107,16 +139,16 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
         if self.subpolicy_choice == 0: # Local search
-            direction_to_move = self.local_search_policy.act(subpolicy_observation)
-            subpolicy_action = direction_to_move
+            subpolicy_action = self.local_search_policy.act(subpolicy_observation)
 
         elif self.subpolicy_choice == 1: # Change region
-            waypoint_to_go = self.change_region_subpolicy.act(subpolicy_observation)
-            subpolicy_action = waypoint_to_go
+            subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
 
         elif self.subpolicy_choice == 2: # go to high value target
-            waypoint_to_go = self.go_to_highvalue_policy.act(subpolicy_observation)
-            subpolicy_action = waypoint_to_go
+            subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
+
+        elif self.subpolicy_choice == 3: # Evade
+            subpolicy_action = self.evade_policy.act(subpolicy_observation)
 
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
@@ -233,14 +265,50 @@ class MaisrModeSelectorWrapper(gym.Env):
         elif selected_subpolicy == 2: # Go to nearest
             observation = self.get_observation_nearest_threat(agent_id)
 
+        elif selected_subpolicy == 3: # Evade
+            observation = self.get_observation_nearest_threat(agent_id)
+
         return observation
 
     def get_observation_localsearch(self, agent_id):
         # TODO use agent_id to return observation relative to that agent
         return self.env.get_observation_nearest_n(agent_id)
 
+    def get_observation_evade(self, agent_id):
+        """
+        Get observation for evade policy including goal position
+        Returns: [goal_dx, goal_dy, threat_dx, threat_dy]
+        """
+        obs = np.zeros(4, dtype=np.float32)
 
-    def get_observation_changeregion(self, agent_id):
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x,
+                              self.env.agents[self.env.aircraft_ids[agent_id]].y])
+
+        # Goal position (dx, dy)
+        if self.evade_goal is not None:
+            goal_vector = self.evade_goal - agent_pos
+            obs[0] = goal_vector[0]  # dx to goal
+            obs[1] = goal_vector[1]  # dy to goal
+
+        # Nearest threat position (dx, dy)
+        if len(self.env.threats) > 0:
+            threat_distances = []
+            for threat_idx in range(len(self.env.threats)):
+                threat_pos = np.array([self.env.threats[threat_idx, 0], self.env.threats[threat_idx, 1]])
+                distance = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+                threat_distances.append((distance, threat_pos))
+
+            # Get nearest threat
+            threat_distances.sort(key=lambda x: x[0])
+            nearest_threat_pos = threat_distances[0][1]
+            threat_vector = nearest_threat_pos - agent_pos
+            obs[2] = threat_vector[0]  # dx to nearest threat
+            obs[3] = threat_vector[1]  # dy to nearest threat
+
+        return obs
+
+
+    def get_observation_changeregion(self, agent_id=0):
         """Get observation for the change_region policy.
         obs[0] = # Ratio of targets in quadrant NW
         obs[1] = # Agent distance to quadrant NW
@@ -262,13 +330,13 @@ class MaisrModeSelectorWrapper(gym.Env):
         obs = np.zeros(12, dtype=np.float32)
 
         # Get agent position
-        agent_x = self.env.agents[self.env.aircraft_ids[0]].x
-        agent_y = self.env.agents[self.env.aircraft_ids[0]].y
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
 
         # Get teammate position (if exists)
         if self.env.config['num_aircraft'] >= 2:
-            teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
-            teammate_y = self.env.agents[self.env.aircraft_ids[1]].y
+            teammate_x = self.env.agents[self.env.aircraft_ids[1 if agent_id==0 else 0]].x
+            teammate_y = self.env.agents[self.env.aircraft_ids[1 if agent_id==0 else 0]].y
         else:
             teammate_x, teammate_y = 0, 0  # Default to center if no teammate
 
@@ -365,6 +433,29 @@ class MaisrModeSelectorWrapper(gym.Env):
 ###############################################    Helper functions     ################################################
 ########################################################################################################################
 
+    def near_threat(self, agent_id = 0):
+        """
+        Check if the agent is near a threat and should automatically switch to evade mode.
+        Returns True if agent is within threat radius or warning zone of any threat.
+        """
+        # Get agent position
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x,
+                              self.env.agents[self.env.aircraft_ids[agent_id]].y])
+
+        # Check distance to all threats
+        for threat_idx in range(len(self.env.threats)):
+            threat_pos = np.array([self.env.threats[threat_idx, 0], self.env.threats[threat_idx, 1]])
+            distance_to_threat = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+
+            threat_radius = self.env.config['threat_radius']
+            warning_radius = threat_radius * 1.5  # 50% larger than threat radius for early warning
+
+            # Trigger evade mode if within warning radius
+            if distance_to_threat <= warning_radius:
+                return True
+        return False
+
+
     def unknown_targets_in_current_quadrant(self):
         """Returns the number of unknown targets in the agent's quadrant"""
 
@@ -416,3 +507,35 @@ class MaisrModeSelectorWrapper(gym.Env):
         Currently placeholder as 0 until implemented"""
 
         return 0
+
+    def set_evade_goal(self):
+        """Set the evade goal based on current situation"""
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x,
+                              self.env.agents[self.env.aircraft_ids[0]].y])
+
+        # Strategy 1: Continue toward nearest unknown target
+        target_positions = self.env.targets[:self.env.config['num_targets'], 3:5]
+        target_info_levels = self.env.targets[:self.env.config['num_targets'], 2]
+        unknown_mask = target_info_levels < 1.0
+
+        if np.any(unknown_mask):
+            unknown_positions = target_positions[unknown_mask]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+            nearest_idx = np.argmin(distances)
+            self.evade_goal = unknown_positions[nearest_idx].copy()
+            print(f"Set evade goal to nearest unknown target: {self.evade_goal}")
+        else:
+            # Fallback: move to center of map
+            self.evade_goal = np.array([0.0, 0.0])
+            print("Set evade goal to map center (no unknown targets)")
+
+    def reached_evade_goal(self):
+        """Check if agent has reached the evade goal"""
+        if self.evade_goal is None:
+            return True
+
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x,
+                              self.env.agents[self.env.aircraft_ids[0]].y])
+
+        distance_to_goal = np.sqrt(np.sum((self.evade_goal - agent_pos) ** 2))
+        return distance_to_goal <= self.evade_goal_threshold

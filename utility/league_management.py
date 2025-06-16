@@ -387,6 +387,16 @@ class EvadeDetection(SubPolicy):
         # TODO
         pass
 
+    def act(self, observation):
+        print(f'[EvadeDetection] EVADE TRIGGERED')
+
+        if self.model:
+            action = self.model.predict(observation)
+        else:
+            action = self.heuristic(observation)
+
+        return action
+
     def heuristic(self, observation) -> np.int32:
         """
         Given dx, dy vector to goal position and dx,dy vector to the centerpoint of the threat to avoid, pick a direction to move around the threat (assuming the threat has a radius of 50 pixels
@@ -665,10 +675,10 @@ class ChangeRegions(SubPolicy):
         super().__init__(f"change_region")
         if model_path is not None:
             self.model = PPO.load(model_path)
-            print('[EvadeDetection]: Using provided model for inference')
+            print('[ChangeRegions]: Using provided model for inference')
         else:
             self.model = None
-            print('[EvadeDetection]: No model provided, using internal heuristic')
+            print('[ChangeRegions]: No model provided, using internal heuristic')
 
         self.update_rate = 10 # Recalculate every 10 steps to reduce computation cost
         self.steps_since_update = 0

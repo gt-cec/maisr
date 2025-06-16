@@ -8,7 +8,8 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
 #from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
-from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
+    EvadeDetection
 
 if __name__ == "__main__":
 
@@ -43,6 +44,7 @@ if __name__ == "__main__":
     )
     go_to_highvalue_policy = GoToNearestThreat(model_path=None)
     change_region_subpolicy = ChangeRegions(model_path=None)
+    evade_policy = EvadeDetection(model_path=None)
 
     # Instantiate teammate
     teammate = GenericTeammatePolicy(
@@ -58,6 +60,7 @@ if __name__ == "__main__":
         local_search_policy,
         go_to_highvalue_policy,
         change_region_subpolicy,
+        evade_policy,
         teammate_policy=teammate
     )
 

@@ -399,8 +399,8 @@ class MAISREnvVec(gym.Env):
         prev_threats_identified = self.num_threats_identified
         prev_detections = self.detections
 
-        print(f'[Agent {self.agents[self.aircraft_ids[0]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[0]].waypoint_override}')
-        print(f'[Agent {self.agents[self.aircraft_ids[1]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[1]].waypoint_override}')
+        #print(f'[Agent {self.agents[self.aircraft_ids[0]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[0]].waypoint_override}')
+        #print(f'[Agent {self.agents[self.aircraft_ids[1]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[1]].waypoint_override}')
 
         for frame in range(self.config['frame_skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(action)
