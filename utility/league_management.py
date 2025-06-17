@@ -419,6 +419,7 @@ class EvadeDetection(SubPolicy):
         # Calculate distance to threat center
         threat_distance = np.sqrt(threat_dx ** 2 + threat_dy ** 2)
         threat_radius = 50.0
+        buffer_radius = threat_radius * 1.6
 
         # Direction mapping (16 directions)
         directions = np.array([
@@ -441,17 +442,21 @@ class EvadeDetection(SubPolicy):
         ], dtype=np.float32)
 
         # Case 1: Inside danger zone - move directly away from threat
-        if threat_distance <= threat_radius:
-            # Move directly away from threat center
-            if threat_distance > 0:
-                escape_direction = np.array([-threat_dx, -threat_dy]) / threat_distance
-            else:
-                # If exactly at threat center, move toward goal
-                goal_distance = np.sqrt(goal_dx ** 2 + goal_dy ** 2)
-                if goal_distance > 0:
-                    escape_direction = np.array([goal_dx, goal_dy]) / goal_distance
+        print(f'threat_distance {threat_distance} <= threat_radius {buffer_radius} = {threat_distance <= buffer_radius})')
+        if threat_distance <= buffer_radius:
+            print('Inside danger zone - evading directly away from threat')
+
+            # Handle edge case where agent is exactly at threat center
+            if threat_distance < 1e-6:  # Very small number to avoid division by zero
+                # Move toward goal if available, otherwise move east
+                if np.sqrt(goal_dx ** 2 + goal_dy ** 2) > 1e-6:
+                    escape_direction = np.array([goal_dx, goal_dy])
+                    escape_direction = escape_direction / np.linalg.norm(escape_direction)
                 else:
-                    escape_direction = np.array([1, 0])  # Default east
+                    escape_direction = np.array([1.0, 0.0])  # Default east
+            else:
+                # Move directly away from threat center
+                escape_direction = np.array([-threat_dx, -threat_dy]) / threat_distance
 
             # Find best matching direction
             dot_products = np.dot(directions, escape_direction)
@@ -459,6 +464,7 @@ class EvadeDetection(SubPolicy):
 
         # Case 2: Outside danger zone - navigate around threat toward goal
         else:
+            print('FALSE')
             # Calculate safe buffer distance
             safe_distance = threat_radius * 1.2  # 20% buffer
 
