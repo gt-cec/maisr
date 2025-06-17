@@ -241,28 +241,25 @@ class GoToNearestThreat(SubPolicy):
 
         self.is_terminated = False
 
-
     def act(self, observation):
-        # if not self.has_threats_remaining(observation):
-        #     self.is_terminated = True
-        #     return 0  # Default action when no threats remain
+        if not self.has_unidentified_threats_remaining(observation):
+            self.is_terminated = True
+            return 0  # Default action when no unidentified threats remain
 
         if self.model:
             action = self.model.predict(observation)
         else:
             action = self.heuristic(observation)
-        print(f'GOTOTHREAT: Obs {observation} -> action {action}')
         return action
-
 
     def heuristic(self, observation) -> np.int32:
         """
-        Input: Observation vector of the dx, dy vector to the nearest two threats (4 elements total)
-        Output:
-        Pick the """
+        Input: Observation vector with dx, dy, identified status for nearest two threats (6 elements total)
+        Output: Direction to move toward nearest unidentified threat
+        """
 
-        # Check if any threats remain
-        if not self.has_threats_remaining(observation):
+        # Check if any unidentified threats remain
+        if not self.has_unidentified_threats_remaining(observation):
             self.reset_heuristic_state()
             self.is_terminated = True
             return np.int32(0)
@@ -288,27 +285,38 @@ class GoToNearestThreat(SubPolicy):
             (-0.383, 0.924),  # NNW (337.5°)
         ], dtype=float)
 
-        # Extract nearest target vector (first two components)
-        target_vector_x = obs[0]
-        target_vector_y = obs[1]
+        # Find the nearest unidentified threat
+        target_vector = None
 
-        # Check if there's a valid target (non-zero vector)
-        if target_vector_x == 0.0 and target_vector_y == 0.0:
-            # No targets or at target location
+        # Check first threat (nearest by distance)
+        threat1_identified = obs[2] if len(obs) > 2 else 1.0
+        if threat1_identified < 0.5:  # Not identified
+            target_vector_x = obs[0]
+            target_vector_y = obs[1]
+            target_vector = np.array([target_vector_x, target_vector_y])
+
+        # Check second threat if first is identified
+        elif len(obs) >= 6:
+            threat2_identified = obs[5]
+            if threat2_identified < 0.5:  # Not identified
+                target_vector_x = obs[3]
+                target_vector_y = obs[4]
+                target_vector = np.array([target_vector_x, target_vector_y])
+
+        # No unidentified threats found
+        if target_vector is None or (target_vector[0] == 0.0 and target_vector[1] == 0.0):
             self.reset_heuristic_state()
+            self.is_terminated = True
             return np.int32(0)
-
-        # The observation already gives us the vector to the nearest target
-        direction_to_target = np.array([target_vector_x, target_vector_y])
 
         # Normalize direction vectors
         direction_norms = np.linalg.norm(directions, axis=1)
         normalized_directions = directions / direction_norms[:, np.newaxis]
 
         # Normalize target direction
-        target_norm = np.linalg.norm(direction_to_target)
+        target_norm = np.linalg.norm(target_vector)
         if target_norm > 0:
-            direction_to_target_norm = direction_to_target / target_norm
+            direction_to_target_norm = target_vector / target_norm
         else:
             return self._last_action if self._last_action is not None else 0
 
@@ -318,32 +326,60 @@ class GoToNearestThreat(SubPolicy):
         # Find best action
         best_action = np.argmax(dot_products)
 
-        # Anti-oscillation: if we just took an action, continue for minimum steps
+        # Anti-oscillation logic (same as before)
         if (self._last_action is not None and
                 self._action_repeat_count < self._max_repeat_count and
                 self._last_action != best_action):
 
-            # Check if last action is still reasonable (dot product > 0.5)
             last_dot_product = dot_products[self._last_action]
-            if last_dot_product > 0.5:  # Still pointing roughly toward target
+            if last_dot_product > 0.5:
                 best_action = self._last_action
                 self._action_repeat_count += 1
             else:
-                _action_repeat_count = 0  # Reset if direction is too far off
+                self._action_repeat_count = 0
         else:
-            _action_repeat_count = 0
+            self._action_repeat_count = 0
 
-        # Additional anti-oscillation: prevent direct opposite actions
-        if (self._last_action is not None and abs(self._last_action - best_action) == 4):  # Opposite directions
-            # Choose a compromise direction
-            adjacent_actions = [(self._last_action + 1) % 8, (self._last_action - 1) % 8]
+        # Prevent direct opposite actions
+        if (self._last_action is not None and abs(self._last_action - best_action) == 8):
+            adjacent_actions = [(self._last_action + 1) % 16, (self._last_action - 1) % 16]
             adjacent_dots = [dot_products[a] for a in adjacent_actions]
             best_adjacent_idx = np.argmax(adjacent_dots)
             best_action = adjacent_actions[best_adjacent_idx]
 
-        _last_action = best_action
-        print(f'Heuristic chose action {best_action} (type {type(best_action)}')
+        self._last_action = best_action
+        print(f'Heuristic chose action {best_action} targeting unidentified threat')
         return np.int32(best_action)
+
+    def has_unidentified_threats_remaining(self, observation) -> bool:
+        """
+        Check if there are any unidentified threats remaining to pursue
+        Args:
+            observation: The observation vector containing dx/dy/identified for threats
+        Returns:
+            bool: True if unidentified threats remain, False if all are identified
+        """
+        obs = np.array(observation)
+
+        if len(obs) < 3:
+            return False
+
+        # Check first threat
+        threat1_identified = obs[2] if len(obs) > 2 else 1.0
+        threat1_exists = not (obs[0] == 0.0 and obs[1] == 0.0)
+
+        if threat1_exists and threat1_identified < 0.5:
+            return True
+
+        # Check second threat if observation is long enough
+        if len(obs) >= 6:
+            threat2_identified = obs[5]
+            threat2_exists = not (obs[3] == 0.0 and obs[4] == 0.0)
+
+            if threat2_exists and threat2_identified < 0.5:
+                return True
+
+        return False
 
     def reset_heuristic_state(self):
         """Reset the global state for the heuristic policy."""
@@ -352,22 +388,6 @@ class GoToNearestThreat(SubPolicy):
         self._current_target_pos = None
         self._last_action = None
         self._action_repeat_count = 0
-
-    def has_threats_remaining(self, observation) -> bool:
-        """
-        Check if there are any high-value threats remaining to pursue
-        Args:
-            observation: The observation vector containing dx/dy to nearest threats
-        Returns:
-            bool: True if threats remain, False if no threats available
-        """
-        obs = np.array(observation)
-
-        target_vector_x = obs[0]
-        target_vector_y = obs[1]
-
-        # Check if there's a valid target (non-zero vector)
-        return not (target_vector_x == 0.0 and target_vector_y == 0.0)
 
 
 
@@ -419,7 +439,7 @@ class EvadeDetection(SubPolicy):
         # Calculate distance to threat center
         threat_distance = np.sqrt(threat_dx ** 2 + threat_dy ** 2)
         threat_radius = 50.0
-        buffer_radius = threat_radius * 1.6
+        buffer_radius = threat_radius * 1.5
 
         # Direction mapping (16 directions)
         directions = np.array([
@@ -712,6 +732,7 @@ class ChangeRegions(SubPolicy):
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
         self.steps_since_update += 1
+        print(f'Changeregion choice action {action}')
         return action
 
     def _has_reached_target(self, observation):
@@ -801,10 +822,16 @@ class ChangeRegions(SubPolicy):
 
     def _get_region_center(self, region_id: int) -> np.ndarray:
         """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
+        # centers = {
+        #     0: np.array([-0.5, 0.5]),  # NW
+        #     1: np.array([0.5, 0.5]),  # NE
+        #     2: np.array([-0.5, -0.5]),  # SW
+        #     3: np.array([0.5, -0.5])  # SE
+        # }
         centers = {
-            0: np.array([-0.5, 0.5]),  # NW
-            1: np.array([0.5, 0.5]),  # NE
-            2: np.array([-0.5, -0.5]),  # SW
-            3: np.array([0.5, -0.5])  # SE
+            0: np.array([0.25, 0.25]),  # NW
+            1: np.array([0.75, 0.25]),  # NE
+            2: np.array([0.25, 0.75]),  # SW
+            3: np.array([0.75, 0.75])  # SE
         }
         return centers.get(region_id, np.array([0.0, 0.0]))

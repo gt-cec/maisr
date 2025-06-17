@@ -11,7 +11,7 @@ class MaisrLocalSearchWrapper(gym.Env):
     """Wrapper for training the mode selector
     Subpolicies are treated as part of the environment dynamics.
     """
-    def __init__(self, env):
+    def __init__(self, env, obs_noise_std):
 
         self.env = env
 
@@ -38,9 +38,9 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.run_name = self.env.run_name  # For logging
         self.tag = self.env.tag
 
+        self.obs_noise_std = obs_noise_std
+
         print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
-
-
 
 
     def reset(self, seed=None, options=None):
@@ -60,6 +60,11 @@ class MaisrLocalSearchWrapper(gym.Env):
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(action)
 
         observation = self.env.get_observation_nearest_n()
+
+        if self.obs_noise_std > 0:
+            noise = np.random.normal(0, self.obs_noise_std, observation.shape)
+            observation = np.clip(observation + noise, -1, 1)  # Clip to valid range
+
         reward = base_reward
 
         # Convert base_env elements to wrapper elements if needed

@@ -274,7 +274,6 @@ class MAISREnvVec(gym.Env):
         self.target_timers = np.zeros(self.config['num_targets'], dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
-        self.num_threats_identified = 0
 
         # Create a single threat at random location
         #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
@@ -283,10 +282,12 @@ class MAISREnvVec(gym.Env):
         #self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
 
         # Create a single threat at strategic location (likely to be on greedy search path)
-        #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos]
         self.threats = np.zeros((2, 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
-        self.threat_timers = np.zeros(2, dtype=np.int32)  # How long each threat has been in range
+        #self.threat_timers = np.zeros(2, dtype=np.int32)  # How long each threat has been in range
+        #self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
+        self.threat_timers = np.zeros((self.config['num_aircraft'], 2), dtype=np.int32)  # [aircraft_id][threat_id]
         self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
+        self.num_threats_identified = 0
         margin = map_half_size * 0.03  # 3% margin from edges
 
         ############################################################################################################
@@ -455,10 +456,13 @@ class MAISREnvVec(gym.Env):
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
+            aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
+            aircraft_idx = aircraft.agent_idx  # Get the aircraft's index (0 or 1)
+
             aircraft.move() # Move using the waypoint override set above
 
             # # Calculate distances to all targets
-            aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
+            #aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             target_positions = self.targets[:, 3:5]  # x,y coordinates
             distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
 
@@ -472,16 +476,17 @@ class MAISREnvVec(gym.Env):
                 in_threat_range = distance_to_threat <= self.config['threat_radius']
 
                 if in_threat_range:
-                    self.threat_timers[threat_idx] += 1
+                    self.threat_timers[aircraft_idx, threat_idx] += 1
 
                     # Check if threat should be identified (10+ consecutive steps in range)
-                    if self.threat_timers[threat_idx] >= 10 and not self.threat_identified[threat_idx]:
+                    # Any aircraft can identify a threat
+                    if self.threat_timers[aircraft_idx, threat_idx] >= 10 and not self.threat_identified[threat_idx]:
                         self.threat_identified[threat_idx] = True
                         self.num_threats_identified += 1
 
                         # Add reward for identifying threat
                         new_reward['threat_identification'] = new_reward.get('threat_identification', 0) + 1
-                        new_score += self.config.get('threat_identification_reward', 50)  # Add config for this
+                        new_score += self.config.get('threat_identification_reward', 50)
 
                         info["new_identifications"].append({
                             "type": "threat identified",
@@ -489,12 +494,11 @@ class MAISREnvVec(gym.Env):
                             "aircraft": aircraft.agent_idx,
                             "time": self.display_time
                         })
+
+                        print(f"Aircraft {aircraft_idx} identified threat {threat_idx}")
                 else:
-                    # Reset timer if not in range
-                    self.threat_timers[threat_idx] = 0
-            #threat_pos = np.array([self.threat[0], self.threat[1]])
-            #distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-            #in_threat_range = distance_to_threat <= self.config['threat_radius']
+                    # Reset timer for this specific aircraft-threat combination if not in range
+                    self.threat_timers[aircraft_idx, threat_idx] = 0
 
 
             # Process newly identified targets
@@ -723,6 +727,100 @@ class MAISREnvVec(gym.Env):
 
         #print(self.observation)
         return self.observation
+
+    # Add this method to the MAISREnvVec class in env_multi_new.py
+
+    def get_observation_nearest_n_safe(self, agent_id=0):
+        """
+        State will include the following features:
+            For each of the N nearest unknown targets that are NOT inside threat radii:
+                unit_vector_x,           # (-1 to +1) x component of unit vector to target
+                unit_vector_y,           # (-1 to +1) y component of unit vector to target
+        """
+        # Get N from config
+        N = self.config['num_observed_targets']
+        M = self.config['num_observed_threats']
+
+        # Initialize observation array (2 * N for x,y components of N targets)
+        self.observation = np.zeros(2 * (N + M), dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+
+        unknown_mask = target_info_levels < 1.0  # Create mask for unknown targets (info_level < 1.0)
+
+        # Filter out targets that are inside threat radii
+        safe_target_mask = self._get_safe_target_mask(target_positions)
+
+        # Combine unknown mask with safe target mask
+        valid_target_mask = unknown_mask & safe_target_mask
+
+        if np.any(valid_target_mask):
+            valid_target_positions = target_positions[valid_target_mask]
+            distances = np.sqrt(np.sum((valid_target_positions - agent_pos) ** 2, axis=1))
+
+            # Get indices of N nearest targets (or all if fewer than N)
+            num_targets_to_use = min(N, len(distances))
+            nearest_indices = np.argsort(distances)[:num_targets_to_use]
+
+            # Fill observation with unit vectors to nearest N safe targets
+            for i in range(num_targets_to_use):
+                target_idx = nearest_indices[i]
+                target_pos = valid_target_positions[target_idx]
+                vector_to_target = target_pos - agent_pos
+
+                distance = np.linalg.norm(vector_to_target)
+
+                if distance > 0:
+                    unit_vector = vector_to_target
+                    self.observation[i * 2] = unit_vector[0]  # x component
+                    self.observation[i * 2 + 1] = unit_vector[1]  # y component
+                else:
+                    # Agent is exactly at target position
+                    self.observation[i * 2] = 0.0
+                    self.observation[i * 2 + 1] = 0.0
+
+        # Add threat vectors as before
+        for threat_idx in range(2):
+            threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+            vector_to_threat = threat_pos - agent_pos
+            self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
+            self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
+
+        return self.observation
+
+    def _get_safe_target_mask(self, target_positions):
+        """
+        Returns a boolean mask indicating which targets are NOT inside any threat radius
+
+        Args:
+            target_positions: numpy array of target positions (N x 2)
+
+        Returns:
+            numpy array of booleans, True if target is safe (not in threat radius)
+        """
+        num_targets = len(target_positions)
+        safe_mask = np.ones(num_targets, dtype=bool)  # Start with all targets being safe
+
+        threat_radius = self.config['threat_radius']
+
+        # Check each target against each threat
+        for target_idx in range(num_targets):
+            target_pos = target_positions[target_idx]
+
+            for threat_idx in range(len(self.threats)):
+                threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                distance_to_threat = np.sqrt(np.sum((threat_pos - target_pos) ** 2))
+
+                # If target is inside threat radius, mark as unsafe
+                if distance_to_threat <= threat_radius:
+                    safe_mask[target_idx] = False
+                    break  # No need to check other threats for this target
+
+        return safe_mask
 
     def get_observation_nearest_n(self, agent_id=0):
         """
@@ -1418,7 +1516,7 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
-        #print(f'Subpolicy action is {action} ({type(action)}')
+        print(f'Subpolicy action is {action} ({type(action)}')
         try:
             if len(action) == 2:
                 #print(f'Action is {action} (type {type(action)}')

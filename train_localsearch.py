@@ -369,7 +369,8 @@ def train_hrl(
                     seed=seed + rank,
                 )
                 # Wrap with local search wrapper
-                wrapped_env = MaisrLocalSearchWrapper(base_env)
+                obs_noise_std = env_config['obs_noise_std']
+                wrapped_env = MaisrLocalSearchWrapper(base_env, obs_noise_std=obs_noise_std)
                 wrapped_env = Monitor(wrapped_env)
                 wrapped_env.reset()
                 return wrapped_env
@@ -537,13 +538,14 @@ if __name__ == "__main__":
     config['config_filename'] = config_filename
     config['policy_to_train'] = 'local-search'
 
-    for num_timesteps in [5e5, 2e6]:
-        for inside_threat_penalty in [0.03, 0.1, 0.15, 0.25]:
+    for num_timesteps in [7e5]:
+        for obs_noise in [0,0.02, 0.05, 0.1]:
             config['num_timesteps'] = num_timesteps
-            config['inside_threat_penalty'] = inside_threat_penalty
+            config['inside_threat_penalty'] = 0.03
+            config['obs_noise'] = obs_noise
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'local_search_{num_timesteps}timesteps_{inside_threat_penalty}threatpenalty_'+generate_run_name(config)
+            run_name = f'local_search_{num_timesteps}timesteps_{obs_noise}obs_noise_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_hrl(
@@ -551,7 +553,6 @@ if __name__ == "__main__":
                 run_name=run_name,
                 use_normalize=True,
                 n_envs=multiprocessing.cpu_count(),
-                policy_to_train = 'local_search',
                 load_path=load_path,
                 machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

@@ -39,7 +39,6 @@ class MaisrModeSelectorWrapper(gym.Env):
         if teammate_policy and teammate_manager:
             raise ValueError('Cannot specify a teammate policy and a teammate manager at the same time')
 
-
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
@@ -67,6 +66,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.evade_goal_threshold = 30.0  # Distance threshold to consider goal "reached"
         self.last_evade_step = -1  # Track when we last used evade to detect continuous usage
 
+        self.circumnavigation_state = {
+            'active': False,
+            'threat_pos': None,
+            'chosen_direction': None,  # 'clockwise' or 'counterclockwise'
+            'last_angle': None,
+            'start_angle': None,
+            'safety_distance': None
+        }
+
         # Load normalization stats
         try:
             self.norm_stats = np.load(local_search_policy.norm_stats_filepath, allow_pickle=True).item()
@@ -84,9 +92,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.subpolicy_choice = None
         self.teammate_subpolicy_choice = 0
 
-        # Reset evade goal tracking
-        #self.evade_goal = None
-        #self.last_evade_step = -1
+        self._reset_circumnavigation_state()
 
         # Instantiate teammate for this episode
         if self.teammate_manager:
@@ -97,149 +103,21 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         return raw_obs, _
 
-
-    # def step(self, action: np.int32):
-    #     """ Apply the mode selector's action (Index of selected subpolicy)"""
-    #
-    #     ######################## Choose a subpolicy ########################
-    #     # TODO temp testing
-    #     # Check if we need to evade
-    #     if self.near_threat():
-    #         # Compute direct tangential escape action
-    #         escape_action = self.compute_tangential_escape_action()
-    #
-    #         # Apply escape action directly to environment
-    #         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(escape_action)
-    #
-    #         # Convert base_env elements to wrapper elements if needed
-    #         observation = self.get_observation(0)
-    #         reward = self.get_reward(base_info)
-    #         info = base_info
-    #         terminated = base_terminated
-    #         truncated = base_truncated
-    #
-    #         self.steps_since_last_selection += 1
-    #
-    #         print(f"EVADE: Taking tangential escape action {escape_action}")
-    #         return observation, reward, terminated, truncated, info
-    #     # if self.near_threat():
-    #     #     # Set goal if this is the first step of evading
-    #     #     if self.subpolicy_choice != 3 or self.last_evade_step != self.env.step_count_outer - 1:
-    #     #         self.set_evade_goal()
-    #     #
-    #     #     self.subpolicy_choice = 3
-    #     #     self.last_evade_step = self.env.step_count_outer
-    #
-    #
-    #     elif self.subpolicy_choice == 3:  # We were evading but no longer near threat
-    #
-    #         # Clear evade goal immediately when no longer near threat
-    #         # This prevents getting stuck trying to reach unreachable goals
-    #         if not self.near_threat():
-    #             print("No longer near threat, clearing evade goal and allowing new subpolicy selection")
-    #             #self.evade_goal = None
-    #             self.subpolicy_choice = action  # Allow new selection
-    #
-    #         else:
-    #             # Continue evading
-    #             print("Still evading toward goal")
-    #
-    #     elif self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
-    #         self.steps_since_last_selection = 0
-    #         #print(f'SELECTOR TOOK ACTION {action} to switch to mode {self.mode_dict[int(action)]}')
-    #
-    #         # Track policy switching for penalty later
-    #         self.switched_policies = False
-    #         if self.last_action != action:
-    #             self.num_switches += 1 # Not used yet
-    #             self.switched_policies = True
-    #
-    #         self.subpolicy_choice = action # Activate selected subpolicy and generate its action
-    #
-    #
-    #     ######################## Process subpolicy's action ########################
-    #
-    #     subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
-    #     if self.subpolicy_choice == 0: # Local search
-    #         subpolicy_action = self.local_search_policy.act(subpolicy_observation)
-    #
-    #     elif self.subpolicy_choice == 1: # Change region
-    #         subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
-    #
-    #     elif self.subpolicy_choice == 2: # go to high value target
-    #         subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
-    #
-    #     elif self.subpolicy_choice == 3: # Evade
-    #         subpolicy_action = self.evade_policy.act(subpolicy_observation)
-    #
-    #     else:
-    #         raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
-    #
-    #     if isinstance(subpolicy_action, tuple):
-    #         #warnings.warn(f"WARNING: Agent's action was a tuple {subpolicy_action}. Taking first element. This is likely a bug in how agent actions are being accessed.")
-    #         subpolicy_action = subpolicy_action[0]
-    #
-    #
-    #     ########################################## Process teammate's action ###########################################
-    #
-    #     # TODO rewrite to accept either mode-selector teammate, greedy, or human
-    #     if self.current_teammate and self.env.config['num_aircraft'] >= 2:
-    #         teammate_obs = self.get_observation(1)
-    #         self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
-    #
-    #         teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
-    #         if self.teammate_subpolicy_choice == 0:  # Local search
-    #             direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
-    #             teammate_subpolicy_action = direction_to_move
-    #
-    #         elif self.teammate_subpolicy_choice == 1:  # Change region
-    #             waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
-    #             teammate_subpolicy_action = waypoint_to_go
-    #
-    #         elif self.teammate_subpolicy_choice == 2:  # go to high value target
-    #             waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
-    #             teammate_subpolicy_action = waypoint_to_go
-    #
-    #         if isinstance(teammate_subpolicy_action, tuple):
-    #             teammate_subpolicy_action = teammate_subpolicy_action[0]
-    #
-    #         # Apply teammate action to aircraft[1]
-    #         teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
-    #         self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
-    #
-    #     ############################################ Step the environment #############################################
-    #
-    #     base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
-    #
-    #     # Convert base_env elements to wrapper elements if needed
-    #     observation = self.get_observation(0)
-    #     reward = self.get_reward(base_info)
-    #     info = base_info
-    #     terminated = base_terminated
-    #     truncated = base_truncated
-    #
-    #     self.last_action = action
-    #
-    #     self.steps_since_last_selection += 1
-    #
-    #     return observation, reward, terminated, truncated, info
-
     def step(self, action: np.int32):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
         ######################## Choose a subpolicy ########################
         # Check if we need to evade with direct tangential movement
-        if self.near_threat():
+        if self.near_threat() and not np.int32(action) == 2:
             # Compute direct tangential escape action
 
             escape_action = self.compute_tangential_escape_action()
-            print(f'Escape action {escape_action} ({type(escape_action)})')
+            #print(f'Escape action {escape_action} ({type(escape_action)})')
 
             # Process teammate's action if needed
             if self.current_teammate and self.env.config['num_aircraft'] >= 2:
                 teammate_obs = self.get_observation(1)
-                self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,
-                                                                                        self.teammate_subpolicy_choice)
+                self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
 
                 teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
                 if self.teammate_subpolicy_choice == 0:  # Local search
@@ -277,7 +155,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             return observation, reward, terminated, truncated, info
 
         # Normal subpolicy selection logic when not evading
-        elif self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
             self.steps_since_last_selection = 0
 
             # Track policy switching for penalty later
@@ -296,6 +174,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif self.subpolicy_choice == 1:  # Change region
             subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
+            print(f'Change region waypoint: {subpolicy_action}')
 
         elif self.subpolicy_choice == 2:  # go to high value target
             subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
@@ -309,12 +188,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         if isinstance(subpolicy_action, tuple):
             subpolicy_action = subpolicy_action[0]
 
+        subpolicy_action = np.int32(subpolicy_action)
+
+        print(f'MODES: {self.subpolicy_choice}, {self.teammate_subpolicy_choice}')
+
         ########################################## Process teammate's action ###########################################
 
         if self.current_teammate and self.env.config['num_aircraft'] >= 2:
             teammate_obs = self.get_observation(1)
-            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,
-                                                                                    self.teammate_subpolicy_choice)
+            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
 
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
             if self.teammate_subpolicy_choice == 0:  # Local search
@@ -324,6 +206,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             elif self.teammate_subpolicy_choice == 1:  # Change region
                 waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
                 teammate_subpolicy_action = waypoint_to_go
+
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
@@ -338,7 +221,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ############################################ Step the environment #############################################
 
-        print(f'applying action {subpolicy_action} {type(subpolicy_action)}')
+        #print(f'applying action {subpolicy_action} {type(subpolicy_action)}')
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
 
         # Convert base_env elements to wrapper elements if needed
@@ -422,8 +305,8 @@ class MaisrModeSelectorWrapper(gym.Env):
         return observation
 
     def get_observation_localsearch(self, agent_id):
-        # TODO use agent_id to return observation relative to that agent
-        return self.env.get_observation_nearest_n(agent_id)
+        #return self.env.get_observation_nearest_n(agent_id)
+        return self.env.get_observation_nearest_n_safe(agent_id)
 
     def get_observation_evade(self, agent_id):
         """
@@ -536,18 +419,14 @@ class MaisrModeSelectorWrapper(gym.Env):
 
     def get_observation_nearest_threat(self, agent_id):
         """
-        Contents:
-            obs[0] - dx to nearest threat
-            obs[1] - dy to nearest threat
-            obs[2] - dx to 2nd nearest threat
-            obs[3] - dy to 2nd nearest threat
+        Get observation for go to nearest threat policy including identification status
+        Returns: [dx_threat1, dy_threat1, identified1, dx_threat2, dy_threat2, identified2]
         """
-        # TODO use agent_id to return observation relative to that agent
-        obs = np.zeros(4, dtype=np.float32)  # Changed from 2 to 4
+        obs = np.zeros(6, dtype=np.float32)  # Changed from 4 to 6
 
         # Get agent position
-        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x,
-                              self.env.agents[self.env.aircraft_ids[0]].y])
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x,
+                              self.env.agents[self.env.aircraft_ids[agent_id]].y])
 
         # Get threat positions
         threat_positions = self.env.threats
@@ -559,19 +438,23 @@ class MaisrModeSelectorWrapper(gym.Env):
         distances = np.linalg.norm(threat_positions - agent_pos, axis=1)
         sorted_indices = np.argsort(distances)
 
-        # Get vector to nearest threat
+        # Get vector to nearest threat and its identification status
         if len(sorted_indices) >= 1:
-            nearest_pos = threat_positions[sorted_indices[0]]
+            threat_idx = sorted_indices[0]
+            nearest_pos = threat_positions[threat_idx]
             vector_to_nearest = nearest_pos - agent_pos
             obs[0] = vector_to_nearest[0]  # dx to nearest
             obs[1] = vector_to_nearest[1]  # dy to nearest
+            obs[2] = float(self.env.threat_identified[threat_idx])  # identification status
 
-        # Get vector to second nearest threat
+        # Get vector to second nearest threat and its identification status
         if len(sorted_indices) >= 2:
-            second_nearest_pos = threat_positions[sorted_indices[1]]
+            threat_idx = sorted_indices[1]
+            second_nearest_pos = threat_positions[threat_idx]
             vector_to_second = second_nearest_pos - agent_pos
-            obs[2] = vector_to_second[0]  # dx to 2nd nearest
-            obs[3] = vector_to_second[1]  # dy to 2nd nearest
+            obs[3] = vector_to_second[0]  # dx to 2nd nearest
+            obs[4] = vector_to_second[1]  # dy to 2nd nearest
+            obs[5] = float(self.env.threat_identified[threat_idx])  # identification status
 
         return obs
 
@@ -599,7 +482,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             distance_to_threat = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
 
             threat_radius = self.env.config['threat_radius']
-            warning_radius = threat_radius * 1.5  # 50% larger than threat radius for early warning
+            warning_radius = threat_radius * 1.7  # 50% larger than threat radius for early warning
 
             # Trigger evade mode if within warning radius
             if distance_to_threat <= warning_radius:
@@ -713,8 +596,7 @@ class MaisrModeSelectorWrapper(gym.Env):
     def compute_tangential_escape_action(self, agent_id=0):
         """
         Compute a direct tangential escape action when near a threat.
-        Returns the action index (0-15) that moves tangentially around the nearest threat
-        with a slight bias toward continuing around it.
+        Uses state persistence to maintain consistent circumnavigation direction.
         """
         # Get agent position
         agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x,
@@ -723,6 +605,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Find nearest threat
         nearest_threat_pos = None
         min_distance = float('inf')
+        nearest_threat_idx = None
 
         for threat_idx in range(len(self.env.threats)):
             threat_pos = np.array([self.env.threats[threat_idx, 0], self.env.threats[threat_idx, 1]])
@@ -730,9 +613,24 @@ class MaisrModeSelectorWrapper(gym.Env):
             if distance < min_distance:
                 min_distance = distance
                 nearest_threat_pos = threat_pos
+                nearest_threat_idx = threat_idx
 
         if nearest_threat_pos is None:
             return 0  # Default action if no threats
+
+        threat_radius = self.env.config['threat_radius']
+        safety_margin = threat_radius * 1.8  # Increased safety margin
+
+        # Check if we need to start or continue circumnavigation
+        if min_distance <= safety_margin:
+            return self._circumnavigate_threat(agent_pos, nearest_threat_pos, threat_radius, agent_id)
+        else:
+            # Far enough from threat, reset circumnavigation state
+            self._reset_circumnavigation_state()
+            return 0
+
+    def _circumnavigate_threat(self, agent_pos, threat_pos, threat_radius, agent_id=0):
+        """Handle circumnavigation around a threat with state persistence"""
 
         # Direction mapping (16 directions)
         directions = np.array([
@@ -754,51 +652,178 @@ class MaisrModeSelectorWrapper(gym.Env):
             (-0.383, 0.924),  # NNW (337.5°)
         ], dtype=np.float32)
 
-        # Vector from agent to threat
-        threat_vector = nearest_threat_pos - agent_pos
-        threat_distance = np.linalg.norm(threat_vector)
+        # Vector from threat to agent
+        threat_to_agent = agent_pos - threat_pos
+        distance_to_threat = np.linalg.norm(threat_to_agent)
 
-        if threat_distance < 1e-6:
+        if distance_to_threat < 1e-6:
             return 0  # Default if at threat center
 
-        threat_unit = threat_vector / threat_distance
+        # Calculate current angle around threat
+        current_angle = np.arctan2(threat_to_agent[1], threat_to_agent[0])
 
-        # Calculate two tangent directions (perpendicular to threat vector)
-        tangent1 = np.array([-threat_unit[1], threat_unit[0]])  # +90 degrees
-        tangent2 = np.array([threat_unit[1], -threat_unit[0]])  # -90 degrees
+        # Initialize or update circumnavigation state
+        if not self.circumnavigation_state['active']:
+            self._initialize_circumnavigation(threat_pos, current_angle, threat_radius)
 
-        # Add slight bias away from threat (mix tangent with escape direction)
-        escape_direction = -threat_unit  # Direction directly away from threat
-        bias_strength = 0.3  # How much to bias toward escape (0.0 = pure tangent, 1.0 = pure escape)
+        # Check if circumnavigation is complete
+        if self._is_circumnavigation_complete(current_angle, threat_pos, agent_pos):
+            self._reset_circumnavigation_state()
+            # Move toward original target
+            return self._get_action_toward_nearest_target(agent_pos, directions)
 
-        # Create biased tangent directions
-        biased_tangent1 = tangent1 * (1 - bias_strength) + escape_direction * bias_strength
-        biased_tangent2 = tangent2 * (1 - bias_strength) + escape_direction * bias_strength
+        # Continue circumnavigation
+        return self._get_circumnavigation_action(current_angle, threat_to_agent, directions)
 
-        # Normalize the biased directions
-        biased_tangent1 = biased_tangent1 / np.linalg.norm(biased_tangent1)
-        biased_tangent2 = biased_tangent2 / np.linalg.norm(biased_tangent2)
+    def _initialize_circumnavigation(self, threat_pos, start_angle, threat_radius):
+        """Initialize circumnavigation state"""
+        self.circumnavigation_state['active'] = True
+        self.circumnavigation_state['threat_pos'] = threat_pos.copy()
+        self.circumnavigation_state['start_angle'] = start_angle
+        self.circumnavigation_state['last_angle'] = start_angle
+        self.circumnavigation_state['safety_distance'] = threat_radius * 1.5
 
-        # Choose direction that leads toward more open space or mission objectives
-        # For now, use a simple heuristic: prefer direction that moves toward map center
-        map_center = np.array([0.0, 0.0])
-        center_direction = map_center - agent_pos
-        center_distance = np.linalg.norm(center_direction)
+        # Choose direction based on which way moves us more toward targets
+        # For now, default to counterclockwise
+        self.circumnavigation_state['chosen_direction'] = 'counterclockwise'
 
-        if center_distance > 1e-6:
-            center_unit = center_direction / center_distance
+        print(f"Starting circumnavigation: direction={self.circumnavigation_state['chosen_direction']}")
 
-            # Choose tangent that better aligns with moving toward center
-            dot1 = np.dot(biased_tangent1, center_unit)
-            dot2 = np.dot(biased_tangent2, center_unit)
+    def _is_circumnavigation_complete(self, current_angle, threat_pos, agent_pos):
+        """Check if we've gone far enough around the threat to have a clear path"""
+        if not self.circumnavigation_state['active']:
+            return False
 
-            chosen_direction = biased_tangent1 if dot1 > dot2 else biased_tangent2
-        else:
-            # Default to first tangent if at center
-            chosen_direction = biased_tangent1
+        # Calculate how far we've traveled around the threat
+        start_angle = self.circumnavigation_state['start_angle']
+        angle_traveled = current_angle - start_angle
 
-        # Find best matching action from available directions
-        dot_products = np.dot(directions, chosen_direction)
-        best_action = np.argmax(dot_products)
+        # Normalize angle difference to [-π, π]
+        while angle_traveled > np.pi:
+            angle_traveled -= 2 * np.pi
+        while angle_traveled < -np.pi:
+            angle_traveled += 2 * np.pi
 
-        return np.int32(best_action)
+        # Check if we've gone at least 90 degrees around
+        min_angle_traveled = np.pi / 2  # 90 degrees
+
+        if self.circumnavigation_state['chosen_direction'] == 'counterclockwise':
+            sufficient_travel = angle_traveled >= min_angle_traveled
+        else:  # clockwise
+            sufficient_travel = angle_traveled <= -min_angle_traveled
+
+        if sufficient_travel:
+            # Also check if we now have a clear line to targets
+            return self._has_clear_path_to_targets(agent_pos, threat_pos)
+
+        return False
+
+    def _has_clear_path_to_targets(self, agent_pos, threat_pos):
+        """Check if there's a clear path from current position to nearest unknown target"""
+        # Get unknown target positions
+        target_positions = self.env.targets[:self.env.config['num_targets'], 3:5]
+        target_info_levels = self.env.targets[:self.env.config['num_targets'], 2]
+        unknown_mask = target_info_levels < 1.0
+
+        if not np.any(unknown_mask):
+            return True  # No targets left, circumnavigation complete
+
+        unknown_positions = target_positions[unknown_mask]
+        distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+        nearest_target_pos = unknown_positions[np.argmin(distances)]
+
+        # Check if path to nearest target intersects threat
+        return self._path_clear_of_threat(agent_pos, nearest_target_pos, threat_pos)
+
+    def _path_clear_of_threat(self, start_pos, end_pos, threat_pos):
+        """Check if straight line path from start to end clears the threat"""
+        threat_radius = self.env.config['threat_radius'] * 1.2  # Safety buffer
+
+        # Vector from start to end
+        path_vector = end_pos - start_pos
+        path_length = np.linalg.norm(path_vector)
+
+        if path_length < 1e-6:
+            return True
+
+        path_unit = path_vector / path_length
+
+        # Vector from start to threat
+        start_to_threat = threat_pos - start_pos
+
+        # Project threat onto path
+        projection_length = np.dot(start_to_threat, path_unit)
+
+        # Only check collision if projection is within the path segment
+        if 0 <= projection_length <= path_length:
+            closest_point_on_path = start_pos + projection_length * path_unit
+            distance_to_threat = np.linalg.norm(threat_pos - closest_point_on_path)
+            return distance_to_threat > threat_radius
+
+        return True  # Threat is not along the path
+
+    def _get_circumnavigation_action(self, current_angle, threat_to_agent, directions):
+        """Get action to continue circumnavigation"""
+        distance_to_threat = np.linalg.norm(threat_to_agent)
+
+        if distance_to_threat > 0:
+            # Calculate tangent direction
+            threat_unit = threat_to_agent / distance_to_threat
+
+            if self.circumnavigation_state['chosen_direction'] == 'counterclockwise':
+                tangent_direction = np.array([-threat_unit[1], threat_unit[0]])  # +90 degrees
+            else:  # clockwise
+                tangent_direction = np.array([threat_unit[1], -threat_unit[0]])  # -90 degrees
+
+            # Add slight outward bias to maintain safe distance
+            outward_direction = threat_unit  # Away from threat
+            bias_strength = 0.2
+
+            combined_direction = tangent_direction * (1 - bias_strength) + outward_direction * bias_strength
+            combined_direction = combined_direction / np.linalg.norm(combined_direction)
+
+            # Find best matching action
+            dot_products = np.dot(directions, combined_direction)
+            best_action = np.argmax(dot_products)
+
+            return np.int32(best_action)
+
+        return 0
+
+    def _get_action_toward_nearest_target(self, agent_pos, directions):
+        """Get action to move toward nearest unknown target after circumnavigation"""
+        # Get unknown target positions
+        target_positions = self.env.targets[:self.env.config['num_targets'], 3:5]
+        target_info_levels = self.env.targets[:self.env.config['num_targets'], 2]
+        unknown_mask = target_info_levels < 1.0
+
+        if not np.any(unknown_mask):
+            return 0  # No targets left
+
+        unknown_positions = target_positions[unknown_mask]
+        distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+        nearest_target_pos = unknown_positions[np.argmin(distances)]
+
+        # Direction to nearest target
+        target_vector = nearest_target_pos - agent_pos
+        target_distance = np.linalg.norm(target_vector)
+
+        if target_distance > 0:
+            target_direction = target_vector / target_distance
+            dot_products = np.dot(directions, target_direction)
+            best_action = np.argmax(dot_products)
+            return np.int32(best_action)
+
+        return 0
+
+    def _reset_circumnavigation_state(self):
+        """Reset circumnavigation state"""
+        self.circumnavigation_state = {
+            'active': False,
+            'threat_pos': None,
+            'chosen_direction': None,
+            'last_angle': None,
+            'start_angle': None,
+            'safety_distance': None
+        }
+        print("Circumnavigation complete - reset state")
