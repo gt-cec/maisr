@@ -164,7 +164,28 @@ class MaisrModeSelectorWrapper(gym.Env):
                 self.num_switches += 1
                 self.switched_policies = True
 
-            self.subpolicy_choice = action
+            # Check if we should auto-switch from change_region to local_search
+            if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
+                print("Auto-switching from change_region to local_search - target region reached")
+                self.subpolicy_choice = 0  # Switch to local search
+
+                # Reset the change_region policy's target so it will select a new one next time
+                if hasattr(self.change_region_subpolicy, 'target_region'):
+                    self.change_region_subpolicy.target_region = None
+
+            else:
+                self.subpolicy_choice = action
+        # # Normal subpolicy selection logic when not evading
+        # if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+        #     self.steps_since_last_selection = 0
+        #
+        #     # Track policy switching for penalty later
+        #     self.switched_policies = False
+        #     if self.last_action != action:
+        #         self.num_switches += 1
+        #         self.switched_policies = True
+        #
+        #     self.subpolicy_choice = action
 
         ######################## Process subpolicy's action ########################
 
@@ -174,8 +195,6 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif self.subpolicy_choice == 1:  # Change region
             subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
-            #subpolicy_action = self.env.process_action(subpolicy_action)
-            print(f'Change region waypoint: {subpolicy_action}')
 
         elif self.subpolicy_choice == 2:  # go to high value target
             subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
@@ -192,8 +211,6 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         if isinstance(subpolicy_action, int):
             subpolicy_action = np.int32(subpolicy_action)
-
-        print(f'MODES: {self.subpolicy_choice}, {self.teammate_subpolicy_choice}')
 
         ########################################## Process teammate's action ###########################################
 
@@ -469,6 +486,46 @@ class MaisrModeSelectorWrapper(gym.Env):
 ########################################################################################################################
 ###############################################    Helper functions     ################################################
 ########################################################################################################################
+
+    def has_reached_target_region(self, agent_id=0):
+        """
+        Check if agent has reached the target region when using change_region subpolicy
+        Returns True if agent is close enough to the target region center
+        """
+        if not hasattr(self.change_region_subpolicy,
+                       'target_region') or self.change_region_subpolicy.target_region is None:
+            return False
+
+        # Get agent position
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
+        agent_pos = np.array([agent_x, agent_y])
+
+        # Get target region center in actual coordinates
+        target_region_id = self.change_region_subpolicy.target_region
+        region_centers = {
+            0: np.array([-0.5, 0.5]),  # NW
+            1: np.array([0.5, 0.5]),  # NE
+            2: np.array([-0.5, -0.5]),  # SW
+            3: np.array([0.5, -0.5])  # SE
+        }
+
+        # Convert normalized center to actual coordinates
+        map_half_size = self.env.config['gameboard_size'] / 2
+        region_center_norm = region_centers.get(target_region_id, np.array([0.0, 0.0]))
+        region_center_actual = region_center_norm * map_half_size
+
+        # Calculate distance to region center
+        distance_to_region = np.linalg.norm(agent_pos - region_center_actual)
+
+        # Define arrival threshold (about 25% of quadrant size)
+        arrival_threshold = map_half_size * 0.25
+
+        reached = distance_to_region <= arrival_threshold
+        if reached:
+            print(f"Agent reached target region {target_region_id} (distance: {distance_to_region:.1f})")
+
+        return reached
 
     def near_threat(self, agent_id = 0):
         """
