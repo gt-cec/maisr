@@ -586,10 +586,13 @@ class LocalSearch(SubPolicy):
 
     def act(self, observation):
         if self.model:
-            action = self.model.predict(observation)
+            action, _ = self.model.predict(observation)
+            action = np.int32(action)
+            #print(f'Model output is {action}')
         else:
-            action = self.heuristic(observation)
-        return np.int32(action)
+            action, _ = self.heuristic(observation)
+        #print(f'local search act: {action} {type(action)}')
+        return action, None #np.int32(action)
 
     def heuristic(self, observation):
         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
@@ -683,6 +686,7 @@ class LocalSearch(SubPolicy):
             best_action = adjacent_actions[best_adjacent_idx]
 
         self._last_action = best_action
+        #print(f'Local search heuristic: action is {best_action} ({type(best_action)}')
         return np.int32(best_action), None
 
     def reset_heuristic_state(self):

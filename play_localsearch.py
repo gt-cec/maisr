@@ -9,7 +9,8 @@ from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
-from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+#from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from utility.league_management import LocalSearch, SubPolicy, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
@@ -42,7 +43,7 @@ if __name__ == "__main__":
     localsearch_model_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envslocal_search_norm_stats.npy'
     local_search_policy = LocalSearch(
-        #model_path = localsearch_model_path,
+        model_path = localsearch_model_path,
         norm_stats_filepath = localsearch_normstats_path
     )
 
@@ -89,8 +90,8 @@ if __name__ == "__main__":
                 break
 
             action, _ = local_search_policy.act(obs)
-            action = np.int32(action)
             print(f'[Play] Action = {action} (type {type(action)})')
+            #action = np.ndarray([action])
 
             # Store data
             episode_observations.append(obs.copy())

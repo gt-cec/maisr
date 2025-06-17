@@ -423,13 +423,16 @@ class MAISREnvVec(gym.Env):
         return observation, total_reward, self.terminated, self.truncated, info
 
 
-    def _single_step(self, action):
+    def _single_step(self, action: np.ndarray):
         """
-
+        Action must be either:
+            1. Discrete16 input: np.ndarray of 1 element, e.g. [5]
+            2. Continuous input: np.ndarray of 2 elements from -1 to +1, e.g. [0.5, -0.5]
         """
+        if not isinstance(action, (np.ndarray, np.int32)):
+            raise ValueError
 
         self.step_count_inner += 1
-
         if self.potential: last_potential = self.potential
         else: last_potential = 0
 
@@ -445,11 +448,6 @@ class MAISREnvVec(gym.Env):
 
 
         ############################################### Process action ################################################
-
-
-        #if isinstance(action, (np.int32, np.int64, int)):
-            #if action.ndim == 1 and len(action) == 1:
-            # waypoint = self._direction_to_waypoint(action)
 
         if isinstance(action, np.ndarray) and len(action) == 2:
             #print(f'Input to _single_step is {action} ({type(action)}) (ndim {action.ndim}, len {len(action)}')
