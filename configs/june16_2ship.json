@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 2,
-	"max_steps": 15000,
+	"max_steps": 12000,
 
 	"num_targets": 15,
 	"num_threats": 2,

@@ -2133,7 +2133,7 @@ class MAISREnvVec(gym.Env):
             plt.title(plot_title)
 
             # Create legend with subpolicy colors
-            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(1.00, 1), fontsize='small')
+            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.92, 1), fontsize='small')
 
             # Add a second legend for other elements if needed
             other_elements = []
