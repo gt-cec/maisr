@@ -178,7 +178,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             # Check if we should auto-switch from change_region to local_search
             if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
-                print("Auto-switching from change_region to local_search - target region reached")
+                #print("Auto-switching from change_region to local_search - target region reached")
                 self.subpolicy_choice = 0  # Switch to local search
 
                 # Reset the change_region policy's target so it will select a new one next time

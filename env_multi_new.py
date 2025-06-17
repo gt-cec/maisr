@@ -1945,6 +1945,9 @@ class MAISREnvVec(gym.Env):
                 -1: 'Unknown'
             }
 
+            # Replace the subpolicy plotting section in save_action_history_plot method
+            # This goes around line 1200+ in the method
+
             # Plot agent trajectory with subpolicy coloring
             if agent_x_coords and agent_y_coords:
                 # Plot the trajectory line first (in gray)
@@ -1952,17 +1955,50 @@ class MAISREnvVec(gym.Env):
 
                 # Check if we have subpolicy history
                 if hasattr(self, 'subpolicy_history') and self.subpolicy_history:
-                    #print(f'Len(subpolicy history) = {len(self.subpolicy_history)}')
-                    #print(f'Num outer steps: {self.step_count_outer}')
+                    #print(f'Original subpolicy history length: {len(self.subpolicy_history)}')
+                    #print(f'Location history length: {len(agent_x_coords)}')
+                    #print(f'Step count outer: {self.step_count_outer}')
 
-                    # Ensure subpolicy history matches location history length
-                    subpolicy_data = self.subpolicy_history.copy()
+                    # The subpolicy history should match step_count_outer, not the location history
+                    # Each outer step corresponds to frame_skip inner steps (location history entries)
+                    frame_skip = self.config.get('frame_skip', 1)
 
-                    # Pad or trim subpolicy history to match location history
+                    # Create properly aligned subpolicy data
+                    subpolicy_data = []
+
+                    # Each entry in subpolicy_history corresponds to frame_skip location entries
+                    for i, policy in enumerate(self.subpolicy_history):
+                        # Convert policy to a regular Python int immediately
+                        if hasattr(policy, 'item'):  # numpy scalar
+                            clean_policy = int(policy.item())
+                        elif isinstance(policy, (np.ndarray, np.generic)):  # numpy array or generic
+                            clean_policy = int(policy.flatten()[0])
+                        else:  # regular int/float
+                            clean_policy = int(policy)
+
+                        # Add this policy for frame_skip consecutive location points
+                        for _ in range(frame_skip):
+                            if len(subpolicy_data) < len(agent_x_coords):
+                                subpolicy_data.append(clean_policy)
+
+                    # If we still don't have enough entries, pad with the last known policy
                     while len(subpolicy_data) < len(agent_x_coords):
                         last_policy = subpolicy_data[-1] if subpolicy_data else 0
                         subpolicy_data.append(last_policy)
+
+                    # Trim to exact length if needed
                     subpolicy_data = subpolicy_data[:len(agent_x_coords)]
+
+                    print(f'Final subpolicy data length: {len(subpolicy_data)}')
+
+                    # Print policy distribution for debugging
+                    from collections import Counter
+                    policy_counts = Counter(subpolicy_data)
+                    #print("Policy distribution in plot data:")
+                    for policy, count in sorted(policy_counts.items()):
+                        percentage = (count / len(subpolicy_data)) * 100
+                        policy_name = subpolicy_labels.get(int(policy), f'Policy {policy}')
+                        #print(f"  {policy_name}: {count}/{len(subpolicy_data)} ({percentage:.1f}%)")
 
                     # Group points by subpolicy for plotting
                     subpolicy_points = {}
@@ -1986,7 +2022,7 @@ class MAISREnvVec(gym.Env):
                                               color=color,
                                               alpha=0.8,
                                               marker='o',
-                                              label=label,
+                                              label=f"{label} ({len(points['x'])})",  # Add count to legend
                                               zorder=3,
                                               edgecolors='none',
                                               linewidth=0.5)
@@ -2049,7 +2085,7 @@ class MAISREnvVec(gym.Env):
             plt.title(plot_title)
 
             # Create legend with subpolicy colors
-            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.82, 1), fontsize='small')
+            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1), fontsize='small')
 
             # Add a second legend for other elements if needed
             other_elements = []
@@ -2076,63 +2112,30 @@ class MAISREnvVec(gym.Env):
                 main_ax.set_position([0.1, 0.2, 0.7, 0.7])  # [left, bottom, width, height]
 
                 # Create timeline subplot
-                current_ax = plt.gca()
-                current_ax.set_position([0.1, 0.2, 0.7, 0.7])
                 timeline_ax = fig.add_axes([0.1, 0.05, 0.7, 0.06])
 
-                # Expand subpolicy history to match location history length
-                location_history_length = len(self.agent_location_history)
-                subpolicy_length = len(self.subpolicy_history)
-
-                if subpolicy_length < location_history_length:
-                    # Repeat each subpolicy entry frame_skip times to match location history
-                    frame_skip = getattr(self.config, 'frame_skip', 1)
-                    expanded_subpolicy = []
-                    for policy in self.subpolicy_history:
-                        for _ in range(frame_skip):  # Fixed the syntax error here
-                            expanded_subpolicy.append(policy)
-
-                    # Trim or pad to exact length
-                    expanded_subpolicy = expanded_subpolicy[:location_history_length]
-                    while len(expanded_subpolicy) < location_history_length:
-                        last_policy = expanded_subpolicy[-1] if expanded_subpolicy else 0
-                        expanded_subpolicy.append(last_policy)
-
-                    policies = [int(p) if hasattr(p, 'item') else int(p) for p in expanded_subpolicy]
-                else:
-                    policies = [int(p) if hasattr(p, 'item') else int(p) for p in
-                                self.subpolicy_history[:location_history_length]]
-
+                # Use the original subpolicy history for timeline (one entry per outer step)
+                policies = [int(p) if hasattr(p, 'item') else int(p) for p in self.subpolicy_history]
                 steps = list(range(len(policies)))
 
-                # Prepare timeline data
-                #steps = list(range(len(self.subpolicy_history)))
-                #print(f'Debug: steps is {len(steps)}')
-                #policies = [int(p) if hasattr(p, 'item') else int(p) for p in self.subpolicy_history]
+                #print(f'Timeline using {len(policies)} policy entries for {len(steps)} steps')
 
                 # Create color mapping for timeline
                 timeline_colors = [subpolicy_colors.get(p, '#808080') for p in policies]
 
-                # Plot timeline as horizontal bars
-                for i in range(len(steps) - 1):
-                    timeline_ax.barh(0, 0.8, left=steps[i], height=0.5,
+                # Plot timeline as horizontal bars - each bar represents one outer step
+                for i in range(len(steps)):
+                    timeline_ax.barh(0, 1.0, left=steps[i], height=0.5,
                                      color=timeline_colors[i], alpha=0.8,
-                                     edgecolor='none')
-
-                # Handle the last step
-                if steps:
-                    timeline_ax.barh(0, 0.8, left=steps[-1], height=0.5,
-                                     color=timeline_colors[-1], alpha=0.8,
                                      edgecolor='none')
 
                 # Configure timeline axes
                 timeline_ax.set_xlim(0, len(steps))
                 timeline_ax.set_ylim(-0.5, 0.5)
-                timeline_ax.set_xlabel('Episode Steps')
-                timeline_ax.set_ylabel('Mode')
+                timeline_ax.set_xlabel('Episode Steps (Outer)')
+                timeline_ax.set_ylabel('Policy')
                 timeline_ax.set_yticks([])
                 timeline_ax.grid(True, alpha=0.3, axis='x')
-
 
                 # Add mode labels on the timeline
                 current_mode = policies[0] if policies else 0
@@ -2141,31 +2144,31 @@ class MAISREnvVec(gym.Env):
                 for i, mode in enumerate(policies[1:], 1):
                     if mode != current_mode:
                         # Add label for the previous mode segment
-                        if i - mode_start > 10:  # Only label segments longer than 10 steps
+                        segment_length = i - mode_start
+                        if segment_length > max(3, len(policies) * 0.05):  # Label segments > 5% of episode or 3 steps
                             mid_point = (mode_start + i - 1) / 2
-                            timeline_ax.text(mid_point, 1, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
-                                             ha='center', va='center', fontsize=5, rotation=90,
+                            timeline_ax.text(mid_point, 0, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
+                                             ha='center', va='center', fontsize=6,
                                              bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
 
                         current_mode = mode
                         mode_start = i
 
                 # Add label for the final segment
-                if len(policies) - mode_start > 10:
+                final_segment_length = len(policies) - mode_start
+                if final_segment_length > max(3, len(policies) * 0.05):
                     mid_point = (mode_start + len(policies) - 1) / 2
                     timeline_ax.text(mid_point, 0, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
-                                     ha='center', va='center', fontsize=8, rotation=90,
+                                     ha='center', va='center', fontsize=6,
                                      bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
 
             if other_elements:
-                legend2 = plt.legend(handles=other_elements, loc='upper left', bbox_to_anchor=(0.82, 0.6),
-                                     fontsize='small')
+                #legend2 = plt.legend(handles=other_elements, loc='upper left', bbox_to_anchor=(0.82, 0.6),fontsize='small')
                 main_ax.add_artist(legend1)  # Keep both legends
 
 
 
             if hasattr(self, 'wrapper_observations') and self.wrapper_observations:
-                print('adding wrapper obs')
                 obs_ax = plt.subplot2grid((4, 1), (3, 0))
                 obs_ax.axis('off')  # Turn off axis for text area
 
