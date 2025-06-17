@@ -95,7 +95,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.teammate_subpolicy_choice = 0
         self.switched_policies = False
 
+        self.episode_reward = 0
+
+        self.subpolicy_history = []  # Track subpolicy choices over time
+
         self._reset_circumnavigation_state()
+
+        # NEW: Track wrapper observations at key timesteps
+        self.wrapper_observations = {}
+        self.wrapper_observations[0] = observation.copy()  # Store initial observation
 
         # Instantiate teammate for this episode
         if self.teammate_manager:
@@ -216,6 +224,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         if isinstance(subpolicy_action, int):
             subpolicy_action = np.int32(subpolicy_action)
 
+        if self.subpolicy_choice is not None:
+            self.subpolicy_history.append(self.subpolicy_choice)
+        else:
+            # If no subpolicy chosen yet, use -1 or previous choice
+            if len(self.subpolicy_history) > 0:
+                self.subpolicy_history.append(self.subpolicy_history[-1])
+            else:
+                self.subpolicy_history.append(0)  # Default to local search
+
         ########################################## Process teammate's action ###########################################
 
         if self.current_teammate and self.env.config['num_aircraft'] >= 2:
@@ -251,15 +268,32 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Convert base_env elements to wrapper elements if needed
         observation = self.get_observation(0)
         reward = self.get_reward(base_info)
+        self.episode_reward += reward
         info = base_info
         terminated = base_terminated
         truncated = base_truncated
 
+        current_step = self.env.step_count_outer
+        if current_step == 100:
+            self.wrapper_observations[100] = observation.copy()
+
         self.last_action = action
         self.steps_since_last_selection += 1
 
+        if hasattr(self.env, 'set_subpolicy_history'):
+            self.env.set_subpolicy_history(self.subpolicy_history)
+
         if terminated or truncated:
-            print(f'Num switches = {self.num_switches}')
+            self.print_episode_statistics()
+            self.env.final_wrapper_reward = self.episode_reward
+
+            # NEW: Pass wrapper observations to environment
+            self.wrapper_observations[current_step] = observation.copy()
+            if hasattr(self.env, 'set_wrapper_observations'):
+                self.env.set_wrapper_observations(self.wrapper_observations)
+
+            if hasattr(self.env, 'set_subpolicy_history'):
+                self.env.set_subpolicy_history(self.subpolicy_history)
 
         return observation, reward, terminated, truncated, info
 
@@ -277,18 +311,34 @@ class MaisrModeSelectorWrapper(gym.Env):
         """
         Generates the observation for the mode selector using env attributes
         """
+        # Initialize observation as float32 (not int32)
+        obs = np.zeros(6, dtype=np.float32)
 
-        # Core state: observation vector
+        # Calculate targets left
         targets_left = self.env.config['num_targets'] - self.env.targets_identified
-        obs = np.zeros(6, dtype=np.int32)
 
-        if targets_left:
-            obs[0] = (self.env.max_steps - self.env.step_count_outer) / self.env.max_steps  # Steps remaining
-            obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections  # Progress toward max detections (game over)
-            obs[2] = targets_left / self.env.config['num_targets']  # Ratio of targets ID'd
-            obs[3] = self.unknown_targets_in_current_quadrant(agent_id) / targets_left  # Ratio of all targets that are in current quadrant
-            obs[4] = self.get_distance_to_teammate(agent_id) / self.env.config['gameboard_size']  # Proximity to human (Helps decide whether to change regions
-            obs[5] = self.get_adaptation_signal()  # Adaptation signal (placeholder as 0 for now)
+        # obs[0]: Steps remaining (normalized 0-1, where 1 = all steps left, 0 = no steps left)
+        max_steps_outer = self.env.max_steps / self.env.config['frame_skip']
+        obs[0] = (max_steps_outer - self.env.step_count_outer) / self.env.max_steps
+
+        # obs[1]: Detections remaining before game over (normalized 0-1, where 1 = no detections, 0 = max detections)
+        obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections
+
+        # obs[2]: Targets remaining (normalized 0-1, where 1 = all targets left, 0 = no targets left)
+        obs[2] = targets_left / self.env.config['num_targets']
+
+        # obs[3]: Ratio of remaining targets in current quadrant (0-1)
+        if targets_left > 0:
+            unknown_in_quad = self.unknown_targets_in_current_quadrant(agent_id)
+            obs[3] = unknown_in_quad / targets_left
+        else:
+            obs[3] = 0.0
+
+        # obs[4]: Distance to teammate (normalized 0-1, where 0 = same position, 1 = max distance)
+        obs[4] = self.get_distance_to_teammate(agent_id) / self.env.config['gameboard_size']
+
+        # obs[5]: Adaptation signal (placeholder)
+        obs[5] = self.get_adaptation_signal()
 
         return obs
 
@@ -902,3 +952,28 @@ class MaisrModeSelectorWrapper(gym.Env):
             'start_angle': None,
             'safety_distance': None
         }
+
+    def print_episode_statistics(self):
+        """Print statistics about subpolicy usage and switches for the episode"""
+        if not self.subpolicy_history:
+            print("No subpolicy history available")
+            return
+
+        total_steps = len(self.subpolicy_history)
+        if total_steps == 0:
+            return
+
+        # Count steps for each subpolicy
+        subpolicy_counts = {}
+        for policy in self.subpolicy_history:
+            policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
+            subpolicy_counts[policy_key] = subpolicy_counts.get(policy_key, 0) + 1
+
+        # Get percentages with safe access using .get() method
+        local_search_pct = (subpolicy_counts.get(0, 0) / total_steps) * 100
+        change_region_pct = (subpolicy_counts.get(1, 0) / total_steps) * 100
+        go_to_threat_pct = (subpolicy_counts.get(2, 0) / total_steps) * 100
+
+        # Calculate percentages
+        print(
+            f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.num_switches} policy switches ({self.num_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")

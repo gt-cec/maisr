@@ -1,4 +1,8 @@
+import ctypes
 import warnings
+
+import pygame
+
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 import gymnasium as gym
 import os
@@ -51,7 +55,7 @@ class EnhancedWandbCallback(BaseCallback):
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name', render=False,
                  log_freq=2):  # New parameter: log every N steps
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
@@ -59,6 +63,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
         self.log_freq = log_freq  # Log every N steps instead of every step
+        self.render = render
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
@@ -165,8 +170,9 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
-                    #print(f'agent action: {action} (type: {type(action)})')
                     obses, rewards, dones, infos = self.eval_env.step([action])
+                    if self.render:
+                        self.eval_env.render()
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
@@ -320,6 +326,7 @@ def train_modeselector(
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
+        render=False,
         log_dir="./logs/",
         machine_name='machine',
         save_model=True
@@ -336,6 +343,16 @@ def train_modeselector(
     """
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
+
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        ctypes.windll.user32.SetProcessDPIAware()
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = 30
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
 
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
@@ -359,7 +376,7 @@ def train_modeselector(
 
     print(f"Training with {n_envs} environments in parallel")
 
-    def make_wrapped_env(env_config, rank, seed, run_name='no_name'):
+    def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
             # Create base environment
             base_env = MAISREnvVec(
@@ -409,7 +426,17 @@ def train_modeselector(
         env = VecNormalize(env)
 
     # Create eval environment with wrapper
-    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
+    if render:
+        base_eval_env = MAISREnvVec(
+            config=env_config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            run_name=run_name,
+            tag=f'eval',
+        )
+    else:
+        base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
 
     teammate = GenericTeammatePolicy(
         base_eval_env,
@@ -447,7 +474,7 @@ def train_modeselector(
     wandb_callback = WandbCallback(gradient_save_freq=50,
                                    model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None,
                                    verbose=1)
-    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20)
+    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20, render=render)
 
     print('Callbacks created')
 
@@ -547,6 +574,7 @@ def train_modeselector(
 
 
 if __name__ == "__main__":
+    print(f'\n############################ STARTING TRAINING ############################')
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
@@ -554,11 +582,9 @@ if __name__ == "__main__":
 
     ################################################
 
-    print(f'\n############################ STARTING TRAINING ############################')
     config = load_env_config(config_filename)
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
-    config['policy_to_train'] = 'local-search'
 
     for num_timesteps in [5e5, 2e6]:
         for inside_threat_penalty in [0]:#[0.03, 0.1, 0.15, 0.25]:
@@ -574,7 +600,8 @@ if __name__ == "__main__":
                 run_name=run_name,
                 use_normalize=True,
                 use_teammate_manager=False,
-                n_envs=4,#multiprocessing.cpu_count(),
+                render=False,
+                n_envs=multiprocessing.cpu_count() - 12,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

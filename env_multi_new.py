@@ -257,6 +257,8 @@ class MAISREnvVec(gym.Env):
 
         self.id_requested = False
 
+        self.final_wrapper_reward = 0 # Used for saving plots
+
         self.potential = None # Initialize potential for reward shaping
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
@@ -597,6 +599,12 @@ class MAISREnvVec(gym.Env):
         info['new_target_ids'] = self.targets_identified - prev_targets_identified
         info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
         info['new_detections'] = self.detections - prev_detections
+
+        # If subpolicy history exists, ensure it's aligned with location history
+        # if hasattr(self, 'subpolicy_history') and len(self.subpolicy_history) < len(self.agent_location_history):
+        #     # Pad with the last known subpolicy or default to 0
+        #     last_subpolicy = self.subpolicy_history[-1] if self.subpolicy_history else 0
+        #     self.subpolicy_history.append(last_subpolicy)
 
         return observation, total_reward, self.terminated, self.truncated, info
 
@@ -1860,9 +1868,9 @@ class MAISREnvVec(gym.Env):
             matplotlib.use('Agg')  # Use non-interactive backend
             import datetime
             import os
+            import numpy as np
 
             # Create directory if it doesn't exist
-            #os.makedirs(f'logs/action_histories/{self.run_name}', exist_ok=True)
             full_dir_path = f'logs/action_histories/{self.run_name}'
             os.makedirs(full_dir_path, exist_ok=True)
 
@@ -1877,7 +1885,8 @@ class MAISREnvVec(gym.Env):
             teammate_y_coords = [pos[1] for pos in self.teammate_location_history]
 
             # Create a new figure
-            plt.figure(figsize=(10, 10))
+            fig_height = 12 if hasattr(self, 'wrapper_observations') else 10
+            plt.figure(figsize=(12, fig_height))
 
             # Set up the plot with centered coordinate limits
             plt.xlim(-map_half_size, map_half_size)
@@ -1891,39 +1900,107 @@ class MAISREnvVec(gym.Env):
                 size_factor = 1000 / self.config["gameboard_size"]  # Assuming 1000 was the original reference size
                 marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
 
-                if i == 0: # Color target 0 differently for debugging
-                    color = 'purple' if self.targets[i, 2] == 1.0 else 'chocolate'
+                if i == 0:  # Color target 0 differently for debugging
+                    color = 'forestgreen' if self.targets[i, 2] == 1.0 else 'chocolate'
                 else:
-                    color = 'red' if self.targets[i, 2] == 1.0 else 'orange'
+                    color = 'lime' if self.targets[i, 2] == 1.0 else 'orange'
 
-                plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.7, marker='o')
+                plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.9, marker='o', edgecolors='black')
 
             # Plot the threat if it exists
             if hasattr(self, 'threats'):
-                for threat in self.threats:
+                for threat_idx, threat in enumerate(self.threats):
                     threat_x = threat[0]
                     threat_y = threat[1]
-                    threat_radius = self.config['threat_radius'] * (1000 / self.config["gameboard_size"])  # Scale for plot
+                    threat_radius = self.config['threat_radius'] * (
+                            1000 / self.config["gameboard_size"])  # Scale for plot
+
+                    # Change color based on identification status (same as render method)
+                    threat_color = 'lime' if self.threat_identified[threat_idx] else 'gold'
 
                     # Draw threat circle
-                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color='gold', linewidth=2,
+                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color=threat_color,
+                                        linewidth=2,
                                         alpha=0.7)
                     plt.gca().add_patch(circle)
 
                     # Draw upside-down triangle marker
-                    plt.scatter(threat_x, threat_y, s=200, color='gold', marker='v', alpha=0.8, label='Threat',
+                    plt.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v', alpha=0.8, label='Threat',
                                 edgecolors='black')
 
-            # Plot agent trajectory (actual location history) as a line with points
-            if agent_x_coords and agent_y_coords:
-                plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
-                plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
-                            cmap='Greens', alpha=0.7, marker='o', label='')
+            # Define subpolicy colors and labels
+            subpolicy_colors = {
+                0: '#2E8B57',  # Local Search - Sea Green
+                1: '#4169E1',  # Change Region - Royal Blue
+                2: '#DC143C',  # Go to Threat - Crimson
+                3: '#FF8C00',  # Evade - Dark Orange
+                -1: '#808080'  # Unknown/Default - Gray
+            }
 
+            subpolicy_labels = {
+                0: 'Local Search',
+                1: 'Change Region',
+                2: 'Go to Threat',
+                3: 'Evade',
+                -1: 'Unknown'
+            }
+
+            # Plot agent trajectory with subpolicy coloring
+            if agent_x_coords and agent_y_coords:
+                # Plot the trajectory line first (in gray)
+                plt.plot(agent_x_coords, agent_y_coords, 'gray', alpha=0.3, linewidth=1, zorder=1)
+
+                # Check if we have subpolicy history
+                if hasattr(self, 'subpolicy_history') and self.subpolicy_history:
+                    #print(f'Len(subpolicy history) = {len(self.subpolicy_history)}')
+                    #print(f'Num outer steps: {self.step_count_outer}')
+
+                    # Ensure subpolicy history matches location history length
+                    subpolicy_data = self.subpolicy_history.copy()
+
+                    # Pad or trim subpolicy history to match location history
+                    while len(subpolicy_data) < len(agent_x_coords):
+                        last_policy = subpolicy_data[-1] if subpolicy_data else 0
+                        subpolicy_data.append(last_policy)
+                    subpolicy_data = subpolicy_data[:len(agent_x_coords)]
+
+                    # Group points by subpolicy for plotting
+                    subpolicy_points = {}
+                    for i, (x, y, policy) in enumerate(zip(agent_x_coords, agent_y_coords, subpolicy_data)):
+                        # Convert policy to int to avoid numpy array key issues
+                        policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
+                        if policy_key not in subpolicy_points:
+                            subpolicy_points[policy_key] = {'x': [], 'y': [], 'indices': []}
+                        subpolicy_points[policy_key]['x'].append(x)
+                        subpolicy_points[policy_key]['y'].append(y)
+                        subpolicy_points[policy_key]['indices'].append(i)
+
+                    # Plot each subpolicy group with its own color
+                    legend_handles = []
+                    for policy_key, points in subpolicy_points.items():
+                        color = subpolicy_colors.get(policy_key, '#808080')
+                        label = subpolicy_labels.get(policy_key, f'Policy {policy_key}')
+
+                        scatter = plt.scatter(points['x'], points['y'],
+                                              s=15,
+                                              color=color,
+                                              alpha=0.8,
+                                              marker='o',
+                                              label=label,
+                                              zorder=3,
+                                              edgecolors='none',
+                                              linewidth=0.5)
+                        legend_handles.append(scatter)
+
+                else:
+                    # Fallback: color by time progression if no subpolicy history
+                    plt.scatter(agent_x_coords, agent_y_coords, s=15, c=range(len(agent_x_coords)),
+                                cmap='Greens', alpha=0.7, marker='o', zorder=3)
+
+            # Plot teammate trajectory
             if teammate_x_coords and teammate_y_coords:
-                plt.plot(teammate_x_coords, teammate_y_coords, 'b-', alpha=0.7, linewidth=2)
-                plt.scatter(teammate_x_coords, teammate_y_coords, s=20, c=range(len(teammate_x_coords)),
-                            cmap='Blues', alpha=0.7, marker='o', label='')
+                plt.plot(teammate_x_coords, teammate_y_coords, 'black', alpha=0.8, linewidth=2, label='Teammate',
+                         zorder=2)
 
             # Only plot waypoint history for waypoint-based action types
             if self.config['action_type'] != 'direct-control':
@@ -1936,29 +2013,27 @@ class MAISREnvVec(gym.Env):
                     plt.plot(x_coords, y_coords, 'b-', alpha=0.15, linewidth=1)
 
                     # Plot only every fourth waypoint
-                    x_coords_subset = x_coords[::self.config['frame_skip']]  # Plot one action per outer step instead of every action
-                    y_coords_subset = y_coords[::self.config['frame_skip']]
-                    subset_indices = list(range(0, len(x_coords), self.config['frame_skip']))  # Corresponding indices for colormap
+                    x_coords_subset = x_coords[::self.config[
+                        'frame_skip']*2]  # Plot one action per outer step instead of every action
+                    y_coords_subset = y_coords[::self.config['frame_skip']*2]
+                    subset_indices = list(
+                        range(0, len(x_coords), self.config['frame_skip']*2))  # Corresponding indices for colormap
 
-                    plt.scatter(x_coords_subset, y_coords_subset, s=15, c=subset_indices,
-                                cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints')
-
-                    # plt.scatter(x_coords, y_coords, s=15, c=range(len(x_coords)),
-                    #             cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints')
+                    plt.scatter(x_coords_subset, y_coords_subset, s=10, c=subset_indices,
+                                cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints', zorder=1)
 
                     # Add starting and ending points with different markers
-                    plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint')
-                    plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint')
+                    plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint',
+                                zorder=4)
+                    plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint',
+                                zorder=4)
 
+            # Add start/end position markers
             if agent_x_coords and agent_y_coords:
                 plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='lime', marker='*',
-                            label='Start Position')
+                            label='Start Position', zorder=5, edgecolors='black', linewidth=1)
                 plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='darkgreen', marker='*',
-                            label='End Position')
-
-            # Add a colorbar to show time progression
-            cbar = plt.colorbar(aspect=70)
-            cbar.set_label('Episode Progress')
+                            label='End Position', zorder=5, edgecolors='black', linewidth=1)
 
             # Add grid lines centered at origin
             plt.grid(True, alpha=0.3)
@@ -1966,22 +2041,153 @@ class MAISREnvVec(gym.Env):
             plt.gca().set_yticks(range(int(-map_half_size), int(map_half_size) + 1, 100))
 
             # Add labels and title
-            #plt.xlabel('X Coordinate')
-            #plt.ylabel('Y Coordinate')
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config['action_type']
-            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.ep_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
+            action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config[
+                'action_type']
+            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
             plt.title(plot_title)
 
-            # Add a legend
-            #plt.legend(loc='upper right', fontsize='x-small')
-            plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3, fontsize='x-small')
+            # Create legend with subpolicy colors
+            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.82, 1), fontsize='small')
+
+            # Add a second legend for other elements if needed
+            other_elements = []
+
+            # Add target legends
+            other_elements.extend([
+                plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
+                           markersize=8, label='Identified Target'),
+                plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='orange',
+                           markersize=8, label='Unknown Target')
+            ])
 
             # Add centered quadrant lines (origin at center)
             plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Horizontal line at y=0
             plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Vertical line at x=0
-            
+
+            # Add subpolicy timeline at the bottom
+            if hasattr(self, 'subpolicy_history') and self.subpolicy_history:
+                # Create a subplot for the timeline
+                fig = plt.gcf()
+
+                # Adjust main plot to make room for timeline
+                main_ax = plt.gca()
+                main_ax.set_position([0.1, 0.2, 0.7, 0.7])  # [left, bottom, width, height]
+
+                # Create timeline subplot
+                current_ax = plt.gca()
+                current_ax.set_position([0.1, 0.2, 0.7, 0.7])
+                timeline_ax = fig.add_axes([0.1, 0.05, 0.7, 0.06])
+
+                # Expand subpolicy history to match location history length
+                location_history_length = len(self.agent_location_history)
+                subpolicy_length = len(self.subpolicy_history)
+
+                if subpolicy_length < location_history_length:
+                    # Repeat each subpolicy entry frame_skip times to match location history
+                    frame_skip = getattr(self.config, 'frame_skip', 1)
+                    expanded_subpolicy = []
+                    for policy in self.subpolicy_history:
+                        for _ in range(frame_skip):  # Fixed the syntax error here
+                            expanded_subpolicy.append(policy)
+
+                    # Trim or pad to exact length
+                    expanded_subpolicy = expanded_subpolicy[:location_history_length]
+                    while len(expanded_subpolicy) < location_history_length:
+                        last_policy = expanded_subpolicy[-1] if expanded_subpolicy else 0
+                        expanded_subpolicy.append(last_policy)
+
+                    policies = [int(p) if hasattr(p, 'item') else int(p) for p in expanded_subpolicy]
+                else:
+                    policies = [int(p) if hasattr(p, 'item') else int(p) for p in
+                                self.subpolicy_history[:location_history_length]]
+
+                steps = list(range(len(policies)))
+
+                # Prepare timeline data
+                #steps = list(range(len(self.subpolicy_history)))
+                #print(f'Debug: steps is {len(steps)}')
+                #policies = [int(p) if hasattr(p, 'item') else int(p) for p in self.subpolicy_history]
+
+                # Create color mapping for timeline
+                timeline_colors = [subpolicy_colors.get(p, '#808080') for p in policies]
+
+                # Plot timeline as horizontal bars
+                for i in range(len(steps) - 1):
+                    timeline_ax.barh(0, 0.8, left=steps[i], height=0.5,
+                                     color=timeline_colors[i], alpha=0.8,
+                                     edgecolor='none')
+
+                # Handle the last step
+                if steps:
+                    timeline_ax.barh(0, 0.8, left=steps[-1], height=0.5,
+                                     color=timeline_colors[-1], alpha=0.8,
+                                     edgecolor='none')
+
+                # Configure timeline axes
+                timeline_ax.set_xlim(0, len(steps))
+                timeline_ax.set_ylim(-0.5, 0.5)
+                timeline_ax.set_xlabel('Episode Steps')
+                timeline_ax.set_ylabel('Mode')
+                timeline_ax.set_yticks([])
+                timeline_ax.grid(True, alpha=0.3, axis='x')
+
+
+                # Add mode labels on the timeline
+                current_mode = policies[0] if policies else 0
+                mode_start = 0
+
+                for i, mode in enumerate(policies[1:], 1):
+                    if mode != current_mode:
+                        # Add label for the previous mode segment
+                        if i - mode_start > 10:  # Only label segments longer than 10 steps
+                            mid_point = (mode_start + i - 1) / 2
+                            timeline_ax.text(mid_point, 1, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
+                                             ha='center', va='center', fontsize=5, rotation=90,
+                                             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
+
+                        current_mode = mode
+                        mode_start = i
+
+                # Add label for the final segment
+                if len(policies) - mode_start > 10:
+                    mid_point = (mode_start + len(policies) - 1) / 2
+                    timeline_ax.text(mid_point, 0, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
+                                     ha='center', va='center', fontsize=8, rotation=90,
+                                     bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
+
+            if other_elements:
+                legend2 = plt.legend(handles=other_elements, loc='upper left', bbox_to_anchor=(0.82, 0.6),
+                                     fontsize='small')
+                main_ax.add_artist(legend1)  # Keep both legends
+
+
+
+            if hasattr(self, 'wrapper_observations') and self.wrapper_observations:
+                print('adding wrapper obs')
+                obs_ax = plt.subplot2grid((4, 1), (3, 0))
+                obs_ax.axis('off')  # Turn off axis for text area
+
+                # Format observation text
+                obs_text_lines = []
+                obs_labels = ['Steps', 'Detections', '% Tgts Left',
+                              '% Tgts in Quad', 'Dist to Teammate', 'Adapt Sig']
+
+                for step, obs in self.wrapper_observations.items():
+                    obs_line = f"Step {step}: "
+                    obs_values = [f"{obs_labels[i]}: {obs[i]:.1f}" for i in range(len(obs)) if i < len(obs_labels)]
+                    obs_line += " | ".join(obs_values)
+                    obs_text_lines.append(obs_line)
+
+                # Add text to the bottom subplot
+                full_obs_text = "\n".join(obs_text_lines)
+                obs_ax.text(0.00, 0.35, "Wrapper Observations:", transform=obs_ax.transAxes,
+                            fontsize=10, fontweight='bold', verticalalignment='top')
+                obs_ax.text(0.00, 0.25, full_obs_text, transform=obs_ax.transAxes,
+                            fontsize=8, verticalalignment='top', fontfamily='monospace',
+                            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.7))
+
             # Save the figure with a timestamp
             filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
@@ -2000,6 +2206,12 @@ class MAISREnvVec(gym.Env):
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
 
+    def set_difficulty(self, difficulty):
+        """Method to change difficulty level from an external method (i.e. a training loop)"""
+        self.difficulty = difficulty
+        print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
+
+
     def generate_plot_list(self):
 
         # TODO Temp workaround
@@ -2007,7 +2219,7 @@ class MAISREnvVec(gym.Env):
         #print(f'num_levels: {self.num_levels}')
         self.episodes_to_plot = []
         for j in range(min(self.num_levels,5)):
-            self.episodes_to_plot.extend([1+j, 2+j, 5+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
+            self.episodes_to_plot.extend([1+j, 2+j, 3+j, 5+j, 7+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
             self.episodes_to_plot.extend([(50 * i) + j for i in range(80)])
         self.episodes_to_plot = list(set(self.episodes_to_plot))
         self.episodes_to_plot.sort()
@@ -2030,3 +2242,11 @@ class MAISREnvVec(gym.Env):
             base_episodes.sort()
             self.episodes_to_plot = list(set(base_episodes))
             self.episodes_to_plot.sort()
+
+    def set_subpolicy_history(self, subpolicy_history):
+        """Method to receive subpolicy history from wrapper"""
+        self.subpolicy_history = subpolicy_history
+
+    def set_wrapper_observations(self, wrapper_observations):
+        """Method to receive wrapper observations from wrapper"""
+        self.wrapper_observations = wrapper_observations
