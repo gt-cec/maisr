@@ -45,7 +45,7 @@ class GenericTeammatePolicy(TeammatePolicy):
                  local_search_policy: SubPolicy,
                  go_to_highvalue_policy: SubPolicy,
                  change_region_subpolicy: SubPolicy,
-                 mode_selector: str, # RL, heuristic, human, or none
+                 mode_selector, # 'RL', 'heuristic', 'human', or None
                  use_collision_avoidance: bool, # If true, approaching threat while in local search will trigger collision avoidance
                  ):
 
@@ -75,6 +75,10 @@ class GenericTeammatePolicy(TeammatePolicy):
                 action = current_subpolicy
             return action
 
+        elif self.mode_selector is None:
+            action = 0 # Always choose local search
+            return action
+
         elif self.mode_selector == 'RlSelector':
             pass
 
@@ -96,75 +100,6 @@ class GenericTeammatePolicy(TeammatePolicy):
     def near_a_threat(self):
         """Return true if near threat and need to call evade"""
         pass
-
-# class GenericTeammatePolicy(TeammatePolicy):
-#     """Heuristic-based teammate policy"""
-#
-#     def __init__(self, strategy_type, config=None):
-#         self.strategy_type = strategy_type
-#
-#         self.config = config or {}
-#         self._name = f"Heuristic_{strategy_type}"
-#         self.current_mode = 0  # 0: local_search, 1: change_region, 2: go_to_threat
-#         self.steps_since_mode_change = 0
-#         self.mode_duration = self.config.get('mode_duration', 50)
-#
-#     def choose_subpolicy(self, observation, env_state):
-#         if self.strategy_type == "aggressive":
-#             return self._aggressive_strategy(observation, env_state)
-#         elif self.strategy_type == "conservative":
-#             return self._conservative_strategy(observation, env_state)
-#         elif self.strategy_type == "adaptive":
-#             return self._adaptive_strategy(observation, env_state)
-#         else:
-#             return self._random_strategy(observation, env_state)
-#
-#     def _aggressive_strategy(self, observation, env_state):
-#         """Always prioritize going to threats"""
-#         return 2  # go_to_threat mode
-#
-#     def _conservative_strategy(self, observation, env_state):
-#         """Prefer local search, avoid threats"""
-#         threats_nearby = self._check_threats_nearby(env_state)
-#         if threats_nearby:
-#             return 1  # change_region to escape
-#         return 0  # local_search
-#
-#     def _adaptive_strategy(self, observation, env_state):
-#         """Switch modes based on game state"""
-#         targets_remaining = env_state.get('targets_remaining', 0)
-#         detection_risk = env_state.get('detection_risk', 0)
-#
-#         if detection_risk > 0.7:
-#             return 1  # change_region
-#         elif targets_remaining > 5:
-#             return 0  # local_search
-#         else:
-#             return 2  # go_to_threat
-#
-#     def _random_strategy(self, observation, env_state):
-#         """Random mode switching with some persistence"""
-#         self.steps_since_mode_change += 1
-#
-#         if self.steps_since_mode_change >= self.mode_duration:
-#             self.current_mode = random.randint(0, 2)
-#             self.steps_since_mode_change = 0
-#
-#         return self.current_mode
-#
-#     def _check_threats_nearby(self, env_state):
-#         """Check if threats are within danger zone"""
-#         # Implement based on your environment's threat detection logic
-#         return env_state.get('threat_distance', float('inf')) < 100
-#
-#     def reset(self):
-#         self.current_mode = 0
-#         self.steps_since_mode_change = 0
-#
-#     @property
-#     def name(self):
-#         return self._name
-
 
 class TeammateManager:
     """Manages pool of teammate policies and selection"""
@@ -348,7 +283,7 @@ class GoToNearestThreat(SubPolicy):
             best_action = adjacent_actions[best_adjacent_idx]
 
         self._last_action = best_action
-        print(f'Heuristic chose action {best_action} targeting unidentified threat')
+        #print(f'[GoToThreat] Heuristic chose action {best_action} targeting unidentified threat')
         return np.int32(best_action)
 
     def has_unidentified_threats_remaining(self, observation) -> bool:
@@ -408,7 +343,7 @@ class EvadeDetection(SubPolicy):
         pass
 
     def act(self, observation):
-        print(f'[EvadeDetection] EVADE TRIGGERED')
+        #print(f'[EvadeDetection] EVADE TRIGGERED')
 
         if self.model:
             action = self.model.predict(observation)
@@ -462,9 +397,9 @@ class EvadeDetection(SubPolicy):
         ], dtype=np.float32)
 
         # Case 1: Inside danger zone - move directly away from threat
-        print(f'threat_distance {threat_distance} <= threat_radius {buffer_radius} = {threat_distance <= buffer_radius})')
+        #print(f'[EvadeDetection] threat_distance {threat_distance} <= threat_radius {buffer_radius} = {threat_distance <= buffer_radius})')
         if threat_distance <= buffer_radius:
-            print('Inside danger zone - evading directly away from threat')
+            #print('[EvadeDetection] Inside danger zone - evading directly away from threat')
 
             # Handle edge case where agent is exactly at threat center
             if threat_distance < 1e-6:  # Very small number to avoid division by zero
@@ -724,7 +659,7 @@ class ChangeRegions(SubPolicy):
     def act(self, observation):
         # Check if we've reached the current target region
         if self.target_region is not None and self._has_reached_target(observation):
-            print(f'Reached target region {self.target_region}, selecting new region')
+            #print(f'[ChangeRegions] Reached target region {self.target_region}, selecting new region')
             self.target_region = None  # Force new selection
             self.steps_since_update = self.update_rate  # Force immediate update
 
@@ -735,7 +670,7 @@ class ChangeRegions(SubPolicy):
                 self.target_region = self.model.predict(observation)
             else:
                 self.target_region = self.heuristic(observation)
-            print(f'Selected new target region: {self.target_region}')
+            #print(f'[ChangeRegions] Selected new target region: {self.target_region}')
 
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
@@ -758,54 +693,6 @@ class ChangeRegions(SubPolicy):
         distance_threshold = 0.15  # Adjust this value as needed (normalized distance)
 
         return agent_distance_to_target <= distance_threshold
-
-    # def heuristic(self, observation):
-    #     """Simple heuristic to choose a region. Can be used if model is not provided"""
-    #
-    #     obs = np.array(observation)
-    #
-    #     # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
-    #     regions_info = []
-    #
-    #     for region_id in range(4):  # 4 regions: NW, NE, SW, SE
-    #         base_idx = region_id * 3
-    #         target_ratio = obs[base_idx]  # Ratio of unknown targets in this region
-    #         agent_distance = obs[base_idx + 1]  # Agent distance to region center
-    #         teammate_distance = obs[base_idx + 2]  # Teammate distance to region center
-    #
-    #         regions_info.append({
-    #             'region_id': region_id,
-    #             'target_ratio': target_ratio,
-    #             'agent_distance': agent_distance,
-    #             'teammate_distance': teammate_distance
-    #         })
-    #
-    #     # Determine which region teammate is likely in
-    #     # Teammate is probably in the region they're closest to
-    #     teammate_distances = [info['teammate_distance'] for info in regions_info]
-    #     teammate_region = np.argmin(teammate_distances)
-    #
-    #     # Sort regions by target density (highest ratio first)
-    #     regions_info.sort(key=lambda x: x['target_ratio'], reverse=True)
-    #
-    #     # Choose the highest density region that doesn't have teammate
-    #     target_region = None
-    #     for region_info in regions_info:
-    #         region_id = region_info['region_id']
-    #
-    #         # Skip if teammate is in this region (with small tolerance for distance comparison)
-    #         if region_id == teammate_region and region_info[
-    #             'teammate_distance'] < 0.3:  # 0.3 is normalized distance threshold
-    #             continue
-    #
-    #         target_region = region_id
-    #         break
-    #
-    #     # Fallback: if all regions have teammate or no targets anywhere, choose the region with highest density
-    #     if target_region is None:
-    #         target_region = regions_info[0]['region_id']
-    #
-    #     return target_region
 
     def heuristic(self, observation):
         """
@@ -839,7 +726,7 @@ class ChangeRegions(SubPolicy):
             no_targets_in_current = current_region_info['target_ratio'] < 0.1  # Less than 10% of targets
 
             if not (teammate_in_current_region or no_targets_in_current):
-                print(f"Continuing with current region {self.target_region}")
+                #print(f"Continuing with current region {self.target_region}")
                 return self.target_region
 
         # Need to select a new region
@@ -858,7 +745,7 @@ class ChangeRegions(SubPolicy):
 
         # If no regions are available (teammate coverage is too broad), fall back to all regions
         if not available_regions:
-            print("Warning: Teammate covers all regions, considering all regions")
+            print("[ChangeRegions] Warning: Teammate covers all regions, considering all regions")
             available_regions = regions_info
 
         # Sort available regions by target density (highest ratio first)
@@ -867,7 +754,7 @@ class ChangeRegions(SubPolicy):
         # Choose the region with highest target density
         target_region = available_regions[0]['region_id']
 
-        print(f"Selected NEW region {target_region} with target ratio {available_regions[0]['target_ratio']:.2f}")
+        #print(f"[ChangeRegions] Selected NEW region {target_region} with target ratio {available_regions[0]['target_ratio']:.2f}")
 
         return target_region
 

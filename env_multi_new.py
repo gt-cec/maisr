@@ -246,8 +246,9 @@ class MAISREnvVec(gym.Env):
 
         self.agents = [] # List of names of all current agents. Typically integers
         self.aircraft_ids = []  # Indices of the aircraft agents
-        self.action_history, self.agent_location_history, self.direct_action_history = [], [], [] # For plotting
-        
+        self.action_history, self.agent_location_history = [], [] # For plotting
+        self.teammate_location_history = []
+
         self.score = 0
         self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
         self.pause_start_time = 0
@@ -640,6 +641,10 @@ class MAISREnvVec(gym.Env):
         self.action_history.append(self.agents[0].waypoint_override)
         self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
+        if self.config['num_aircraft'] == 2:
+            self.teammate_location_history.append(
+                (self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y))
+
 
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
@@ -683,7 +688,7 @@ class MAISREnvVec(gym.Env):
                             "time": self.display_time
                         })
 
-                        print(f"Aircraft {aircraft_idx} identified threat {threat_idx}")
+                        #print(f"Aircraft {aircraft_idx} identified threat {threat_idx}")
                 else:
                     # Reset timer for this specific aircraft-threat combination if not in range
                     self.threat_timers[aircraft_idx, threat_idx] = 0
@@ -1866,7 +1871,10 @@ class MAISREnvVec(gym.Env):
 
             # Extract agent location history (already in centered coordinates)
             agent_x_coords = [pos[0] for pos in self.agent_location_history]
-            agent_y_coords = [pos[1] for pos in self.agent_location_history]  # No flipping needed
+            agent_y_coords = [pos[1] for pos in self.agent_location_history]
+
+            teammate_x_coords = [pos[0] for pos in self.teammate_location_history]
+            teammate_y_coords = [pos[1] for pos in self.teammate_location_history]
 
             # Create a new figure
             plt.figure(figsize=(10, 10))
@@ -1911,6 +1919,11 @@ class MAISREnvVec(gym.Env):
                 plt.plot(agent_x_coords, agent_y_coords, 'g-', alpha=0.7, linewidth=2)
                 plt.scatter(agent_x_coords, agent_y_coords, s=20, c=range(len(agent_x_coords)),
                             cmap='Greens', alpha=0.7, marker='o', label='')
+
+            if teammate_x_coords and teammate_y_coords:
+                plt.plot(teammate_x_coords, teammate_y_coords, 'b-', alpha=0.7, linewidth=2)
+                plt.scatter(teammate_x_coords, teammate_y_coords, s=20, c=range(len(teammate_x_coords)),
+                            cmap='Blues', alpha=0.7, marker='o', label='')
 
             # Only plot waypoint history for waypoint-based action types
             if self.config['action_type'] != 'direct-control':
@@ -1968,12 +1981,6 @@ class MAISREnvVec(gym.Env):
             # Add centered quadrant lines (origin at center)
             plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Horizontal line at y=0
             plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Vertical line at x=0
-
-            # Optional: Add boundary lines to show map edges
-            #plt.axhline(y=map_half_size, color='red', linestyle='--', alpha=0.3, label='Map Boundary')
-            #plt.axhline(y=-map_half_size, color='red', linestyle='--', alpha=0.3)
-            #plt.axvline(x=map_half_size, color='red', linestyle='--', alpha=0.3)
-            #plt.axvline(x=-map_half_size, color='red', linestyle='--', alpha=0.3)
             
             # Save the figure with a timestamp
             filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'

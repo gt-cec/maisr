@@ -1,6 +1,5 @@
 import warnings
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
-
 import gymnasium as gym
 import os
 import numpy as np
@@ -19,9 +18,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
-from utility.league_management import TeammateManager
-
+from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
@@ -33,23 +30,7 @@ def generate_run_name(config):
 
     components = [
         f"{config['n_envs']}envs",
-        #f"obs-{config['obs_type']}",
-        #f"act-{config['action_type']}",
     ]
-
-    # Add critical hyperparameters
-    components.extend([
-        #f"lr-{config['lr']}",
-#        f"bs-{config['batch_size']}",
-        #f"g-{config['gamma']}",
-        # f"fs-{config.get('frame_skip', 1)}",
-        # f"ppoupdates-{config['ppo_update_steps']}",
-        # f"curriculum-{config['use_curriculum']}",
-        # f"rew-wtn-{config['shaping_coeff_wtn']}",
-        # f"rew-prox-{config['shaping_coeff_prox']}",
-        # f"rew-timepenalty-{config['shaping_time_penalty']}",
-        # f"rew-shapedecay-{config['shaping_decay_rate']}",
-    ])
 
     # Add a run identifier (could be auto-incremented or timestamp-based)
     from datetime import datetime
@@ -324,21 +305,18 @@ def setup_teammate_pool():
     teammate_manager.add_heuristic_teammate("adaptive", {"mode_duration": 40})
     teammate_manager.add_heuristic_teammate("random", {"mode_duration": 25})
 
-    # Add RL teammates (when you have trained models)
+    # Add RL teammates
     # teammate_manager.add_rl_teammate("trained_models/teammate_model_1.zip", "AggressiveRL")
     # teammate_manager.add_rl_teammate("trained_models/teammate_model_2.zip", "ConservativeRL")
 
     return teammate_manager
 
-
-# In your training loop
-
-
 def train_modeselector(
         env_config,
         n_envs,
         project_name,
-        #use_normalize,
+        use_normalize,
+        use_teammate_manager,
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
@@ -374,7 +352,10 @@ def train_modeselector(
 
     ################################################ Initialize envs ################################################
 
-    teammate_manager = setup_teammate_pool()
+    if use_teammate_manager:
+        teammate_manager = setup_teammate_pool()
+    else:
+        teammate_manager = None
 
     print(f"Training with {n_envs} environments in parallel")
 
@@ -388,19 +369,28 @@ def train_modeselector(
                 tag=f'train_mp{rank}',
                 seed=seed + rank,
             )
-            # Wrap with local search wrapper
 
-            localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
-            local_search_policy = LocalSearch(model=localsearch_model,norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
-            go_to_highvalue_policy = GoToNearestThreat(model=None)
-            change_region_subpolicy = ChangeRegions(model=None)
+            #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+            local_search_policy = LocalSearch()
+            go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+            change_region_subpolicy = ChangeRegions(model_path=None)
+            evade_policy = None
+
+            teammate = GenericTeammatePolicy(
+                base_env,
+                LocalSearch(model_path=None),
+                GoToNearestThreat(model_path=None),
+                ChangeRegions(model_path=None),
+                None,
+                False)
 
             wrapped_env = MaisrModeSelectorWrapper(
                 base_env,
                 local_search_policy,
                 go_to_highvalue_policy,
                 change_region_subpolicy,
-                teammate_manager=teammate_manager
+                evade_policy,
+                teammate_policy=teammate
             )
 
             wrapped_env = Monitor(wrapped_env)
@@ -410,31 +400,40 @@ def train_modeselector(
         return _init
 
     env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
-    if n_envs > 1:
-        env = SubprocVecEnv(env_fns)
-    else:
-        env = DummyVecEnv(env_fns)
+    if n_envs > 1: env = SubprocVecEnv(env_fns)
+    else: env = DummyVecEnv(env_fns)
 
     env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
 
-    #if use_normalize:
-    env = VecNormalize(env)
+    if use_normalize:
+        env = VecNormalize(env)
 
     # Create eval environment with wrapper
-    base_eval_env = MAISREnvVec(
-        env_config,
+    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
+
+    teammate = GenericTeammatePolicy(
+        base_eval_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
         None,
-        render_mode='headless',
-        tag='eval',
-        run_name=run_name,
-    )
-    eval_env = MaisrModeSelectorWrapper(base_eval_env)
+        False)
+
+    eval_env = MaisrModeSelectorWrapper(
+        base_eval_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        None,
+        teammate_policy=teammate)
+
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
-    #if use_normalize:
-    eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
-    eval_env.obs_rms = env.obs_rms
-    eval_env.ret_rms = env.ret_rms
+
+    if use_normalize:
+        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        eval_env.obs_rms = env.obs_rms
+        eval_env.ret_rms = env.ret_rms
 
     print('Envs created')
 
@@ -551,7 +550,7 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june15.json'
+    config_filename = 'configs/june16_2ship.json'
 
     ################################################
 
@@ -562,19 +561,20 @@ if __name__ == "__main__":
     config['policy_to_train'] = 'local-search'
 
     for num_timesteps in [5e5, 2e6]:
-        for inside_threat_penalty in [0.03, 0.1, 0.15, 0.25]:
+        for inside_threat_penalty in [0]:#[0.03, 0.1, 0.15, 0.25]:
             config['num_timesteps'] = num_timesteps
             config['inside_threat_penalty'] = inside_threat_penalty
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'local_search_{num_timesteps}timesteps_{inside_threat_penalty}threatpenalty_'+generate_run_name(config)
+            run_name = f'modeselector_2ship_{num_timesteps}timesteps_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_modeselector(
                 config,
                 run_name=run_name,
-                #use_normalize=True,
-                n_envs=multiprocessing.cpu_count(),
+                use_normalize=True,
+                use_teammate_manager=False,
+                n_envs=4,#multiprocessing.cpu_count(),
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
