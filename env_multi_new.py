@@ -367,9 +367,9 @@ class MAISREnvVec(gym.Env):
         for i in range(self.config['num_aircraft']):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
-            print(f'Agent {i} spawned at {agent_x, agent_y}')
+            #print(f'Agent {i} spawned at {agent_x, agent_y}')
 
-        self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y = agent_y, agent_x
+        #self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y = agent_y, agent_x
 
         if self.config['num_aircraft'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
@@ -1516,14 +1516,14 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
-        if agent_id == 0:
-            try:
-                print(f'[Process action] {action} ({type(action)} (length {len(action)}, ndim {action.ndim}')
-            except:
-                print(f'[Process action] {action} ({type(action)} (length , ndim {action.ndim}')
+        # if agent_id == 0:
+        #     try:
+        #         #print(f'[Process action] {action} ({type(action)} (length {len(action)}, ndim {action.ndim}')
+        #     except:
+        #         #print(f'[Process action] {action} ({type(action)} (length , ndim {action.ndim}')
         try:
             if len(action) == 2:
-                print(f'Action is {action} (type {type(action)}')
+                #print(f'Action is {action} (type {type(action)}')
                 action = action.flatten()
                 if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
                     raise ValueError('ERROR: Actions are not normalized to -1, +1')
@@ -1532,7 +1532,7 @@ class MAISREnvVec(gym.Env):
                 x_coord = action[0]# * map_half_size
                 y_coord = action[1]# * map_half_size
                 waypoint = (float(x_coord), float(y_coord))
-                if agent_id == 0: print(f'[Process action] {action} converted to {waypoint}')
+                #if agent_id == 0: print(f'[Process action] {action} converted to {waypoint}')
                 return waypoint
         except:
             pass

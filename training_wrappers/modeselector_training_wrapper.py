@@ -190,7 +190,8 @@ class MaisrModeSelectorWrapper(gym.Env):
             if subpolicy_action[1] == None:
                 subpolicy_action = subpolicy_action[0]
 
-        subpolicy_action = np.int32(subpolicy_action)
+        if isinstance(subpolicy_action, int):
+            subpolicy_action = np.int32(subpolicy_action)
 
         print(f'MODES: {self.subpolicy_choice}, {self.teammate_subpolicy_choice}')
 

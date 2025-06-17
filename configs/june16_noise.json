@@ -16,7 +16,7 @@
 	"seed": 42,
 
 	"obs_type": "nearest",
-	"obs_noise": 0,
+	"obs_noise_std": 0,
 	"action_noise_std": 0,
 	"action_type": "Discrete16",
 	"num_observed_targets": 4,
