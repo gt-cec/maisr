@@ -39,17 +39,17 @@ if __name__ == "__main__":
 
     # Instantiate subpolicies
     #local_search_policy = LocalSearch(model=None)
-    localsearch_model_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
-    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
+    localsearch_model_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envs_maisr_trained_model.zip'
+    localsearch_normstats_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envslocal_search_norm_stats.npy'
     local_search_policy = LocalSearch(
-        #model_path = localsearch_model_path,
+        model_path = localsearch_model_path,
         norm_stats_filepath = localsearch_normstats_path
     )
 
-    env = MaisrLocalSearchWrapper(base_env)
+    env = MaisrLocalSearchWrapper(base_env, obs_noise_std=0)
     if use_normalize:
         env = DummyVecEnv([lambda: env])
-        env = VecNormalize.load('./trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_vecnormalize.pkl', env)
+        env = VecNormalize.load('./trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envslocal_search_vecnormalize.pkl', env)
         env.training = False
         env.norm_Reward = False
         #env = VecNormalize(env, norm_reward=False, training=False)
@@ -58,9 +58,8 @@ if __name__ == "__main__":
     ###################################################################################################################
 
     key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2}
-    all_observations = []
-    episode_rewards = []
-    all_actions = []
+    all_observations, episode_rewards,all_actions = [],[],[]
+
 
     for episode in range(3):
         if use_normalize:
@@ -90,6 +89,8 @@ if __name__ == "__main__":
                 break
 
             action, _ = local_search_policy.act(obs)
+            action = np.int32(action)
+            print(f'[Play] Action = {action} (type {type(action)})')
 
             # Store data
             episode_observations.append(obs.copy())

@@ -589,7 +589,7 @@ class LocalSearch(SubPolicy):
             action = self.model.predict(observation)
         else:
             action = self.heuristic(observation)
-        return action
+        return np.int32(action)
 
     def heuristic(self, observation):
         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
