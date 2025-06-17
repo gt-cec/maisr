@@ -425,6 +425,7 @@ class MAISREnvVec(gym.Env):
 
     def _single_step(self, action):
         """
+
         """
 
         self.step_count_inner += 1
@@ -444,8 +445,20 @@ class MAISREnvVec(gym.Env):
 
 
         ############################################### Process action ################################################
-        waypoint = self.process_action(action)
-        #self.agents[0].waypoint_override = waypoint
+
+
+        #if isinstance(action, (np.int32, np.int64, int)):
+            #if action.ndim == 1 and len(action) == 1:
+            # waypoint = self._direction_to_waypoint(action)
+
+        if isinstance(action, np.ndarray) and len(action) == 2:
+            #print(f'Input to _single_step is {action} ({type(action)}) (ndim {action.ndim}, len {len(action)}')
+            waypoint = self._denormalize_waypoint(action)
+
+        else:
+            #print(f'Input to _single_step is {action} ({type(action)})')
+            waypoint = self._direction_to_waypoint(action)
+
         self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
 
         # Log actions to action_history plot
@@ -1506,6 +1519,75 @@ class MAISREnvVec(gym.Env):
         return hostile, friendly, unknown
 
     
+    def _direction_to_waypoint(self, action, agent_id=0):
+        """
+        Args:
+            action (ndarray, size 1): Agent discrete action to convert to waypoint coords
+
+        Returns:
+            waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+        """
+        #if action.ndim < 2:
+        action = int(action)
+
+        direction_map = {
+            0: (0, 1),  # North (0°)
+            1: (0.383, 0.924),  # NNE (22.5°)
+            2: (0.707, 0.707),  # NE (45°)
+            3: (0.924, 0.383),  # ENE (67.5°)
+            4: (1, 0),  # East (90°)
+            5: (0.924, -0.383),  # ESE (112.5°)
+            6: (0.707, -0.707),  # SE (135°)
+            7: (0.383, -0.924),  # SSE (157.5°)
+            8: (0, -1),  # South (180°)
+            9: (-0.383, -0.924),  # SSW (202.5°)
+            10: (-0.707, -0.707),  # SW (225°)
+            11: (-0.924, -0.383),  # WSW (247.5°)
+            12: (-1, 0),  # West (270°)
+            13: (-0.924, 0.383),  # WNW (292.5°)
+            14: (-0.707, 0.707),  # NW (315°)
+            15: (-0.383, 0.924)  # NNW (337.5°)
+        }
+
+        current_x = self.agents[self.aircraft_ids[agent_id]].x
+        current_y = self.agents[self.aircraft_ids[agent_id]].y
+
+        dx_norm, dy_norm = direction_map[action]
+
+        # Calculate waypoint at fixed distance in chosen direction
+        waypoint_distance = 50
+        x_coord = current_x + (dx_norm * waypoint_distance)
+        y_coord = current_y + (dy_norm * waypoint_distance)
+
+        # Clip to map boundaries
+        map_half_size = self.config["gameboard_size"] / 2
+        x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+        y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+
+        waypoint = (float(x_coord), float(y_coord))
+        return waypoint
+
+    def _denormalize_waypoint(self, action):
+        """
+
+        Args:
+            action (ndarray, size 2): Normalized (x,y) waypoint output from agent
+
+        Returns:
+            waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+        """
+        #print(f'Action is {action} (type {type(action)}')
+        action = action.flatten()
+        if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+            raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
+        map_half_size = self.config["gameboard_size"] / 2
+        x_coord = action[0] * map_half_size
+        y_coord = action[1] * map_half_size
+        waypoint = (float(x_coord), float(y_coord))
+        return waypoint
+
+
     def process_action(self, action, agent_id=0):
         """
         If the action type is Discrete8, this converts the discrete action chosen into an x,y in the appropriate direction
@@ -1516,11 +1598,6 @@ class MAISREnvVec(gym.Env):
         Returns:
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
-        # if agent_id == 0:
-        #     try:
-        #         #print(f'[Process action] {action} ({type(action)} (length {len(action)}, ndim {action.ndim}')
-        #     except:
-        #         #print(f'[Process action] {action} ({type(action)} (length , ndim {action.ndim}')
         try:
             if len(action) == 2:
                 #print(f'Action is {action} (type {type(action)}')

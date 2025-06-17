@@ -42,7 +42,7 @@ if __name__ == "__main__":
     localsearch_model_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_700000.0timesteps_0.05obs_noise_0617_0002_6envslocal_search_norm_stats.npy'
     local_search_policy = LocalSearch(
-        model_path = localsearch_model_path,
+        #model_path = localsearch_model_path,
         norm_stats_filepath = localsearch_normstats_path
     )
 
