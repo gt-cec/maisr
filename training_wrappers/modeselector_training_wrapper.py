@@ -174,6 +174,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif self.subpolicy_choice == 1:  # Change region
             subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
+            #subpolicy_action = self.env.process_action(subpolicy_action)
             print(f'Change region waypoint: {subpolicy_action}')
 
         elif self.subpolicy_choice == 2:  # go to high value target
@@ -186,7 +187,8 @@ class MaisrModeSelectorWrapper(gym.Env):
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
 
         if isinstance(subpolicy_action, tuple):
-            subpolicy_action = subpolicy_action[0]
+            if subpolicy_action[1] == None:
+                subpolicy_action = subpolicy_action[0]
 
         subpolicy_action = np.int32(subpolicy_action)
 

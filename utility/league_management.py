@@ -829,9 +829,15 @@ class ChangeRegions(SubPolicy):
         #     3: np.array([0.5, -0.5])  # SE
         # }
         centers = {
-            0: np.array([0.25, 0.25]),  # NW
-            1: np.array([0.75, 0.25]),  # NE
-            2: np.array([0.25, 0.75]),  # SW
-            3: np.array([0.75, 0.75])  # SE
+            0: np.array([-75, 75]),  # NW
+            1: np.array([75, 75]),  # NE
+            2: np.array([-75, -75]),  # SW
+            3: np.array([75, -75])  # SE
         }
+        # centers = {
+        #     0: np.array([0.25, 0.25]),  # NW
+        #     1: np.array([0.75, 0.25]),  # NE
+        #     2: np.array([0.25, 0.75]),  # SW
+        #     3: np.array([0.75, 0.75])  # SE
+        # }
         return centers.get(region_id, np.array([0.0, 0.0]))
