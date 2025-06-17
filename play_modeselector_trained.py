@@ -115,6 +115,15 @@ if __name__ == "__main__":
             done = terminated or truncated
 
             step_count += 1
-            env.render()
+
+            # Get current subpolicy info and render indicator
+            if hasattr(env, 'get_current_subpolicy_info'):
+                subpolicy_id, subpolicy_name = env.get_current_subpolicy_info()
+                env.render()
+                # Render the subpolicy indicator after the main render
+                env.env.render_subpolicy_indicator(subpolicy_id, subpolicy_name)
+                pygame.display.update()  # Update display after adding indicator
+            else:
+                env.render()
 
     env.close()

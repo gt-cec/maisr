@@ -283,6 +283,10 @@ class MaisrModeSelectorWrapper(gym.Env):
         if hasattr(self.env, 'set_subpolicy_history'):
             self.env.set_subpolicy_history(self.subpolicy_history)
 
+        # Start logging final wrapper reward after step 100 (hack to make sure we don't terminate without it
+        if self.env.step_count_outer >= 100 or terminated or truncated:
+            self.env.final_wrapper_reward = self.episode_reward
+
         if terminated or truncated:
             self.print_episode_statistics()
             self.env.final_wrapper_reward = self.episode_reward
@@ -977,3 +981,16 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Calculate percentages
         print(
             f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.num_switches} policy switches ({self.num_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")
+
+    def get_current_subpolicy_info(self):
+        """Return current subpolicy information for display"""
+        if self.subpolicy_choice is None:
+            return 0, "Local Search"  # Default
+
+        mode_names = {
+            0: "Local Search",
+            1: "Change Region",
+            2: "Go to Threat",
+            3: "Evade"
+        }
+        return self.subpolicy_choice, mode_names.get(self.subpolicy_choice, "Unknown")

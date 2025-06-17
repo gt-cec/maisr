@@ -1521,6 +1521,54 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
+    def render_subpolicy_indicator(self, subpolicy_id, subpolicy_name):
+        """Render a colored square indicating the current active subpolicy"""
+        if self.render_mode != 'human':
+            return
+
+        # Define colors for each subpolicy
+        subpolicy_colors = {
+            0: (0, 200, 0),  # Green for Local Search
+            1: (0, 100, 255),  # Blue for Change Region
+            2: (255, 50, 50),  # Red for Go to Threat
+            3: (255, 165, 0)  # Orange for Evade
+        }
+
+        # Position the indicator in the top-right corner of the game area
+        indicator_size = 120
+        indicator_x = self.config["gameboard_size"] - indicator_size - 10
+        indicator_y = 10
+
+        # Get the color for this subpolicy
+        color = subpolicy_colors.get(subpolicy_id, (128, 128, 128))  # Gray for unknown
+
+        # Draw the colored square
+        pygame.draw.rect(self.window, color,
+                         (indicator_x, indicator_y, indicator_size, indicator_size))
+
+        # Draw a black border around the square
+        pygame.draw.rect(self.window, (0, 0, 0),
+                         (indicator_x, indicator_y, indicator_size, indicator_size), 3)
+
+        # Add the text
+        font = pygame.font.SysFont(None, 24)
+        text_surface = font.render(subpolicy_name, True, (255, 255, 255))
+
+        # Center the text in the square
+        text_rect = text_surface.get_rect(
+            center=(indicator_x + indicator_size // 2, indicator_y + indicator_size // 2)
+        )
+
+        # Add a semi-transparent background for better text readability
+        text_bg_rect = text_rect.inflate(10, 6)
+        text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height))
+        text_bg_surface.set_alpha(128)
+        text_bg_surface.fill((0, 0, 0))
+        self.window.blit(text_bg_surface, text_bg_rect)
+
+        # Draw the text
+        self.window.blit(text_surface, text_rect)
+
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
         valid_action_types = ['Discrete8', 'Discrete16', 'continuous-normalized']  # 'continuous_normalized
@@ -2059,10 +2107,10 @@ class MAISREnvVec(gym.Env):
                                 cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints', zorder=1)
 
                     # Add starting and ending points with different markers
-                    plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint',
-                                zorder=4)
-                    plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint',
-                                zorder=4)
+                    # plt.scatter(x_coords[0], y_coords[0], s=120, color='blue', marker='*', label='Start Waypoint',
+                    #             zorder=4)
+                    # plt.scatter(x_coords[-1], y_coords[-1], s=120, color='cyan', marker='*', label='End Waypoint',
+                    #             zorder=4)
 
             # Add start/end position markers
             if agent_x_coords and agent_y_coords:
@@ -2085,7 +2133,7 @@ class MAISREnvVec(gym.Env):
             plt.title(plot_title)
 
             # Create legend with subpolicy colors
-            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1), fontsize='small')
+            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(1.00, 1), fontsize='small')
 
             # Add a second legend for other elements if needed
             other_elements = []
