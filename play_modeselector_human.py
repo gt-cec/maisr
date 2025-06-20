@@ -10,6 +10,9 @@ from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSe
 import json
 import datetime
 import math
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def calculate_spatial_coverage(positions, gameboard_size):
@@ -489,13 +492,196 @@ def detect_stuck_agent(positions, movement_threshold, check_window, episode_num)
 
     return stuck_periods
 
+def create_analysis_plots(episode_data):
+    """Create analysis plots for episode data"""
+
+    # Create figure with subplots
+    fig = plt.figure(figsize=(16, 12))
+
+    # Extract data for plotting
+    episodes = [ep['episode'] for ep in episode_data]
+    rewards = [ep['total_reward'] for ep in episode_data]
+    target_ids = [ep['target_ids'] for ep in episode_data]
+    threat_ids = [ep['threat_ids'] for ep in episode_data]
+
+    # Calculate average teammate distance for each episode
+    avg_teammate_distances = []
+    for ep in episode_data:
+        if ('positions_visited' in ep and ep['positions_visited'] and
+                'teammate_positions_visited' in ep and ep['teammate_positions_visited']):
+
+            agent_positions = ep['positions_visited']
+            teammate_positions = ep['teammate_positions_visited']
+
+            # Calculate distance at each time step (use minimum length in case of mismatch)
+            min_length = min(len(agent_positions), len(teammate_positions))
+            distances = []
+
+            for i in range(min_length):
+                agent_pos = agent_positions[i]
+                teammate_pos = teammate_positions[i]
+                distance = math.sqrt((agent_pos[0] - teammate_pos[0]) ** 2 +
+                                     (agent_pos[1] - teammate_pos[1]) ** 2)
+                distances.append(distance)
+
+            # Calculate average distance for this episode
+            avg_distance = sum(distances) / len(distances) if distances else 150
+            avg_teammate_distances.append(avg_distance)
+        else:
+            raise ValueError
+            # Fallback if data is missing
+            #avg_teammate_distances.append(150)  # Default value
+
+    # Plot 1: Reward vs Average Teammate Distance
+    plt.subplot(2, 3, 1)
+    plt.scatter(avg_teammate_distances, rewards, alpha=0.7, c=episodes, cmap='viridis')
+    plt.xlabel('Average Teammate Distance (pixels)')
+    plt.ylabel('Total Reward')
+    plt.title('Reward vs Average Teammate Distance')
+    plt.colorbar(label='Episode Number')
+
+    # Add trend line
+    if len(avg_teammate_distances) > 1:
+        z = np.polyfit(avg_teammate_distances, rewards, 1)
+        p = np.poly1d(z)
+        plt.plot(sorted(avg_teammate_distances), p(sorted(avg_teammate_distances)), "r--", alpha=0.8)
+
+    # Plot 2: Reward vs Target IDs
+    plt.subplot(2, 3, 2)
+    plt.scatter(target_ids, rewards, alpha=0.7, c=episodes, cmap='viridis', s=60)
+    plt.xlabel('Target IDs Gained')
+    plt.ylabel('Total Reward')
+    plt.title('Reward vs Target IDs')
+    plt.colorbar(label='Episode Number')
+
+    # Add trend line
+    if len(target_ids) > 1 and len(set(target_ids)) > 1:
+        z = np.polyfit(target_ids, rewards, 1)
+        p = np.poly1d(z)
+        target_range = np.linspace(min(target_ids), max(target_ids), 100)
+        plt.plot(target_range, p(target_range), "r--", alpha=0.8)
+
+    # Show correlation coefficient
+    if len(target_ids) > 1:
+        corr = np.corrcoef(target_ids, rewards)[0, 1]
+        plt.text(0.05, 0.95, f'Correlation: {corr:.3f}', transform=plt.gca().transAxes,
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    # Plot 3: Reward vs Threat IDs
+    plt.subplot(2, 3, 3)
+    plt.scatter(threat_ids, rewards, alpha=0.7, c=episodes, cmap='viridis', s=60)
+    plt.xlabel('Threat IDs Gained')
+    plt.ylabel('Total Reward')
+    plt.title('Reward vs Threat IDs')
+    plt.colorbar(label='Episode Number')
+
+    # Add trend line if there's variation in threat IDs
+    if len(threat_ids) > 1 and len(set(threat_ids)) > 1:
+        z = np.polyfit(threat_ids, rewards, 1)
+        p = np.poly1d(z)
+        threat_range = np.linspace(min(threat_ids), max(threat_ids), 100)
+        plt.plot(threat_range, p(threat_range), "r--", alpha=0.8)
+
+    # Show correlation coefficient
+    if len(threat_ids) > 1:
+        corr = np.corrcoef(threat_ids, rewards)[0, 1]
+        plt.text(0.05, 0.95, f'Correlation: {corr:.3f}', transform=plt.gca().transAxes,
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    # Plot 4: 3D Plot - Reward vs Target IDs and Threat IDs
+    ax = fig.add_subplot(2, 3, 4, projection='3d')
+    scatter = ax.scatter(target_ids, threat_ids, rewards, c=rewards, cmap='coolwarm', s=60, alpha=0.8)
+    ax.set_xlabel('Target IDs Gained')
+    ax.set_ylabel('Threat IDs Gained')
+    ax.set_zlabel('Total Reward')
+    ax.set_title('3D: Reward vs Target & Threat IDs')
+    plt.colorbar(scatter, ax=ax, label='Episode Number', shrink=0.6)
+
+    # Plot 5: Efficiency Analysis
+    plt.subplot(2, 3, 5)
+    efficiency_scores = [ep['efficiency_score'] for ep in episode_data]
+    steps = [ep['steps'] for ep in episode_data]
+    plt.scatter(steps, efficiency_scores, alpha=0.7, c=rewards, cmap='RdYlGn', s=60)
+    plt.xlabel('Episode Steps')
+    plt.ylabel('Efficiency Score (Targets/Step)')
+    plt.title('Efficiency vs Episode Length')
+    plt.colorbar(label='Total Reward')
+
+    # Plot 6: Subpolicy Usage Effectiveness
+    plt.subplot(2, 3, 6)
+
+    # Calculate dominant subpolicy for each episode
+    dominant_subpolicies = []
+    for ep in episode_data:
+        usage = ep.get('subpolicy_usage', {0: 0, 1: 0, 2: 0})
+        dominant = max(usage.keys(), key=lambda k: usage[k])
+        dominant_subpolicies.append(dominant)
+
+    # Group rewards by dominant subpolicy
+    subpolicy_names = {0: "Local Search", 1: "Change Region", 2: "Go to Threat"}
+    colors = {0: 'blue', 1: 'green', 2: 'red'}
+
+    for policy_id in [0, 1, 2]:
+        policy_episodes = [i for i, dom in enumerate(dominant_subpolicies) if dom == policy_id]
+        if policy_episodes:
+            policy_rewards = [rewards[i] for i in policy_episodes]
+            policy_targets = [target_ids[i] for i in policy_episodes]
+            plt.scatter(policy_targets, policy_rewards,
+                        label=subpolicy_names[policy_id],
+                        color=colors[policy_id], alpha=0.7, s=60)
+
+    plt.xlabel('Target IDs Gained')
+    plt.ylabel('Total Reward')
+    plt.title('Reward vs Targets by Dominant Subpolicy')
+    plt.legend()
+
+    # Adjust layout and save
+    plt.tight_layout()
+
+    # Save the figure
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    plot_filename = f"./logs/env_tests/MS_analysis_plots_{timestamp}.png"
+    plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
+    plt.show()
+
+    print(f"\nAnalysis plots saved to {plot_filename}")
+
+    # Additional statistical summary
+    print("\n=== CORRELATION ANALYSIS ===")
+    if len(set(target_ids)) > 1:
+        target_reward_corr = np.corrcoef(target_ids, rewards)[0, 1]
+        print(f"Target IDs vs Reward correlation: {target_reward_corr:.3f}")
+
+    if len(set(threat_ids)) > 1:
+        threat_reward_corr = np.corrcoef(threat_ids, rewards)[0, 1]
+        print(f"Threat IDs vs Reward correlation: {threat_reward_corr:.3f}")
+
+    if len(set(avg_teammate_distances)) > 1:
+        distance_reward_corr = np.corrcoef(avg_teammate_distances, rewards)[0, 1]
+        print(f"Teammate Distance vs Reward correlation: {distance_reward_corr:.3f}")
+
+    efficiency_reward_corr = np.corrcoef(efficiency_scores, rewards)[0, 1]
+    print(f"Efficiency vs Reward correlation: {efficiency_reward_corr:.3f}")
+
+    # Subpolicy effectiveness summary
+    print(f"\n=== SUBPOLICY EFFECTIVENESS ===")
+    for policy_id in [0, 1, 2]:
+        policy_episodes = [ep for ep in episode_data if
+                           max(ep['subpolicy_usage'].keys(), key=lambda k: ep['subpolicy_usage'][k]) == policy_id]
+        if policy_episodes:
+            avg_reward = sum(ep['total_reward'] for ep in policy_episodes) / len(policy_episodes)
+            avg_targets = sum(ep['target_ids'] for ep in policy_episodes) / len(policy_episodes)
+            print(
+                f"{subpolicy_names[policy_id]}: {len(policy_episodes)} episodes, avg reward: {avg_reward:.2f}, avg targets: {avg_targets:.1f}")
+
+
 
 
 if __name__ == "__main__":
 
     config_filename = 'configs/june20_leagues.json'
     league_type = 'strategy_diverse'
-    num_episodes = 10
+    num_episodes = 30
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
@@ -574,6 +760,7 @@ if __name__ == "__main__":
         distance_traveled = 0
         last_position = None
         positions_visited = []
+        teammate_positions_visited = []
         target_discovery_times = {}
         threat_discovery_times = {}
 
@@ -623,7 +810,9 @@ if __name__ == "__main__":
 
             # Track position and distance
             current_pos = (env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)
+            teammate_current_pos = (env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
             positions_visited.append(current_pos)
+            teammate_positions_visited.append(teammate_current_pos)
 
             if last_position is not None:
                 distance_traveled += math.sqrt((current_pos[0] - last_position[0]) ** 2 +
@@ -694,6 +883,8 @@ if __name__ == "__main__":
             'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
             'teammate_switches': teammate_switches,
             'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+            'positions_visited': positions_visited,
+            'teammate_positions_visited': teammate_positions_visited,
 
             # Performance metrics
             'distance_traveled': distance_traveled,
@@ -809,3 +1000,6 @@ print(f"Average reward per episode: {total_reward / len(episode_data):.2f}")
 
 # Run sanity checks
 sanity_results = run_sanity_checks(episode_data)
+
+# Run the plotting function
+create_analysis_plots(episode_data)
