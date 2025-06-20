@@ -253,6 +253,7 @@ class MAISREnvVec(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.init = True
+        self.failed = False # Failure if >2 threat IDs
 
         self.id_requested = False
 
@@ -420,6 +421,8 @@ class MAISREnvVec(gym.Env):
         info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
         info['new_detections'] = self.detections - prev_detections
 
+        self.state = self.get_state()
+
         return observation, total_reward, self.terminated, self.truncated, info
 
 
@@ -525,11 +528,11 @@ class MAISREnvVec(gym.Env):
                     })
 
                 # Handle aircraft being detected by high value targets
-                if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
-                    if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
-                        self.detections += 1
-                        new_reward['detections'] += 1
-                        info["detections"] = self.detections
+                # if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
+                #     if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
+                #         self.detections += 1
+                #         new_reward['detections'] += 1
+                #         info["detections"] = self.detections
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
 
@@ -565,9 +568,15 @@ class MAISREnvVec(gym.Env):
         info["potential_gain"] = potential_gain
 
         info['done'] = self.terminated or self.truncated
+        info['failed'] = getattr(self, 'failed', False)
         info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
 
+        if self.num_threats_identified > 2: # TODO testing this
+            self.terminated = True
+            self.failed = True
+
         if self.terminated or self.truncated:
+            if not self.failed:
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.max_steps/self.config['frame_skip'] - self.step_count_outer,0)} outer steps early')
             if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
@@ -601,27 +610,6 @@ class MAISREnvVec(gym.Env):
                         normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
                         penalty_multiplier = 0.4 * (1.0 - normalized_distance)
                         threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
-
-        # if hasattr(self, 'threat'):
-        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
-        #         threat_pos = np.array([self.threat[0], self.threat[1]])
-        #         distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-        #
-        #         threat_radius = self.config['threat_radius']
-        #         warning_radius = threat_radius * 1.5  # 50% larger than threat radius
-        #
-        #         if distance_to_threat <= threat_radius:
-        #             # Maximum penalty when at center, decreasing linearly to zero at radius edge
-        #             normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
-        #             penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
-        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
-        #
-        #         elif distance_to_threat <= warning_radius:
-        #             # Warning zone - penalty decreases from 50% to 0% as distance increases
-        #             normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-        #             penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
-        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
 
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
@@ -668,6 +656,62 @@ class MAISREnvVec(gym.Env):
         # progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
 
         return -nearest_distance #* progress_multiplier
+
+    def get_state(self):
+        """
+        Returns the full state of the environment as a dictionary.
+        Returns:
+            dict: Complete state information organized as:
+                - "targets": dict with target_id keys, each containing x, y, identified
+                - "agent_0": dict with x, y coordinates
+                - "agent_1": dict with x, y coordinates
+                - "threats": dict with threat_id keys, each containing x, y, identified
+        """
+
+        state = {
+            "targets": {},
+            "agent_0": {},
+            "agent_1": {},
+            "threats": {}
+        }
+
+        # Add target information
+        for i in range(self.config['num_targets']):
+            target_id = f"target_{int(self.targets[i, 0])}"  # Use target ID from column 0
+            state["targets"][target_id] = {
+                "x": float(self.targets[i, 3]),  # x coordinate
+                "y": float(self.targets[i, 4]),  # y coordinate
+                "identified": bool(self.targets[i, 2] >= 1.0)  # True if info_level >= 1.0
+            }
+
+        # Add aircraft agent information
+        for i in range(min(2, len(self.aircraft_ids))):  # Support up to 2 agents
+            agent_key = f"agent_{i}"
+            if i < len(self.aircraft_ids):
+                agent_idx = self.aircraft_ids[i]
+                state[agent_key] = {
+                    "x": float(self.agents[agent_idx].x),
+                    "y": float(self.agents[agent_idx].y)
+                }
+            else:
+                # If agent doesn't exist, set to None or default values
+                state[agent_key] = {
+                    "x": None,
+                    "y": None
+                }
+
+        # Add threat information
+        if hasattr(self, 'threats'):
+            for i in range(len(self.threats)):
+                threat_id = f"threat_{i}"
+                state["threats"][threat_id] = {
+                    "x": float(self.threats[i, 0]),
+                    "y": float(self.threats[i, 1]),
+                    "identified": bool(self.threat_identified[i])
+                }
+
+        self.state = state
+        return self.state
 
     def get_observation(self):
         """Main function to return the observation vector. Calls specific observation functions depending on obs type. """

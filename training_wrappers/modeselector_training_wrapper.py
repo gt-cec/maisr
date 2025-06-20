@@ -86,7 +86,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
     def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
-        self.num_switches = 0
+        self.total_switches = 0
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
@@ -109,10 +109,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         ######################## Choose a subpolicy ########################
         # Check if we need to evade with direct tangential movement
         if self.near_threat() and not np.int32(action) == 2:
-            # Compute direct tangential escape action
 
+            # Compute direct tangential escape action
             escape_action = self.compute_tangential_escape_action()
-            #print(f'Escape action {escape_action} ({type(escape_action)})')
 
             # Process teammate's action if needed
             if self.current_teammate and self.env.config['num_aircraft'] >= 2:
@@ -161,7 +160,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             # Track policy switching for penalty later
             self.switched_policies = False
             if self.last_action != action:
-                self.num_switches += 1
+                self.total_switches += 1
                 self.switched_policies = True
 
             self.subpolicy_choice = action
@@ -233,6 +232,11 @@ class MaisrModeSelectorWrapper(gym.Env):
         info = base_info
         terminated = base_terminated
         truncated = base_truncated
+
+        # Add mode selector specific info for logging
+        info['policy_switches'] = getattr(self, 'total_switches', 0)
+        info['final_subpolicy'] = self.subpolicy_choice
+        info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
 
         self.last_action = action
         self.steps_since_last_selection += 1
