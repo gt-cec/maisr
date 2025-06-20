@@ -34,7 +34,7 @@ class TeammatePolicy(ABC):
 class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
-    def __init__(self, league_type="baseline", subpolicies=None):
+    def __init__(self,league_type="baseline", subpolicies=None):
         """
         Initialize teammate manager with specified league type.
 
@@ -194,6 +194,18 @@ class HeuristicAgent:
         self.risk_tolerance = risk_tolerance
         self.spatial_coord = spatial_coord
 
+        # Anti-oscillation state tracking
+        self.last_subpolicy = None
+        self.subpolicy_commit_steps = 0
+        self.min_commit_duration = 15  # Minimum steps to stick with a subpolicy
+        self.changeregion_cooldown = 0  # Steps remaining before can choose changeregion again
+        self.changeregion_cooldown_duration = 10  # Steps to wait after switching away from changeregion
+
+        # Target-rich detection with hysteresis
+        self.target_rich_threshold_high = 0.45  # Threshold to START considering quadrant target-rich
+        self.target_rich_threshold_low = 0.15  # Threshold to STOP considering quadrant target-rich
+        self.currently_consider_target_rich = False  # Current state with hysteresis
+
         # Validate configuration
         valid_risk_levels = ["low", "medium", "high", "extreme"]
         valid_spatial_levels = ["none", "some", "high"]
@@ -217,18 +229,78 @@ class HeuristicAgent:
         Returns:
             int: Subpolicy choice (0=localsearch, 1=changeregion, 2=gotothreat)
         """
+        # Update cooldowns
+        if self.changeregion_cooldown > 0:
+            self.changeregion_cooldown -= 1
+
         # If mode_selector is "none", always choose localsearch
         if self.mode_selector == "none":
+            self._update_tracking(0)
+            print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
             return 0
 
         # Check if we should choose gotothreat based on risk tolerance and detections
+        detections = env.num_threats_identified
         should_go_to_threat = self._should_go_to_threat(env)
 
         if should_go_to_threat:
+            self._update_tracking(2)
+            print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
             return 2  # gotothreat
+
+        # Check if we should stick with current subpolicy to avoid oscillation
+        if (self.last_subpolicy is not None and
+                self.subpolicy_commit_steps < self.min_commit_duration):
+
+            # Don't stick with changeregion if we're in cooldown
+            if self.last_subpolicy == 1 and self.changeregion_cooldown > 0:
+                choice = 0  # Switch to localsearch
+                reason = "changeregion_cooldown"
+            else:
+                choice = self.last_subpolicy
+                reason = f"committed_for_{self.subpolicy_commit_steps}_steps"
+
+            self._update_tracking(choice)
+            action_name = ["localsearch", "changeregion", "gotothreat"][choice]
+            print(f"[HeuristicAgent] {reason} -> {action_name}({choice})")
+            return choice
+
+        # Choose between localsearch (0) and changeregion (1) based on spatial coordination
+        choice = self._choose_search_strategy(env, agent_id)
+
+        # Apply changeregion cooldown
+        if choice == 1 and self.changeregion_cooldown > 0:
+            choice = 0  # Force localsearch if changeregion is in cooldown
+            reason = "changeregion_in_cooldown"
         else:
-            # Choose between localsearch (0) and changeregion (1) based on spatial coordination
-            return self._choose_search_strategy(env, agent_id)
+            # Add debugging for the search strategy choice
+            if self.spatial_coord == "none":
+                reason = "spatial_coord=none"
+            elif self.spatial_coord == "some":
+                reason = f"spatial_coord=some, target_rich_hysteresis={self.currently_consider_target_rich}"
+            elif self.spatial_coord == "high":
+                same_quadrant = self._agents_in_same_quadrant(env, agent_id)
+                reason = f"spatial_coord=high, same_quadrant={same_quadrant}"
+            else:
+                reason = "default"
+
+        # Start cooldown if switching away from changeregion
+        if self.last_subpolicy == 1 and choice != 1:
+            self.changeregion_cooldown = self.changeregion_cooldown_duration
+
+        self._update_tracking(choice)
+        action_name = ["localsearch", "changeregion", "gotothreat"][choice]
+        print(
+            f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
+        return choice
+
+    def _update_tracking(self, chosen_subpolicy):
+        """Update internal tracking for anti-oscillation"""
+        if self.last_subpolicy == chosen_subpolicy:
+            self.subpolicy_commit_steps += 1
+        else:
+            self.subpolicy_commit_steps = 1
+        self.last_subpolicy = chosen_subpolicy
 
     def _should_go_to_threat(self, env):
         """
@@ -240,7 +312,7 @@ class HeuristicAgent:
         Returns:
             bool: True if should choose gotothreat, False otherwise
         """
-        detections = env.detections
+        detections = env.num_threats_identified
 
         if self.risk_tolerance == "low":
             return False  # Never choose gotothreat
@@ -270,7 +342,7 @@ class HeuristicAgent:
         elif self.spatial_coord == "some":
             # Choose changeregion if there's a quadrant with lots of targets
             # and neither agent nor teammate is in that quadrant
-            return self._check_target_rich_quadrant(env, agent_id)
+            return self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
 
         elif self.spatial_coord == "high":
             # Always choose changeregion if both agents are in the same quadrant
@@ -281,9 +353,9 @@ class HeuristicAgent:
 
         return 0  # Default to localsearch
 
-    def _check_target_rich_quadrant(self, env, agent_id):
+    def _check_target_rich_quadrant_with_hysteresis(self, env, agent_id):
         """
-        Check if there's a target-rich quadrant that neither agent nor teammate occupies.
+        Check if there's a target-rich quadrant with hysteresis to prevent oscillation.
 
         Args:
             env: The environment instance
@@ -305,19 +377,37 @@ class HeuristicAgent:
         total_unknown_targets = sum(quadrant_target_counts.values())
 
         if total_unknown_targets == 0:
+            self.currently_consider_target_rich = False
             return 0  # No unknown targets, do localsearch
 
         # Find quadrant with highest target density
         max_targets = max(quadrant_target_counts.values())
         target_rich_quadrants = [q for q, count in quadrant_target_counts.items() if count == max_targets]
 
-        # Check if the target-rich quadrant(s) have significantly more targets (>40% of total)
-        threshold = 0.4 * total_unknown_targets
+        # Calculate the ratio of targets in the richest quadrant
+        max_target_ratio = max_targets / total_unknown_targets
 
-        for quadrant in target_rich_quadrants:
-            if (quadrant_target_counts[quadrant] >= threshold and
-                    quadrant != agent_pos and quadrant != teammate_pos):
-                return 1  # changeregion to target-rich quadrant
+        # Apply hysteresis thresholds
+        if self.currently_consider_target_rich:
+            # Currently considering target-rich - use lower threshold to stay
+            threshold = self.target_rich_threshold_low
+        else:
+            # Not currently considering target-rich - use higher threshold to switch
+            threshold = self.target_rich_threshold_high
+
+        # Update hysteresis state
+        if max_target_ratio >= threshold:
+            # Check if the target-rich quadrant(s) are unoccupied
+            for quadrant in target_rich_quadrants:
+                if quadrant != agent_pos and quadrant != teammate_pos:
+                    self.currently_consider_target_rich = True
+                    return 1  # changeregion to target-rich quadrant
+
+            # Target-rich quadrant is occupied
+            self.currently_consider_target_rich = False
+        else:
+            # Below threshold
+            self.currently_consider_target_rich = False
 
         return 0  # No suitable target-rich quadrant, do localsearch
 
@@ -398,6 +488,260 @@ class HeuristicAgent:
 
         return quadrant_counts
 
+
+
+
+
+# class HeuristicAgent:
+#     """
+#     Heuristic agent that chooses subpolicies based on risk tolerance and spatial coordination settings.
+#
+#     Subpolicies:
+#     0 = localsearch
+#     1 = changeregion
+#     2 = gotothreat
+#     """
+#
+#     def __init__(self, mode_selector="heuristic", risk_tolerance="medium", spatial_coord="some"):
+#         """
+#         Initialize the heuristic agent.
+#
+#         Args:
+#             mode_selector (str): "none" to always choose localsearch, or "heuristic" for decision logic
+#             risk_tolerance (str): "low", "medium", "high", or "extreme" - controls gotothreat usage
+#             spatial_coord (str): "none", "some", or "high" - controls localsearch vs changeregion choice
+#         """
+#         self.mode_selector = mode_selector
+#         self.risk_tolerance = risk_tolerance
+#         self.spatial_coord = spatial_coord
+#
+#         # Validate configuration
+#         valid_risk_levels = ["low", "medium", "high", "extreme"]
+#         valid_spatial_levels = ["none", "some", "high"]
+#         valid_mode_selectors = ["none", "heuristic"]
+#
+#         if risk_tolerance not in valid_risk_levels:
+#             raise ValueError(f"risk_tolerance must be one of {valid_risk_levels}")
+#         if spatial_coord not in valid_spatial_levels:
+#             raise ValueError(f"spatial_coord must be one of {valid_spatial_levels}")
+#         if mode_selector not in valid_mode_selectors:
+#             raise ValueError(f"mode_selector must be one of {valid_mode_selectors}")
+#
+#
+#     def choose_subpolicy(self, env, agent_id=0):
+#         """
+#         Choose a subpolicy based on the agent's configuration and current environment state.
+#
+#         Args:
+#             env: The environment instance (MAISREnvVec)
+#             agent_id (int): ID of the agent making the decision (default 0)
+#
+#         Returns:
+#             int: Subpolicy choice (0=localsearch, 1=changeregion, 2=gotothreat)
+#         """
+#         # If mode_selector is "none", always choose localsearch
+#         if self.mode_selector == "none":
+#             print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
+#             return 0
+#
+#         # Check if we should choose gotothreat based on risk tolerance and detections
+#         detections = env.num_threats_identified
+#         should_go_to_threat = self._should_go_to_threat(env)
+#
+#         if should_go_to_threat:
+#             print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
+#             return 2  # gotothreat
+#         else:
+#             # Choose between localsearch (0) and changeregion (1) based on spatial coordination
+#             choice = self._choose_search_strategy(env, agent_id)
+#
+#             # Add debugging for the search strategy choice
+#             if self.spatial_coord == "none":
+#                 reason = "spatial_coord=none"
+#             elif self.spatial_coord == "some":
+#                 target_rich_found = choice == 1
+#                 reason = f"spatial_coord=some, target_rich_quadrant={target_rich_found}"
+#             elif self.spatial_coord == "high":
+#                 same_quadrant = self._agents_in_same_quadrant(env, agent_id)
+#                 reason = f"spatial_coord=high, same_quadrant={same_quadrant}"
+#             else:
+#                 reason = "default"
+#
+#             action_name = "localsearch" if choice == 0 else "changeregion"
+#             print(
+#                 f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
+#
+#             return choice
+#
+#     def _should_go_to_threat(self, env):
+#         """
+#         Determine if the agent should choose gotothreat based on risk tolerance and current detections.
+#
+#         Args:
+#             env: The environment instance
+#
+#         Returns:
+#             bool: True if should choose gotothreat, False otherwise
+#         """
+#         detections = env.num_threats_identified
+#
+#         if self.risk_tolerance == "low":
+#             return False  # Never choose gotothreat
+#         elif self.risk_tolerance == "medium":
+#             return detections == 0
+#         elif self.risk_tolerance == "high":
+#             return detections <= 1
+#         elif self.risk_tolerance == "extreme":
+#             return detections <= 2
+#
+#         return False
+#
+#     def _choose_search_strategy(self, env, agent_id):
+#         """
+#         Choose between localsearch and changeregion based on spatial coordination setting.
+#
+#         Args:
+#             env: The environment instance
+#             agent_id (int): ID of the agent making the decision
+#
+#         Returns:
+#             int: 0 for localsearch, 1 for changeregion
+#         """
+#         if self.spatial_coord == "none":
+#             return 0  # Always choose localsearch
+#
+#         elif self.spatial_coord == "some":
+#             # Choose changeregion if there's a quadrant with lots of targets
+#             # and neither agent nor teammate is in that quadrant
+#             return self._check_target_rich_quadrant(env, agent_id)
+#
+#         elif self.spatial_coord == "high":
+#             # Always choose changeregion if both agents are in the same quadrant
+#             if self._agents_in_same_quadrant(env, agent_id):
+#                 return 1  # changeregion
+#             else:
+#                 return 0  # localsearch
+#
+#         return 0  # Default to localsearch
+#
+#     def _check_target_rich_quadrant(self, env, agent_id):
+#         """
+#         Check if there's a target-rich quadrant that neither agent nor teammate occupies.
+#
+#         Args:
+#             env: The environment instance
+#             agent_id (int): ID of the agent making the decision
+#
+#         Returns:
+#             int: 1 for changeregion if target-rich quadrant found, 0 for localsearch otherwise
+#         """
+#         if env.config['num_aircraft'] < 2:
+#             return 0  # No teammate, just do localsearch
+#
+#         # Get agent and teammate positions
+#         agent_pos = self._get_agent_quadrant(env, agent_id)
+#         teammate_id = 1 if agent_id == 0 else 0
+#         teammate_pos = self._get_agent_quadrant(env, teammate_id)
+#
+#         # Get target counts per quadrant (only unknown targets)
+#         quadrant_target_counts = self._get_unknown_targets_per_quadrant(env)
+#         total_unknown_targets = sum(quadrant_target_counts.values())
+#
+#         if total_unknown_targets == 0:
+#             return 0  # No unknown targets, do localsearch
+#
+#         # Find quadrant with highest target density
+#         max_targets = max(quadrant_target_counts.values())
+#         target_rich_quadrants = [q for q, count in quadrant_target_counts.items() if count == max_targets]
+#
+#         # Check if the target-rich quadrant(s) have significantly more targets (>40% of total)
+#         threshold = 0.4 * total_unknown_targets
+#
+#         for quadrant in target_rich_quadrants:
+#             if (quadrant_target_counts[quadrant] >= threshold and
+#                     quadrant != agent_pos and quadrant != teammate_pos):
+#                 #print(f'[Teammate] Target-rich quadrant found')
+#                 return 1  # changeregion to target-rich quadrant
+#
+#         return 0  # No suitable target-rich quadrant, do localsearch
+#
+#     def _agents_in_same_quadrant(self, env, agent_id):
+#         """
+#         Check if the agent and teammate are in the same quadrant.
+#
+#         Args:
+#             env: The environment instance
+#             agent_id (int): ID of the agent making the decision
+#
+#         Returns:
+#             bool: True if both agents are in the same quadrant
+#         """
+#         if env.config['num_aircraft'] < 2:
+#             return False  # No teammate
+#
+#         agent_quad = self._get_agent_quadrant(env, agent_id)
+#         teammate_id = 1 if agent_id == 0 else 0
+#         teammate_quad = self._get_agent_quadrant(env, teammate_id)
+#
+#         return agent_quad == teammate_quad
+#
+#     def _get_agent_quadrant(self, env, agent_id):
+#         """
+#         Get the quadrant that an agent is currently in.
+#
+#         Args:
+#             env: The environment instance
+#             agent_id (int): ID of the agent
+#
+#         Returns:
+#             str: Quadrant name ("NW", "NE", "SW", "SE")
+#         """
+#         agent_x = env.agents[env.aircraft_ids[agent_id]].x
+#         agent_y = env.agents[env.aircraft_ids[agent_id]].y
+#
+#         # Determine quadrant based on sign of coordinates
+#         if agent_x >= 0 and agent_y >= 0:
+#             return "NE"
+#         elif agent_x < 0 and agent_y >= 0:
+#             return "NW"
+#         elif agent_x < 0 and agent_y < 0:
+#             return "SW"
+#         else:  # agent_x >= 0 and agent_y < 0
+#             return "SE"
+#
+#     def _get_unknown_targets_per_quadrant(self, env):
+#         """
+#         Count unknown targets in each quadrant.
+#
+#         Args:
+#             env: The environment instance
+#
+#         Returns:
+#             dict: Mapping of quadrant names to target counts
+#         """
+#         target_positions = env.targets[:env.config['num_targets'], 3:5]  # x,y coordinates
+#         target_info_levels = env.targets[:env.config['num_targets'], 2]  # info levels
+#
+#         # Only count unknown targets (info_level < 1.0)
+#         unknown_mask = target_info_levels < 1.0
+#         unknown_positions = target_positions[unknown_mask]
+#
+#         quadrant_counts = {"NW": 0, "NE": 0, "SW": 0, "SE": 0}
+#
+#         for pos in unknown_positions:
+#             x, y = pos[0], pos[1]
+#
+#             if x >= 0 and y >= 0:
+#                 quadrant_counts["NE"] += 1
+#             elif x < 0 and y >= 0:
+#                 quadrant_counts["NW"] += 1
+#             elif x < 0 and y < 0:
+#                 quadrant_counts["SW"] += 1
+#             else:  # x >= 0 and y < 0
+#                 quadrant_counts["SE"] += 1
+#
+#         return quadrant_counts
+
 class GenericTeammatePolicy(TeammatePolicy):
     def __init__(self,
                  env,
@@ -429,11 +773,13 @@ class GenericTeammatePolicy(TeammatePolicy):
             return 0
 
         # Use the heuristic agent to make the decision
-        # Note: We need to pass the environment to the agent for decision making
+        # We need to get the environment from the wrapper context
+        # For now, we'll pass None and add error handling in HeuristicAgent
         if self.env is not None:
             return self.mode_selector_agent.choose_subpolicy(self.env, agent_id=1)  # Assuming teammate is agent 1
         else:
             # If no environment available, fallback to local search
+            print("[GenericTeammatePolicy] Warning: No environment available, defaulting to localsearch")
             return 0
 
     def reset(self):
@@ -976,7 +1322,7 @@ class ChangeRegions(SubPolicy):
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
         self.steps_since_update += 1
-        #print(f'Changeregion choice action {action}')
+        print(f'[ChangeRegion.act] Chose action {action}')
         return action
 
     def _has_reached_target(self, observation):
@@ -1086,12 +1432,5 @@ class ChangeRegions(SubPolicy):
             0: np.array([-0.5, 0.5]),  # NW
             1: np.array([0.5, 0.5]),  # NE
             2: np.array([-0.5, -0.5]),  # SW
-            3: np.array([0.5, -0.5])  # SE
-        }
-        # centers = {
-        #     0: np.array([0.25, 0.25]),  # NW
-        #     1: np.array([0.75, 0.25]),  # NE
-        #     2: np.array([0.25, 0.75]),  # SW
-        #     3: np.array([0.75, 0.75])  # SE
-        # }
+            3: np.array([0.5, -0.5])}  # SE
         return centers.get(region_id, np.array([0.0, 0.0]))

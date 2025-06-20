@@ -100,7 +100,7 @@ if __name__ == "__main__":
                         break
                     elif event.key in key_to_action:
                         action = key_to_action[event.key]
-                        print(f"Selected subpolicy {action}")
+                        #print(f"Selected subpolicy {action}")
             if done:
                 break
 

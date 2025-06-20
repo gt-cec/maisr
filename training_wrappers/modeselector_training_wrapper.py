@@ -237,28 +237,37 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         if self.current_teammate and self.env.config['num_aircraft'] >= 2:
             teammate_obs = self.get_observation(1)
+
+            # Set the environment for the teammate if it's not set
+            if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None:
+                self.current_teammate.env = self.env
+
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
 
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
             if self.teammate_subpolicy_choice == 0:  # Local search
-                direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
-                teammate_subpolicy_action = direction_to_move
+                direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
+                teammate_subpolicy_action = teammate_subpolicy_action = self.env._direction_to_waypoint(direction_to_move, 1)
+                #print(f'[Wrapper] LocalSearch subpolicy action is {teammate_subpolicy_action}')
 
             elif self.teammate_subpolicy_choice == 1:  # Change region
                 waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
+                waypoint_to_go = self.env._denormalize_waypoint(waypoint_to_go)
                 teammate_subpolicy_action = waypoint_to_go
-
+                #print(f'[Wrapper] ChangeRegion subpolicy action is {teammate_subpolicy_action}')
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
-                teammate_subpolicy_action = waypoint_to_go
+                #print(f'[Wrapper] GoToThreat subpolicy raw action is {waypoint_to_go}')
+                teammate_subpolicy_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
+                #print(f'[Wrapper] GoToThreat subpolicy PROCESSED action is {teammate_subpolicy_action}')
 
-            if isinstance(teammate_subpolicy_action, tuple):
-                teammate_subpolicy_action = teammate_subpolicy_action[0]
 
             # Apply teammate action to aircraft[1]
-            teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
-            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
+            #teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
+            #print(f'[Wrapper] Teammate waypoint set in env to {teammate_subpolicy_action}')
+            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_subpolicy_action
+            #print(f'Teammate location is {self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y}')
 
         ############################################ Step the environment #############################################
 
