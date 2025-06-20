@@ -45,6 +45,240 @@ def generate_run_name(config):
 
     return run_name
 
+#
+# class EnhancedWandbCallback(BaseCallback):
+#     """Custom Callback that:
+#     1. Logs training metrics to WandB
+#     2. Evaluates the agent periodically (also logged to WandB)
+#     3. Determines if the agent should progress to the next stage of the training curriculum
+#     4. Logs additional PPO training metrics
+#     """
+#
+#     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
+#                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name', render=False,
+#                  log_freq=2):  # New parameter: log every N steps
+#         super(EnhancedWandbCallback, self).__init__(verbose)
+#         self.eval_env = eval_env
+#         self.eval_freq = env_config['eval_freq']
+#         self.n_eval_episodes = env_config['n_eval_episodes']
+#         self.run = run
+#         self.log_freq = log_freq  # Log every N steps instead of every step
+#         self.render = render
+#
+#         self.use_curriculum = env_config['use_curriculum']
+#         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
+#         self.max_ep_len_to_advance = 130
+#         self.max_difficulty = env_config['max_difficulty']
+#         self.cl_lr_decrease = env_config['cl_lr_decrease'] # Divide learning rate by this every time we increase difficulty
+#
+#         self.current_difficulty = 0
+#         self.above_threshold_counter = 0
+#
+#         # Buffer for accumulating data between log events
+#         self.episode_buffer = {
+#             'rewards': [],
+#             'lengths': [],
+#             'target_ids': [],
+#             'detections': []
+#         }
+#
+#         # Early stopping based on performance degradation
+#         self.best_eval_performance = -np.inf
+#         self.performance_crash_counter = 0
+#         self.performance_crash_threshold = 20  # Number of consecutive poor evals before stopping
+#         self.performance_crash_ratio = 0.4  # Performance must drop below 50% of best
+#         self.should_stop_training = False
+#
+#     def _on_step(self):
+#         # Only log on the specified frequency
+#         should_log_episode_data = self.num_timesteps % self.log_freq == 0
+#
+#         # Always collect episode data when available (lightweight)
+#         if self.locals.get("infos") and len(self.locals["infos"]) > 0:
+#             for env_idx, info in enumerate(self.locals["infos"]):
+#                 if "episode" in info:
+#                     # Always buffer the data
+#                     self.episode_buffer['rewards'].append(info["episode"]["r"])
+#                     self.episode_buffer['lengths'].append(info["episode"]["l"])
+#
+#                     if "target_ids" in info: self.episode_buffer['target_ids'].append(info["target_ids"])
+#                     if "detections" in info: self.episode_buffer['detections'].append(info["detections"])
+#
+#         # Only log episode data at the specified frequency
+#         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
+#             log_data = {}
+#
+#             # Log aggregated data from buffer
+#             if self.episode_buffer['rewards']:
+#                 log_data["train/mean_episode_reward"] = np.mean(self.episode_buffer['rewards'])
+#                 log_data["train/mean_episode_length"] = np.mean(self.episode_buffer['lengths'])
+#
+#             if self.episode_buffer['target_ids']: log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
+#             if self.episode_buffer['detections']: log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
+#
+#             if log_data: # Log the aggregated data
+#                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
+#
+#             # Clear the buffer after logging
+#             self.episode_buffer = {'rewards': [], 'lengths': [], 'target_ids': [], 'detections': []}
+#
+#         # Log training metrics less frequently (e.g., every 10 steps)
+#         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
+#
+#         if should_log_training_metrics:
+#             training_metrics = {}
+#
+#             if hasattr(self.model, '_n_updates'): training_metrics["train/n_updates"] = self.model._n_updates
+#
+#             if hasattr(self.logger, 'name_to_value'):
+#                 logger_dict = self.logger.name_to_value
+#
+#                 # Log the core training metrics
+#                 metrics_to_log = [
+#                     "train/approx_kl", "train/entropy_loss", "train/explained_variance",
+#                     "train/n_updates", "train/policy_gradient_loss", "train/value_loss",
+#                     "train/clip_fraction", "train/clip_range", "train/learning_rate"
+#                 ]
+#
+#                 for metric in metrics_to_log:
+#                     if metric in logger_dict:
+#                         training_metrics[metric] = logger_dict[metric]
+#
+#             # Log training metrics if any are available
+#             if training_metrics:
+#                 self.run.log(training_metrics, step=self.num_timesteps // self.model.get_env().num_envs)
+#
+#         # Evaluation logic remains the same (already infrequent)
+#         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
+#             print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
+#
+#             if hasattr(self.model.get_env(), 'obs_rms'):
+#                 self.eval_env.obs_rms = self.model.get_env().obs_rms
+#                 self.eval_env.ret_rms = self.model.get_env().ret_rms
+#
+#             # ... rest of evaluation code remains unchanged ...
+#             target_ids_list = []
+#             target_ids_per_step_list = []
+#             mean_reward, std_reward = 0, 0
+#             eval_lengths = []
+#
+#             obs = self.eval_env.reset() # We call reset() at the beginning (vec envs reset automatically after this)
+#             for i in range(self.n_eval_episodes):
+#
+#                 done = False
+#                 ep_reward = 0
+#
+#                 while not done:
+#                     action, other = self.model.predict(obs, deterministic=True)
+#                     obses, rewards, dones, infos = self.eval_env.step([action])
+#                     if self.render:
+#                         self.eval_env.render()
+#                     obs = obses[0]
+#                     reward = rewards[0]
+#                     info = infos[0]
+#                     done = dones[0]
+#                     ep_reward += reward
+#
+#                 if "target_ids" in info: target_ids_list.append(info["target_ids"])
+#
+#                 mean_reward += ep_reward / self.n_eval_episodes
+#                 eval_lengths.append(info["episode"]["l"])
+#                 target_ids_per_step_list.append(info["target_ids"] / info["episode"]["l"])
+#
+#             std_reward = np.std(target_ids_list) if target_ids_list else 0
+#
+#             # Log evaluation results
+#             eval_metrics = {
+#                 "eval/mean_reward": mean_reward,
+#                 "misc/std_reward": std_reward,
+#                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+#                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
+#                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
+#                 "curriculum/difficulty_level": self.current_difficulty
+#             }
+#
+#             #################################### Early stopping ####################################
+#             # Check for performance crash
+#             current_performance = np.mean(target_ids_list) if target_ids_list else 0
+#             if current_performance > self.best_eval_performance:
+#                 self.best_eval_performance = current_performance
+#                 self.performance_crash_counter = 0
+#                 eval_metrics["early_stopping/best_performance"] = self.best_eval_performance
+#                 print(f'NEW BEST PERFORMANCE: {self.best_eval_performance:.3f}')
+#
+#             performance_threshold = self.best_eval_performance * self.performance_crash_ratio
+#             if current_performance < performance_threshold and self.best_eval_performance > 0:
+#                 self.performance_crash_counter += 1
+#                 print(f'PERFORMANCE CRASH WARNING: {current_performance:.3f} < {performance_threshold:.3f} '
+#                       f'({self.performance_crash_counter}/{self.performance_crash_threshold})')
+#             else:
+#                 self.performance_crash_counter = 0
+#
+#             eval_metrics["early_stopping/performance_crash_counter"] = self.performance_crash_counter
+#             eval_metrics["early_stopping/performance_threshold"] = performance_threshold
+#
+#             # Check if we should stop training
+#             if self.performance_crash_counter >= self.performance_crash_threshold:
+#                 self.should_stop_training = True
+#                 print(f'\n{"=" * 80}')
+#                 print(f'EARLY STOPPING TRIGGERED!')
+#                 print(f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
+#                 print(f'Best performance: {self.best_eval_performance:.3f}')
+#                 print(f'Current performance: {current_performance:.3f}')
+#                 print(f'Threshold: {performance_threshold:.3f}')
+#                 print(f'{"=" * 80}\n')
+#
+#             self.run.log(eval_metrics, step=self.num_timesteps)
+#
+#             print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
+#
+#
+#             #################################### Curriculum learning ####################################
+#             if self.use_curriculum:
+#                 print('CURRICULUM: Checking if we should increase difficulty')
+#                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
+#                 avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
+#
+#                 # if self.model.get_env().get_attr("difficulty")[0] == 0:
+#                 #     if avg_target_ids >= self.min_target_ids_to_advance:
+#                 #         self.above_threshold_counter += 1
+#                 #     else:
+#                 #         self.above_threshold_counter = 0
+#                 #else:
+#                 if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
+#                     self.above_threshold_counter += 1
+#                 else:
+#                     self.above_threshold_counter = 0
+#
+#                 if self.above_threshold_counter >= 5 and self.current_difficulty < self.max_difficulty:
+#                     self.above_threshold_counter = 0
+#                     self.current_difficulty += 1
+#                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
+#
+#                     self.model.get_env().env_method("set_difficulty", self.current_difficulty)
+#                     try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
+#                     except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+#
+#                     print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
+#                     try: self.best_eval_performance = current_performance  # Reset best to current performance
+#                     except: self.best_eval_performance = -np.inf
+#                     self.performance_crash_counter = 0  # Reset crash counter
+#
+#                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
+#
+#                     # Decrease LR
+#                     print(f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]['lr']} to {self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease}')
+#                     self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease
+#
+#                 else:
+#                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
+#                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
+#
+#             print('#################################################\n\nReturning to training... \n')
+#
+#         if self.should_stop_training:
+#             return False
+#         return True
 
 class EnhancedWandbCallback(BaseCallback):
     """Custom Callback that:
@@ -55,21 +289,20 @@ class EnhancedWandbCallback(BaseCallback):
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name', render=False,
-                 log_freq=2):  # New parameter: log every N steps
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
+                 log_freq=2):
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
-        self.log_freq = log_freq  # Log every N steps instead of every step
-        self.render = render
+        self.log_freq = log_freq
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
         self.max_ep_len_to_advance = 130
         self.max_difficulty = env_config['max_difficulty']
-        self.cl_lr_decrease = env_config['cl_lr_decrease'] # Divide learning rate by this every time we increase difficulty
+        self.cl_lr_decrease = env_config['cl_lr_decrease']
 
         self.current_difficulty = 0
         self.above_threshold_counter = 0
@@ -79,18 +312,22 @@ class EnhancedWandbCallback(BaseCallback):
             'rewards': [],
             'lengths': [],
             'target_ids': [],
-            'detections': []
+            'detections': [],
+            ### CLAUDE CHANGED ###
+            'threat_ids': [],  # New: track threat identifications
+            'policy_switches': [],  # New: track mode selector switches
+            'subpolicy_usage': []  # New: track which subpolicies were used
+            ### CLAUDE CHANGED ###
         }
 
         # Early stopping based on performance degradation
         self.best_eval_performance = -np.inf
         self.performance_crash_counter = 0
-        self.performance_crash_threshold = 20  # Number of consecutive poor evals before stopping
-        self.performance_crash_ratio = 0.4  # Performance must drop below 50% of best
+        self.performance_crash_threshold = 20
+        self.performance_crash_ratio = 0.4
         self.should_stop_training = False
 
     def _on_step(self):
-        # Only log on the specified frequency
         should_log_episode_data = self.num_timesteps % self.log_freq == 0
 
         # Always collect episode data when available (lightweight)
@@ -101,8 +338,27 @@ class EnhancedWandbCallback(BaseCallback):
                     self.episode_buffer['rewards'].append(info["episode"]["r"])
                     self.episode_buffer['lengths'].append(info["episode"]["l"])
 
-                    if "target_ids" in info: self.episode_buffer['target_ids'].append(info["target_ids"])
-                    if "detections" in info: self.episode_buffer['detections'].append(info["detections"])
+                    if "target_ids" in info:
+                        self.episode_buffer['target_ids'].append(info["target_ids"])
+                    if "detections" in info:
+                        self.episode_buffer['detections'].append(info["detections"])
+
+                    ### CLAUDE CHANGED ###
+                    # Log mode selector specific metrics
+                    if "threat_ids" in info:
+                        self.episode_buffer['threat_ids'].append(info["threat_ids"])
+                    if "new_threat_ids" in info:
+                        self.episode_buffer['threat_ids'].append(info.get("threat_ids", 0))
+
+                    # Track policy switches from the wrapper
+                    # Note: You'll need to add this to the wrapper's info dict
+                    if "policy_switches" in info:
+                        self.episode_buffer['policy_switches'].append(info["policy_switches"])
+
+                    # Track subpolicy usage
+                    if "final_subpolicy" in info:
+                        self.episode_buffer['subpolicy_usage'].append(info["final_subpolicy"])
+                    ### CLAUDE CHANGED ###
 
         # Only log episode data at the specified frequency
         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
@@ -113,14 +369,39 @@ class EnhancedWandbCallback(BaseCallback):
                 log_data["train/mean_episode_reward"] = np.mean(self.episode_buffer['rewards'])
                 log_data["train/mean_episode_length"] = np.mean(self.episode_buffer['lengths'])
 
-            if self.episode_buffer['target_ids']: log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
-            if self.episode_buffer['detections']: log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
+            if self.episode_buffer['target_ids']:
+                log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
+            if self.episode_buffer['detections']:
+                log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            if log_data: # Log the aggregated data
+            ### CLAUDE CHANGED ###
+            # Log mode selector specific metrics
+            if self.episode_buffer['threat_ids']:
+                log_data["train/mean_threat_ids"] = np.mean(self.episode_buffer['threat_ids'])
+
+            if self.episode_buffer['policy_switches']:
+                log_data["train/mean_policy_switches"] = np.mean(self.episode_buffer['policy_switches'])
+
+            if self.episode_buffer['subpolicy_usage']:
+                # Log distribution of subpolicy usage
+                subpolicy_counts = np.bincount(self.episode_buffer['subpolicy_usage'], minlength=3)
+                total = len(self.episode_buffer['subpolicy_usage'])
+                if total > 0:
+                    log_data["train/subpolicy_0_usage"] = subpolicy_counts[0] / total  # Local search
+                    log_data["train/subpolicy_1_usage"] = subpolicy_counts[1] / total  # Change region
+                    log_data["train/subpolicy_2_usage"] = subpolicy_counts[2] / total  # Go to threat
+            ### CLAUDE CHANGED ###
+
+            if log_data:
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
 
             # Clear the buffer after logging
-            self.episode_buffer = {'rewards': [], 'lengths': [], 'target_ids': [], 'detections': []}
+            ### CLAUDE CHANGED ###
+            self.episode_buffer = {
+                'rewards': [], 'lengths': [], 'target_ids': [], 'detections': [],
+                'threat_ids': [], 'policy_switches': [], 'subpolicy_usage': []
+            }
+            ### CLAUDE CHANGED ###
 
         # Log training metrics less frequently (e.g., every 10 steps)
         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
@@ -128,7 +409,8 @@ class EnhancedWandbCallback(BaseCallback):
         if should_log_training_metrics:
             training_metrics = {}
 
-            if hasattr(self.model, '_n_updates'): training_metrics["train/n_updates"] = self.model._n_updates
+            if hasattr(self.model, '_n_updates'):
+                training_metrics["train/n_updates"] = self.model._n_updates
 
             if hasattr(self.logger, 'name_to_value'):
                 logger_dict = self.logger.name_to_value
@@ -144,11 +426,10 @@ class EnhancedWandbCallback(BaseCallback):
                     if metric in logger_dict:
                         training_metrics[metric] = logger_dict[metric]
 
-            # Log training metrics if any are available
             if training_metrics:
                 self.run.log(training_metrics, step=self.num_timesteps // self.model.get_env().num_envs)
 
-        # Evaluation logic remains the same (already infrequent)
+        # Evaluation logic
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
             print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
 
@@ -156,30 +437,39 @@ class EnhancedWandbCallback(BaseCallback):
                 self.eval_env.obs_rms = self.model.get_env().obs_rms
                 self.eval_env.ret_rms = self.model.get_env().ret_rms
 
-            # ... rest of evaluation code remains unchanged ...
             target_ids_list = []
             target_ids_per_step_list = []
+            ### CLAUDE CHANGED ###
+            threat_ids_list = []
+            policy_switches_list = []
+            ### CLAUDE CHANGED ###
             mean_reward, std_reward = 0, 0
             eval_lengths = []
 
-            obs = self.eval_env.reset() # We call reset() at the beginning (vec envs reset automatically after this)
+            obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
-
                 done = False
                 ep_reward = 0
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
                     obses, rewards, dones, infos = self.eval_env.step([action])
-                    if self.render:
-                        self.eval_env.render()
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
                     ep_reward += reward
 
-                if "target_ids" in info: target_ids_list.append(info["target_ids"])
+                if "target_ids" in info:
+                    target_ids_list.append(info["target_ids"])
+
+                ### CLAUDE CHANGED ###
+                # Collect mode selector specific eval metrics
+                if "threat_ids" in info:
+                    threat_ids_list.append(info["threat_ids"])
+                if "policy_switches" in info:
+                    policy_switches_list.append(info["policy_switches"])
+                ### CLAUDE CHANGED ###
 
                 mean_reward += ep_reward / self.n_eval_episodes
                 eval_lengths.append(info["episode"]["l"])
@@ -194,11 +484,14 @@ class EnhancedWandbCallback(BaseCallback):
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
-                "curriculum/difficulty_level": self.current_difficulty
+                "curriculum/difficulty_level": self.current_difficulty,
+                ### CLAUDE CHANGED ###
+                "eval/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
+                "eval/mean_policy_switches": np.mean(policy_switches_list) if policy_switches_list else 0,
+                ### CLAUDE CHANGED ###
             }
 
-            #################################### Early stopping ####################################
-            # Check for performance crash
+            # Early stopping logic remains the same
             current_performance = np.mean(target_ids_list) if target_ids_list else 0
             if current_performance > self.best_eval_performance:
                 self.best_eval_performance = current_performance
@@ -217,12 +510,12 @@ class EnhancedWandbCallback(BaseCallback):
             eval_metrics["early_stopping/performance_crash_counter"] = self.performance_crash_counter
             eval_metrics["early_stopping/performance_threshold"] = performance_threshold
 
-            # Check if we should stop training
             if self.performance_crash_counter >= self.performance_crash_threshold:
                 self.should_stop_training = True
                 print(f'\n{"=" * 80}')
                 print(f'EARLY STOPPING TRIGGERED!')
-                print(f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
+                print(
+                    f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
                 print(f'Best performance: {self.best_eval_performance:.3f}')
                 print(f'Current performance: {current_performance:.3f}')
                 print(f'Threshold: {performance_threshold:.3f}')
@@ -230,21 +523,19 @@ class EnhancedWandbCallback(BaseCallback):
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
-            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
+            ### CLAUDE CHANGED ###
+            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, '
+                  f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}, '
+                  f'mean threat_ids: {np.mean(threat_ids_list) if threat_ids_list else 0}, '
+                  f'mean switches: {np.mean(policy_switches_list) if policy_switches_list else 0})')
+            ### CLAUDE CHANGED ###
 
-
-            #################################### Curriculum learning ####################################
+            # Curriculum learning logic
             if self.use_curriculum:
                 print('CURRICULUM: Checking if we should increase difficulty')
                 avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
                 avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
 
-                # if self.model.get_env().get_attr("difficulty")[0] == 0:
-                #     if avg_target_ids >= self.min_target_ids_to_advance:
-                #         self.above_threshold_counter += 1
-                #     else:
-                #         self.above_threshold_counter = 0
-                #else:
                 if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
                     self.above_threshold_counter += 1
                 else:
@@ -255,20 +546,29 @@ class EnhancedWandbCallback(BaseCallback):
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
-                    self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-                    try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
-                    except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+                    ### CLAUDE CHANGED ###
+                    # Access the base environment through the wrapper
+                    self.model.get_env().env_method("env", "set_difficulty", self.current_difficulty)
+                    try:
+                        self.eval_env.env_method("env", "set_difficulty", self.current_difficulty)
+                    except Exception as e:
+                        print(f"Failed to set difficulty on eval env: {e}")
+                    ### CLAUDE CHANGED ###
 
                     print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
-                    try: self.best_eval_performance = current_performance  # Reset best to current performance
-                    except: self.best_eval_performance = -np.inf
-                    self.performance_crash_counter = 0  # Reset crash counter
+                    try:
+                        self.best_eval_performance = current_performance
+                    except:
+                        self.best_eval_performance = -np.inf
+                    self.performance_crash_counter = 0
 
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
 
                     # Decrease LR
-                    print(f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]['lr']} to {self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease}')
-                    self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease
+                    print(
+                        f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]["lr"]} to {self.model.policy.optimizer.param_groups[0]["lr"] / self.cl_lr_decrease}')
+                    self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0][
+                                                                            'lr'] / self.cl_lr_decrease
 
                 else:
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
@@ -279,7 +579,6 @@ class EnhancedWandbCallback(BaseCallback):
         if self.should_stop_training:
             return False
         return True
-
 
 def make_env(env_config, rank, seed, run_name='no_name'):
     """
@@ -302,19 +601,23 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool():
-    teammate_manager = TeammateManager()
+def setup_teammate_pool(league_type="strategy_diverse"):
+    """Setup teammate manager with specified league type"""
 
-    # Add heuristic teammates with different strategies
-    teammate_manager.add_heuristic_teammate("aggressive", {"mode_duration": 30})
-    teammate_manager.add_heuristic_teammate("conservative", {"mode_duration": 50})
-    teammate_manager.add_heuristic_teammate("adaptive", {"mode_duration": 40})
-    teammate_manager.add_heuristic_teammate("random", {"mode_duration": 25})
+    # Create subpolicies for teammates to use
+    # Note: These would typically be loaded from trained models
+    subpolicies = {
+        'local_search': LocalSearch(model_path=None),  # Using heuristic
+        'change_region': ChangeRegions(model_path=None),  # Using heuristic
+        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
+    }
 
-    # Add RL teammates
-    # teammate_manager.add_rl_teammate("trained_models/teammate_model_1.zip", "AggressiveRL")
-    # teammate_manager.add_rl_teammate("trained_models/teammate_model_2.zip", "ConservativeRL")
+    teammate_manager = TeammateManager(
+        league_type=league_type,
+        subpolicies=subpolicies
+    )
 
+    print(f"Teammate manager setup with league_type: {league_type}")
     return teammate_manager
 
 def train_modeselector(
@@ -370,7 +673,7 @@ def train_modeselector(
     ################################################ Initialize envs ################################################
 
     if use_teammate_manager:
-        teammate_manager = setup_teammate_pool()
+        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'])
     else:
         teammate_manager = None
 
@@ -407,7 +710,9 @@ def train_modeselector(
                 go_to_highvalue_policy,
                 change_region_subpolicy,
                 evade_policy,
-                teammate_policy=teammate
+                teammate_policy=teammate,
+                evade_policy = None,  # Add if needed
+                teammate_manager = teammate_manager
             )
 
             wrapped_env = Monitor(wrapped_env)

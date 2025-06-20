@@ -55,13 +55,11 @@ class GoToNearestThreat(SubPolicy):
         print(f'GOTOTHREAT: Obs {observation} -> action {action}')
         return action
 
-
     def heuristic(self, observation) -> np.int32:
         """
-        Input: Observation vector of the dx, dy vector to the nearest two threats (4 elements total)
-        Output:
-        Pick the """
-
+        Input: Observation vector with dx, dy, identified status for up to 2 threats
+        Output: Direction to move toward the best available threat
+        """
         # Check if any threats remain
         if not self.has_threats_remaining(observation):
             self.reset_heuristic_state()
@@ -70,80 +68,65 @@ class GoToNearestThreat(SubPolicy):
 
         obs = np.array(observation)
 
-        directions = np.array([
-            (0, 1),  # North (0°)
-            (0.383, 0.924),  # NNE (22.5°)
-            (0.707, 0.707),  # NE (45°)
-            (0.924, 0.383),  # ENE (67.5°)
-            (1, 0),  # East (90°)
-            (0.924, -0.383),  # ESE (112.5°)
-            (0.707, -0.707),  # SE (135°)
-            (0.383, -0.924),  # SSE (157.5°)
-            (0, -1),  # South (180°)
-            (-0.383, -0.924),  # SSW (202.5°)
-            (-0.707, -0.707),  # SW (225°)
-            (-0.924, -0.383),  # WSW (247.5°)
-            (-1, 0),  # West (270°)
-            (-0.924, 0.383),  # WNW (292.5°)
-            (-0.707, 0.707),  # NW (315°)
-            (-0.383, 0.924),  # NNW (337.5°)
-        ], dtype=float)
+        # Extract threat information
+        threats = []
+        for i in range(2):  # Check up to 2 threats
+            base_idx = i * 3
+            if base_idx + 2 < len(obs):
+                x, y = obs[base_idx], obs[base_idx + 1]
+                identified = obs[base_idx + 2]
 
-        # Extract nearest target vector (first two components)
-        target_vector_x = obs[0]
-        target_vector_y = obs[1]
+                # Only consider threats that exist and are unidentified
+                if not (x == 0.0 and y == 0.0) and identified < 1.0:
+                    distance = np.sqrt(x * x + y * y)
+                    threats.append({
+                        'vector': np.array([x, y]),
+                        'distance': distance,
+                        'identified': identified
+                    })
 
-        # Check if there's a valid target (non-zero vector)
-        if target_vector_x == 0.0 and target_vector_y == 0.0:
-            # No targets or at target location
+        if not threats:
             self.reset_heuristic_state()
             return np.int32(0)
 
-        # The observation already gives us the vector to the nearest target
-        direction_to_target = np.array([target_vector_x, target_vector_y])
+        # Choose the closest unidentified threat
+        target_threat = min(threats, key=lambda t: t['distance'])
+        direction_to_target = target_threat['vector']
 
-        # Normalize direction vectors
+        # Rest of the direction calculation logic remains the same...
+        directions = np.array([
+            (0, 1), (0.383, 0.924), (0.707, 0.707), (0.924, 0.383),
+            (1, 0), (0.924, -0.383), (0.707, -0.707), (0.383, -0.924),
+            (0, -1), (-0.383, -0.924), (-0.707, -0.707), (-0.924, -0.383),
+            (-1, 0), (-0.924, 0.383), (-0.707, 0.707), (-0.383, 0.924),
+        ], dtype=float)
+
+        # Normalize and find best direction
         direction_norms = np.linalg.norm(directions, axis=1)
         normalized_directions = directions / direction_norms[:, np.newaxis]
 
-        # Normalize target direction
         target_norm = np.linalg.norm(direction_to_target)
         if target_norm > 0:
             direction_to_target_norm = direction_to_target / target_norm
+            dot_products = np.dot(normalized_directions, direction_to_target_norm)
+            best_action = np.argmax(dot_products)
         else:
-            return self._last_action if self._last_action is not None else 0
+            best_action = 0
 
-        # Calculate dot products
-        dot_products = np.dot(normalized_directions, direction_to_target_norm)
-
-        # Find best action
-        best_action = np.argmax(dot_products)
-
-        # Anti-oscillation: if we just took an action, continue for minimum steps
+        # Apply anti-oscillation logic as before...
         if (self._last_action is not None and
                 self._action_repeat_count < self._max_repeat_count and
                 self._last_action != best_action):
-
-            # Check if last action is still reasonable (dot product > 0.5)
             last_dot_product = dot_products[self._last_action]
-            if last_dot_product > 0.5:  # Still pointing roughly toward target
+            if last_dot_product > 0.5:
                 best_action = self._last_action
                 self._action_repeat_count += 1
             else:
-                _action_repeat_count = 0  # Reset if direction is too far off
+                self._action_repeat_count = 0
         else:
-            _action_repeat_count = 0
+            self._action_repeat_count = 0
 
-        # Additional anti-oscillation: prevent direct opposite actions
-        if (self._last_action is not None and abs(self._last_action - best_action) == 4):  # Opposite directions
-            # Choose a compromise direction
-            adjacent_actions = [(self._last_action + 1) % 8, (self._last_action - 1) % 8]
-            adjacent_dots = [dot_products[a] for a in adjacent_actions]
-            best_adjacent_idx = np.argmax(adjacent_dots)
-            best_action = adjacent_actions[best_adjacent_idx]
-
-        _last_action = best_action
-        print(f'Heuristic chose action {best_action} (type {type(best_action)}')
+        self._last_action = best_action
         return np.int32(best_action)
 
     def reset_heuristic_state(self):
@@ -157,18 +140,29 @@ class GoToNearestThreat(SubPolicy):
     def has_threats_remaining(self, observation) -> bool:
         """
         Check if there are any high-value threats remaining to pursue
-        Args:
-            observation: The observation vector containing dx/dy to nearest threats
-        Returns:
-            bool: True if threats remain, False if no threats available
+        Now checks both threat slots in the observation
         """
         obs = np.array(observation)
 
-        target_vector_x = obs[0]
-        target_vector_y = obs[1]
+        # Check first threat
+        threat1_x, threat1_y = obs[0], obs[1]
+        threat1_identified = obs[2] if len(obs) > 2 else 0
 
-        # Check if there's a valid target (non-zero vector)
-        return not (target_vector_x == 0.0 and target_vector_y == 0.0)
+        # Check second threat if available
+        threat2_x, threat2_y = 0, 0
+        threat2_identified = 1  # Default to identified if not present
+        if len(obs) >= 6:
+            threat2_x, threat2_y = obs[3], obs[4]
+            threat2_identified = obs[5]
+
+        # Return True if any unidentified threat exists
+        threat1_exists = not (threat1_x == 0.0 and threat1_y == 0.0)
+        threat2_exists = not (threat2_x == 0.0 and threat2_y == 0.0)
+
+        threat1_unidentified = threat1_exists and threat1_identified < 1.0
+        threat2_unidentified = threat2_exists and threat2_identified < 1.0
+
+        return threat1_unidentified or threat2_unidentified
 
 
 

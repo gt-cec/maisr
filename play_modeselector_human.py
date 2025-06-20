@@ -9,11 +9,21 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 #from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
-    EvadeDetection
+    EvadeDetection, TeammateManager
+
+
+
+
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june16_2ship.json'
+    config_filename = 'configs/june20_leagues.json'
+    league_type = 'strategy_diverse'
+
+    localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
+    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
+
+
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -35,33 +45,28 @@ if __name__ == "__main__":
         tag=f'test0',
     )
 
-    # Instantiate subpolicies
-    localsearch_model_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
-    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
-    local_search_policy = LocalSearch(
-        #model_path = localsearch_model_path,
-        norm_stats_filepath = localsearch_normstats_path
-    )
-    go_to_highvalue_policy = GoToNearestThreat(model_path=None)
-    change_region_subpolicy = ChangeRegions(model_path=None)
-    evade_policy = EvadeDetection(model_path=None)
-
     # Instantiate teammate
-    teammate = GenericTeammatePolicy(
-        base_env,
-        LocalSearch(model_path=None),
-        GoToNearestThreat(model_path=None),
-        ChangeRegions(model_path=None),
-        'human',
-        False)
+    # teammate = GenericTeammatePolicy(
+    #     base_env,
+    #     LocalSearch(model_path=None),
+    #     GoToNearestThreat(model_path=None),
+    #     ChangeRegions(model_path=None),
+    #     'human',
+    #     False)
+
+    subpolicies = {
+        'local_search': LocalSearch(model_path=None),  # Using heuristic
+        'change_region': ChangeRegions(model_path=None),  # Using heuristic
+        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
+    }
 
     env = MaisrModeSelectorWrapper(
         base_env,
-        local_search_policy,
-        go_to_highvalue_policy,
-        change_region_subpolicy,
-        evade_policy,
-        teammate_policy=teammate
+        local_search_policy = LocalSearch(model_path = localsearch_model_path, norm_stats_filepath = localsearch_normstats_path),
+        go_to_highvalue_policy=GoToNearestThreat(model_path=None),
+        change_region_subpolicy = ChangeRegions(model_path=None),
+        evade_policy = EvadeDetection(model_path=None),
+        teammate_manager = TeammateManager(league_type=league_type, subpolicies=subpolicies)
     )
 
 
@@ -72,7 +77,7 @@ if __name__ == "__main__":
     episode_rewards = []
     all_actions = []
 
-    for episode in range(3):
+    for episode in range(10):
         obs = env.reset()[0]
         episode_reward = 0
         episode_observations, episode_actions, potential_gain_history = [], [], []
@@ -82,7 +87,6 @@ if __name__ == "__main__":
         action = 0  # Default action (up)
 
         print(f"\nStarting human episode {episode + 1}/3")
-
 
         while not done:
             # Handle pygame events
@@ -115,6 +119,13 @@ if __name__ == "__main__":
             done = terminated or truncated
 
             step_count += 1
+
+            # Render
             env.render()
+            human_subpolicy_id, human_subpolicy_name = env.get_current_subpolicy_info()
+            ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+            env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name,ai_subpolicy_id, ai_subpolicy_name)
+
+            pygame.display.flip()
 
     env.close()

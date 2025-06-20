@@ -30,14 +30,145 @@ class TeammatePolicy(ABC):
     def choose_subpolicy(self, observation):
         pass
 
-    # @abstractmethod
-    # def reset(self):
-    #     pass
-    #
-    # @property
-    # @abstractmethod
-    # def name(self):
-    #     pass
+
+class TeammateManager:
+    """Manages pool of teammate policies and selection based on league type"""
+
+    def __init__(self, league_type="baseline", subpolicies=None):
+        """
+        Initialize teammate manager with specified league type.
+
+        Args:
+            league_type (str): "baseline", "vanilla", or "strategy_diverse"
+            subpolicies (dict): Dictionary containing subpolicy instances
+                Expected keys: 'local_search', 'change_region', 'go_to_threat'
+        """
+        self.league_type = league_type
+        self.subpolicies = subpolicies or {}
+        self.current_teammate = None
+        self.episode_count = 0
+
+        # Validate league type
+        valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
+        if league_type not in valid_league_types:
+            raise ValueError(f"league_type must be one of {valid_league_types}")
+
+        print(f"\nTeammateManager initialized with league_type: {league_type}")
+
+    def select_random_teammate(self):
+        """Randomly select a teammate based on league type configuration"""
+        if self.league_type == "baseline":
+            return self._create_baseline_teammate()
+        elif self.league_type == "vanilla":
+            return self._create_vanilla_teammate()
+        elif self.league_type == "strategy_diverse":
+            return self._create_strategy_diverse_teammate()
+        else:
+            raise ValueError(f"Unknown league_type: {self.league_type}")
+
+    def _create_baseline_teammate(self):
+        """Create baseline teammate: always heuristic with conservative settings"""
+        heuristic_agent = HeuristicAgent(
+            mode_selector="none",
+            risk_tolerance="low",
+            spatial_coord="none"
+        )
+
+        teammate = GenericTeammatePolicy(
+            env=None,  # Will be set later if needed
+            local_search_policy=self.subpolicies.get('local_search'),
+            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            change_region_subpolicy=self.subpolicies.get('change_region'),
+            mode_selector_agent=heuristic_agent,
+            use_collision_avoidance=False
+        )
+
+        teammate.name = "Baseline_Greedy_noMS_lowrisk_nospatialcoord"
+        self.current_teammate = teammate
+        return teammate
+
+    def _create_vanilla_teammate(self):
+        """Create vanilla teammate: varied mode_selector, conservative spatial/risk settings"""
+        # Randomly sample mode_selector
+        mode_selector = random.choice(["none", "heuristic"]) # Removed "trained" for now
+
+        if mode_selector == "trained":
+            # TODO: Load trained model when available
+            raise NotImplementedError
+
+        heuristic_agent = HeuristicAgent(
+            mode_selector=mode_selector,
+            risk_tolerance="low",  # Always low for vanilla
+            spatial_coord="none"  # Always none for vanilla
+        )
+
+        teammate = GenericTeammatePolicy(
+            env=None,
+            local_search_policy=self.subpolicies.get('local_search'),
+            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            change_region_subpolicy=self.subpolicies.get('change_region'),
+            mode_selector_agent=heuristic_agent,
+            use_collision_avoidance=False
+        )
+
+        teammate.name = f"Vanilla_{mode_selector}MS_norisk_nospatialcoord"
+        self.current_teammate = teammate
+        return teammate
+
+    def _create_strategy_diverse_teammate(self):
+        """Create strategy diverse teammate: all parameters randomly sampled"""
+        # Randomly sample all parameters
+        mode_selector = random.choice(["none", "heuristic"]) # Removed "trained"
+        risk_tolerance = random.choice(["low", "medium", "high", "extreme"])
+        spatial_coord = random.choice(["none", "some", "high"])
+
+        if mode_selector == "trained":
+            # TODO: Load trained model when available
+            raise NotImplementedError
+
+        heuristic_agent = HeuristicAgent(
+            mode_selector=mode_selector,
+            risk_tolerance=risk_tolerance,
+            spatial_coord=spatial_coord
+        )
+
+        teammate = GenericTeammatePolicy(
+            env=None,
+            local_search_policy=self.subpolicies.get('local_search'),
+            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            change_region_subpolicy=self.subpolicies.get('change_region'),
+            mode_selector_agent=heuristic_agent,
+            use_collision_avoidance=False
+        )
+
+        teammate.name = f"Diverse_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatialcoord"
+        self.current_teammate = teammate
+        return teammate
+
+    def reset_for_episode(self):
+        """Reset teammate for new episode and select new random teammate"""
+        self.episode_count += 1
+        # Select a new random teammate for each episode
+        self.select_random_teammate()
+
+        if self.current_teammate and hasattr(self.current_teammate, 'reset'):
+            self.current_teammate.reset()
+
+    # Legacy methods for backward compatibility
+    def add_rl_teammate(self, model_path, policy_name):
+        """Legacy method - not used with new league system"""
+        print("Warning: add_rl_teammate is deprecated with league-based teammate management")
+        pass
+
+    def add_heuristic_teammate(self, strategy_type, config=None):
+        """Legacy method - not used with new league system"""
+        print("Warning: add_heuristic_teammate is deprecated with league-based teammate management")
+        pass
+
+    def select_teammate_by_curriculum(self):
+        """Legacy method - use select_random_teammate instead"""
+        print("Warning: select_teammate_by_curriculum is deprecated, using select_random_teammate")
+        return self.select_random_teammate()
 
 
 class HeuristicAgent:
@@ -237,8 +368,10 @@ class HeuristicAgent:
     def _get_unknown_targets_per_quadrant(self, env):
         """
         Count unknown targets in each quadrant.
+
         Args:
             env: The environment instance
+
         Returns:
             dict: Mapping of quadrant names to target counts
         """
@@ -264,7 +397,6 @@ class HeuristicAgent:
                 quadrant_counts["SE"] += 1
 
         return quadrant_counts
-
 
 class GenericTeammatePolicy(TeammatePolicy):
     def __init__(self,
@@ -316,132 +448,6 @@ class GenericTeammatePolicy(TeammatePolicy):
         # Implementation would depend on environment structure
         # For now, return False as placeholder
         return False
-
-
-class TeammateManager:
-    """Manages pool of teammate policies and selection based on league type"""
-
-    def __init__(self, league_type="baseline", subpolicies=None):
-        """
-        Initialize teammate manager with specified league type.
-
-        Args:
-            league_type (str): "baseline", "vanilla", or "strategy_diverse"
-            subpolicies (dict): Dictionary containing subpolicy instances
-                Expected keys: 'local_search', 'change_region', 'go_to_threat'
-        """
-        self.league_type = league_type
-        self.subpolicies = subpolicies or {}
-        self.current_teammate = None
-        self.episode_count = 0
-
-        # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
-        if league_type not in valid_league_types:
-            raise ValueError(f"league_type must be one of {valid_league_types}")
-
-        print(f"TeammateManager initialized with league_type: {league_type}")
-
-    def select_random_teammate(self):
-        """Randomly select a teammate based on league type configuration"""
-        if self.league_type == "baseline":
-            return self._create_baseline_teammate()
-        elif self.league_type == "vanilla":
-            return self._create_vanilla_teammate()
-        elif self.league_type == "strategy_diverse":
-            return self._create_strategy_diverse_teammate()
-        else:
-            raise ValueError(f"Unknown league_type: {self.league_type}")
-
-    def _create_baseline_teammate(self):
-        """Create baseline teammate: always heuristic with conservative settings"""
-        heuristic_agent = HeuristicAgent(
-            mode_selector="none",
-            risk_tolerance="low",
-            spatial_coord="none"
-        )
-
-        teammate = GenericTeammatePolicy(
-            env=None,  # Will be set later if needed
-            local_search_policy=self.subpolicies.get('local_search'),
-            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-            change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
-        )
-
-        teammate.name = "Baseline_Conservative"
-        self.current_teammate = teammate
-        return teammate
-
-    def _create_vanilla_teammate(self):
-        """Create vanilla teammate: varied mode_selector, conservative spatial/risk settings"""
-        # Randomly sample mode_selector
-        mode_selector = random.choice(["none", "heuristic", "trained"])
-
-        if mode_selector == "trained":
-            # TODO: Load trained model when available
-            # For now, fall back to heuristic
-            mode_selector = "heuristic"
-
-        heuristic_agent = HeuristicAgent(
-            mode_selector=mode_selector,
-            risk_tolerance="low",  # Always low for vanilla
-            spatial_coord="none"  # Always none for vanilla
-        )
-
-        teammate = GenericTeammatePolicy(
-            env=None,
-            local_search_policy=self.subpolicies.get('local_search'),
-            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-            change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
-        )
-
-        teammate.name = f"Vanilla_{mode_selector}_low_none"
-        self.current_teammate = teammate
-        return teammate
-
-    def _create_strategy_diverse_teammate(self):
-        """Create strategy diverse teammate: all parameters randomly sampled"""
-        # Randomly sample all parameters
-        mode_selector = random.choice(["none", "heuristic", "trained"])
-        risk_tolerance = random.choice(["low", "medium", "high", "extreme"])
-        spatial_coord = random.choice(["none", "some", "high"])
-
-        if mode_selector == "trained":
-            # TODO: Load trained model when available
-            # For now, fall back to heuristic
-            mode_selector = "heuristic"
-
-        heuristic_agent = HeuristicAgent(
-            mode_selector=mode_selector,
-            risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord
-        )
-
-        teammate = GenericTeammatePolicy(
-            env=None,
-            local_search_policy=self.subpolicies.get('local_search'),
-            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-            change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
-        )
-
-        teammate.name = f"Diverse_{mode_selector}_{risk_tolerance}_{spatial_coord}"
-        self.current_teammate = teammate
-        return teammate
-
-    def reset_for_episode(self):
-        """Reset teammate for new episode and select new random teammate"""
-        self.episode_count += 1
-        # Select a new random teammate for each episode
-        self.select_random_teammate()
-
-        if self.current_teammate and hasattr(self.current_teammate, 'reset'):
-            self.current_teammate.reset()
 
 
 ########################################################################################################################
@@ -578,7 +584,7 @@ class GoToNearestThreat(SubPolicy):
             best_action = adjacent_actions[best_adjacent_idx]
 
         self._last_action = best_action
-        print(f'Heuristic chose action {best_action} targeting unidentified threat')
+        #print(f'[GoToThreat] Heuristic chose action {best_action} targeting unidentified threat')
         return np.int32(best_action)
 
     def has_unidentified_threats_remaining(self, observation) -> bool:
@@ -638,7 +644,7 @@ class EvadeDetection(SubPolicy):
         pass
 
     def act(self, observation):
-        print(f'[EvadeDetection] EVADE TRIGGERED')
+        #print(f'[EvadeDetection] EVADE TRIGGERED')
 
         if self.model:
             action = self.model.predict(observation)
@@ -692,9 +698,9 @@ class EvadeDetection(SubPolicy):
         ], dtype=np.float32)
 
         # Case 1: Inside danger zone - move directly away from threat
-        print(f'threat_distance {threat_distance} <= threat_radius {buffer_radius} = {threat_distance <= buffer_radius})')
+        #print(f'[EvadeDetection] threat_distance {threat_distance} <= threat_radius {buffer_radius} = {threat_distance <= buffer_radius})')
         if threat_distance <= buffer_radius:
-            print('Inside danger zone - evading directly away from threat')
+            #print('[EvadeDetection] Inside danger zone - evading directly away from threat')
 
             # Handle edge case where agent is exactly at threat center
             if threat_distance < 1e-6:  # Very small number to avoid division by zero
@@ -816,10 +822,17 @@ class LocalSearch(SubPolicy):
 
     def act(self, observation):
         if self.model:
-            action = self.model.predict(observation)
+            action, _ = self.model.predict(observation)
+            action = np.int32(action)
+            #print(f'Model output is {action}')
         else:
-            action = self.heuristic(observation)
-        return action
+            try:
+                action, _ = self.heuristic(observation)
+            except:
+                action = self.heuristic(observation)
+                print(f'ERROR IN LOCALSEARCH HEURISTIC ACT: action={action}')
+        #print(f'local search act: {action} {type(action)}')
+        return action, None #np.int32(action)
 
     def heuristic(self, observation):
         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
@@ -857,7 +870,7 @@ class LocalSearch(SubPolicy):
         # Extract nearest target vector (first two components)
         if len(obs) < 2:
             print(f"Warning: observation too short, got {len(obs)} elements, expected at least 2")
-            return np.int32(0)
+            return np.int32(0), None
 
         target_vector_x = obs[0]
         target_vector_y = obs[1]
@@ -866,7 +879,7 @@ class LocalSearch(SubPolicy):
         if target_vector_x == 0.0 and target_vector_y == 0.0:
             # No targets or at target location
             self.reset_heuristic_state()
-            return np.int32(0)
+            return np.int32(0), None
 
         # The observation already gives us the vector to the nearest target
         direction_to_target = np.array([target_vector_x, target_vector_y])
@@ -880,7 +893,7 @@ class LocalSearch(SubPolicy):
         if target_norm > 0:
             direction_to_target_norm = direction_to_target / target_norm
         else:
-            return np.int32(self._last_action if self._last_action is not None else 0)
+            return np.int32(self._last_action if self._last_action is not None else 0), None
 
         # Calculate dot products
         dot_products = np.dot(normalized_directions, direction_to_target_norm)
@@ -913,6 +926,7 @@ class LocalSearch(SubPolicy):
             best_action = adjacent_actions[best_adjacent_idx]
 
         self._last_action = best_action
+        #print(f'Local search heuristic: action is {best_action} ({type(best_action)}')
         return np.int32(best_action), None
 
     def reset_heuristic_state(self):
@@ -946,7 +960,7 @@ class ChangeRegions(SubPolicy):
     def act(self, observation):
         # Check if we've reached the current target region
         if self.target_region is not None and self._has_reached_target(observation):
-            print(f'Reached target region {self.target_region}, selecting new region')
+            #print(f'[ChangeRegions] Reached target region {self.target_region}, selecting new region')
             self.target_region = None  # Force new selection
             self.steps_since_update = self.update_rate  # Force immediate update
 
@@ -957,12 +971,12 @@ class ChangeRegions(SubPolicy):
                 self.target_region = self.model.predict(observation)
             else:
                 self.target_region = self.heuristic(observation)
-            print(f'Selected new target region: {self.target_region}')
+            #print(f'[ChangeRegions] Selected new target region: {self.target_region}')
 
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
         self.steps_since_update += 1
-        print(f'Changeregion choice action {action}')
+        #print(f'Changeregion choice action {action}')
         return action
 
     def _has_reached_target(self, observation):
@@ -982,8 +996,10 @@ class ChangeRegions(SubPolicy):
         return agent_distance_to_target <= distance_threshold
 
     def heuristic(self, observation):
-        """Simple heuristic to choose a region. Can be used if model is not provided"""
-
+        """
+        Improved heuristic to choose a region with most targets that doesn't contain teammate.
+        If we already have a target region, stick with it until we've searched it thoroughly.
+        """
         obs = np.array(observation)
 
         # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
@@ -992,8 +1008,8 @@ class ChangeRegions(SubPolicy):
         for region_id in range(4):  # 4 regions: NW, NE, SW, SE
             base_idx = region_id * 3
             target_ratio = obs[base_idx]  # Ratio of unknown targets in this region
-            agent_distance = obs[base_idx + 1]  # Agent distance to region center
-            teammate_distance = obs[base_idx + 2]  # Teammate distance to region center
+            agent_distance = obs[base_idx + 1]  # Agent distance to region center (normalized)
+            teammate_distance = obs[base_idx + 2]  # Teammate distance to region center (normalized)
 
             regions_info.append({
                 'region_id': region_id,
@@ -1002,30 +1018,44 @@ class ChangeRegions(SubPolicy):
                 'teammate_distance': teammate_distance
             })
 
-        # Determine which region teammate is likely in
-        # Teammate is probably in the region they're closest to
-        teammate_distances = [info['teammate_distance'] for info in regions_info]
-        teammate_region = np.argmin(teammate_distances)
+        # If we already have a target region and haven't finished searching it, keep it
+        if hasattr(self, 'target_region') and self.target_region is not None:
+            current_region_info = regions_info[self.target_region]
 
-        # Sort regions by target density (highest ratio first)
-        regions_info.sort(key=lambda x: x['target_ratio'], reverse=True)
+            # Only switch if current region has no targets left OR teammate entered our region
+            teammate_in_current_region = current_region_info['teammate_distance'] < 0.25
+            no_targets_in_current = current_region_info['target_ratio'] < 0.1  # Less than 10% of targets
 
-        # Choose the highest density region that doesn't have teammate
-        target_region = None
+            if not (teammate_in_current_region or no_targets_in_current):
+                #print(f"Continuing with current region {self.target_region}")
+                return self.target_region
+
+        # Need to select a new region
+        # Define threshold for "teammate being in a region" (normalized distance)
+        region_threshold = 0.25
+
+        # Filter out regions where teammate is currently located
+        # Note: We don't exclude where agent is, since agent needs to be able to enter regions
+        available_regions = []
         for region_info in regions_info:
-            region_id = region_info['region_id']
+            teammate_in_region = region_info['teammate_distance'] < region_threshold
 
-            # Skip if teammate is in this region (with small tolerance for distance comparison)
-            if region_id == teammate_region and region_info[
-                'teammate_distance'] < 0.3:  # 0.3 is normalized distance threshold
-                continue
+            # Only exclude regions where teammate is present
+            if not teammate_in_region:
+                available_regions.append(region_info)
 
-            target_region = region_id
-            break
+        # If no regions are available (teammate coverage is too broad), fall back to all regions
+        if not available_regions:
+            print("[ChangeRegions] Warning: Teammate covers all regions, considering all regions")
+            available_regions = regions_info
 
-        # Fallback: if all regions have teammate or no targets anywhere, choose the region with highest density
-        if target_region is None:
-            target_region = regions_info[0]['region_id']
+        # Sort available regions by target density (highest ratio first)
+        available_regions.sort(key=lambda x: x['target_ratio'], reverse=True)
+
+        # Choose the region with highest target density
+        target_region = available_regions[0]['region_id']
+
+        #print(f"[ChangeRegions] Selected NEW region {target_region} with target ratio {available_regions[0]['target_ratio']:.2f}")
 
         return target_region
 
@@ -1052,17 +1082,11 @@ class ChangeRegions(SubPolicy):
 
     def _get_region_center(self, region_id: int) -> np.ndarray:
         """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
-        # centers = {
-        #     0: np.array([-0.5, 0.5]),  # NW
-        #     1: np.array([0.5, 0.5]),  # NE
-        #     2: np.array([-0.5, -0.5]),  # SW
-        #     3: np.array([0.5, -0.5])  # SE
-        # }
         centers = {
-            0: np.array([-75, 75]),  # NW
-            1: np.array([75, 75]),  # NE
-            2: np.array([-75, -75]),  # SW
-            3: np.array([75, -75])  # SE
+            0: np.array([-0.5, 0.5]),  # NW
+            1: np.array([0.5, 0.5]),  # NE
+            2: np.array([-0.5, -0.5]),  # SW
+            3: np.array([0.5, -0.5])  # SE
         }
         # centers = {
         #     0: np.array([0.25, 0.25]),  # NW

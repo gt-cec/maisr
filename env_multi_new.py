@@ -254,6 +254,7 @@ class MAISREnvVec(gym.Env):
         self.pause_start_time = 0
         self.total_pause_time = 0
         self.init = True
+        self.failed = False
 
         self.id_requested = False
 
@@ -285,188 +286,220 @@ class MAISREnvVec(gym.Env):
         #self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
 
         # Create a single threat at strategic location (likely to be on greedy search path)
-        self.threats = np.zeros((2, 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
+        self.threats = np.zeros((self.config['num_threats'], 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
         #self.threat_timers = np.zeros(2, dtype=np.int32)  # How long each threat has been in range
         #self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
-        self.threat_timers = np.zeros((self.config['num_aircraft'], 2), dtype=np.int32)  # [aircraft_id][threat_id]
-        self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
+        self.threat_timers = np.zeros((self.config['num_aircraft'], self.config['num_threats']), dtype=np.int32)  # [aircraft_id][threat_id]
+        self.threat_identified = np.zeros(self.config['num_threats'], dtype=bool)  # Whether each threat is identified
         self.num_threats_identified = 0
         margin = map_half_size * 0.03  # 3% margin from edges
 
         ############################################################################################################
-        # Replace the threat placement section (around lines 200-300) with this improved version:
+        for i in range(self.config['num_threats']):
+            max_attempts = 50
+            threat_placed = False
+
+            for attempt in range(max_attempts):
+                candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                candidate_pos = np.array([candidate_x, candidate_y])
+
+                # Check distance from all targets
+                valid_position = True
+                if self.config['num_targets'] > 0:
+                    target_positions = self.targets[:, 3:5]
+                    distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
+                    if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
+                        valid_position = False
+
+                # Check distance from other threats
+                if i > 0 and valid_position:
+                    distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
+                    if distance_to_other_threat < 50.0:
+                        valid_position = False
+
+                if valid_position:
+                    self.threats[i, 0] = candidate_x
+                    self.threats[i, 1] = candidate_y
+                    threat_placed = True
+                    break
+
+            if not threat_placed:
+                # Final fallback
+                self.threats[i, 0] = np.random.uniform(-0.9, 0.9)
+                self.threats[i, 1] = np.random.uniform(-0.9, 0.9)
 
         ############################################################################################################
-        if self.config['num_targets'] >= 2:
-            # Find centroid of all targets
-            target_centroid_x = np.mean(self.targets[:, 3])
-            target_centroid_y = np.mean(self.targets[:, 4])
-
-            # Find the two targets closest to the centroid for first threat
-            target_positions = self.targets[:, 3:5]
-            centroid_pos = np.array([target_centroid_x, target_centroid_y])
-            distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
-            closest_indices = np.argsort(distances_to_centroid)[:2]
-
-            # Place first threat with guaranteed separation
-            min_threat_distance = 50.0  # Minimum distance from any target
-            max_attempts = 50
-
-            # Try strategic placement first
-            target1_pos = self.targets[closest_indices[0], 3:5]
-            target2_pos = self.targets[closest_indices[1], 3:5]
-
-            threat1_placed = False
-            for attempt in range(max_attempts):
-                if attempt < 20:  # First 20 attempts: try strategic placement
-                    interpolation_factor = np.random.uniform(0.2, 0.8)
-                    threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
-
-                    # Add perpendicular offset
-                    line_vector = target2_pos - target1_pos
-                    line_length = np.linalg.norm(line_vector)
-                    if line_length > 0:
-                        perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
-                        offset_distance = np.random.uniform(60.0, 100.0)
-                        side = 1 if np.random.random() > 0.5 else -1
-                        threat1_candidate = threat_base_pos + (perpendicular * offset_distance * side)
-                    else:
-                        # Fallback if targets are at same location
-                        angle = np.random.uniform(0, 2 * np.pi)
-                        offset_distance = 80.0
-                        threat1_candidate = threat_base_pos + np.array([
-                            offset_distance * np.cos(angle),
-                            offset_distance * np.sin(angle)
-                        ])
-                else:  # Last 30 attempts: try random placement
-                    threat1_candidate = np.array([
-                        np.random.uniform(-map_half_size + margin, map_half_size - margin),
-                        np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                    ])
-
-                # Check if position is valid (not too close to targets and within bounds)
-                distances_to_targets = np.sqrt(np.sum((target_positions - threat1_candidate) ** 2, axis=1))
-                within_bounds = (threat1_candidate[0] >= -map_half_size + margin and
-                                 threat1_candidate[0] <= map_half_size - margin and
-                                 threat1_candidate[1] >= -map_half_size + margin and
-                                 threat1_candidate[1] <= map_half_size - margin)
-
-                if np.min(distances_to_targets) >= min_threat_distance and within_bounds:
-                    self.threats[0, 0] = threat1_candidate[0]
-                    self.threats[0, 1] = threat1_candidate[1]
-                    threat1_placed = True
-                    break
-
-            if not threat1_placed:
-                # Fallback: place at map center with some offset
-                self.threats[0, 0] = np.random.uniform(-50, 50)
-                self.threats[0, 1] = np.random.uniform(-50, 50)
-
-            # Place second threat at a different location
-            threat1_pos = np.array([self.threats[0, 0], self.threats[0, 1]])
-            threat2_placed = False
-
-            for attempt in range(max_attempts):
-                if attempt < 20:  # First 20 attempts: try strategic placement
-                    # Find targets farthest from first threat
-                    distances_from_threat1 = np.sqrt(np.sum((target_positions - threat1_pos) ** 2, axis=1))
-                    farthest_indices = np.argsort(distances_from_threat1)[-2:]  # Two farthest targets
-
-                    target3_pos = self.targets[farthest_indices[0], 3:5]
-                    target4_pos = self.targets[farthest_indices[1], 3:5]
-                    interpolation_factor = np.random.uniform(0.2, 0.8)
-                    threat_base_pos = target3_pos + interpolation_factor * (target4_pos - target3_pos)
-
-                    # Add perpendicular offset
-                    line_vector = target4_pos - target3_pos
-                    line_length = np.linalg.norm(line_vector)
-                    if line_length > 0:
-                        perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
-                        offset_distance = np.random.uniform(60.0, 100.0)
-                        side = 1 if np.random.random() > 0.5 else -1
-                        threat2_candidate = threat_base_pos + (perpendicular * offset_distance * side)
-                    else:
-                        # Fallback if targets are at same location
-                        angle = np.random.uniform(0, 2 * np.pi)
-                        offset_distance = 80.0
-                        threat2_candidate = threat_base_pos + np.array([
-                            offset_distance * np.cos(angle),
-                            offset_distance * np.sin(angle)
-                        ])
-                else:  # Last 30 attempts: try random placement
-                    threat2_candidate = np.array([
-                        np.random.uniform(-map_half_size + margin, map_half_size - margin),
-                        np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                    ])
-
-                # Check if position is valid (not too close to targets, first threat, and within bounds)
-                distances_to_targets = np.sqrt(np.sum((target_positions - threat2_candidate) ** 2, axis=1))
-                distance_to_threat1 = np.sqrt(np.sum((threat1_pos - threat2_candidate) ** 2))
-                within_bounds = (threat2_candidate[0] >= -map_half_size + margin and
-                                 threat2_candidate[0] <= map_half_size - margin and
-                                 threat2_candidate[1] >= -map_half_size + margin and
-                                 threat2_candidate[1] <= map_half_size - margin)
-
-                if (np.min(distances_to_targets) >= min_threat_distance and
-                        distance_to_threat1 >= min_threat_distance and
-                        within_bounds):
-                    self.threats[1, 0] = threat2_candidate[0]
-                    self.threats[1, 1] = threat2_candidate[1]
-                    threat2_placed = True
-                    break
-
-            if not threat2_placed:
-                # Fallback: place opposite to first threat
-                self.threats[1, 0] = -self.threats[0, 0] * 0.5
-                self.threats[1, 1] = -self.threats[0, 1] * 0.5
-
-        else:
-            # Fallback to random placement if fewer than 2 targets, with distance checking
-            for i in range(2):
-                max_attempts = 50
-                threat_placed = False
-
-                for attempt in range(max_attempts):
-                    candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                    candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                    candidate_pos = np.array([candidate_x, candidate_y])
-
-                    # Check distance from all targets
-                    valid_position = True
-                    if self.config['num_targets'] > 0:
-                        target_positions = self.targets[:, 3:5]
-                        distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
-                        if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
-                            valid_position = False
-
-                    # Check distance from other threats
-                    if i > 0 and valid_position:
-                        distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
-                        if distance_to_other_threat < 50.0:
-                            valid_position = False
-
-                    if valid_position:
-                        self.threats[i, 0] = candidate_x
-                        self.threats[i, 1] = candidate_y
-                        threat_placed = True
-                        break
-
-                if not threat_placed:
-                    # Final fallback
-                    self.threats[i, 0] = np.random.uniform(-100, 100)
-                    self.threats[i, 1] = np.random.uniform(-100, 100)
-
-        # Final validation: ensure no threats are on top of targets
-        for threat_idx in range(2):
-            threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-            target_positions = self.targets[:, 3:5]
-            distances_to_targets = np.sqrt(np.sum((target_positions - threat_pos) ** 2, axis=1))
-
-            if np.min(distances_to_targets) < 30.0:  # If too close to any target
-                print(f"Warning: Threat {threat_idx} too close to targets. Moving to safe position.")
-                # Move threat to a guaranteed safe position
-                self.threats[threat_idx, 0] = np.random.uniform(-50, 50)
-                self.threats[threat_idx, 1] = np.random.uniform(-50, 50)
+        # if self.config['num_targets'] >= 2:
+        #     # Find centroid of all targets
+        #     target_centroid_x = np.mean(self.targets[:, 3])
+        #     target_centroid_y = np.mean(self.targets[:, 4])
+        #
+        #     # Find the two targets closest to the centroid for first threat
+        #     target_positions = self.targets[:, 3:5]
+        #     centroid_pos = np.array([target_centroid_x, target_centroid_y])
+        #     distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
+        #     closest_indices = np.argsort(distances_to_centroid)[:2]
+        #
+        #     # Place first threat with guaranteed separation
+        #     min_threat_distance = 50.0  # Minimum distance from any target
+        #     max_attempts = 50
+        #
+        #     # Try strategic placement first
+        #     target1_pos = self.targets[closest_indices[0], 3:5]
+        #     target2_pos = self.targets[closest_indices[1], 3:5]
+        #
+        #     threat1_placed = False
+        #     for attempt in range(max_attempts):
+        #         if attempt < 20:  # First 20 attempts: try strategic placement
+        #             interpolation_factor = np.random.uniform(0.2, 0.8)
+        #             threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
+        #
+        #             # Add perpendicular offset
+        #             line_vector = target2_pos - target1_pos
+        #             line_length = np.linalg.norm(line_vector)
+        #             if line_length > 0:
+        #                 perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
+        #                 offset_distance = np.random.uniform(60.0, 100.0)
+        #                 side = 1 if np.random.random() > 0.5 else -1
+        #                 threat1_candidate = threat_base_pos + (perpendicular * offset_distance * side)
+        #             else:
+        #                 # Fallback if targets are at same location
+        #                 angle = np.random.uniform(0, 2 * np.pi)
+        #                 offset_distance = 80.0
+        #                 threat1_candidate = threat_base_pos + np.array([
+        #                     offset_distance * np.cos(angle),
+        #                     offset_distance * np.sin(angle)
+        #                 ])
+        #         else:  # Last 30 attempts: try random placement
+        #             threat1_candidate = np.array([
+        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin),
+        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin)
+        #             ])
+        #
+        #         # Check if position is valid (not too close to targets and within bounds)
+        #         distances_to_targets = np.sqrt(np.sum((target_positions - threat1_candidate) ** 2, axis=1))
+        #         within_bounds = (threat1_candidate[0] >= -map_half_size + margin and
+        #                          threat1_candidate[0] <= map_half_size - margin and
+        #                          threat1_candidate[1] >= -map_half_size + margin and
+        #                          threat1_candidate[1] <= map_half_size - margin)
+        #
+        #         if np.min(distances_to_targets) >= min_threat_distance and within_bounds:
+        #             self.threats[0, 0] = threat1_candidate[0]
+        #             self.threats[0, 1] = threat1_candidate[1]
+        #             threat1_placed = True
+        #             break
+        #
+        #     if not threat1_placed:
+        #         # Fallback: place at map center with some offset
+        #         self.threats[0, 0] = np.random.uniform(-50, 50)
+        #         self.threats[0, 1] = np.random.uniform(-50, 50)
+        #
+        #     # Place second threat at a different location
+        #     threat1_pos = np.array([self.threats[0, 0], self.threats[0, 1]])
+        #     threat2_placed = False
+        #
+        #     for attempt in range(max_attempts):
+        #         if attempt < 20:  # First 20 attempts: try strategic placement
+        #             # Find targets farthest from first threat
+        #             distances_from_threat1 = np.sqrt(np.sum((target_positions - threat1_pos) ** 2, axis=1))
+        #             farthest_indices = np.argsort(distances_from_threat1)[-2:]  # Two farthest targets
+        #
+        #             target3_pos = self.targets[farthest_indices[0], 3:5]
+        #             target4_pos = self.targets[farthest_indices[1], 3:5]
+        #             interpolation_factor = np.random.uniform(0.2, 0.8)
+        #             threat_base_pos = target3_pos + interpolation_factor * (target4_pos - target3_pos)
+        #
+        #             # Add perpendicular offset
+        #             line_vector = target4_pos - target3_pos
+        #             line_length = np.linalg.norm(line_vector)
+        #             if line_length > 0:
+        #                 perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
+        #                 offset_distance = np.random.uniform(60.0, 100.0)
+        #                 side = 1 if np.random.random() > 0.5 else -1
+        #                 threat2_candidate = threat_base_pos + (perpendicular * offset_distance * side)
+        #             else:
+        #                 # Fallback if targets are at same location
+        #                 angle = np.random.uniform(0, 2 * np.pi)
+        #                 offset_distance = 80.0
+        #                 threat2_candidate = threat_base_pos + np.array([
+        #                     offset_distance * np.cos(angle),
+        #                     offset_distance * np.sin(angle)
+        #                 ])
+        #         else:  # Last 30 attempts: try random placement
+        #             threat2_candidate = np.array([
+        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin),
+        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin)
+        #             ])
+        #
+        #         # Check if position is valid (not too close to targets, first threat, and within bounds)
+        #         distances_to_targets = np.sqrt(np.sum((target_positions - threat2_candidate) ** 2, axis=1))
+        #         distance_to_threat1 = np.sqrt(np.sum((threat1_pos - threat2_candidate) ** 2))
+        #         within_bounds = (threat2_candidate[0] >= -map_half_size + margin and
+        #                          threat2_candidate[0] <= map_half_size - margin and
+        #                          threat2_candidate[1] >= -map_half_size + margin and
+        #                          threat2_candidate[1] <= map_half_size - margin)
+        #
+        #         if (np.min(distances_to_targets) >= min_threat_distance and
+        #                 distance_to_threat1 >= min_threat_distance and
+        #                 within_bounds):
+        #             self.threats[1, 0] = threat2_candidate[0]
+        #             self.threats[1, 1] = threat2_candidate[1]
+        #             threat2_placed = True
+        #             break
+        #
+        #     if not threat2_placed:
+        #         # Fallback: place opposite to first threat
+        #         self.threats[1, 0] = -self.threats[0, 0] * 0.5
+        #         self.threats[1, 1] = -self.threats[0, 1] * 0.5
+        #
+        # else:
+        #     # Fallback to random placement if fewer than 2 targets, with distance checking
+        #     for i in range(2):
+        #         max_attempts = 50
+        #         threat_placed = False
+        #
+        #         for attempt in range(max_attempts):
+        #             candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+        #             candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+        #             candidate_pos = np.array([candidate_x, candidate_y])
+        #
+        #             # Check distance from all targets
+        #             valid_position = True
+        #             if self.config['num_targets'] > 0:
+        #                 target_positions = self.targets[:, 3:5]
+        #                 distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
+        #                 if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
+        #                     valid_position = False
+        #
+        #             # Check distance from other threats
+        #             if i > 0 and valid_position:
+        #                 distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
+        #                 if distance_to_other_threat < 50.0:
+        #                     valid_position = False
+        #
+        #             if valid_position:
+        #                 self.threats[i, 0] = candidate_x
+        #                 self.threats[i, 1] = candidate_y
+        #                 threat_placed = True
+        #                 break
+        #
+        #         if not threat_placed:
+        #             # Final fallback
+        #             self.threats[i, 0] = np.random.uniform(-100, 100)
+        #             self.threats[i, 1] = np.random.uniform(-100, 100)
+        #
+        # # Final validation: ensure no threats are on top of targets
+        # for threat_idx in range(2):
+        #     threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+        #     target_positions = self.targets[:, 3:5]
+        #     distances_to_targets = np.sqrt(np.sum((target_positions - threat_pos) ** 2, axis=1))
+        #
+        #     if np.min(distances_to_targets) < 30.0:  # If too close to any target
+        #         print(f"Warning: Threat {threat_idx} too close to targets. Moving to safe position.")
+        #         # Move threat to a guaranteed safe position
+        #         self.threats[threat_idx, 0] = np.random.uniform(-50, 50)
+        #         self.threats[threat_idx, 1] = np.random.uniform(-50, 50)
 
         ############################################################################################################
         ############################################################################################################
@@ -726,11 +759,11 @@ class MAISREnvVec(gym.Env):
                     })
 
                 # Handle aircraft being detected by high value targets
-                if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
-                    if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
-                        self.detections += 1
-                        new_reward['detections'] += 1
-                        info["detections"] = self.detections
+                # if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
+                #     if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
+                #         self.detections += 1
+                #         new_reward['detections'] += 1
+                #         info["detections"] = self.detections
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
 
@@ -741,6 +774,11 @@ class MAISREnvVec(gym.Env):
 
         if self.step_count_inner >= self.max_steps: # TODO: Temporarily hard-coding 490 steps
             self.terminated = True
+
+        if self.num_threats_identified > 2:
+            self.terminated = True
+            self.failed = True
+            print(f'%%% TOO MANY THREAT IDS, TERMINATED')
 
         # Advance time (only relevant for human play)
         if self.render_mode == 'headless': self.display_time = self.display_time + (1000/60) # If agent training, each step is 1/60th of a second
@@ -767,6 +805,7 @@ class MAISREnvVec(gym.Env):
 
         info['done'] = self.terminated or self.truncated
         info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
+        info['failed'] = getattr(self, 'failed', False)
 
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.max_steps/self.config['frame_skip'] - self.step_count_outer,0)} outer steps early')
@@ -1233,7 +1272,7 @@ class MAISREnvVec(gym.Env):
         if hasattr(self, 'threats'):
             map_half_size = self.config["gameboard_size"] / 2
 
-            for threat_idx in range(2):
+            for threat_idx in range(self.config['num_threats']):
                 threat_screen_x = int(self.threats[threat_idx, 0] + map_half_size)
                 threat_screen_y = int(self.threats[threat_idx, 1] + map_half_size)
                 threat_radius = self.config['threat_radius']
@@ -1246,7 +1285,7 @@ class MAISREnvVec(gym.Env):
                 pygame.draw.circle(self.window, threat_color, (threat_screen_x, threat_screen_y), threat_radius, 3)
 
                 # Draw upside-down triangle (pointing down)
-                triangle_size = 12
+                triangle_size = 8
                 triangle_points = [
                     (threat_screen_x, threat_screen_y + triangle_size),
                     (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
@@ -1521,10 +1560,14 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
-    def render_subpolicy_indicator(self, subpolicy_id, subpolicy_name):
-        """Render a colored square indicating the current active subpolicy"""
+
+    def render_subpolicy_indicators(self, human_subpolicy_id, human_subpolicy_name,
+                                    ai_subpolicy_id, ai_subpolicy_name):
+        """Render colored squares indicating the current active subpolicy for each agent"""
         if self.render_mode != 'human':
             return
+
+        #print(f"[DEBUG] Rendering indicators: Human={human_subpolicy_name}, AI={ai_subpolicy_name}")
 
         # Define colors for each subpolicy
         subpolicy_colors = {
@@ -1534,40 +1577,86 @@ class MAISREnvVec(gym.Env):
             3: (255, 165, 0)  # Orange for Evade
         }
 
-        # Position the indicator in the top-right corner of the game area
-        indicator_size = 120
-        indicator_x = self.config["gameboard_size"] - indicator_size - 10
-        indicator_y = 10
+        # Add this new dictionary
+        subpolicy_names = {
+            0: "local",
+            1: "changeregion",
+            2: "threat",
+            3: "evade"
+        }
 
-        # Get the color for this subpolicy
-        color = subpolicy_colors.get(subpolicy_id, (128, 128, 128))  # Gray for unknown
+        # Indicator dimensions and positions - moved to top-left for visibility
+        indicator_size = 80
+        margin = 10
 
-        # Draw the colored square
-        pygame.draw.rect(self.window, color,
-                         (indicator_x, indicator_y, indicator_size, indicator_size))
+        # Position indicators in top-left corner where they'll definitely be visible
+        human_indicator_x = self.config['gameboard_size']+margin
+        human_indicator_y = margin
 
-        # Draw a black border around the square
+        # Position for AI indicator (below human indicator)
+        ai_indicator_x = human_indicator_x
+        ai_indicator_y = human_indicator_y + indicator_size + margin
+
+        #print(f"[DEBUG] Drawing human indicator at ({human_indicator_x}, {human_indicator_y})")
+        #print(f"[DEBUG] Drawing AI indicator at ({ai_indicator_x}, {ai_indicator_y})")
+
+        # Draw human subpolicy indicator
+        human_color = subpolicy_colors.get(human_subpolicy_id, (128, 128, 128))
+        pygame.draw.rect(self.window, human_color,
+                         (human_indicator_x, human_indicator_y, indicator_size, indicator_size))
         pygame.draw.rect(self.window, (0, 0, 0),
-                         (indicator_x, indicator_y, indicator_size, indicator_size), 3)
+                         (human_indicator_x, human_indicator_y, indicator_size, indicator_size), 3)
 
-        # Add the text
+        # Draw AI subpolicy indicator
+        ai_color = subpolicy_colors.get(ai_subpolicy_id, (128, 128, 128))
+        pygame.draw.rect(self.window, ai_color,
+                         (ai_indicator_x, ai_indicator_y, indicator_size, indicator_size))
+        pygame.draw.rect(self.window, (0, 0, 0),
+                         (ai_indicator_x, ai_indicator_y, indicator_size, indicator_size), 3)
+
+        # Add text labels
         font = pygame.font.SysFont(None, 24)
-        text_surface = font.render(subpolicy_name, True, (255, 255, 255))
+        small_font = pygame.font.SysFont(None, 20)
 
-        # Center the text in the square
-        text_rect = text_surface.get_rect(
-            center=(indicator_x + indicator_size // 2, indicator_y + indicator_size // 2)
+        # Human indicator text
+        human_title = font.render("HUMAN", True, (255, 255, 255))
+        human_title_rect = human_title.get_rect(
+            center=(human_indicator_x + indicator_size // 2, human_indicator_y + 20)
         )
 
-        # Add a semi-transparent background for better text readability
-        text_bg_rect = text_rect.inflate(10, 6)
-        text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height))
-        text_bg_surface.set_alpha(128)
-        text_bg_surface.fill((0, 0, 0))
-        self.window.blit(text_bg_surface, text_bg_rect)
+        human_subpolicy_text = small_font.render(subpolicy_names.get(human_subpolicy_id, "unknown"), True,
+                                                 (255, 255, 255))
+        human_subpolicy_rect = human_subpolicy_text.get_rect(
+            center=(human_indicator_x + indicator_size // 2, human_indicator_y + indicator_size - 15)
+        )
 
-        # Draw the text
-        self.window.blit(text_surface, text_rect)
+        # AI indicator text
+        ai_title = font.render("AI", True, (255, 255, 255))
+        ai_title_rect = ai_title.get_rect(
+            center=(ai_indicator_x + indicator_size // 2, ai_indicator_y + 20)
+        )
+
+        ai_subpolicy_text = small_font.render(subpolicy_names.get(ai_subpolicy_id, "unknown"), True, (255, 255, 255))
+        ai_subpolicy_rect = ai_subpolicy_text.get_rect(
+            center=(ai_indicator_x + indicator_size // 2, ai_indicator_y + indicator_size - 15)
+        )
+
+        # Draw text with semi-transparent backgrounds for readability
+        text_items = [
+            (human_title, human_title_rect),
+            (human_subpolicy_text, human_subpolicy_rect),
+            (ai_title, ai_title_rect),
+            (ai_subpolicy_text, ai_subpolicy_rect)
+        ]
+
+        for text_surface, text_rect in text_items:
+            text_bg_rect = text_rect.inflate(10, 6)
+            text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height))
+            text_bg_surface.set_alpha(128)
+            text_bg_surface.fill((0, 0, 0))
+            self.window.blit(text_bg_surface, text_bg_rect)
+            self.window.blit(text_surface, text_rect)
+
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']

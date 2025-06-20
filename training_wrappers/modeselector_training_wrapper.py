@@ -31,13 +31,11 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.change_region_subpolicy = change_region_subpolicy
         self.evade_policy = evade_policy
 
-        if teammate_policy is not None:
-            self.current_teammate = teammate_policy
-
+        if teammate_policy is not None and teammate_manager is not None:
+            raise ValueError('Cannot specify a teammate policy and a teammate manager at the same time')
+        self.teammate_policy = teammate_policy
         self.teammate_manager = teammate_manager
 
-        if teammate_policy and teammate_manager:
-            raise ValueError('Cannot specify a teammate policy and a teammate manager at the same time')
 
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
@@ -88,7 +86,7 @@ class MaisrModeSelectorWrapper(gym.Env):
     def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
         observation = self.get_observation(0)
-        self.num_switches = 0
+        self.total_switches = 0
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
@@ -111,6 +109,8 @@ class MaisrModeSelectorWrapper(gym.Env):
             # Choose selection strategy: 'random' or 'curriculum'
             self.current_teammate = self.teammate_manager.select_random_teammate()
             print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
+        else: # No manager specified, use fixed teammate
+            self.current_teammate = teammate_policy
 
         return observation, _
 
@@ -173,7 +173,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             # Track policy switching for penalty later
             self.switched_policies = False
             if self.last_action != action:
-                self.num_switches += 1
+                self.total_switches += 1
                 self.switched_policies = True
 
             # Check if we should auto-switch from change_region to local_search
@@ -187,17 +187,17 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             else:
                 self.subpolicy_choice = action
-        # # Normal subpolicy selection logic when not evading
-        # if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
-        #     self.steps_since_last_selection = 0
-        #
-        #     # Track policy switching for penalty later
-        #     self.switched_policies = False
-        #     if self.last_action != action:
-        #         self.num_switches += 1
-        #         self.switched_policies = True
-        #
-        #     self.subpolicy_choice = action
+        # Normal subpolicy selection logic when not evading
+        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+            self.steps_since_last_selection = 0
+
+            # Track policy switching for penalty later
+            self.switched_policies = False
+            if self.last_action != action:
+                self.total_switches += 1
+                self.switched_policies = True
+
+            self.subpolicy_choice = action
 
         ######################## Process subpolicy's action ########################
 
@@ -270,6 +270,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         reward = self.get_reward(base_info)
         self.episode_reward += reward
         info = base_info
+        info['policy_switches'] = getattr(self, 'total_switches', 0)
+        info['final_subpolicy'] = self.subpolicy_choice
+        info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
         terminated = base_terminated
         truncated = base_truncated
 
@@ -508,9 +511,10 @@ class MaisrModeSelectorWrapper(gym.Env):
     def get_observation_nearest_threat(self, agent_id):
         """
         Get observation for go to nearest threat policy including identification status
+        Now dynamically selects the 2 closest unidentified threats, falling back to closest identified if needed
         Returns: [dx_threat1, dy_threat1, identified1, dx_threat2, dy_threat2, identified2]
         """
-        obs = np.zeros(6, dtype=np.float32)  # Changed from 4 to 6
+        obs = np.zeros(6, dtype=np.float32)
 
         # Get agent position
         agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x,
@@ -522,27 +526,43 @@ class MaisrModeSelectorWrapper(gym.Env):
         if len(threat_positions) == 0:
             return obs  # Return zeros if no threats
 
-        # Calculate distances to all threats
-        distances = np.linalg.norm(threat_positions - agent_pos, axis=1)
-        sorted_indices = np.argsort(distances)
+        # Calculate distances and create threat info list
+        threat_info = []
+        for i, threat_pos in enumerate(threat_positions):
+            distance = np.linalg.norm(threat_pos - agent_pos)
+            is_identified = self.env.threat_identified[i] if i < len(self.env.threat_identified) else False
 
-        # Get vector to nearest threat and its identification status
-        if len(sorted_indices) >= 1:
-            threat_idx = sorted_indices[0]
-            nearest_pos = threat_positions[threat_idx]
-            vector_to_nearest = nearest_pos - agent_pos
-            obs[0] = vector_to_nearest[0]  # dx to nearest
-            obs[1] = vector_to_nearest[1]  # dy to nearest
-            obs[2] = float(self.env.threat_identified[threat_idx])  # identification status
+            threat_info.append({
+                'index': i,
+                'position': threat_pos,
+                'distance': distance,
+                'identified': is_identified
+            })
 
-        # Get vector to second nearest threat and its identification status
-        if len(sorted_indices) >= 2:
-            threat_idx = sorted_indices[1]
-            second_nearest_pos = threat_positions[threat_idx]
-            vector_to_second = second_nearest_pos - agent_pos
-            obs[3] = vector_to_second[0]  # dx to 2nd nearest
-            obs[4] = vector_to_second[1]  # dy to 2nd nearest
-            obs[5] = float(self.env.threat_identified[threat_idx])  # identification status
+        # Sort by distance (closest first)
+        threat_info.sort(key=lambda x: x['distance'])
+
+        # Priority selection: prefer unidentified threats, but include closest overall
+        selected_threats = []
+
+        # First, try to get up to 2 unidentified threats
+        unidentified_threats = [t for t in threat_info if not t['identified']]
+        selected_threats.extend(unidentified_threats[:2])
+
+        # If we need more threats and have identified ones, add closest identified threats
+        if len(selected_threats) < 2:
+            identified_threats = [t for t in threat_info if t['identified']]
+            remaining_slots = 2 - len(selected_threats)
+            selected_threats.extend(identified_threats[:remaining_slots])
+
+        # Fill observation with selected threats
+        for i, threat in enumerate(selected_threats):
+            if i < 2:  # Ensure we don't exceed observation size
+                base_idx = i * 3
+                vector_to_threat = threat['position'] - agent_pos
+                obs[base_idx] = vector_to_threat[0]  # dx
+                obs[base_idx + 1] = vector_to_threat[1]  # dy
+                obs[base_idx + 2] = float(threat['identified'])  # identification status
 
         return obs
 
@@ -980,7 +1000,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Calculate percentages
         print(
-            f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.num_switches} policy switches ({self.num_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")
+            f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.total_switches} policy switches ({self.total_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")
 
     def get_current_subpolicy_info(self):
         """Return current subpolicy information for display"""
@@ -994,3 +1014,16 @@ class MaisrModeSelectorWrapper(gym.Env):
             3: "Evade"
         }
         return self.subpolicy_choice, mode_names.get(self.subpolicy_choice, "Unknown")
+
+    def get_teammate_subpolicy_info(self):
+        """Return teammate's current subpolicy information for display"""
+        if not hasattr(self, 'teammate_subpolicy_choice'):
+            return 0, "Local Search"  # Default
+
+        mode_names = {
+            0: "Local Search",
+            1: "Change Region",
+            2: "Go to Threat",
+            3: "Evade"
+        }
+        return self.teammate_subpolicy_choice, mode_names.get(self.teammate_subpolicy_choice, "Unknown")
