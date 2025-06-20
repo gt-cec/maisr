@@ -1,6 +1,9 @@
+import ctypes
 import warnings
-warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
+import pygame
+
+warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 import gymnasium as gym
 import os
 import numpy as np
@@ -19,9 +22,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
-from utility.league_management import TeammateManager
-
+from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
@@ -33,23 +34,7 @@ def generate_run_name(config):
 
     components = [
         f"{config['n_envs']}envs",
-        #f"obs-{config['obs_type']}",
-        #f"act-{config['action_type']}",
     ]
-
-    # Add critical hyperparameters
-    components.extend([
-        #f"lr-{config['lr']}",
-#        f"bs-{config['batch_size']}",
-        #f"g-{config['gamma']}",
-        # f"fs-{config.get('frame_skip', 1)}",
-        # f"ppoupdates-{config['ppo_update_steps']}",
-        # f"curriculum-{config['use_curriculum']}",
-        # f"rew-wtn-{config['shaping_coeff_wtn']}",
-        # f"rew-prox-{config['shaping_coeff_prox']}",
-        # f"rew-timepenalty-{config['shaping_time_penalty']}",
-        # f"rew-shapedecay-{config['shaping_decay_rate']}",
-    ])
 
     # Add a run identifier (could be auto-incremented or timestamp-based)
     from datetime import datetime
@@ -70,7 +55,7 @@ class EnhancedWandbCallback(BaseCallback):
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
-                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
+                 use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name', render=False,
                  log_freq=2):  # New parameter: log every N steps
         super(EnhancedWandbCallback, self).__init__(verbose)
         self.eval_env = eval_env
@@ -78,6 +63,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
         self.log_freq = log_freq  # Log every N steps instead of every step
+        self.render = render
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
@@ -93,10 +79,7 @@ class EnhancedWandbCallback(BaseCallback):
             'rewards': [],
             'lengths': [],
             'target_ids': [],
-            'detections': [],
-            'threat_ids': [],
-            'policy_switches': [],
-            'subpolicy_usage': []
+            'detections': []
         }
 
         # Early stopping based on performance degradation
@@ -118,20 +101,8 @@ class EnhancedWandbCallback(BaseCallback):
                     self.episode_buffer['rewards'].append(info["episode"]["r"])
                     self.episode_buffer['lengths'].append(info["episode"]["l"])
 
-                    if "target_ids" in info:
-                        self.episode_buffer['target_ids'].append(info["target_ids"])
-                    if "detections" in info:
-                        self.episode_buffer['detections'].append(info["detections"])
-                    if "threat_ids" in info:
-                        self.episode_buffer['threat_ids'].append(info["threat_ids"])
-                    if "new_threat_ids" in info:
-                        self.episode_buffer['threat_ids'].append(info.get("threat_ids", 0))
-
-                    if "policy_switches" in info:
-                        self.episode_buffer['policy_switches'].append(info["policy_switches"])
-
-                    if "subpolicy_chosen" in info:
-                        self.episode_buffer['subpolicy_usage'].append(info["subpolicy_chosen"])
+                    if "target_ids" in info: self.episode_buffer['target_ids'].append(info["target_ids"])
+                    if "detections" in info: self.episode_buffer['detections'].append(info["detections"])
 
         # Only log episode data at the specified frequency
         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
@@ -145,30 +116,11 @@ class EnhancedWandbCallback(BaseCallback):
             if self.episode_buffer['target_ids']: log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
             if self.episode_buffer['detections']: log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            # Log mode selector specific metrics
-            if self.episode_buffer['threat_ids']:
-                log_data["train/mean_threat_ids"] = np.mean(self.episode_buffer['threat_ids'])
-
-            if self.episode_buffer['policy_switches']:
-                log_data["train/mean_policy_switches"] = np.mean(self.episode_buffer['policy_switches'])
-
-            if self.episode_buffer['subpolicy_usage']:
-                # Log distribution of subpolicy usage
-                subpolicy_counts = np.bincount(self.episode_buffer['subpolicy_usage'], minlength=3)
-                total = len(self.episode_buffer['subpolicy_usage'])
-                if total > 0:
-                    log_data["train/subpolicy_0_usage"] = subpolicy_counts[0] / total  # Local search
-                    log_data["train/subpolicy_1_usage"] = subpolicy_counts[1] / total  # Change region
-                    log_data["train/subpolicy_2_usage"] = subpolicy_counts[2] / total  # Go to threat
-
             if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
 
             # Clear the buffer after logging
-            self.episode_buffer = {
-                'rewards': [], 'lengths': [], 'target_ids': [], 'detections': [],
-                'threat_ids': [], 'policy_switches': [], 'subpolicy_usage': []
-            }
+            self.episode_buffer = {'rewards': [], 'lengths': [], 'target_ids': [], 'detections': []}
 
         # Log training metrics less frequently (e.g., every 10 steps)
         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
@@ -218,21 +170,16 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
-                    #print(f'agent action: {action} (type: {type(action)})')
                     obses, rewards, dones, infos = self.eval_env.step([action])
+                    if self.render:
+                        self.eval_env.render()
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
                     ep_reward += reward
 
-                if "target_ids" in info:
-                    target_ids_list.append(info["target_ids"])
-                # Collect mode selector specific eval metrics
-                if "threat_ids" in info:
-                    threat_ids_list.append(info["threat_ids"])
-                if "policy_switches" in info:
-                    policy_switches_list.append(info["policy_switches"])
+                if "target_ids" in info: target_ids_list.append(info["target_ids"])
 
                 mean_reward += ep_reward / self.n_eval_episodes
                 eval_lengths.append(info["episode"]["l"])
@@ -247,9 +194,7 @@ class EnhancedWandbCallback(BaseCallback):
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
-                "curriculum/difficulty_level": self.current_difficulty,
-                "eval/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
-                "eval/mean_policy_switches": np.mean(policy_switches_list) if policy_switches_list else 0,
+                "curriculum/difficulty_level": self.current_difficulty
             }
 
             #################################### Early stopping ####################################
@@ -285,53 +230,49 @@ class EnhancedWandbCallback(BaseCallback):
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
-            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, '
-                  f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}, '
-                  f'mean threat_ids: {np.mean(threat_ids_list) if threat_ids_list else 0}, '
-                  f'mean switches: {np.mean(policy_switches_list) if policy_switches_list else 0})')
+            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
 
 
             #################################### Curriculum learning ####################################
-            # TODO temp removed
-            # if self.use_curriculum:
-            #     print('CURRICULUM: Checking if we should increase difficulty')
-            #     avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
-            #     avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
-            #
-            #     # if self.model.get_env().get_attr("difficulty")[0] == 0:
-            #     #     if avg_target_ids >= self.min_target_ids_to_advance:
-            #     #         self.above_threshold_counter += 1
-            #     #     else:
-            #     #         self.above_threshold_counter = 0
-            #     #else:
-            #     if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
-            #         self.above_threshold_counter += 1
-            #     else:
-            #         self.above_threshold_counter = 0
-            #
-            #     if self.above_threshold_counter >= 5 and self.current_difficulty < self.max_difficulty:
-            #         self.above_threshold_counter = 0
-            #         self.current_difficulty += 1
-            #         print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
-            #
-            #         self.model.get_env().env_method("set_difficulty", self.current_difficulty)
-            #         try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
-            #         except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
-            #
-            #         print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
-            #         try: self.best_eval_performance = current_performance  # Reset best to current performance
-            #         except: self.best_eval_performance = -np.inf
-            #         self.performance_crash_counter = 0  # Reset crash counter
-            #
-            #         self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
-            #
-            #         # Decrease LR
-            #         print(f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]['lr']} to {self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease}')
-            #         self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease
-            #
-            #     else:
-            #         print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
-            #               f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
+            if self.use_curriculum:
+                print('CURRICULUM: Checking if we should increase difficulty')
+                avg_target_ids = np.mean(target_ids_list) if target_ids_list else 0
+                avg_eval_len = np.mean(eval_lengths) if eval_lengths else 0
+
+                # if self.model.get_env().get_attr("difficulty")[0] == 0:
+                #     if avg_target_ids >= self.min_target_ids_to_advance:
+                #         self.above_threshold_counter += 1
+                #     else:
+                #         self.above_threshold_counter = 0
+                #else:
+                if avg_target_ids >= self.min_target_ids_to_advance and avg_eval_len <= self.max_ep_len_to_advance:
+                    self.above_threshold_counter += 1
+                else:
+                    self.above_threshold_counter = 0
+
+                if self.above_threshold_counter >= 5 and self.current_difficulty < self.max_difficulty:
+                    self.above_threshold_counter = 0
+                    self.current_difficulty += 1
+                    print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
+
+                    self.model.get_env().env_method("set_difficulty", self.current_difficulty)
+                    try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
+                    except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
+
+                    print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
+                    try: self.best_eval_performance = current_performance  # Reset best to current performance
+                    except: self.best_eval_performance = -np.inf
+                    self.performance_crash_counter = 0  # Reset crash counter
+
+                    self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
+
+                    # Decrease LR
+                    print(f'Model lr reduced from {self.model.policy.optimizer.param_groups[0]['lr']} to {self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease}')
+                    self.model.policy.optimizer.param_groups[0]['lr'] = self.model.policy.optimizer.param_groups[0]['lr']/self.cl_lr_decrease
+
+                else:
+                    print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
+                          f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
 
             print('#################################################\n\nReturning to training... \n')
 
@@ -361,37 +302,31 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type):
-    """Setup teammate manager with specified league type"""
+def setup_teammate_pool():
+    teammate_manager = TeammateManager()
 
-    # Create subpolicies for teammates to use
-    # Note: These would typically be loaded from trained models
-    subpolicies = {
-        'local_search': LocalSearch(model_path=None),  # Using heuristic
-        'change_region': ChangeRegions(model_path=None),  # Using heuristic
-        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
-    }
+    # Add heuristic teammates with different strategies
+    teammate_manager.add_heuristic_teammate("aggressive", {"mode_duration": 30})
+    teammate_manager.add_heuristic_teammate("conservative", {"mode_duration": 50})
+    teammate_manager.add_heuristic_teammate("adaptive", {"mode_duration": 40})
+    teammate_manager.add_heuristic_teammate("random", {"mode_duration": 25})
 
-    teammate_manager = TeammateManager(
-        league_type=league_type,
-        subpolicies=subpolicies
-    )
+    # Add RL teammates
+    # teammate_manager.add_rl_teammate("trained_models/teammate_model_1.zip", "AggressiveRL")
+    # teammate_manager.add_rl_teammate("trained_models/teammate_model_2.zip", "ConservativeRL")
 
-    print(f"Teammate manager setup with league_type: {league_type}")
     return teammate_manager
-
-
-# In your training loop
-
 
 def train_modeselector(
         env_config,
         n_envs,
         project_name,
-        #use_normalize,
+        use_normalize,
+        use_teammate_manager,
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
+        render=False,
         log_dir="./logs/",
         machine_name='machine',
         save_model=True
@@ -409,6 +344,16 @@ def train_modeselector(
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        ctypes.windll.user32.SetProcessDPIAware()
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = 30
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Human Interface")
+
     os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
@@ -424,12 +369,14 @@ def train_modeselector(
 
     ################################################ Initialize envs ################################################
 
-    teammate_manager = setup_teammate_pool(env_config['league_type'])
-    print(f'Set up teammate manager with league type {env_config['league_type']}')
+    if use_teammate_manager:
+        teammate_manager = setup_teammate_pool()
+    else:
+        teammate_manager = None
 
     print(f"Training with {n_envs} environments in parallel")
 
-    def make_wrapped_env(env_config, rank, seed, run_name='no_name'):
+    def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
             # Create base environment
             base_env = MAISREnvVec(
@@ -439,20 +386,28 @@ def train_modeselector(
                 tag=f'train_mp{rank}',
                 seed=seed + rank,
             )
-            # Wrap with local search wrapper
 
-            localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
-            local_search_policy = LocalSearch(model=localsearch_model,norm_stats_filepath='trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy')
-            go_to_highvalue_policy = GoToNearestThreat(model=None)
-            change_region_subpolicy = ChangeRegions(model=None)
+            #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+            local_search_policy = LocalSearch()
+            go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+            change_region_subpolicy = ChangeRegions(model_path=None)
+            evade_policy = None
+
+            teammate = GenericTeammatePolicy(
+                base_env,
+                LocalSearch(model_path=None),
+                GoToNearestThreat(model_path=None),
+                ChangeRegions(model_path=None),
+                None,
+                False)
 
             wrapped_env = MaisrModeSelectorWrapper(
                 base_env,
                 local_search_policy,
                 go_to_highvalue_policy,
                 change_region_subpolicy,
-                evade_policy = None,
-                teammate_manager=teammate_manager
+                evade_policy,
+                teammate_policy=teammate
             )
 
             wrapped_env = Monitor(wrapped_env)
@@ -462,31 +417,50 @@ def train_modeselector(
         return _init
 
     env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
-    if n_envs > 1:
-        env = SubprocVecEnv(env_fns)
-    else:
-        env = DummyVecEnv(env_fns)
+    if n_envs > 1: env = SubprocVecEnv(env_fns)
+    else: env = DummyVecEnv(env_fns)
 
     env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
 
-    #if use_normalize:
-    env = VecNormalize(env)
+    if use_normalize:
+        env = VecNormalize(env)
 
     # Create eval environment with wrapper
-    base_eval_env = MAISREnvVec(
-        env_config,
+    if render:
+        base_eval_env = MAISREnvVec(
+            config=env_config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            run_name=run_name,
+            tag=f'eval',
+        )
+    else:
+        base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
+
+    teammate = GenericTeammatePolicy(
+        base_eval_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
         None,
-        render_mode='headless',
-        tag='eval',
-        run_name=run_name,
-    )
-    eval_env = MaisrModeSelectorWrapper(base_eval_env)
+        False)
+
+    eval_env = MaisrModeSelectorWrapper(
+        base_eval_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        None,
+        teammate_policy=teammate)
+
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
-    #if use_normalize:
-    eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
-    eval_env.obs_rms = env.obs_rms
-    eval_env.ret_rms = env.ret_rms
+
+    if use_normalize:
+        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        eval_env.obs_rms = env.obs_rms
+        eval_env.ret_rms = env.ret_rms
 
     print('Envs created')
 
@@ -500,7 +474,7 @@ def train_modeselector(
     wandb_callback = WandbCallback(gradient_save_freq=50,
                                    model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None,
                                    verbose=1)
-    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20)
+    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20, render=render)
 
     print('Callbacks created')
 
@@ -600,33 +574,34 @@ def train_modeselector(
 
 
 if __name__ == "__main__":
+    print(f'\n############################ STARTING TRAINING ############################')
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june15.json'
+    config_filename = 'configs/june16_2ship.json'
 
     ################################################
 
-    print(f'\n############################ STARTING TRAINING ############################')
     config = load_env_config(config_filename)
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
-    config['policy_to_train'] = 'local-search'
 
     for num_timesteps in [5e5, 2e6]:
-        for inside_threat_penalty in [0.03, 0.1, 0.15, 0.25]:
+        for inside_threat_penalty in [0]:#[0.03, 0.1, 0.15, 0.25]:
             config['num_timesteps'] = num_timesteps
             config['inside_threat_penalty'] = inside_threat_penalty
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'local_search_{num_timesteps}timesteps_{inside_threat_penalty}threatpenalty_'+generate_run_name(config)
+            run_name = f'modeselector_2ship_{num_timesteps}timesteps_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_modeselector(
                 config,
                 run_name=run_name,
-                #use_normalize=True,
-                n_envs=multiprocessing.cpu_count(),
+                use_normalize=True,
+                use_teammate_manager=False,
+                render=False,
+                n_envs=multiprocessing.cpu_count()-14,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

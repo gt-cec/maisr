@@ -55,8 +55,9 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Set rewards for mode selector
         self.reward_per_target_id = 1
-        self.reward_per_threat_id = 3
-        self.penalty_for_policy_switch = 0.05
+        self.reward_per_threat_id = 5
+        self.penalty_for_policy_switch = 0.02
+        self.reward_per_step_early = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
@@ -76,23 +77,33 @@ class MaisrModeSelectorWrapper(gym.Env):
         }
 
         # Load normalization stats
-        try:
-            self.norm_stats = np.load(local_search_policy.norm_stats_filepath, allow_pickle=True).item()
-            print("Loaded normalization stats for local search policy")
-        except FileNotFoundError:
-            print("Warning: No normalization stats found, using raw observations")
-            self.norm_stats = None
+        # try:
+        #     self.norm_stats = np.load(local_search_policy.norm_stats_filepath, allow_pickle=True).item()
+        #     print("Loaded normalization stats for local search policy")
+        # except FileNotFoundError:
+        #     print("Warning: No normalization stats found, using raw observations")
+        #     self.norm_stats = None
 
 
     def reset(self, seed=None, options=None):
         raw_obs, _ = self.env.reset()
-        self.total_switches = 0
+        observation = self.get_observation(0)
+        self.num_switches = 0
         self.last_action = 0
         self.steps_since_last_selection = 0
         self.subpolicy_choice = None
         self.teammate_subpolicy_choice = 0
+        self.switched_policies = False
+
+        self.episode_reward = 0
+
+        self.subpolicy_history = []  # Track subpolicy choices over time
 
         self._reset_circumnavigation_state()
+
+        # NEW: Track wrapper observations at key timesteps
+        self.wrapper_observations = {}
+        self.wrapper_observations[0] = observation.copy()  # Store initial observation
 
         # Instantiate teammate for this episode
         if self.teammate_manager:
@@ -101,57 +112,59 @@ class MaisrModeSelectorWrapper(gym.Env):
             self.current_teammate = self.teammate_manager.select_random_teammate()
             print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
 
-        return raw_obs, _
+        return observation, _
 
     def step(self, action: np.int32):
         """ Apply the mode selector's action (Index of selected subpolicy)"""
 
         ######################## Choose a subpolicy ########################
         # Check if we need to evade with direct tangential movement
-        if self.near_threat() and not np.int32(action) == 2:
-
-            # Compute direct tangential escape action
-            escape_action = self.compute_tangential_escape_action()
-
-            # Process teammate's action if needed
-            if self.current_teammate and self.env.config['num_aircraft'] >= 2:
-                teammate_obs = self.get_observation(1)
-                self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
-
-                teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
-                if self.teammate_subpolicy_choice == 0:  # Local search
-                    direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
-                    teammate_subpolicy_action = direction_to_move
-
-                elif self.teammate_subpolicy_choice == 1:  # Change region
-                    waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
-                    teammate_subpolicy_action = waypoint_to_go
-
-                elif self.teammate_subpolicy_choice == 2:  # go to high value target
-                    waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
-                    teammate_subpolicy_action = waypoint_to_go
-
-                if isinstance(teammate_subpolicy_action, tuple):
-                    teammate_subpolicy_action = teammate_subpolicy_action[0]
-
-                # Apply teammate action to aircraft[1]
-                teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
-                self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
-
-            # Apply escape action directly to environment
-            base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(escape_action)
-
-            # Convert base_env elements to wrapper elements
-            observation = self.get_observation(0)
-            reward = self.get_reward(base_info)
-            info = base_info
-            terminated = base_terminated
-            truncated = base_truncated
-
-            self.steps_since_last_selection += 1
-
-            print(f"EVADE: Taking tangential escape action {escape_action}")
-            return observation, reward, terminated, truncated, info
+        # TODO temp removed for training test
+        # if self.near_threat() and not np.int32(action) == 2:
+        #     # Compute direct tangential escape action
+        #
+        #     escape_action = self.compute_tangential_escape_action()
+        #     #print(f'Escape action {escape_action} ({type(escape_action)})')
+        #
+        #     # Process teammate's action if needed
+        #     if self.current_teammate and self.env.config['num_aircraft'] >= 2:
+        #         teammate_obs = self.get_observation(1)
+        #         self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
+        #
+        #         teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
+        #         if self.teammate_subpolicy_choice == 0:  # Local search
+        #             direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
+        #             teammate_subpolicy_action = direction_to_move
+        #
+        #         elif self.teammate_subpolicy_choice == 1:  # Change region
+        #             waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
+        #             teammate_subpolicy_action = waypoint_to_go
+        #
+        #         elif self.teammate_subpolicy_choice == 2:  # go to high value target
+        #             waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
+        #             teammate_subpolicy_action = waypoint_to_go
+        #
+        #         if isinstance(teammate_subpolicy_action, tuple):
+        #             teammate_subpolicy_action = teammate_subpolicy_action[0]
+        #
+        #         # Apply teammate action to aircraft[1]
+        #         teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
+        #         self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_waypoint
+        #
+        #     # Apply escape action directly to environment
+        #     base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(escape_action)
+        #
+        #     # Convert base_env elements to wrapper elements
+        #     observation = self.get_observation(0)
+        #     reward = self.get_reward(base_info)
+        #     info = base_info
+        #     terminated = base_terminated
+        #     truncated = base_truncated
+        #
+        #     self.steps_since_last_selection += 1
+        #
+        #     #print(f"EVADE: Taking tangential escape action {escape_action}")
+        #     return observation, reward, terminated, truncated, info
 
         # Normal subpolicy selection logic when not evading
         if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
@@ -160,10 +173,31 @@ class MaisrModeSelectorWrapper(gym.Env):
             # Track policy switching for penalty later
             self.switched_policies = False
             if self.last_action != action:
-                self.total_switches += 1
+                self.num_switches += 1
                 self.switched_policies = True
 
-            self.subpolicy_choice = action
+            # Check if we should auto-switch from change_region to local_search
+            if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
+                #print("Auto-switching from change_region to local_search - target region reached")
+                self.subpolicy_choice = 0  # Switch to local search
+
+                # Reset the change_region policy's target so it will select a new one next time
+                if hasattr(self.change_region_subpolicy, 'target_region'):
+                    self.change_region_subpolicy.target_region = None
+
+            else:
+                self.subpolicy_choice = action
+        # # Normal subpolicy selection logic when not evading
+        # if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+        #     self.steps_since_last_selection = 0
+        #
+        #     # Track policy switching for penalty later
+        #     self.switched_policies = False
+        #     if self.last_action != action:
+        #         self.num_switches += 1
+        #         self.switched_policies = True
+        #
+        #     self.subpolicy_choice = action
 
         ######################## Process subpolicy's action ########################
 
@@ -173,8 +207,6 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif self.subpolicy_choice == 1:  # Change region
             subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
-            #subpolicy_action = self.env.process_action(subpolicy_action)
-            print(f'Change region waypoint: {subpolicy_action}')
 
         elif self.subpolicy_choice == 2:  # go to high value target
             subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
@@ -192,7 +224,14 @@ class MaisrModeSelectorWrapper(gym.Env):
         if isinstance(subpolicy_action, int):
             subpolicy_action = np.int32(subpolicy_action)
 
-        print(f'MODES: {self.subpolicy_choice}, {self.teammate_subpolicy_choice}')
+        if self.subpolicy_choice is not None:
+            self.subpolicy_history.append(self.subpolicy_choice)
+        else:
+            # If no subpolicy chosen yet, use -1 or previous choice
+            if len(self.subpolicy_history) > 0:
+                self.subpolicy_history.append(self.subpolicy_history[-1])
+            else:
+                self.subpolicy_history.append(0)  # Default to local search
 
         ########################################## Process teammate's action ###########################################
 
@@ -229,17 +268,36 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Convert base_env elements to wrapper elements if needed
         observation = self.get_observation(0)
         reward = self.get_reward(base_info)
+        self.episode_reward += reward
         info = base_info
         terminated = base_terminated
         truncated = base_truncated
 
-        # Add mode selector specific info for logging
-        info['policy_switches'] = getattr(self, 'total_switches', 0)
-        info['final_subpolicy'] = self.subpolicy_choice
-        info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
+        current_step = self.env.step_count_outer
+        if current_step == 100:
+            self.wrapper_observations[100] = observation.copy()
 
         self.last_action = action
         self.steps_since_last_selection += 1
+
+        if hasattr(self.env, 'set_subpolicy_history'):
+            self.env.set_subpolicy_history(self.subpolicy_history)
+
+        # Start logging final wrapper reward after step 100 (hack to make sure we don't terminate without it
+        if self.env.step_count_outer >= 100 or terminated or truncated:
+            self.env.final_wrapper_reward = self.episode_reward
+
+        if terminated or truncated:
+            self.print_episode_statistics()
+            self.env.final_wrapper_reward = self.episode_reward
+
+            # NEW: Pass wrapper observations to environment
+            self.wrapper_observations[current_step] = observation.copy()
+            if hasattr(self.env, 'set_wrapper_observations'):
+                self.env.set_wrapper_observations(self.wrapper_observations)
+
+            if hasattr(self.env, 'set_subpolicy_history'):
+                self.env.set_subpolicy_history(self.subpolicy_history)
 
         return observation, reward, terminated, truncated, info
 
@@ -254,20 +312,37 @@ class MaisrModeSelectorWrapper(gym.Env):
 ########################################################################################################################
 
     def get_observation(self, agent_id):
-        """Generates the observation for the mode selector using env attributes"""
-        # TODO use agent_id to return observation relative to that agent
+        """
+        Generates the observation for the mode selector using env attributes
+        """
+        # Initialize observation as float32 (not int32)
+        obs = np.zeros(6, dtype=np.float32)
 
-        # Core state: observation vector
+        # Calculate targets left
         targets_left = self.env.config['num_targets'] - self.env.targets_identified
-        obs = np.zeros(6, dtype=np.int32)
 
-        if targets_left:
-            obs[0] = (self.env.max_steps - self.env.step_count_outer) / self.env.max_steps  # Steps remaining
-            obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections  # Progress toward max detections (game over)
-            obs[2] = targets_left / self.env.config['num_targets']  # Ratio of targets ID'd
-            obs[3] = self.unknown_targets_in_current_quadrant() / targets_left  # Ratio of all targets that are in current quadrant
-            obs[4] = self.get_distance_to_teammate() / self.env.config['gameboard_size']  # Proximity to human (Helps decide whether to change regions
-            obs[5] = self.get_adaptation_signal()  # Adaptation signal (placeholder as 0 for now)
+        # obs[0]: Steps remaining (normalized 0-1, where 1 = all steps left, 0 = no steps left)
+        max_steps_outer = self.env.max_steps / self.env.config['frame_skip']
+        obs[0] = (max_steps_outer - self.env.step_count_outer) / self.env.max_steps
+
+        # obs[1]: Detections remaining before game over (normalized 0-1, where 1 = no detections, 0 = max detections)
+        obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections
+
+        # obs[2]: Targets remaining (normalized 0-1, where 1 = all targets left, 0 = no targets left)
+        obs[2] = targets_left / self.env.config['num_targets']
+
+        # obs[3]: Ratio of remaining targets in current quadrant (0-1)
+        if targets_left > 0:
+            unknown_in_quad = self.unknown_targets_in_current_quadrant(agent_id)
+            obs[3] = unknown_in_quad / targets_left
+        else:
+            obs[3] = 0.0
+
+        # obs[4]: Distance to teammate (normalized 0-1, where 0 = same position, 1 = max distance)
+        obs[4] = self.get_distance_to_teammate(agent_id) / self.env.config['gameboard_size']
+
+        # obs[5]: Adaptation signal (placeholder)
+        obs[5] = self.get_adaptation_signal()
 
         return obs
 
@@ -282,9 +357,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         """
         target_reward = info['new_target_ids'] * self.reward_per_target_id
         threat_reward = info['new_threat_ids'] * self.reward_per_threat_id
-        finish_reward = info['steps_left'] if info['done'] else 0
+        finish_reward = info['steps_left'] * self.reward_per_step_early \
+            if info['done'] else 0
         switch_penalty = self.switched_policies * self.penalty_for_policy_switch  # Bool times penalty
         detect_penalty = info['new_detections'] * self.penalty_per_detection
+
+        # 15 * 1 rew/tgt = 15
+        # 2 * 5 r/threat = 10
+        # ~600 early * 0.05 rew/step early = 30
+        # 600 policy switches * 0.02 = -12 penalty
 
         reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward
         return reward
@@ -474,6 +555,46 @@ class MaisrModeSelectorWrapper(gym.Env):
 ###############################################    Helper functions     ################################################
 ########################################################################################################################
 
+    def has_reached_target_region(self, agent_id=0):
+        """
+        Check if agent has reached the target region when using change_region subpolicy
+        Returns True if agent is close enough to the target region center
+        """
+        if not hasattr(self.change_region_subpolicy,
+                       'target_region') or self.change_region_subpolicy.target_region is None:
+            return False
+
+        # Get agent position
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
+        agent_pos = np.array([agent_x, agent_y])
+
+        # Get target region center in actual coordinates
+        target_region_id = self.change_region_subpolicy.target_region
+        region_centers = {
+            0: np.array([-0.5, 0.5]),  # NW
+            1: np.array([0.5, 0.5]),  # NE
+            2: np.array([-0.5, -0.5]),  # SW
+            3: np.array([0.5, -0.5])  # SE
+        }
+
+        # Convert normalized center to actual coordinates
+        map_half_size = self.env.config['gameboard_size'] / 2
+        region_center_norm = region_centers.get(target_region_id, np.array([0.0, 0.0]))
+        region_center_actual = region_center_norm * map_half_size
+
+        # Calculate distance to region center
+        distance_to_region = np.linalg.norm(agent_pos - region_center_actual)
+
+        # Define arrival threshold (about 25% of quadrant size)
+        arrival_threshold = map_half_size * 0.25
+
+        reached = distance_to_region <= arrival_threshold
+        # if reached:
+        #     print(f"Agent reached target region {target_region_id} (distance: {distance_to_region:.1f})")
+
+        return reached
+
     def near_threat(self, agent_id = 0):
         """
         Check if the agent is near a threat and should automatically switch to evade mode.
@@ -497,11 +618,11 @@ class MaisrModeSelectorWrapper(gym.Env):
         return False
 
 
-    def unknown_targets_in_current_quadrant(self):
+    def unknown_targets_in_current_quadrant(self, agent_id):
         """Returns the number of unknown targets in the agent's quadrant"""
 
-        agent_x = self.env.agents[self.env.aircraft_ids[0]].x
-        agent_y = self.env.agents[self.env.aircraft_ids[0]].y
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
 
         target_positions = self.env.targets[:self.env.config['num_targets'], 3:5]  # x,y coordinates
         target_info_levels = self.env.targets[:self.env.config['num_targets'], 2]  # info levels
@@ -522,7 +643,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         return num_unknown_targets
 
 
-    def get_distance_to_teammate(self):
+    def get_distance_to_teammate(self, agent_id):
         """Returns pixel range between current location and teammate's location
         Note: Should NOT be normalized (should be in range [- gameboard_size, + gameboard_size])"""
 
@@ -531,12 +652,14 @@ class MaisrModeSelectorWrapper(gym.Env):
             return self.env.config['gameboard_size']
 
         # Get agent position (aircraft 0)
-        agent_x = self.env.agents[self.env.aircraft_ids[0]].x
-        agent_y = self.env.agents[self.env.aircraft_ids[0]].y
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
+
+        teammate_id = 1 if agent_id == 0 else 0
 
         # Get teammate position (aircraft 1)
-        teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
-        teammate_y = self.env.agents[self.env.aircraft_ids[1]].y
+        teammate_x = self.env.agents[self.env.aircraft_ids[teammate_id]].x
+        teammate_y = self.env.agents[self.env.aircraft_ids[teammate_id]].y
 
         # Calculate Euclidean distance
         distance = np.sqrt((agent_x - teammate_x) ** 2 + (agent_y - teammate_y) ** 2)
@@ -833,4 +956,41 @@ class MaisrModeSelectorWrapper(gym.Env):
             'start_angle': None,
             'safety_distance': None
         }
-        print("Circumnavigation complete - reset state")
+
+    def print_episode_statistics(self):
+        """Print statistics about subpolicy usage and switches for the episode"""
+        if not self.subpolicy_history:
+            print("No subpolicy history available")
+            return
+
+        total_steps = len(self.subpolicy_history)
+        if total_steps == 0:
+            return
+
+        # Count steps for each subpolicy
+        subpolicy_counts = {}
+        for policy in self.subpolicy_history:
+            policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
+            subpolicy_counts[policy_key] = subpolicy_counts.get(policy_key, 0) + 1
+
+        # Get percentages with safe access using .get() method
+        local_search_pct = (subpolicy_counts.get(0, 0) / total_steps) * 100
+        change_region_pct = (subpolicy_counts.get(1, 0) / total_steps) * 100
+        go_to_threat_pct = (subpolicy_counts.get(2, 0) / total_steps) * 100
+
+        # Calculate percentages
+        print(
+            f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.num_switches} policy switches ({self.num_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")
+
+    def get_current_subpolicy_info(self):
+        """Return current subpolicy information for display"""
+        if self.subpolicy_choice is None:
+            return 0, "Local Search"  # Default
+
+        mode_names = {
+            0: "Local Search",
+            1: "Change Region",
+            2: "Go to Threat",
+            3: "Evade"
+        }
+        return self.subpolicy_choice, mode_names.get(self.subpolicy_choice, "Unknown")

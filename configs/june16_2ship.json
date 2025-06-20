@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 2,
-	"max_steps": 30000,
+	"max_steps": 12000,
 
 	"num_targets": 15,
 	"num_threats": 2,
@@ -49,7 +49,7 @@
 	"num_timesteps": 2e6,
 	"save_freq": 13500,
 	"n_eval_episodes": 5,
-	"eval_freq": 13500,
+	"eval_freq": 3000,
 
 	"use_curriculum": true,
 	"cl_lr_decrease": 1,
