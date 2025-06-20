@@ -278,8 +278,8 @@ def run_sanity_checks(episode_data):
 
     # SANITY CHECK 8: Agent Movement/Stuck Detection
     print(f"\nCHECK 8 - Agent Movement (Stuck Detection):")
-    movement_threshold = 20.0  # pixels
-    check_window = 30  # steps to check
+    movement_threshold = 40.0  # pixels
+    check_window = 25  # steps to check
     stuck_issues = []
 
     for ep in episode_data:
