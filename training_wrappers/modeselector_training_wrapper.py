@@ -5,8 +5,8 @@ import numpy as np
 from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
 
-from policies.sub_policies import SubPolicy, GoToNearestThreat, LocalSearch, ChangeRegions
-from utility.league_management import TeammateManager, TeammatePolicy
+from policies.sub_policies import SubPolicy, GoToNearestThreat, ChangeRegions
+from utility.league_management import TeammateManager, TeammatePolicy, LocalSearch
 
 
 class MaisrModeSelectorWrapper(gym.Env):
@@ -61,18 +61,17 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
         # Goal tracking for evade policy
-        self.evade_goal = None
-        self.evade_goal_threshold = 30.0  # Distance threshold to consider goal "reached"
-        self.last_evade_step = -1  # Track when we last used evade to detect continuous usage
-
-        self.circumnavigation_state = {
-            'active': False,
-            'threat_pos': None,
-            'chosen_direction': None,  # 'clockwise' or 'counterclockwise'
-            'last_angle': None,
-            'start_angle': None,
-            'safety_distance': None
-        }
+        #self.evade_goal = None
+        #self.evade_goal_threshold = 30.0  # Distance threshold to consider goal "reached"
+        #self.last_evade_step = -1  # Track when we last used evade to detect continuous usage
+        # self.circumnavigation_state = {
+        #     'active': False,
+        #     'threat_pos': None,
+        #     'chosen_direction': None,  # 'clockwise' or 'counterclockwise'
+        #     'last_angle': None,
+        #     'start_angle': None,
+        #     'safety_distance': None
+        # }
 
         # Load normalization stats
         # try:
@@ -203,7 +202,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
         if self.subpolicy_choice == 0:  # Local search
-            subpolicy_action = self.local_search_policy.act(subpolicy_observation)
+            subpolicy_action = self.local_search_policy.act(subpolicy_observation, env=self.env, agent_id=0)
 
         elif self.subpolicy_choice == 1:  # Change region
             subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
@@ -246,9 +245,9 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
             if self.teammate_subpolicy_choice == 0:  # Local search
-                direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
+                #direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
+                direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation, env=self.env, agent_id=1)
                 teammate_subpolicy_action = teammate_subpolicy_action = self.env._direction_to_waypoint(direction_to_move, 1)
-                #print(f'[Wrapper] LocalSearch subpolicy action is {teammate_subpolicy_action}')
 
             elif self.teammate_subpolicy_choice == 1:  # Change region
                 waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)

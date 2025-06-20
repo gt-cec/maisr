@@ -312,146 +312,588 @@ class EvadeDetection(SubPolicy):
         return np.argmax(dot_products)
 
 
-class LocalSearch(SubPolicy):
-    """Sub-policy that searches locally for unknown targets"""
+# class LocalSearch(SubPolicy):
+#     """Sub-policy that searches locally for unknown targets with integrated evade logic"""
+#
+#     def __init__(self, model_path: str = None, norm_stats_filepath: str = None):
+#         super().__init__("local_search")
+#         self.search_radius = 300.0  # Search within this radius
+#
+#         if model_path:
+#             self.model = PPO.load(model_path)
+#             print('[LocalSearch] Using provided model for inference')
+#         else:
+#             self.model = None
+#             print('[LocalSearch] No model provided, using internal heuristic')
+#
+#         self.norm_statistics_path = norm_stats_filepath
+#         if norm_stats_filepath:
+#             self.norm_stats_filepath = norm_stats_filepath
+#             print(f'Loaded training normalization stats from {norm_stats_filepath}')
+#         else:
+#             self.norm_stats_filepath = None
+#
+#         # Heuristic state tracking
+#         self._current_target_id = None
+#         self._current_target_pos = None
+#         self._last_action = None
+#         self._action_repeat_count = 0
+#         self._max_repeat_count = 3  # Minimum steps to take in same direction
+#         self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
+#
+#         # Evade logic state (moved from wrapper)
+#         self.evade_goal = None
+#         self.evade_goal_threshold = 30.0  # Distance threshold to consider goal "reached"
+#         self.last_evade_step = -1  # Track when we last used evade to detect continuous usage
+#
+#         self.circumnavigation_state = {
+#             'active': False,
+#             'threat_pos': None,
+#             'chosen_direction': None,  # 'clockwise' or 'counterclockwise'
+#             'last_angle': None,
+#             'start_angle': None,
+#             'safety_distance': None
+#         }
+#
+#     def act(self, observation, env=None, agent_id=0):
+#         """
+#         Enhanced act method that includes evade logic for threats
+#
+#         Args:
+#             observation: The observation vector for local search
+#             env: Environment instance (needed for threat detection)
+#             agent_id: Agent ID (default 0)
+#         """
+#         # Check if we need to evade threats first
+#         if env is not None and self.near_threat(env, agent_id):
+#             print(f"[LocalSearch] Threat detected, switching to evade mode")
+#             evade_action = self.compute_tangential_escape_action(env, agent_id)
+#             return evade_action, None
+#
+#         # Normal local search behavior
+#         if self.model:
+#             action, _ = self.model.predict(observation)
+#             action = np.int32(action)
+#         else:
+#             try:
+#                 action, _ = self.heuristic(observation)
+#             except:
+#                 action = self.heuristic(observation)
+#
+#         return action, None
+#
+#     def near_threat(self, env, agent_id=0):
+#         """
+#         Check if the agent is near a threat and should automatically switch to evade mode.
+#         Returns True if agent is within threat radius or warning zone of any threat.
+#         """
+#         # Get agent position
+#         agent_pos = np.array([env.agents[env.aircraft_ids[agent_id]].x,
+#                               env.agents[env.aircraft_ids[agent_id]].y])
+#
+#         # Check distance to all threats
+#         for threat_idx in range(len(env.threats)):
+#             threat_pos = np.array([env.threats[threat_idx, 0], env.threats[threat_idx, 1]])
+#             distance_to_threat = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+#
+#             threat_radius = env.config['threat_radius']
+#             warning_radius = threat_radius * 1.7  # 70% larger than threat radius for early warning
+#
+#             # Trigger evade mode if within warning radius
+#             if distance_to_threat <= warning_radius:
+#                 return True
+#         return False
+#
+#     def compute_tangential_escape_action(self, env, agent_id=0):
+#         """
+#         Compute a direct tangential escape action when near a threat.
+#         Uses state persistence to maintain consistent circumnavigation direction.
+#         """
+#         # Get agent position
+#         agent_pos = np.array([env.agents[env.aircraft_ids[agent_id]].x,
+#                               env.agents[env.aircraft_ids[agent_id]].y])
+#
+#         # Find nearest threat
+#         nearest_threat_pos = None
+#         min_distance = float('inf')
+#         nearest_threat_idx = None
+#
+#         for threat_idx in range(len(env.threats)):
+#             threat_pos = np.array([env.threats[threat_idx, 0], env.threats[threat_idx, 1]])
+#             distance = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+#             if distance < min_distance:
+#                 min_distance = distance
+#                 nearest_threat_pos = threat_pos
+#                 nearest_threat_idx = threat_idx
+#
+#         if nearest_threat_pos is None:
+#             return 0  # Default action if no threats
+#
+#         threat_radius = env.config['threat_radius']
+#         safety_margin = threat_radius * 1.8  # Increased safety margin
+#
+#         # Check if we need to start or continue circumnavigation
+#         if min_distance <= safety_margin:
+#             return self._circumnavigate_threat(agent_pos, nearest_threat_pos, threat_radius, env, agent_id)
+#         else:
+#             # Far enough from threat, reset circumnavigation state
+#             self._reset_circumnavigation_state()
+#             return 0
+#
+#     def _circumnavigate_threat(self, agent_pos, threat_pos, threat_radius, env, agent_id=0):
+#         """Handle circumnavigation around a threat with state persistence"""
+#
+#         # Direction mapping (16 directions)
+#         directions = np.array([
+#             (0, 1),  # North (0°)
+#             (0.383, 0.924),  # NNE (22.5°)
+#             (0.707, 0.707),  # NE (45°)
+#             (0.924, 0.383),  # ENE (67.5°)
+#             (1, 0),  # East (90°)
+#             (0.924, -0.383),  # ESE (112.5°)
+#             (0.707, -0.707),  # SE (135°)
+#             (0.383, -0.924),  # SSE (157.5°)
+#             (0, -1),  # South (180°)
+#             (-0.383, -0.924),  # SSW (202.5°)
+#             (-0.707, -0.707),  # SW (225°)
+#             (-0.924, -0.383),  # WSW (247.5°)
+#             (-1, 0),  # West (270°)
+#             (-0.924, 0.383),  # WNW (292.5°)
+#             (-0.707, 0.707),  # NW (315°)
+#             (-0.383, 0.924),  # NNW (337.5°)
+#         ], dtype=np.float32)
+#
+#         # Vector from threat to agent
+#         threat_to_agent = agent_pos - threat_pos
+#         distance_to_threat = np.linalg.norm(threat_to_agent)
+#
+#         if distance_to_threat < 1e-6:
+#             return 0  # Default if at threat center
+#
+#         # Calculate current angle around threat
+#         current_angle = np.arctan2(threat_to_agent[1], threat_to_agent[0])
+#
+#         # Initialize or update circumnavigation state
+#         if not self.circumnavigation_state['active']:
+#             self._initialize_circumnavigation(threat_pos, current_angle, threat_radius)
+#
+#         # Check if circumnavigation is complete
+#         if self._is_circumnavigation_complete(current_angle, threat_pos, agent_pos, env):
+#             self._reset_circumnavigation_state()
+#             # Move toward original target
+#             return self._get_action_toward_nearest_target(agent_pos, directions, env)
+#
+#         # Continue circumnavigation
+#         return self._get_circumnavigation_action(current_angle, threat_to_agent, directions)
+#
+#     def _initialize_circumnavigation(self, threat_pos, start_angle, threat_radius):
+#         """Initialize circumnavigation state"""
+#         self.circumnavigation_state['active'] = True
+#         self.circumnavigation_state['threat_pos'] = threat_pos.copy()
+#         self.circumnavigation_state['start_angle'] = start_angle
+#         self.circumnavigation_state['last_angle'] = start_angle
+#         self.circumnavigation_state['safety_distance'] = threat_radius * 1.5
+#
+#         # Choose direction based on which way moves us more toward targets
+#         # For now, default to counterclockwise
+#         self.circumnavigation_state['chosen_direction'] = 'counterclockwise'
+#
+#         print(f"[LocalSearch] Starting circumnavigation: direction={self.circumnavigation_state['chosen_direction']}")
+#
+#     def _is_circumnavigation_complete(self, current_angle, threat_pos, agent_pos, env):
+#         """Check if we've gone far enough around the threat to have a clear path"""
+#         if not self.circumnavigation_state['active']:
+#             return False
+#
+#         # Calculate how far we've traveled around the threat
+#         start_angle = self.circumnavigation_state['start_angle']
+#         angle_traveled = current_angle - start_angle
+#
+#         # Normalize angle difference to [-π, π]
+#         while angle_traveled > np.pi:
+#             angle_traveled -= 2 * np.pi
+#         while angle_traveled < -np.pi:
+#             angle_traveled += 2 * np.pi
+#
+#         # Check if we've gone at least 90 degrees around
+#         min_angle_traveled = np.pi / 2  # 90 degrees
+#
+#         if self.circumnavigation_state['chosen_direction'] == 'counterclockwise':
+#             sufficient_travel = angle_traveled >= min_angle_traveled
+#         else:  # clockwise
+#             sufficient_travel = angle_traveled <= -min_angle_traveled
+#
+#         if sufficient_travel:
+#             # Also check if we now have a clear line to targets
+#             return self._has_clear_path_to_targets(agent_pos, threat_pos, env)
+#
+#         return False
+#
+#     def _has_clear_path_to_targets(self, agent_pos, threat_pos, env):
+#         """Check if there's a clear path from current position to nearest unknown target"""
+#         # Get unknown target positions
+#         target_positions = env.targets[:env.config['num_targets'], 3:5]
+#         target_info_levels = env.targets[:env.config['num_targets'], 2]
+#         unknown_mask = target_info_levels < 1.0
+#
+#         if not np.any(unknown_mask):
+#             return True  # No targets left, circumnavigation complete
+#
+#         unknown_positions = target_positions[unknown_mask]
+#         distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+#         nearest_target_pos = unknown_positions[np.argmin(distances)]
+#
+#         # Check if path to nearest target intersects threat
+#         return self._path_clear_of_threat(agent_pos, nearest_target_pos, threat_pos, env)
+#
+#     def _path_clear_of_threat(self, start_pos, end_pos, threat_pos, env):
+#         """Check if straight line path from start to end clears the threat"""
+#         threat_radius = env.config['threat_radius'] * 1.2  # Safety buffer
+#
+#         # Vector from start to end
+#         path_vector = end_pos - start_pos
+#         path_length = np.linalg.norm(path_vector)
+#
+#         if path_length < 1e-6:
+#             return True
+#
+#         path_unit = path_vector / path_length
+#
+#         # Vector from start to threat
+#         start_to_threat = threat_pos - start_pos
+#
+#         # Project threat onto path
+#         projection_length = np.dot(start_to_threat, path_unit)
+#
+#         # Only check collision if projection is within the path segment
+#         if 0 <= projection_length <= path_length:
+#             closest_point_on_path = start_pos + projection_length * path_unit
+#             distance_to_threat = np.linalg.norm(threat_pos - closest_point_on_path)
+#             return distance_to_threat > threat_radius
+#
+#         return True  # Threat is not along the path
+#
+#     def _get_circumnavigation_action(self, current_angle, threat_to_agent, directions):
+#         """Get action to continue circumnavigation"""
+#         distance_to_threat = np.linalg.norm(threat_to_agent)
+#
+#         if distance_to_threat > 0:
+#             # Calculate tangent direction
+#             threat_unit = threat_to_agent / distance_to_threat
+#
+#             if self.circumnavigation_state['chosen_direction'] == 'counterclockwise':
+#                 tangent_direction = np.array([-threat_unit[1], threat_unit[0]])  # +90 degrees
+#             else:  # clockwise
+#                 tangent_direction = np.array([threat_unit[1], -threat_unit[0]])  # -90 degrees
+#
+#             # Add slight outward bias to maintain safe distance
+#             outward_direction = threat_unit  # Away from threat
+#             bias_strength = 0.2
+#
+#             combined_direction = tangent_direction * (1 - bias_strength) + outward_direction * bias_strength
+#             combined_direction = combined_direction / np.linalg.norm(combined_direction)
+#
+#             # Find best matching action
+#             dot_products = np.dot(directions, combined_direction)
+#             best_action = np.argmax(dot_products)
+#
+#             return np.int32(best_action)
+#
+#         return 0
+#
+#     def _get_action_toward_nearest_target(self, agent_pos, directions, env):
+#         """Get action to move toward nearest unknown target after circumnavigation"""
+#         # Get unknown target positions
+#         target_positions = env.targets[:env.config['num_targets'], 3:5]
+#         target_info_levels = env.targets[:env.config['num_targets'], 2]
+#         unknown_mask = target_info_levels < 1.0
+#
+#         if not np.any(unknown_mask):
+#             return 0  # No targets left
+#
+#         unknown_positions = target_positions[unknown_mask]
+#         distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+#         nearest_target_pos = unknown_positions[np.argmin(distances)]
+#
+#         # Direction to nearest target
+#         target_vector = nearest_target_pos - agent_pos
+#         target_distance = np.linalg.norm(target_vector)
+#
+#         if target_distance > 0:
+#             target_direction = target_vector / target_distance
+#             dot_products = np.dot(directions, target_direction)
+#             best_action = np.argmax(dot_products)
+#             return np.int32(best_action)
+#
+#         return 0
+#
+#     def _reset_circumnavigation_state(self):
+#         """Reset circumnavigation state"""
+#         self.circumnavigation_state = {
+#             'active': False,
+#             'threat_pos': None,
+#             'chosen_direction': None,
+#             'last_angle': None,
+#             'start_angle': None,
+#             'safety_distance': None
+#         }
+#
+#     def heuristic(self, observation):
+#         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
+#
+#         # Handle both vectorized and non-vectorized observations
+#         obs = np.array(observation)
+#
+#         # If observation is from vectorized environment, extract the first element
+#         if obs.ndim > 1:
+#             obs = obs[0]  # Extract first environment's observation
+#
+#         # Ensure obs is at least 1D
+#         obs = np.atleast_1d(obs)
+#
+#         # Direction mapping
+#         directions = np.array([
+#             (0, 1),  # North (0°)
+#             (0.383, 0.924),  # NNE (22.5°)
+#             (0.707, 0.707),  # NE (45°)
+#             (0.924, 0.383),  # ENE (67.5°)
+#             (1, 0),  # East (90°)
+#             (0.924, -0.383),  # ESE (112.5°)
+#             (0.707, -0.707),  # SE (135°)
+#             (0.383, -0.924),  # SSE (157.5°)
+#             (0, -1),  # South (180°)
+#             (-0.383, -0.924),  # SSW (202.5°)
+#             (-0.707, -0.707),  # SW (225°)
+#             (-0.924, -0.383),  # WSW (247.5°)
+#             (-1, 0),  # West (270°)
+#             (-0.924, 0.383),  # WNW (292.5°)
+#             (-0.707, 0.707),  # NW (315°)
+#             (-0.383, 0.924),  # NNW (337.5°)
+#         ], dtype=float)
+#
+#         # Extract nearest target vector (first two components)
+#         if len(obs) < 2:
+#             print(f"Warning: observation too short, got {len(obs)} elements, expected at least 2")
+#             return np.int32(0), None
+#
+#         target_vector_x = obs[0]
+#         target_vector_y = obs[1]
+#
+#         # Check if there's a valid target (non-zero vector)
+#         if target_vector_x == 0.0 and target_vector_y == 0.0:
+#             # No targets or at target location
+#             self.reset_heuristic_state()
+#             return np.int32(0), None
+#
+#         # The observation already gives us the vector to the nearest target
+#         direction_to_target = np.array([target_vector_x, target_vector_y])
+#
+#         # Normalize direction vectors
+#         direction_norms = np.linalg.norm(directions, axis=1)
+#         normalized_directions = directions / direction_norms[:, np.newaxis]
+#
+#         # Normalize target direction
+#         target_norm = np.linalg.norm(direction_to_target)
+#         if target_norm > 0:
+#             direction_to_target_norm = direction_to_target / target_norm
+#         else:
+#             return np.int32(self._last_action if self._last_action is not None else 0), None
+#
+#         # Calculate dot products
+#         dot_products = np.dot(normalized_directions, direction_to_target_norm)
+#
+#         # Find best action
+#         best_action = np.argmax(dot_products)
+#
+#         # Anti-oscillation: if we just took an action, continue for minimum steps
+#         if (self._last_action is not None and
+#                 self._action_repeat_count < self._max_repeat_count and
+#                 self._last_action != best_action):
+#
+#             # Check if last action is still reasonable (dot product > 0.5)
+#             last_dot_product = dot_products[self._last_action]
+#             if last_dot_product > 0.5:  # Still pointing roughly toward target
+#                 best_action = self._last_action
+#                 self._action_repeat_count += 1
+#             else:
+#                 self._action_repeat_count = 0  # Reset if direction is too far off
+#         else:
+#             self._action_repeat_count = 0
+#
+#         # Additional anti-oscillation: prevent direct opposite actions
+#         if (self._last_action is not None and abs(
+#                 self._last_action - best_action) == 8):  # Opposite directions for 16-direction case
+#             # Choose a compromise direction
+#             adjacent_actions = [(self._last_action + 1) % 16, (self._last_action - 1) % 16]
+#             adjacent_dots = [dot_products[a] for a in adjacent_actions]
+#             best_adjacent_idx = np.argmax(adjacent_dots)
+#             best_action = adjacent_actions[best_adjacent_idx]
+#
+#         self._last_action = best_action
+#         return np.int32(best_action), None
+#
+#     def reset_heuristic_state(self):
+#         """Reset the global state for the heuristic policy."""
+#         self._current_target_id = None
+#         self._current_target_pos = None
+#         self._last_action = None
+#         self._action_repeat_count = 0
+#
+#     def reset_evade_state(self):
+#         """Reset evade-related state"""
+#         self.evade_goal = None
+#         self.last_evade_step = -1
+#         self._reset_circumnavigation_state()
 
-    def __init__(self, model_path: str = None, norm_stats_filepath: str = None):
-        super().__init__("local_search")
-        self.search_radius = 300.0  # Search within this radius
 
 
-        if model_path:
-            self.model = PPO.load(model_path)
-            print('[LocalSearch] Using provided model for inference')
-        else:
-            self.model = None
-            print('[LocalSearch] No model provided, using internal heuristic')
-
-        self.norm_statistics_path = norm_stats_filepath
-        if norm_stats_filepath:
-            self.norm_stats_filepath = norm_stats_filepath
-            print(f'Loaded training normalization stats from {norm_stats_filepath}')
-        else:
-            self.norm_stats_filepath = None
-
-        self._current_target_id = None
-        self._current_target_pos = None
-        self._last_action = None
-        self._action_repeat_count = 0
-        self._max_repeat_count = 3  # Minimum steps to take in same direction
-        self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
 
 
-    def act(self, observation):
-        if self.model:
-            action = self.model.predict(observation)
-        else:
-            action = self.heuristic(observation)
-        return action
 
-    def heuristic(self, observation):
-        """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
 
-        # Handle both vectorized and non-vectorized observations
-        obs = np.array(observation)
+# TODO: This is the old (working) localsearch that doesn't have evade built in
+# class LocalSearch(SubPolicy):
+#     """Sub-policy that searches locally for unknown targets"""
+#
+#     def __init__(self, model_path: str = None, norm_stats_filepath: str = None):
+#         super().__init__("local_search")
+#         self.search_radius = 300.0  # Search within this radius
+#
+#
+#         if model_path:
+#             self.model = PPO.load(model_path)
+#             print('[LocalSearch] Using provided model for inference')
+#         else:
+#             self.model = None
+#             print('[LocalSearch] No model provided, using internal heuristic')
+#
+#         self.norm_statistics_path = norm_stats_filepath
+#         if norm_stats_filepath:
+#             self.norm_stats_filepath = norm_stats_filepath
+#             print(f'Loaded training normalization stats from {norm_stats_filepath}')
+#         else:
+#             self.norm_stats_filepath = None
+#
+#         self._current_target_id = None
+#         self._current_target_pos = None
+#         self._last_action = None
+#         self._action_repeat_count = 0
+#         self._max_repeat_count = 3  # Minimum steps to take in same direction
+#         self._target_switch_threshold = 20.0  # Distance threshold to consider switching targets
+#
+#
+#     def act(self, observation):
+#         if self.model:
+#             action = self.model.predict(observation)
+#         else:
+#             action = self.heuristic(observation)
+#         return action
+#
+#     def heuristic(self, observation):
+#         """Simple heuristic to fly to nearest unknown target. Can be used if RL model is not provided"""
+#
+#         # Handle both vectorized and non-vectorized observations
+#         obs = np.array(observation)
+#
+#         # If observation is from vectorized environment, extract the first element
+#         if obs.ndim > 1:
+#             obs = obs[0]  # Extract first environment's observation
+#
+#         # Ensure obs is at least 1D
+#         obs = np.atleast_1d(obs)
+#
+#         print(f'[heuristic]obs: {obs}')
+#
+#         # Direction mapping
+#         directions = np.array([
+#             (0, 1),  # North (0°)
+#             (0.383, 0.924),  # NNE (22.5°)
+#             (0.707, 0.707),  # NE (45°)
+#             (0.924, 0.383),  # ENE (67.5°)
+#             (1, 0),  # East (90°)
+#             (0.924, -0.383),  # ESE (112.5°)
+#             (0.707, -0.707),  # SE (135°)
+#             (0.383, -0.924),  # SSE (157.5°)
+#             (0, -1),  # South (180°)
+#             (-0.383, -0.924),  # SSW (202.5°)
+#             (-0.707, -0.707),  # SW (225°)
+#             (-0.924, -0.383),  # WSW (247.5°)
+#             (-1, 0),  # West (270°)
+#             (-0.924, 0.383),  # WNW (292.5°)
+#             (-0.707, 0.707),  # NW (315°)
+#             (-0.383, 0.924),  # NNW (337.5°)
+#         ], dtype=float)
+#
+#         # Extract nearest target vector (first two components)
+#         if len(obs) < 2:
+#             print(f"Warning: observation too short, got {len(obs)} elements, expected at least 2")
+#             return np.int32(0)
+#
+#         target_vector_x = obs[0]
+#         target_vector_y = obs[1]
+#
+#         # Check if there's a valid target (non-zero vector)
+#         if target_vector_x == 0.0 and target_vector_y == 0.0:
+#             # No targets or at target location
+#             self.reset_heuristic_state()
+#             return np.int32(0)
+#
+#         # The observation already gives us the vector to the nearest target
+#         direction_to_target = np.array([target_vector_x, target_vector_y])
+#
+#         # Normalize direction vectors
+#         direction_norms = np.linalg.norm(directions, axis=1)
+#         normalized_directions = directions / direction_norms[:, np.newaxis]
+#
+#         # Normalize target direction
+#         target_norm = np.linalg.norm(direction_to_target)
+#         if target_norm > 0:
+#             direction_to_target_norm = direction_to_target / target_norm
+#         else:
+#             return np.int32(self._last_action if self._last_action is not None else 0)
+#
+#         # Calculate dot products
+#         dot_products = np.dot(normalized_directions, direction_to_target_norm)
+#
+#         # Find best action
+#         best_action = np.argmax(dot_products)
+#
+#         # Anti-oscillation: if we just took an action, continue for minimum steps
+#         if (self._last_action is not None and
+#                 self._action_repeat_count < self._max_repeat_count and
+#                 self._last_action != best_action):
+#
+#             # Check if last action is still reasonable (dot product > 0.5)
+#             last_dot_product = dot_products[self._last_action]
+#             if last_dot_product > 0.5:  # Still pointing roughly toward target
+#                 best_action = self._last_action
+#                 self._action_repeat_count += 1
+#             else:
+#                 self._action_repeat_count = 0  # Reset if direction is too far off
+#         else:
+#             self._action_repeat_count = 0
+#
+#         # Additional anti-oscillation: prevent direct opposite actions
+#         if (self._last_action is not None and abs(
+#                 self._last_action - best_action) == 8):  # Opposite directions for 16-direction case
+#             # Choose a compromise direction
+#             adjacent_actions = [(self._last_action + 1) % 16, (self._last_action - 1) % 16]
+#             adjacent_dots = [dot_products[a] for a in adjacent_actions]
+#             best_adjacent_idx = np.argmax(adjacent_dots)
+#             best_action = adjacent_actions[best_adjacent_idx]
+#
+#         self._last_action = best_action
+#         return np.int32(best_action), None
+#
+#     def reset_heuristic_state(self):
+#         """Reset the global state for the heuristic policy."""
+#         #global _current_target_id, _current_target_pos, _last_action, _action_repeat_count
+#         self._current_target_id = None
+#         self._current_target_pos = None
+#         self._last_action = None
+#         self._action_repeat_count = 0
 
-        # If observation is from vectorized environment, extract the first element
-        if obs.ndim > 1:
-            obs = obs[0]  # Extract first environment's observation
 
-        # Ensure obs is at least 1D
-        obs = np.atleast_1d(obs)
-
-        print(f'[heuristic]obs: {obs}')
-
-        # Direction mapping
-        directions = np.array([
-            (0, 1),  # North (0°)
-            (0.383, 0.924),  # NNE (22.5°)
-            (0.707, 0.707),  # NE (45°)
-            (0.924, 0.383),  # ENE (67.5°)
-            (1, 0),  # East (90°)
-            (0.924, -0.383),  # ESE (112.5°)
-            (0.707, -0.707),  # SE (135°)
-            (0.383, -0.924),  # SSE (157.5°)
-            (0, -1),  # South (180°)
-            (-0.383, -0.924),  # SSW (202.5°)
-            (-0.707, -0.707),  # SW (225°)
-            (-0.924, -0.383),  # WSW (247.5°)
-            (-1, 0),  # West (270°)
-            (-0.924, 0.383),  # WNW (292.5°)
-            (-0.707, 0.707),  # NW (315°)
-            (-0.383, 0.924),  # NNW (337.5°)
-        ], dtype=float)
-
-        # Extract nearest target vector (first two components)
-        if len(obs) < 2:
-            print(f"Warning: observation too short, got {len(obs)} elements, expected at least 2")
-            return np.int32(0)
-
-        target_vector_x = obs[0]
-        target_vector_y = obs[1]
-
-        # Check if there's a valid target (non-zero vector)
-        if target_vector_x == 0.0 and target_vector_y == 0.0:
-            # No targets or at target location
-            self.reset_heuristic_state()
-            return np.int32(0)
-
-        # The observation already gives us the vector to the nearest target
-        direction_to_target = np.array([target_vector_x, target_vector_y])
-
-        # Normalize direction vectors
-        direction_norms = np.linalg.norm(directions, axis=1)
-        normalized_directions = directions / direction_norms[:, np.newaxis]
-
-        # Normalize target direction
-        target_norm = np.linalg.norm(direction_to_target)
-        if target_norm > 0:
-            direction_to_target_norm = direction_to_target / target_norm
-        else:
-            return np.int32(self._last_action if self._last_action is not None else 0)
-
-        # Calculate dot products
-        dot_products = np.dot(normalized_directions, direction_to_target_norm)
-
-        # Find best action
-        best_action = np.argmax(dot_products)
-
-        # Anti-oscillation: if we just took an action, continue for minimum steps
-        if (self._last_action is not None and
-                self._action_repeat_count < self._max_repeat_count and
-                self._last_action != best_action):
-
-            # Check if last action is still reasonable (dot product > 0.5)
-            last_dot_product = dot_products[self._last_action]
-            if last_dot_product > 0.5:  # Still pointing roughly toward target
-                best_action = self._last_action
-                self._action_repeat_count += 1
-            else:
-                self._action_repeat_count = 0  # Reset if direction is too far off
-        else:
-            self._action_repeat_count = 0
-
-        # Additional anti-oscillation: prevent direct opposite actions
-        if (self._last_action is not None and abs(
-                self._last_action - best_action) == 8):  # Opposite directions for 16-direction case
-            # Choose a compromise direction
-            adjacent_actions = [(self._last_action + 1) % 16, (self._last_action - 1) % 16]
-            adjacent_dots = [dot_products[a] for a in adjacent_actions]
-            best_adjacent_idx = np.argmax(adjacent_dots)
-            best_action = adjacent_actions[best_adjacent_idx]
-
-        self._last_action = best_action
-        return np.int32(best_action), None
-
-    def reset_heuristic_state(self):
-        """Reset the global state for the heuristic policy."""
-        #global _current_target_id, _current_target_pos, _last_action, _action_repeat_count
-        self._current_target_id = None
-        self._current_target_pos = None
-        self._last_action = None
-        self._action_repeat_count = 0
 
 
 class ChangeRegions(SubPolicy):

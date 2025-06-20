@@ -1,16 +1,12 @@
 import ctypes
 import pygame
-from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-#from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
-#from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
     EvadeDetection, TeammateManager
-
 
 
 
