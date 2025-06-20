@@ -52,11 +52,12 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.tag = self.env.tag
 
         # Set rewards for mode selector
-        self.reward_per_target_id = 1
-        self.reward_per_threat_id = 5
+        self.reward_per_target_id = 2
+        self.reward_per_threat_id = 7.5
         self.penalty_for_policy_switch = 0.02
         self.reward_per_step_early = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
+        self.fail_penalty = -25
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
@@ -108,8 +109,10 @@ class MaisrModeSelectorWrapper(gym.Env):
             # Choose selection strategy: 'random' or 'curriculum'
             self.current_teammate = self.teammate_manager.select_random_teammate()
             print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
-        else: # No manager specified, use fixed teammate
+        elif self.teammate_policy:
             self.current_teammate = teammate_policy
+        else: # No manager specified, use fixed teammate
+            self.current_teammate = None
 
         return observation, _
 
@@ -368,8 +371,8 @@ class MaisrModeSelectorWrapper(gym.Env):
         """
         target_reward = info['new_target_ids'] * self.reward_per_target_id
         threat_reward = info['new_threat_ids'] * self.reward_per_threat_id
-        finish_reward = info['steps_left'] * self.reward_per_step_early \
-            if info['done'] else 0
+        finish_reward = info['steps_left'] * self.reward_per_step_early if info['done'] else 0
+        fail_penalty = self.fail_penalty if info['failed'] else 0
         switch_penalty = self.switched_policies * self.penalty_for_policy_switch  # Bool times penalty
         detect_penalty = info['new_detections'] * self.penalty_per_detection
 
@@ -378,7 +381,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         # ~600 early * 0.05 rew/step early = 30
         # 600 policy switches * 0.02 = -12 penalty
 
-        reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward
+        reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward + fail_penalty
         return reward
 
 

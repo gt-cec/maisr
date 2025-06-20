@@ -589,12 +589,12 @@ def create_analysis_plots(episode_data):
                  bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     # Plot 4: 3D Plot - Reward vs Target IDs and Threat IDs
-    ax = fig.add_subplot(2, 3, 4, projection='3d')
-    scatter = ax.scatter(target_ids, threat_ids, rewards, c=rewards, cmap='coolwarm', s=60, alpha=0.8)
+    ax = fig.add_subplot(2, 3, 4)# projection='3d')
+    scatter = ax.scatter(target_ids, threat_ids, c=rewards, cmap='coolwarm', s=60, alpha=0.8)
     ax.set_xlabel('Target IDs Gained')
     ax.set_ylabel('Threat IDs Gained')
-    ax.set_zlabel('Total Reward')
-    ax.set_title('3D: Reward vs Target & Threat IDs')
+    #ax.set_zlabel('Total Reward')
+    ax.set_title('Reward vs Target & Threat IDs')
     plt.colorbar(scatter, ax=ax, label='Episode Number', shrink=0.6)
 
     # Plot 5: Efficiency Analysis
@@ -681,7 +681,8 @@ if __name__ == "__main__":
 
     config_filename = 'configs/june20_leagues.json'
     league_type = 'strategy_diverse'
-    num_episodes = 30
+    num_episodes = 20
+    tick_rate = 120
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
@@ -694,7 +695,7 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     ctypes.windll.user32.SetProcessDPIAware()
     window_width, window_height = config['window_size'][0], config['window_size'][1]
-    config['tick_rate'] = 30
+    config['tick_rate'] = tick_rate
     window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
     pygame.display.set_caption("MAISR Human Interface")
 
@@ -770,7 +771,7 @@ if __name__ == "__main__":
         done = False
         action = 0
 
-        print(f"\nStarting human episode {episode + 1}/10")
+        print(f"\nStarting human episode {episode + 1}/{num_episodes}")
 
         while not done:
             # Handle pygame events
@@ -906,9 +907,8 @@ if __name__ == "__main__":
 
             # Episode outcome
             'completed_successfully': env.env.all_targets_identified,
-            'failed': getattr(env, 'failed', False),
             'termination_reason': 'success' if env.env.all_targets_identified else
-            'failed' if getattr(env, 'failed', False) else 'timeout',
+            'failed' if env.env.failed else 'timeout',
 
             # Environment state
             'final_threat_count': final_threat_ids,

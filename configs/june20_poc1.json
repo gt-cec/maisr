@@ -5,26 +5,24 @@
 	"time_limit": 245,
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
-	"num_aircraft": 2,
-	"max_steps": 10500,
+	"num_aircraft": 1,
+	"max_steps": 15000,
+	"seed": 42,
 
 	"num_targets": 15,
 	"num_threats": 4,
 	"time_to_id": 0,
 	"prob_detect": 0,
-
-	"seed": 42,
-
-	"obs_type": "nearest",
 	"obs_noise_std": 0,
 	"action_noise_std": 0,
-	"action_type": "Discrete16",
 	"num_observed_targets": 4,
 	"num_observed_threats": 1,
 	"threat_radius": 30,
 	"max_threat_ids": 2,
     
     "league_type": "baseline",
+	"obs_type": "nearest",
+	"action_type": "Discrete16",
 
 	"highqual_regulartarget_reward": 0,
 	"highqual_highvaltarget_reward": 0,
@@ -51,12 +49,12 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 2e6,
+	"num_timesteps": 4e6,
 	"save_freq": 13500,
 	"n_eval_episodes": 5,
 	"eval_freq": 13500,
 
-	"use_curriculum": true,
+	"use_curriculum": false,
 	"cl_lr_decrease": 1,
 	"levels_per_lesson": {"0": 50, "1": 50, "2":  50},
 	"gameboard_size_per_lesson": {"0": 1000, "1": 1000, "2": 1000},

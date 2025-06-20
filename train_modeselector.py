@@ -22,7 +22,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 
 
@@ -546,14 +546,11 @@ class EnhancedWandbCallback(BaseCallback):
                     self.current_difficulty += 1
                     print(f'CURRICULUM: Increasing difficulty to level {self.current_difficulty}')
 
-                    ### CLAUDE CHANGED ###
-                    # Access the base environment through the wrapper
                     self.model.get_env().env_method("env", "set_difficulty", self.current_difficulty)
                     try:
                         self.eval_env.env_method("env", "set_difficulty", self.current_difficulty)
                     except Exception as e:
                         print(f"Failed to set difficulty on eval env: {e}")
-                    ### CLAUDE CHANGED ###
 
                     print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
                     try:
@@ -601,7 +598,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type="strategy_diverse"):
+def setup_teammate_pool(league_type):
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
@@ -672,10 +669,12 @@ def train_modeselector(
 
     ################################################ Initialize envs ################################################
 
-    if use_teammate_manager:
+    if env_config['num_aircraft'] > 1 and use_teammate_manager:
         teammate_manager = setup_teammate_pool(league_type=env_config['league_type'])
+        print('Instantiated teammate manager')
     else:
         teammate_manager = None
+        print('NOT USING a teammate manager')
 
     print(f"Training with {n_envs} environments in parallel")
 
@@ -696,22 +695,12 @@ def train_modeselector(
             change_region_subpolicy = ChangeRegions(model_path=None)
             evade_policy = None
 
-            teammate = GenericTeammatePolicy(
-                base_env,
-                LocalSearch(model_path=None),
-                GoToNearestThreat(model_path=None),
-                ChangeRegions(model_path=None),
-                None,
-                False)
-
             wrapped_env = MaisrModeSelectorWrapper(
                 base_env,
                 local_search_policy,
                 go_to_highvalue_policy,
                 change_region_subpolicy,
                 evade_policy,
-                teammate_policy=teammate,
-                evade_policy = None,  # Add if needed
                 teammate_manager = teammate_manager
             )
 
@@ -721,44 +710,39 @@ def train_modeselector(
 
         return _init
 
+    # Instantiate main env
     env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
-    if n_envs > 1: env = SubprocVecEnv(env_fns)
-    else: env = DummyVecEnv(env_fns)
-
-    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-
-    if use_normalize:
-        env = VecNormalize(env)
-
-    # Create eval environment with wrapper
-    if render:
-        base_eval_env = MAISREnvVec(
-            config=env_config,
-            clock=clock,
-            window=window,
-            render_mode='human',
-            run_name=run_name,
-            tag=f'eval',
-        )
+    if n_envs > 1:
+        env = SubprocVecEnv(env_fns)
     else:
-        base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
+        env = DummyVecEnv(env_fns)
 
-    teammate = GenericTeammatePolicy(
-        base_eval_env,
-        LocalSearch(model_path=None),
-        GoToNearestThreat(model_path=None),
-        ChangeRegions(model_path=None),
-        None,
-        False)
+    # SB3 wrappers for main env
+    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    if use_normalize: env = VecNormalize(env)
 
+
+    # if render:
+    #     base_eval_env = MAISREnvVec(
+    #         config=env_config,
+    #         clock=clock,
+    #         window=window,
+    #         render_mode='human',
+    #         run_name=run_name,
+    #         tag=f'eval',
+    #     )
+    # else:
+
+    # Create and wrap eval environment
+    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
     eval_env = MaisrModeSelectorWrapper(
-        base_eval_env,
-        LocalSearch(model_path=None),
-        GoToNearestThreat(model_path=None),
-        ChangeRegions(model_path=None),
-        None,
-        teammate_policy=teammate)
-
+                base_eval_env,
+                LocalSearch(model_path=None),
+                GoToNearestThreat(model_path=None),
+                ChangeRegions(model_path=None),
+                None,
+                teammate_manager = teammate_manager
+            )
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
 
@@ -776,10 +760,9 @@ def train_modeselector(
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-    wandb_callback = WandbCallback(gradient_save_freq=50,
-                                   model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None,
-                                   verbose=1)
-    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20, render=render)
+    wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1,
+                                   model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None)
+    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20)
 
     print('Callbacks created')
 
@@ -808,21 +791,8 @@ def train_modeselector(
             ent_coef=env_config['entropy_regularization'],
             clip_range=env_config['clip_range']
         )
-    elif env_config['algo'] == 'SAC':
-        model = SAC(
-            "CnnPolicy" if env_config['obs_type'] == 'pixel' else "MlpPolicy",
-            env,
-            #policy_kwargs=policy_kwargs,
-            verbose=2,
-            tensorboard_log=f"logs/tb_runs/{run.id}",
-            batch_size=env_config['batch_size'],
-            learning_rate=env_config['lr'],
-            seed=env_config['seed'],
-            device='cpu',
-            gamma=env_config['gamma'],
-            ent_coef=env_config['entropy_regularization'],
-        )
-    else: raise ValueError('Unsupported algo')
+    else:
+        raise ValueError('Unsupported algo')
 
     print('Model instantiated')
     print(model.policy)
@@ -831,7 +801,8 @@ def train_modeselector(
     if load_path:
         print(f'LOADING FROM {load_path}')
         model = model.__class__.load(load_path, env=env)
-    else: print('Training new model')
+    else: print('No checkpoint provided, training new model')
+
 
     print('##################################### Beginning agent training... #######################################\n')
 
@@ -883,7 +854,8 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june16_2ship.json'
+    config_filename = 'configs/june20_poc1.json'
+    temp_identifier = 'poc1'
 
     ################################################
 
@@ -897,7 +869,7 @@ if __name__ == "__main__":
             config['inside_threat_penalty'] = inside_threat_penalty
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'modeselector_2ship_{num_timesteps}timesteps_'+generate_run_name(config)
+            run_name = f'modeselector_{temp_identifier}_{num_timesteps}timesteps_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_modeselector(
@@ -906,7 +878,7 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=False,
                 render=False,
-                n_envs=multiprocessing.cpu_count()-14,
+                n_envs=multiprocessing.cpu_count(),
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

@@ -52,6 +52,19 @@ class TeammateManager:
         if league_type not in valid_league_types:
             raise ValueError(f"league_type must be one of {valid_league_types}")
 
+        self.mode_selector_options = {
+            'baseline':["none"],
+            'vanilla': ["none", "heuristic"],
+            'strategy_diverse': ["none", "heuristic"]}
+        self.risk_tolerance_options = {
+            'baseline':["none"],
+            "vanilla": ["none"],
+            "strategy_diverse": ["low", "medium", "high", "extreme"]}
+        self.spatial_coord_options = {
+            'baseline': ["none"],
+            "vanilla": ["none"],
+            "strategy_diverse": ["none", "some", "high"]}
+
         print(f"\nTeammateManager initialized with league_type: {league_type}")
 
     def select_random_teammate(self):
@@ -67,10 +80,14 @@ class TeammateManager:
 
     def _create_baseline_teammate(self):
         """Create baseline teammate: always heuristic with conservative settings"""
+        mode_selector = random.choice(self.mode_selector_options['vanilla'])
+        risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
+        spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
+
         heuristic_agent = HeuristicAgent(
-            mode_selector="none",
-            risk_tolerance="low",
-            spatial_coord="none"
+            mode_selector=mode_selector,
+            risk_tolerance=risk_tolerance,
+            spatial_coord=spatial_coord
         )
 
         teammate = GenericTeammatePolicy(
@@ -89,7 +106,9 @@ class TeammateManager:
     def _create_vanilla_teammate(self):
         """Create vanilla teammate: varied mode_selector, conservative spatial/risk settings"""
         # Randomly sample mode_selector
-        mode_selector = random.choice(["none", "heuristic"]) # Removed "trained" for now
+        mode_selector = random.choice(self.mode_selector_options['vanilla'])
+        risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
+        spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
 
         if mode_selector == "trained":
             # TODO: Load trained model when available
@@ -97,8 +116,8 @@ class TeammateManager:
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
-            risk_tolerance="low",  # Always low for vanilla
-            spatial_coord="none"  # Always none for vanilla
+            risk_tolerance=risk_tolerance,
+            spatial_coord=risk_tolerance
         )
 
         teammate = GenericTeammatePolicy(
@@ -117,9 +136,9 @@ class TeammateManager:
     def _create_strategy_diverse_teammate(self):
         """Create strategy diverse teammate: all parameters randomly sampled"""
         # Randomly sample all parameters
-        mode_selector = random.choice(["none", "heuristic"]) # Removed "trained"
-        risk_tolerance = random.choice(["low", "medium", "high", "extreme"])
-        spatial_coord = random.choice(["none", "some", "high"])
+        mode_selector = random.choice(self.mode_selector_options['strategy_diverse'])
+        risk_tolerance = random.choice(self.risk_tolerance_options['strategy_diverse'])
+        spatial_coord = random.choice(self.spatial_coord_options['strategy_diverse'])
 
         if mode_selector == "trained":
             # TODO: Load trained model when available
@@ -186,7 +205,7 @@ class HeuristicAgent:
 
         Args:
             mode_selector (str): "none" to always choose localsearch, or "heuristic" for decision logic
-            risk_tolerance (str): "low", "medium", "high", or "extreme" - controls gotothreat usage
+            risk_tolerance (str): "low", "medium", "high", or " - controls gotothreat usage
             spatial_coord (str): "none", "some", or "high" - controls localsearch vs changeregion choice
         """
         self.mode_selector = mode_selector
@@ -319,7 +338,7 @@ class HeuristicAgent:
         elif self.risk_tolerance == "high":
             return detections <= 1
         elif self.risk_tolerance == "extreme":
-            return detections <= 2
+            return detections <= 1
 
         return False
 
@@ -486,259 +505,6 @@ class HeuristicAgent:
 
         return quadrant_counts
 
-
-
-
-
-# class HeuristicAgent:
-#     """
-#     Heuristic agent that chooses subpolicies based on risk tolerance and spatial coordination settings.
-#
-#     Subpolicies:
-#     0 = localsearch
-#     1 = changeregion
-#     2 = gotothreat
-#     """
-#
-#     def __init__(self, mode_selector="heuristic", risk_tolerance="medium", spatial_coord="some"):
-#         """
-#         Initialize the heuristic agent.
-#
-#         Args:
-#             mode_selector (str): "none" to always choose localsearch, or "heuristic" for decision logic
-#             risk_tolerance (str): "low", "medium", "high", or "extreme" - controls gotothreat usage
-#             spatial_coord (str): "none", "some", or "high" - controls localsearch vs changeregion choice
-#         """
-#         self.mode_selector = mode_selector
-#         self.risk_tolerance = risk_tolerance
-#         self.spatial_coord = spatial_coord
-#
-#         # Validate configuration
-#         valid_risk_levels = ["low", "medium", "high", "extreme"]
-#         valid_spatial_levels = ["none", "some", "high"]
-#         valid_mode_selectors = ["none", "heuristic"]
-#
-#         if risk_tolerance not in valid_risk_levels:
-#             raise ValueError(f"risk_tolerance must be one of {valid_risk_levels}")
-#         if spatial_coord not in valid_spatial_levels:
-#             raise ValueError(f"spatial_coord must be one of {valid_spatial_levels}")
-#         if mode_selector not in valid_mode_selectors:
-#             raise ValueError(f"mode_selector must be one of {valid_mode_selectors}")
-#
-#
-#     def choose_subpolicy(self, env, agent_id=0):
-#         """
-#         Choose a subpolicy based on the agent's configuration and current environment state.
-#
-#         Args:
-#             env: The environment instance (MAISREnvVec)
-#             agent_id (int): ID of the agent making the decision (default 0)
-#
-#         Returns:
-#             int: Subpolicy choice (0=localsearch, 1=changeregion, 2=gotothreat)
-#         """
-#         # If mode_selector is "none", always choose localsearch
-#         if self.mode_selector == "none":
-#             print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
-#             return 0
-#
-#         # Check if we should choose gotothreat based on risk tolerance and detections
-#         detections = env.num_threats_identified
-#         should_go_to_threat = self._should_go_to_threat(env)
-#
-#         if should_go_to_threat:
-#             print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
-#             return 2  # gotothreat
-#         else:
-#             # Choose between localsearch (0) and changeregion (1) based on spatial coordination
-#             choice = self._choose_search_strategy(env, agent_id)
-#
-#             # Add debugging for the search strategy choice
-#             if self.spatial_coord == "none":
-#                 reason = "spatial_coord=none"
-#             elif self.spatial_coord == "some":
-#                 target_rich_found = choice == 1
-#                 reason = f"spatial_coord=some, target_rich_quadrant={target_rich_found}"
-#             elif self.spatial_coord == "high":
-#                 same_quadrant = self._agents_in_same_quadrant(env, agent_id)
-#                 reason = f"spatial_coord=high, same_quadrant={same_quadrant}"
-#             else:
-#                 reason = "default"
-#
-#             action_name = "localsearch" if choice == 0 else "changeregion"
-#             print(
-#                 f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
-#
-#             return choice
-#
-#     def _should_go_to_threat(self, env):
-#         """
-#         Determine if the agent should choose gotothreat based on risk tolerance and current detections.
-#
-#         Args:
-#             env: The environment instance
-#
-#         Returns:
-#             bool: True if should choose gotothreat, False otherwise
-#         """
-#         detections = env.num_threats_identified
-#
-#         if self.risk_tolerance == "low":
-#             return False  # Never choose gotothreat
-#         elif self.risk_tolerance == "medium":
-#             return detections == 0
-#         elif self.risk_tolerance == "high":
-#             return detections <= 1
-#         elif self.risk_tolerance == "extreme":
-#             return detections <= 2
-#
-#         return False
-#
-#     def _choose_search_strategy(self, env, agent_id):
-#         """
-#         Choose between localsearch and changeregion based on spatial coordination setting.
-#
-#         Args:
-#             env: The environment instance
-#             agent_id (int): ID of the agent making the decision
-#
-#         Returns:
-#             int: 0 for localsearch, 1 for changeregion
-#         """
-#         if self.spatial_coord == "none":
-#             return 0  # Always choose localsearch
-#
-#         elif self.spatial_coord == "some":
-#             # Choose changeregion if there's a quadrant with lots of targets
-#             # and neither agent nor teammate is in that quadrant
-#             return self._check_target_rich_quadrant(env, agent_id)
-#
-#         elif self.spatial_coord == "high":
-#             # Always choose changeregion if both agents are in the same quadrant
-#             if self._agents_in_same_quadrant(env, agent_id):
-#                 return 1  # changeregion
-#             else:
-#                 return 0  # localsearch
-#
-#         return 0  # Default to localsearch
-#
-#     def _check_target_rich_quadrant(self, env, agent_id):
-#         """
-#         Check if there's a target-rich quadrant that neither agent nor teammate occupies.
-#
-#         Args:
-#             env: The environment instance
-#             agent_id (int): ID of the agent making the decision
-#
-#         Returns:
-#             int: 1 for changeregion if target-rich quadrant found, 0 for localsearch otherwise
-#         """
-#         if env.config['num_aircraft'] < 2:
-#             return 0  # No teammate, just do localsearch
-#
-#         # Get agent and teammate positions
-#         agent_pos = self._get_agent_quadrant(env, agent_id)
-#         teammate_id = 1 if agent_id == 0 else 0
-#         teammate_pos = self._get_agent_quadrant(env, teammate_id)
-#
-#         # Get target counts per quadrant (only unknown targets)
-#         quadrant_target_counts = self._get_unknown_targets_per_quadrant(env)
-#         total_unknown_targets = sum(quadrant_target_counts.values())
-#
-#         if total_unknown_targets == 0:
-#             return 0  # No unknown targets, do localsearch
-#
-#         # Find quadrant with highest target density
-#         max_targets = max(quadrant_target_counts.values())
-#         target_rich_quadrants = [q for q, count in quadrant_target_counts.items() if count == max_targets]
-#
-#         # Check if the target-rich quadrant(s) have significantly more targets (>40% of total)
-#         threshold = 0.4 * total_unknown_targets
-#
-#         for quadrant in target_rich_quadrants:
-#             if (quadrant_target_counts[quadrant] >= threshold and
-#                     quadrant != agent_pos and quadrant != teammate_pos):
-#                 #print(f'[Teammate] Target-rich quadrant found')
-#                 return 1  # changeregion to target-rich quadrant
-#
-#         return 0  # No suitable target-rich quadrant, do localsearch
-#
-#     def _agents_in_same_quadrant(self, env, agent_id):
-#         """
-#         Check if the agent and teammate are in the same quadrant.
-#
-#         Args:
-#             env: The environment instance
-#             agent_id (int): ID of the agent making the decision
-#
-#         Returns:
-#             bool: True if both agents are in the same quadrant
-#         """
-#         if env.config['num_aircraft'] < 2:
-#             return False  # No teammate
-#
-#         agent_quad = self._get_agent_quadrant(env, agent_id)
-#         teammate_id = 1 if agent_id == 0 else 0
-#         teammate_quad = self._get_agent_quadrant(env, teammate_id)
-#
-#         return agent_quad == teammate_quad
-#
-#     def _get_agent_quadrant(self, env, agent_id):
-#         """
-#         Get the quadrant that an agent is currently in.
-#
-#         Args:
-#             env: The environment instance
-#             agent_id (int): ID of the agent
-#
-#         Returns:
-#             str: Quadrant name ("NW", "NE", "SW", "SE")
-#         """
-#         agent_x = env.agents[env.aircraft_ids[agent_id]].x
-#         agent_y = env.agents[env.aircraft_ids[agent_id]].y
-#
-#         # Determine quadrant based on sign of coordinates
-#         if agent_x >= 0 and agent_y >= 0:
-#             return "NE"
-#         elif agent_x < 0 and agent_y >= 0:
-#             return "NW"
-#         elif agent_x < 0 and agent_y < 0:
-#             return "SW"
-#         else:  # agent_x >= 0 and agent_y < 0
-#             return "SE"
-#
-#     def _get_unknown_targets_per_quadrant(self, env):
-#         """
-#         Count unknown targets in each quadrant.
-#
-#         Args:
-#             env: The environment instance
-#
-#         Returns:
-#             dict: Mapping of quadrant names to target counts
-#         """
-#         target_positions = env.targets[:env.config['num_targets'], 3:5]  # x,y coordinates
-#         target_info_levels = env.targets[:env.config['num_targets'], 2]  # info levels
-#
-#         # Only count unknown targets (info_level < 1.0)
-#         unknown_mask = target_info_levels < 1.0
-#         unknown_positions = target_positions[unknown_mask]
-#
-#         quadrant_counts = {"NW": 0, "NE": 0, "SW": 0, "SE": 0}
-#
-#         for pos in unknown_positions:
-#             x, y = pos[0], pos[1]
-#
-#             if x >= 0 and y >= 0:
-#                 quadrant_counts["NE"] += 1
-#             elif x < 0 and y >= 0:
-#                 quadrant_counts["NW"] += 1
-#             elif x < 0 and y < 0:
-#                 quadrant_counts["SW"] += 1
-#             else:  # x >= 0 and y < 0
-#                 quadrant_counts["SE"] += 1
-#
-#         return quadrant_counts
 
 class GenericTeammatePolicy(TeammatePolicy):
     def __init__(self,
@@ -1585,7 +1351,7 @@ class ChangeRegions(SubPolicy):
         self.steps_since_update = 0
 
         self.target_region = None
-        self.arrival_threshold = 0.05
+        self.arrival_threshold = 0.25
 
 
     def act(self, observation):
