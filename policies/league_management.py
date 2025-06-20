@@ -235,7 +235,7 @@ class HeuristicAgent:
         # If mode_selector is "none", always choose localsearch
         if self.mode_selector == "none":
             self._update_tracking(0)
-            print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
+            #print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
             return 0
 
         # Check if we should choose gotothreat based on risk tolerance and detections
@@ -244,7 +244,7 @@ class HeuristicAgent:
 
         if should_go_to_threat:
             self._update_tracking(2)
-            print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
+            #print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
             return 2  # gotothreat
 
         # Check if we should stick with current subpolicy to avoid oscillation
@@ -261,7 +261,7 @@ class HeuristicAgent:
 
             self._update_tracking(choice)
             action_name = ["localsearch", "changeregion", "gotothreat"][choice]
-            print(f"[HeuristicAgent] {reason} -> {action_name}({choice})")
+            #print(f"[HeuristicAgent] {reason} -> {action_name}({choice})")
             return choice
 
         # Choose between localsearch (0) and changeregion (1) based on spatial coordination
@@ -289,8 +289,7 @@ class HeuristicAgent:
 
         self._update_tracking(choice)
         action_name = ["localsearch", "changeregion", "gotothreat"][choice]
-        print(
-            f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
+        #print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
         return choice
 
     def _update_tracking(self, chosen_subpolicy):
@@ -1190,7 +1189,7 @@ class LocalSearch(SubPolicy):
         """
         # Check if we need to evade threats first
         if env is not None and self.near_threat(env, agent_id):
-            print(f"[LocalSearch] Threat detected, switching to evade mode")
+            #print(f"[LocalSearch] Threat detected, switching to evade mode")
             evade_action = self.compute_tangential_escape_action(env, agent_id)
             return evade_action, None
 
@@ -1322,7 +1321,7 @@ class LocalSearch(SubPolicy):
         # For now, default to counterclockwise
         self.circumnavigation_state['chosen_direction'] = 'counterclockwise'
 
-        print(f"[LocalSearch] Starting circumnavigation: direction={self.circumnavigation_state['chosen_direction']}")
+        #print(f"[LocalSearch] Starting circumnavigation: direction={self.circumnavigation_state['chosen_direction']}")
 
     def _is_circumnavigation_complete(self, current_angle, threat_pos, agent_pos, env):
         """Check if we've gone far enough around the threat to have a clear path"""
@@ -1608,7 +1607,7 @@ class ChangeRegions(SubPolicy):
         # Set waypoint directly to center of new region
         action = self._get_region_center(self.target_region)
         self.steps_since_update += 1
-        print(f'[ChangeRegion.act] Chose action {action}')
+        #print(f'[ChangeRegion.act] Chose action {action}')
         return action
 
     def _has_reached_target(self, observation):

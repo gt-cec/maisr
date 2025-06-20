@@ -6,7 +6,7 @@ from sympy import trunc
 from torch.ao.quantization.backend_config.onednn import observation_type
 
 from policies.sub_policies import SubPolicy, GoToNearestThreat, ChangeRegions
-from utility.league_management import TeammateManager, TeammatePolicy, LocalSearch
+from policies.league_management import TeammateManager, TeammatePolicy, LocalSearch
 
 
 class MaisrModeSelectorWrapper(gym.Env):
