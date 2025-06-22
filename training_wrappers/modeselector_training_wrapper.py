@@ -44,8 +44,8 @@ class MaisrModeSelectorWrapper(gym.Env):
             dtype=np.float32)
 
         # Action space: 3 possible sub-policies to choose from
-        self.action_space = gym.spaces.Discrete(3)
-        self.action_rate = 20
+        self.action_space = gym.spaces.Discrete(4)
+        self.action_rate = 10
 
         self.render_mode = self.env.render_mode
         self.run_name = self.env.run_name  # For logging
@@ -169,39 +169,30 @@ class MaisrModeSelectorWrapper(gym.Env):
         #     return observation, reward, terminated, truncated, info
 
         # Normal subpolicy selection logic when not evading
-        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
-            self.steps_since_last_selection = 0
+        #if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
+            #self.steps_since_last_selection = 0
 
-            # Track policy switching for penalty later
-            self.switched_policies = False
-            if self.last_action != action:
-                self.total_switches += 1
-                self.switched_policies = True
 
-            # Check if we should auto-switch from change_region to local_search
-            if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
-                #print("Auto-switching from change_region to local_search - target region reached")
-                self.subpolicy_choice = 0  # Switch to local search
+        ################################################ Process action ################################################
+        # Track policy switching for penalty later
+        self.switched_policies = False
+        if self.last_action != action:
+            self.total_switches += 1
+            self.switched_policies = True
 
-                # Reset the change_region policy's target so it will select a new one next time
-                if hasattr(self.change_region_subpolicy, 'target_region'):
-                    self.change_region_subpolicy.target_region = None
+        if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
+            #print("Auto-switching from change_region to local_search - target region reached")
+            self.subpolicy_choice = 0  # Switch to local search
 
-            else:
-                self.subpolicy_choice = action
-        # Normal subpolicy selection logic when not evading
-        if self.subpolicy_choice is None or self.steps_since_last_selection >= self.action_rate:
-            self.steps_since_last_selection = 0
+            # Reset the change_region policy's target so it will select a new one next time
+            if hasattr(self.change_region_subpolicy, 'target_region'):
+                self.change_region_subpolicy.target_region = None
 
-            # Track policy switching for penalty later
-            self.switched_policies = False
-            if self.last_action != action:
-                self.total_switches += 1
-                self.switched_policies = True
-
+        else:
             self.subpolicy_choice = action
 
-        ######################## Process subpolicy's action ########################
+
+        ########################################## Process subpolicy's action ##########################################
 
         subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
         if self.subpolicy_choice == 0:  # Local search
@@ -213,27 +204,32 @@ class MaisrModeSelectorWrapper(gym.Env):
         elif self.subpolicy_choice == 2:  # go to high value target
             subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
 
-        elif self.subpolicy_choice == 3:  # Evade (shouldn't reach here with new logic)
-            subpolicy_action = self.evade_policy.act(subpolicy_observation)
+        elif self.subpolicy_choice == 3:  # Hold (no op) - Set waypoint to current location
+            agent_pos = np.array([
+                                  self.env.agents[self.env.aircraft_ids[0]].x/self.env.config['gameboard_size'],
+                                  self.env.agents[self.env.aircraft_ids[0]].y/self.env.config['gameboard_size']
+                                  ])
+            subpolicy_action = agent_pos
+            print(f'hold action is {subpolicy_action}')
 
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
 
+        # Fix subpolicy action types
         if isinstance(subpolicy_action, tuple):
             if subpolicy_action[1] == None:
                 subpolicy_action = subpolicy_action[0]
-
         if isinstance(subpolicy_action, int):
             subpolicy_action = np.int32(subpolicy_action)
 
+        # Store subpolicy choice in history
         if self.subpolicy_choice is not None:
             self.subpolicy_history.append(self.subpolicy_choice)
         else:
-            # If no subpolicy chosen yet, use -1 or previous choice
             if len(self.subpolicy_history) > 0:
                 self.subpolicy_history.append(self.subpolicy_history[-1])
             else:
-                self.subpolicy_history.append(0)  # Default to local search
+                self.subpolicy_history.append(0)
 
         ########################################## Process teammate's action ###########################################
 
@@ -274,16 +270,20 @@ class MaisrModeSelectorWrapper(gym.Env):
         ############################################ Step the environment #############################################
 
         #print(f'applying action {subpolicy_action} {type(subpolicy_action)}')
-        base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
+        # TODO: Testing new action rate log
+        for _ in range(self.action_rate):
+            base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
 
         # Convert base_env elements to wrapper elements if needed
         observation = self.get_observation(0)
         reward = self.get_reward(base_info)
         self.episode_reward += reward
         info = base_info
-        info['policy_switches'] = getattr(self, 'total_switches', 0)
+        #info['policy_switches'] = getattr(self, 'total_switches', 0)
+        info['policy_switches'] = self.total_switches
         info['final_subpolicy'] = self.subpolicy_choice
-        info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
+        #info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
+        info['threat_ids'] = self.env.num_threats_identified
         terminated = base_terminated
         truncated = base_truncated
 
@@ -401,8 +401,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         elif selected_subpolicy == 2: # Go to nearest
             observation = self.get_observation_nearest_threat(agent_id)
 
-        elif selected_subpolicy == 3: # Evade
-            observation = self.get_observation_evade(agent_id)
+        elif selected_subpolicy == 3: # Hold
+            #observation = self.get_observation_evade(agent_id)
+            observation = self.get_observation_localsearch(agent_id)
 
         return observation
 
@@ -611,7 +612,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Convert normalized center to actual coordinates
         map_half_size = self.env.config['gameboard_size'] / 2
-        region_center_norm = region_centers.get(target_region_id, np.array([0.0, 0.0]))
+        #region_center_norm = region_centers.get(target_region_id, np.array([0.0, 0.0]))
+        region_center_norm = region_centers[target_region_id]
         region_center_actual = region_center_norm * map_half_size
 
         # Calculate distance to region center
@@ -1003,6 +1005,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         for policy in self.subpolicy_history:
             policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
             subpolicy_counts[policy_key] = subpolicy_counts.get(policy_key, 0) + 1
+            #subpolicy_counts[policy_key] = subpolicy_counts[policy_key] + 1
 
         # Get percentages with safe access using .get() method
         local_search_pct = (subpolicy_counts.get(0, 0) / total_steps) * 100

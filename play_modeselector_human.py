@@ -726,7 +726,7 @@ if __name__ == "__main__":
 
     ###################################################################################################################
 
-    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2}
+    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3}
     all_observations = []
     episode_rewards = []
     episode_observations = []
@@ -745,13 +745,13 @@ if __name__ == "__main__":
         initial_target_ids = env.env.targets_identified
 
         # Subpolicy tracking
-        subpolicy_usage = {0: 0, 1: 0, 2: 0}
+        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3:0}
         subpolicy_switches = 0
         last_action = None
         subpolicy_sequence = []
 
         # Teammate tracking
-        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0}
+        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
         teammate_switches = 0
         last_teammate_action = None
 
