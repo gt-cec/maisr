@@ -33,7 +33,7 @@ class TeammatePolicy(ABC):
 class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
-    def __init__(self, league_type, balance_method, subpolicies=None):
+    def __init__(self, league_type, balance_method, subpolicies=None, selfplay_checkpoint_dir=None):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -48,6 +48,7 @@ class TeammateManager:
         self.balance_method = balance_method
         self.current_teammate = None
         self.episode_count = 0
+        self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
@@ -134,17 +135,100 @@ class TeammateManager:
 
     def _create_selfplay_teammate(self):
         """
-        Create self-play teammate (placeholder implementation)
-        TODO: Load previous checkpoint of current agent
+        Create self-play teammate by loading a previous checkpoint of the current agent
         """
-        print("Loading self-play teammate (placeholder - using baseline for now)")
+        import os
+        import glob
+        import random
+        from stable_baselines3 import PPO
 
-        # Placeholder: use baseline teammate for now
-        # TODO: Implement actual self-play checkpoint loading
-        teammate = self._create_baseline_teammate()
-        teammate.name = "SelfPlay_Checkpoint_Placeholder"
+        if self.selfplay_checkpoint_dir is None:
+            print("Warning: No selfplay_checkpoint_dir specified, falling back to baseline teammate")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
+            return teammate
 
-        return teammate
+        if not os.path.exists(self.selfplay_checkpoint_dir):
+            print(f"Warning: Checkpoint directory {self.selfplay_checkpoint_dir} does not exist, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
+            return teammate
+
+        # Find all checkpoint files (assuming .zip format for stable-baselines3)
+        checkpoint_patterns = [
+            os.path.join(self.selfplay_checkpoint_dir, "*.zip"),
+            os.path.join(self.selfplay_checkpoint_dir, "**/*.zip"),  # Search subdirectories
+            os.path.join(self.selfplay_checkpoint_dir, "checkpoint_*.zip"),
+            os.path.join(self.selfplay_checkpoint_dir, "model_*.zip"),
+        ]
+
+        all_checkpoints = []
+        for pattern in checkpoint_patterns:
+            all_checkpoints.extend(glob.glob(pattern, recursive=True))
+
+        # Remove duplicates and sort by modification time (newest first)
+        all_checkpoints = list(set(all_checkpoints))
+        if not all_checkpoints:
+            print(f"Warning: No checkpoint files found in {self.selfplay_checkpoint_dir}, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "SelfPlay_NoCheckpoints_Fallback"
+            return teammate
+
+        # Sort by modification time (newest first)
+        all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+
+        # Strategy for checkpoint selection:
+        # - 50% chance: select from most recent 3 checkpoints (if available)
+        # - 30% chance: select from recent 25% of all checkpoints
+        # - 20% chance: select randomly from any checkpoint
+
+        selection_strategy = random.random()
+
+        if selection_strategy < 0.5:
+            # Select from most recent 3 checkpoints
+            recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
+            selected_checkpoint = random.choice(recent_checkpoints)
+            strategy_name = "Recent3"
+
+        elif selection_strategy < 0.8:
+            # Select from recent 25% of checkpoints
+            recent_count = max(1, len(all_checkpoints) // 4)
+            recent_checkpoints = all_checkpoints[:recent_count]
+            selected_checkpoint = random.choice(recent_checkpoints)
+            strategy_name = "Recent25pct"
+
+        else:
+            # Select randomly from any checkpoint
+            selected_checkpoint = random.choice(all_checkpoints)
+            strategy_name = "Random"
+
+        try:
+            # Load the selected checkpoint
+            print(f"Loading self-play checkpoint: {os.path.basename(selected_checkpoint)} (strategy: {strategy_name})")
+            selfplay_model = PPO.load(selected_checkpoint)
+
+            # Create RL teammate policy using the loaded model
+            selfplay_teammate = RLTeammatePolicy(
+                model=selfplay_model,
+                env=None,  # Will be set later if needed
+                local_search_policy=self.subpolicies.get('local_search'),
+                go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+                change_region_subpolicy=self.subpolicies.get('change_region'),
+            )
+
+            # Extract checkpoint identifier for naming
+            checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
+            selfplay_teammate.name = f"SelfPlay_{strategy_name}_{checkpoint_name}"
+
+            self.current_teammate = selfplay_teammate
+            return selfplay_teammate
+
+        except Exception as e:
+            print(f"Error loading checkpoint {selected_checkpoint}: {e}")
+            print("Falling back to baseline teammate")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "SelfPlay_LoadError_Fallback"
+            return teammate
 
     def _create_pretrained_rl_teammate(self):
         """
@@ -435,6 +519,66 @@ class TeammateManager:
 #         print("Warning: select_teammate_by_curriculum is deprecated, using select_random_teammate")
 #         return self.select_random_teammate()
 
+class RLTeammatePolicy(TeammatePolicy):
+    """
+    Teammate policy that uses a trained RL model for mode selection
+    """
+
+    def __init__(self,
+                 model,
+                 env,
+                 local_search_policy,
+                 go_to_highvalue_policy,
+                 change_region_subpolicy,
+                 use_collision_avoidance: bool = False):
+
+        self.model = model
+        self.env = env
+        self.use_collision_avoidance = use_collision_avoidance
+
+        self.local_search_policy = local_search_policy
+        self.go_to_highvalue_policy = go_to_highvalue_policy
+        self.change_region_subpolicy = change_region_subpolicy
+
+        # Default name
+        self.name = "RL_Teammate"
+
+        # Track last observation for potential debugging
+        self.last_observation = None
+
+    def choose_subpolicy(self, observation, current_subpolicy):
+        """Choose subpolicy using the trained RL model"""
+        try:
+            self.last_observation = observation
+
+            # Use the RL model to predict the action (subpolicy choice)
+            action, _ = self.model.predict(observation, deterministic=False)
+
+            # Ensure action is a valid subpolicy choice (0, 1, 2, or 3)
+            if hasattr(action, 'item'):  # Handle numpy scalars
+                action = action.item()
+            action = int(action)
+            action = max(0, min(3, action))  # Clamp to valid range
+
+            return action
+
+        except Exception as e:
+            print(f"[RLTeammatePolicy] Error in choose_subpolicy: {e}")
+            print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
+            return 0  # Fallback to local search
+
+    def reset(self):
+        """Reset any internal state"""
+        self.last_observation = None
+
+    def near_a_threat(self):
+        """Return true if near threat and need to call evade"""
+        if self.env is None:
+            return False
+
+        # Implementation would depend on environment structure
+        # For now, return False as placeholder
+        return False
 
 class HeuristicAgent:
     """
