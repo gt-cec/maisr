@@ -894,134 +894,134 @@ class EvadeDetection(SubPolicy):
 #         self._action_repeat_count = 0
 
 
-
-
-class ChangeRegions(SubPolicy):
-    """Sub-policy that moves to a specific region of the map"""
-
-    def __init__(self, model=None):
-        super().__init__(f"change_region")
-        self.model = model
-
-        self.update_rate = 10 # Recalculate every 10 steps to reduce computation cost
-        self.steps_since_update = 0
-
-        self.target_region = None
-        self.arrival_threshold = 0.05
-
-
-    def act(self, observation):
-        # Check if we've reached the current target region
-        if self.target_region is not None and self._has_reached_target(observation):
-            print(f'Reached target region {self.target_region}, selecting new region')
-            self.target_region = None  # Force new selection
-            self.steps_since_update = self.update_rate  # Force immediate update
-
-        # Select new target region if needed
-        if self.target_region is None or self.steps_since_update >= self.update_rate:
-            self.steps_since_update = 0
-            if self.model:
-                self.target_region = self.model.predict(observation)
-            else:
-                self.target_region = self.heuristic(observation)
-            print(f'Selected new target region: {self.target_region}')
-
-        # Set waypoint directly to center of new region
-        action = self._get_region_center(self.target_region)
-        self.steps_since_update += 1
-        return action
-
-    def _has_reached_target(self, observation):
-        """Check if agent has reached the current target region"""
-        if self.target_region is None:
-            return False
-
-        # Extract agent distance to the target region from observation
-        # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
-        target_region_info_idx = self.target_region * 3 + 1  # +1 to get the agent distance
-        agent_distance_to_target = observation[target_region_info_idx]
-
-        # Check if agent is close enough to the target region
-        # The distance is normalized, so we use a small threshold
-        distance_threshold = 0.15  # Adjust this value as needed (normalized distance)
-
-        return agent_distance_to_target <= distance_threshold
-
-    def heuristic(self, observation):
-        """Simple heuristic to choose a region. Can be used if model is not provided"""
-
-        obs = np.array(observation)
-
-        # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
-        regions_info = []
-
-        for region_id in range(4):  # 4 regions: NW, NE, SW, SE
-            base_idx = region_id * 3
-            target_ratio = obs[base_idx]  # Ratio of unknown targets in this region
-            agent_distance = obs[base_idx + 1]  # Agent distance to region center
-            teammate_distance = obs[base_idx + 2]  # Teammate distance to region center
-
-            regions_info.append({
-                'region_id': region_id,
-                'target_ratio': target_ratio,
-                'agent_distance': agent_distance,
-                'teammate_distance': teammate_distance
-            })
-
-        # Determine which region teammate is likely in
-        # Teammate is probably in the region they're closest to
-        teammate_distances = [info['teammate_distance'] for info in regions_info]
-        teammate_region = np.argmin(teammate_distances)
-
-        # Sort regions by target density (highest ratio first)
-        regions_info.sort(key=lambda x: x['target_ratio'], reverse=True)
-
-        # Choose the highest density region that doesn't have teammate
-        target_region = None
-        for region_info in regions_info:
-            region_id = region_info['region_id']
-
-            # Skip if teammate is in this region (with small tolerance for distance comparison)
-            if region_id == teammate_region and region_info[
-                'teammate_distance'] < 0.3:  # 0.3 is normalized distance threshold
-                continue
-
-            target_region = region_id
-            break
-
-        # Fallback: if all regions have teammate or no targets anywhere, choose the region with highest density
-        if target_region is None:
-            target_region = regions_info[0]['region_id']
-
-        return target_region
-
-    def is_terminated(self, env_state: Dict[str, Any]) -> bool:
-        """Terminate when arrived at target region"""
-        if self.target_region is None:
-            return False
-
-        # Get agent position from env_state
-        agent_pos = np.array([env_state['agent_x'], env_state['agent_y']])
-        region_center = self._get_region_center(self.target_region)
-
-        # Convert region center from normalized coordinates to actual coordinates
-        map_half_size = 500
-        region_center_actual = region_center * map_half_size
-
-        distance_to_region = np.linalg.norm(region_center_actual - agent_pos)
-        print(f'Distance to region: {distance_to_region}')
-        arrival_threshold = self.arrival_threshold  # Convert normalized threshold to actual distance
-
-        terminated = distance_to_region <= arrival_threshold
-        #print(terminated)
-        return terminated
-
-    def _get_region_center(self, region_id: int) -> np.ndarray:
-        """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
-        centers = {
-            0: np.array([-0.5, 0.5]),  # NW
-            1: np.array([0.5, 0.5]),  # NE
-            2: np.array([-0.5, -0.5]),  # SW
-            3: np.array([0.5, -0.5])  # SE
-        }
-        return centers.get(region_id, np.array([0.0, 0.0]))
+#
+#
+# class ChangeRegions(SubPolicy):
+#     """Sub-policy that moves to a specific region of the map"""
+#
+#     def __init__(self, model=None):
+#         super().__init__(f"change_region")
+#         self.model = model
+#
+#         self.update_rate = 10 # Recalculate every 10 steps to reduce computation cost
+#         self.steps_since_update = 0
+#
+#         self.target_region = None
+#         self.arrival_threshold = 0.05
+#
+#
+#     def act(self, observation):
+#         # Check if we've reached the current target region
+#         if self.target_region is not None and self._has_reached_target(observation):
+#             print(f'Reached target region {self.target_region}, selecting new region')
+#             self.target_region = None  # Force new selection
+#             self.steps_since_update = self.update_rate  # Force immediate update
+#
+#         # Select new target region if needed
+#         if self.target_region is None or self.steps_since_update >= self.update_rate:
+#             self.steps_since_update = 0
+#             if self.model:
+#                 self.target_region = self.model.predict(observation)
+#             else:
+#                 self.target_region = self.heuristic(observation)
+#             print(f'Selected new target region: {self.target_region}')
+#
+#         # Set waypoint directly to center of new region
+#         action = self._get_region_center(self.target_region)
+#         self.steps_since_update += 1
+#         return action
+#
+#     def _has_reached_target(self, observation):
+#         """Check if agent has reached the current target region"""
+#         if self.target_region is None:
+#             return False
+#
+#         # Extract agent distance to the target region from observation
+#         # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
+#         target_region_info_idx = self.target_region * 3 + 1  # +1 to get the agent distance
+#         agent_distance_to_target = observation[target_region_info_idx]
+#
+#         # Check if agent is close enough to the target region
+#         # The distance is normalized, so we use a small threshold
+#         distance_threshold = 0.15  # Adjust this value as needed (normalized distance)
+#
+#         return agent_distance_to_target <= distance_threshold
+#
+#     def heuristic(self, observation):
+#         """Simple heuristic to choose a region. Can be used if model is not provided"""
+#
+#         obs = np.array(observation)
+#
+#         # Each region has 3 values: [target_ratio, agent_distance, teammate_distance]
+#         regions_info = []
+#
+#         for region_id in range(4):  # 4 regions: NW, NE, SW, SE
+#             base_idx = region_id * 3
+#             target_ratio = obs[base_idx]  # Ratio of unknown targets in this region
+#             agent_distance = obs[base_idx + 1]  # Agent distance to region center
+#             teammate_distance = obs[base_idx + 2]  # Teammate distance to region center
+#
+#             regions_info.append({
+#                 'region_id': region_id,
+#                 'target_ratio': target_ratio,
+#                 'agent_distance': agent_distance,
+#                 'teammate_distance': teammate_distance
+#             })
+#
+#         # Determine which region teammate is likely in
+#         # Teammate is probably in the region they're closest to
+#         teammate_distances = [info['teammate_distance'] for info in regions_info]
+#         teammate_region = np.argmin(teammate_distances)
+#
+#         # Sort regions by target density (highest ratio first)
+#         regions_info.sort(key=lambda x: x['target_ratio'], reverse=True)
+#
+#         # Choose the highest density region that doesn't have teammate
+#         target_region = None
+#         for region_info in regions_info:
+#             region_id = region_info['region_id']
+#
+#             # Skip if teammate is in this region (with small tolerance for distance comparison)
+#             if region_id == teammate_region and region_info[
+#                 'teammate_distance'] < 0.3:  # 0.3 is normalized distance threshold
+#                 continue
+#
+#             target_region = region_id
+#             break
+#
+#         # Fallback: if all regions have teammate or no targets anywhere, choose the region with highest density
+#         if target_region is None:
+#             target_region = regions_info[0]['region_id']
+#
+#         return target_region
+#
+#     def is_terminated(self, env_state: Dict[str, Any]) -> bool:
+#         """Terminate when arrived at target region"""
+#         if self.target_region is None:
+#             return False
+#
+#         # Get agent position from env_state
+#         agent_pos = np.array([env_state['agent_x'], env_state['agent_y']])
+#         region_center = self._get_region_center(self.target_region)
+#
+#         # Convert region center from normalized coordinates to actual coordinates
+#         map_half_size = 500
+#         region_center_actual = region_center * map_half_size
+#
+#         distance_to_region = np.linalg.norm(region_center_actual - agent_pos)
+#         print(f'Distance to region: {distance_to_region}')
+#         arrival_threshold = self.arrival_threshold  # Convert normalized threshold to actual distance
+#
+#         terminated = distance_to_region <= arrival_threshold
+#         #print(terminated)
+#         return terminated
+#
+#     def _get_region_center(self, region_id: int) -> np.ndarray:
+#         """Get the center coordinates of a region (0=NW, 1=NE, 2=SW, 3=SE)"""
+#         centers = {
+#             0: np.array([-0.5, 0.5]),  # NW
+#             1: np.array([0.5, 0.5]),  # NE
+#             2: np.array([-0.5, -0.5]),  # SW
+#             3: np.array([0.5, -0.5])  # SE
+#         }
+#         return centers.get(region_id, np.array([0.0, 0.0]))

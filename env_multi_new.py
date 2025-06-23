@@ -635,6 +635,10 @@ class MAISREnvVec(gym.Env):
             total_potential_gain += info["potential_gain"]
             steps_executed += 1
 
+            # # TODO TESTING
+            # if self.render_mode == 'human':
+            #     self.render()
+
             # Accumulate new identifications
             if "new_identifications" in info:
                 consolidated_new_identifications.extend(info["new_identifications"])

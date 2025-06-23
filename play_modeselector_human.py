@@ -681,7 +681,7 @@ if __name__ == "__main__":
 
     config_filename = 'configs/june20_leagues.json'
     league_type = 'strategy_diverse'
-    num_episodes = 25
+    num_episodes = 35
     tick_rate = 120
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
@@ -771,7 +771,7 @@ if __name__ == "__main__":
         done = False
         action = 0
 
-        print(f"\nStarting human episode {episode + 1}/{num_episodes}")
+        #print(f"\nStarting human episode {episode + 1}/{num_episodes}")
 
         while not done:
             # Handle pygame events
@@ -845,11 +845,10 @@ if __name__ == "__main__":
                 threat_discovery_times[len(threat_discovery_times)] = episode_steps
 
             # Render
-            env.render()
+            #env.render()
             human_subpolicy_id, human_subpolicy_name = env.get_current_subpolicy_info()
             ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
-            env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name, ai_subpolicy_id,
-                                                ai_subpolicy_name)
+            env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name, ai_subpolicy_id, ai_subpolicy_name)
             pygame.display.flip()
 
         # Calculate episode duration

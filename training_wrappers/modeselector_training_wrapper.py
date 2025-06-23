@@ -25,6 +25,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         self.env = env
 
+        self.render_frequency = 1
+
         # Load primary agent subpolicies and teammate policies
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
@@ -290,6 +292,11 @@ class MaisrModeSelectorWrapper(gym.Env):
             base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
             macrostep_reward += base_reward
             steps_executed += 1
+
+            # TODO TESTING
+            if self.render_mode == 'human' and hasattr(self, 'render_frequency'):
+                if action_step % self.render_frequency == 0:
+                    self.render()
 
             # Accumulate new achievements
             total_new_target_ids += base_info.get('new_target_ids', 0)
