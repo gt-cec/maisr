@@ -5,7 +5,7 @@
 	"time_limit": 245,
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
-	"num_aircraft": 1,
+	"num_aircraft": 2,
 	"max_steps": 16000,
 	"seed": 42,
 
@@ -21,8 +21,10 @@
 	"max_threat_ids": 2,
     
     "league_type": "baseline",
+	"balance_method": "uniform",
 	"obs_type": "nearest",
 	"action_type": "Discrete16",
+	"observation_noise_std": 0.03,
 
 	"highqual_regulartarget_reward": 0,
 	"highqual_highvaltarget_reward": 0,

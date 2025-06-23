@@ -19,11 +19,13 @@ class MaisrModeSelectorWrapper(gym.Env):
                  evade_policy,
                  teammate_policy: TeammatePolicy=None,
                  teammate_manager: TeammateManager = None,
+                 observation_noise_std=0
                  ):
 
         self.env = env
 
         self.render_frequency = 10 # TODO TEMP
+        self.observation_noise_std = observation_noise_std
 
         # Load primary agent subpolicies and teammate policies
         self.local_search_policy = local_search_policy
@@ -451,6 +453,10 @@ class MaisrModeSelectorWrapper(gym.Env):
         else:
             obs[6] = 0.0  # No threats
             obs[7] = 0.0
+
+        if self.observation_noise_std > 0:
+            noise = np.random.normal(0, self.observation_noise_std, obs.shape)
+            obs = obs + noise
 
         # if self.env.step_count_outer % 100 == 0:  # Print every 10 steps to avoid spam
         #     obs_labels = [

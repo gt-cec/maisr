@@ -683,8 +683,8 @@ class MAISREnvVec(gym.Env):
             1. Discrete16 input: np.ndarray of 1 element, e.g. [5]
             2. Continuous input: np.ndarray of 2 elements from -1 to +1, e.g. [0.5, -0.5]
         """
-        if not isinstance(action, (np.ndarray, np.int32)):
-            raise ValueError
+        if not isinstance(action, (np.ndarray, np.int32, np.int64)):
+            raise ValueError(f'[single_step] Action is a {type(action)}')
 
         self.step_count_inner += 1
         if self.potential: last_potential = self.potential

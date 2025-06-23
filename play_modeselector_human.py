@@ -679,10 +679,10 @@ def create_analysis_plots(episode_data):
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june23_poc1.json'
+    config_filename = 'configs/june23_poc1_2ship.json'
     league_type = 'strategy_diverse'
     num_episodes = 20
-    tick_rate = 120
+    tick_rate = 40
     testing_1ship = False # Forces human agent to hold
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
@@ -691,6 +691,8 @@ if __name__ == "__main__":
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
+    balance_method = config['balance_method']
+
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -721,7 +723,7 @@ if __name__ == "__main__":
         go_to_highvalue_policy=GoToNearestThreat(model_path=None),
         change_region_subpolicy = ChangeRegions(model_path=None),
         evade_policy = EvadeDetection(model_path=None),
-        teammate_manager = TeammateManager(league_type=league_type, subpolicies=subpolicies)
+        teammate_manager = TeammateManager(league_type, balance_method, subpolicies=subpolicies)
     )
 
 

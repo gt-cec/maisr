@@ -397,15 +397,15 @@ class EnhancedWandbCallback(BaseCallback):
                     log_data["train/subpolicy_2_usage"] = subpolicy_counts[2] / total  # Go to threat
                     log_data["train/subpolicy_3_usage"] = subpolicy_counts[3] / total  # Hold
 
-            # Log action choice distribution
-            if self.episode_buffer['action_choices']:
-                action_counts = np.bincount(self.episode_buffer['action_choices'], minlength=4)
-                total_actions = len(self.episode_buffer['action_choices'])
-                if total_actions > 0:
-                    log_data["train/action_0_frequency"] = action_counts[0] / total_actions
-                    log_data["train/action_1_frequency"] = action_counts[1] / total_actions
-                    log_data["train/action_2_frequency"] = action_counts[2] / total_actions
-                    log_data["train/action_3_frequency"] = action_counts[3] / total_actions
+            # # Log action choice distribution
+            # if self.episode_buffer['action_choices']:
+            #     action_counts = np.bincount(self.episode_buffer['action_choices'], minlength=4)
+            #     total_actions = len(self.episode_buffer['action_choices'])
+            #     if total_actions > 0:
+            #         log_data["train/action_0_frequency"] = action_counts[0] / total_actions
+            #         log_data["train/action_1_frequency"] = action_counts[1] / total_actions
+            #         log_data["train/action_2_frequency"] = action_counts[2] / total_actions
+            #         log_data["train/action_3_frequency"] = action_counts[3] / total_actions
 
             if log_data:
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
@@ -612,7 +612,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type):
+def setup_teammate_pool(league_type, balance_method):
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
@@ -624,7 +624,8 @@ def setup_teammate_pool(league_type):
     }
 
     teammate_manager = TeammateManager(
-        league_type=league_type,
+        league_type,
+        balance_method,
         subpolicies=subpolicies
     )
 
@@ -684,7 +685,7 @@ def train_modeselector(
     ################################################ Initialize envs ################################################
 
     if env_config['num_aircraft'] > 1 and use_teammate_manager:
-        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'])
+        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'], balance_method = env_config['balance_method'])
         print('Instantiated teammate manager')
     else:
         teammate_manager = None
@@ -715,7 +716,8 @@ def train_modeselector(
                 go_to_highvalue_policy,
                 change_region_subpolicy,
                 evade_policy,
-                teammate_manager = teammate_manager
+                teammate_manager = teammate_manager,
+                observation_noise_std = env_config['observation_noise_std']
             )
 
             wrapped_env = Monitor(wrapped_env)
@@ -868,8 +870,8 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june23_poc1.json'
-    temp_identifier = 'poc1'
+    config_filename = 'configs/june23_poc1_2ship.json'
+    temp_identifier = 'poc1_2ship'
 
     ################################################
 
@@ -890,9 +892,9 @@ if __name__ == "__main__":
                 config,
                 run_name=run_name,
                 use_normalize=True,
-                use_teammate_manager=False,
+                use_teammate_manager=True,
                 render=False,
-                n_envs=multiprocessing.cpu_count()-12,
+                n_envs=multiprocessing.cpu_count(),
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
