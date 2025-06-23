@@ -2,11 +2,9 @@ import warnings
 
 import gymnasium as gym
 import numpy as np
-from sympy import trunc
-from torch.ao.quantization.backend_config.onednn import observation_type
 
-from policies.sub_policies import SubPolicy, GoToNearestThreat, ChangeRegions
-from policies.league_management import TeammateManager, TeammatePolicy, LocalSearch
+#from policies.sub_policies import SubPolicy, GoToNearestThreat, ChangeRegions
+from policies.league_management import TeammateManager, TeammatePolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 
 
 class MaisrModeSelectorWrapper(gym.Env):
@@ -15,10 +13,10 @@ class MaisrModeSelectorWrapper(gym.Env):
     """
     def __init__(self,
                  env,
-                 local_search_policy: SubPolicy,
-                 go_to_highvalue_policy: SubPolicy,
-                 change_region_subpolicy: SubPolicy,
-                 evade_policy: SubPolicy,
+                 local_search_policy,
+                 go_to_highvalue_policy,
+                 change_region_subpolicy,
+                 evade_policy,
                  teammate_policy: TeammatePolicy=None,
                  teammate_manager: TeammateManager = None,
                  ):
@@ -42,7 +40,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
-            shape=(6,),
+            shape=(8,),
             dtype=np.float32)
 
         # Action space: 3 possible sub-policies to choose from
@@ -403,7 +401,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         Generates the observation for the mode selector using env attributes
         """
         # Initialize observation as float32 (not int32)
-        obs = np.zeros(6, dtype=np.float32)
+        obs = np.zeros(8, dtype=np.float32)
 
         # Calculate targets left
         targets_left = self.env.config['num_targets'] - self.env.targets_identified
@@ -412,8 +410,8 @@ class MaisrModeSelectorWrapper(gym.Env):
         max_steps_outer = self.env.max_steps / self.env.config['frame_skip']
         obs[0] = (max_steps_outer - self.env.step_count_outer) / self.env.max_steps
 
-        # obs[1]: Detections remaining before game over (normalized 0-1, where 1 = no detections, 0 = max detections)
-        obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections
+        #obs[1] = (self.env.max_detections - self.env.detections) / self.env.max_detections # Detections remaining before game over (normalized 0-1, where 1 = no detections, 0 = max detections)
+        obs[1] = self.env.num_threats_identified / 2.0 # Num threats ID'd / max allowed (2)
 
         # obs[2]: Targets remaining (normalized 0-1, where 1 = all targets left, 0 = no targets left)
         obs[2] = targets_left / self.env.config['num_targets']
@@ -430,6 +428,46 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # obs[5]: Adaptation signal (placeholder)
         obs[5] = self.get_adaptation_signal()
+
+        # obs[6] and obs[7]: dx, dy to nearest threat
+        if len(self.env.threats) > 0:
+            agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x, self.env.agents[self.env.aircraft_ids[agent_id]].y])
+
+            # Find nearest threat
+            threat_distances = []
+            for threat_idx in range(len(self.env.threats)):
+                threat_pos = np.array([self.env.threats[threat_idx, 0], self.env.threats[threat_idx, 1]])
+                distance = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+                threat_distances.append((distance, threat_pos))
+
+            # Get nearest threat position
+            threat_distances.sort(key=lambda x: x[0])
+            nearest_threat_pos = threat_distances[0][1]
+
+            # Calculate dx, dy vector to nearest threat
+            threat_vector = nearest_threat_pos - agent_pos
+            obs[6] = threat_vector[0]/self.env.config['gameboard_size']  # dx to nearest threat
+            obs[7] = threat_vector[1]/self.env.config['gameboard_size']  # dy to nearest threat
+        else:
+            obs[6] = 0.0  # No threats
+            obs[7] = 0.0
+
+        # if self.env.step_count_outer % 100 == 0:  # Print every 10 steps to avoid spam
+        #     obs_labels = [
+        #         "Steps remaining (0-1)",
+        #         "Threats ID'd / 2",
+        #         "Targets remaining (0-1)",
+        #         "% targets in current quad",
+        #         "Distance to teammate (norm)",
+        #         "Adaptation signal",
+        #         "dx to nearest threat",
+        #         "dy to nearest threat"
+        #     ]
+        #
+        #     print(f"\n=== Wrapper Observation (Step {self.env.step_count_outer}) ===")
+        #     for i, (label, value) in enumerate(zip(obs_labels, obs)):
+        #         print(f"obs[{i}]: {label:<25} = {value:.3f}")
+        #     print("=" * 50)
 
         return obs
 

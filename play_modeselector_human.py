@@ -681,8 +681,8 @@ if __name__ == "__main__":
 
     config_filename = 'configs/june20_leagues.json'
     league_type = 'strategy_diverse'
-    num_episodes = 35
-    tick_rate = 120
+    num_episodes = 75
+    tick_rate = 60
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
