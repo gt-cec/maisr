@@ -269,23 +269,87 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ############################################ Step the environment #############################################
 
-        #print(f'applying action {subpolicy_action} {type(subpolicy_action)}')
-        # TODO: Testing new action rate log
+        # Initialize accumulation variables for action_rate consolidation
+        total_new_target_ids = 0
+        total_new_threat_ids = 0
+        total_new_detections = 0
+        consolidated_new_identifications = []
+        consolidated_score_breakdown = {
+            "target_points": 0,
+            "threat_points": 0,
+            "time_points": 0,
+            "completion_points": 0,
+            "penalty_points": 0
+        }
+        consolidated_reward_components = {}
+        final_base_info = None
+        steps_executed = 0
+
         macrostep_reward = 0
-        for _ in range(self.action_rate):
+        for action_step in range(self.action_rate):
             base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
             macrostep_reward += base_reward
+            steps_executed += 1
 
-        # Convert base_env elements to wrapper elements if needed
+            # Accumulate new achievements
+            total_new_target_ids += base_info.get('new_target_ids', 0)
+            total_new_threat_ids += base_info.get('new_threat_ids', 0)
+            total_new_detections += base_info.get('new_detections', 0)
+
+            # Accumulate new identifications
+            if "new_identifications" in base_info:
+                consolidated_new_identifications.extend(base_info["new_identifications"])
+
+            # Accumulate score breakdown
+            if "score_breakdown" in base_info:
+                for key, value in base_info["score_breakdown"].items():
+                    consolidated_score_breakdown[key] += value
+
+            # Accumulate reward components
+            if "reward_components" in base_info:
+                for key, value in base_info["reward_components"].items():
+                    consolidated_reward_components[key] = consolidated_reward_components.get(key, 0) + value
+
+            # Keep final info as base for episode tracking
+            final_base_info = base_info.copy()
+
+            # Break early if episode ends
+            if base_terminated or base_truncated:
+                break
+
+        # Create consolidated info for wrapper reward calculation
+        wrapper_reward_info = {
+            'new_target_ids': total_new_target_ids, 'new_threat_ids': total_new_threat_ids, 'new_detections': total_new_detections,
+            'steps_left': final_base_info.get('steps_left', 0), 'done': final_base_info.get('done', False), 'failed': final_base_info.get('failed', False)
+        }
+
+        # Convert base_env elements to wrapper elements
         observation = self.get_observation(0)
-        reward = self.get_reward(base_info)
-        self.episode_reward += macrostep_reward
-        info = base_info
-        #info['policy_switches'] = getattr(self, 'total_switches', 0)
+        reward = self.get_reward(wrapper_reward_info)  # Use consolidated info
+        self.episode_reward += reward  # Track wrapper reward, not base reward
+
+        # Build final info dictionary
+        info = final_base_info.copy()
+
+        # Add wrapper-specific consolidated data
         info['policy_switches'] = self.total_switches
         info['final_subpolicy'] = self.subpolicy_choice
-        #info['threat_ids'] = getattr(self.env, 'num_threats_identified', 0)
         info['threat_ids'] = self.env.num_threats_identified
+
+        # Add accumulated achievements
+        info['wrapper_new_target_ids'] = total_new_target_ids
+        info['wrapper_new_threat_ids'] = total_new_threat_ids
+        info['wrapper_new_detections'] = total_new_detections
+        info['wrapper_new_identifications'] = consolidated_new_identifications
+        info['wrapper_score_breakdown'] = consolidated_score_breakdown
+        info['wrapper_reward_components'] = consolidated_reward_components
+        info['action_rate_steps'] = steps_executed
+
+        # Update episode tracking with wrapper values
+        info['episode'] = {
+            'r': self.episode_reward,  # Wrapper episode reward
+            'l': self.env.step_count_outer  # Environment step count
+        }
         terminated = base_terminated
         truncated = base_truncated
 

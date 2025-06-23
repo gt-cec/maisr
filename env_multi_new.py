@@ -616,10 +616,41 @@ class MAISREnvVec(gym.Env):
         #print(f'[Agent {self.agents[self.aircraft_ids[0]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[0]].waypoint_override}')
         #print(f'[Agent {self.agents[self.aircraft_ids[1]].agent_idx}: Waypoint override = {self.agents[self.aircraft_ids[1]].waypoint_override}')
 
+        # Initialize consolidation containers
+        consolidated_new_identifications = []
+        consolidated_score_breakdown = {
+            "target_points": 0,
+            "threat_points": 0,
+            "time_points": 0,
+            "completion_points": 0,
+            "penalty_points": 0
+        }
+        consolidated_reward_components = {}
+        final_info = None
+        steps_executed = 0
+
         for frame in range(self.config['frame_skip']):
             observation, reward, self.terminated, self.truncated, info = self._single_step(action)
             total_reward += reward
             total_potential_gain += info["potential_gain"]
+            steps_executed += 1
+
+            # Accumulate new identifications
+            if "new_identifications" in info:
+                consolidated_new_identifications.extend(info["new_identifications"])
+
+            # Accumulate score breakdown
+            if "score_breakdown" in info:
+                for key, value in info["score_breakdown"].items():
+                    consolidated_score_breakdown[key] += value
+
+            # Accumulate reward components
+            if "reward_components" in info:
+                for key, value in info["reward_components"].items():
+                    consolidated_reward_components[key] = consolidated_reward_components.get(key, 0) + value
+
+            # Keep the final info as base
+            final_info = info.copy()
 
             # Break early if the episode is done to avoid unnecessary computation
             if self.terminated or self.truncated:
@@ -627,19 +658,19 @@ class MAISREnvVec(gym.Env):
 
         #print(f'Rew|shaping_rew = {round(total_reward,1)} | {total_potential_gain*self.config['shaping_coeff_prox']}')
         self.step_count_outer += 1
-        info["outerstep_potential_gain"] = total_potential_gain
-        
-        info['new_target_ids'] = self.targets_identified - prev_targets_identified
-        info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
-        info['new_detections'] = self.detections - prev_detections
+        # Update final info with consolidated data
+        final_info["outerstep_potential_gain"] = total_potential_gain
+        final_info['new_target_ids'] = self.targets_identified - prev_targets_identified
+        final_info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
+        final_info['new_detections'] = self.detections - prev_detections
 
-        # If subpolicy history exists, ensure it's aligned with location history
-        # if hasattr(self, 'subpolicy_history') and len(self.subpolicy_history) < len(self.agent_location_history):
-        #     # Pad with the last known subpolicy or default to 0
-        #     last_subpolicy = self.subpolicy_history[-1] if self.subpolicy_history else 0
-        #     self.subpolicy_history.append(last_subpolicy)
+        # Add consolidated data
+        final_info["new_identifications"] = consolidated_new_identifications
+        final_info["score_breakdown"] = consolidated_score_breakdown
+        final_info["reward_components"] = consolidated_reward_components
+        final_info["frame_skip_steps"] = steps_executed
 
-        return observation, total_reward, self.terminated, self.truncated, info
+        return observation, total_reward, self.terminated, self.truncated, final_info
 
 
     def _single_step(self, action: np.ndarray):
@@ -2126,7 +2157,6 @@ class MAISREnvVec(gym.Env):
                     # Trim to exact length if needed
                     subpolicy_data = subpolicy_data[:len(agent_x_coords)]
 
-                    print(f'Final subpolicy data length: {len(subpolicy_data)}')
 
                     # Print policy distribution for debugging
                     from collections import Counter
