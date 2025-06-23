@@ -13,7 +13,7 @@ from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSea
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june16_2ship.json'
+    config_filename = 'configs/old configs/june16_2ship.json'
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')

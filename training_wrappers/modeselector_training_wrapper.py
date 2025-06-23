@@ -55,7 +55,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Set rewards for mode selector
         self.reward_per_target_id = 2
-        self.reward_per_threat_id = 7.5
+        self.reward_per_threat_id = 6
         self.penalty_for_policy_switch = 0.02
         self.reward_per_step_early = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)

@@ -259,6 +259,7 @@ def train_rl_teammates(
     config = load_env_config(config_filename)
     config['n_envs'] = n_envs
     config['config_filename'] = config_filename
+    config['num_timesteps'] = 1e5
 
     # Determine machine name for WandB logging
     machine_name = (

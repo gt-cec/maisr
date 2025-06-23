@@ -13,7 +13,7 @@ from utility.data_logging import load_env_config
 
 
 if __name__ == "__main__":
-    config = load_env_config('../configs/june14.json')
+    config = load_env_config('../configs/old configs/june14.json')
 
     pygame.display.init()
     pygame.font.init()

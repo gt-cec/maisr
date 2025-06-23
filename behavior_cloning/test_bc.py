@@ -88,7 +88,7 @@ def evaluate_bc_policy(
 if __name__ == '__main__':
 
     load_path = './bc_models/bcpolicy_10keps_12rewardavg.zip'
-    config_filename = '../configs/bigmap.json'
+    config_filename = '../configs/old configs/bigmap.json'
     env_config = load_env_config(config_filename)
 
     evaluate_bc_policy(env_config, load_path, render=True)

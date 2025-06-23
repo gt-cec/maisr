@@ -304,7 +304,7 @@ def generate_nearest_neighbor_sequence(observation, start_target=0):
 
 if __name__ == '__main__':
 
-    config = load_env_config('../configs/sequence_june11.json')
+    config = load_env_config('../configs/old configs/sequence_june11.json')
 
     target_sequence = [1, 13, 8, 5, 4, 14, 19, 7, 3, 6, 2, 12, 17, 9, 15, 10, 16, 18, 11, 0]#[3,2,3,2,4]
 

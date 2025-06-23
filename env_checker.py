@@ -1123,7 +1123,7 @@ def plot_reward_surface_3d(config, test_dir=None):
 
 if __name__ == "__main__":
 
-    config = load_env_config('configs/june13_nearest_n.json')
+    config = load_env_config('configs/old configs/june13_nearest_n.json')
 
     shared_test_dir = create_test_directory()
     print("\nStarting Environment Test Suite...")
