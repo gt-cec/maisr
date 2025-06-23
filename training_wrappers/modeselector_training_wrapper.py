@@ -23,7 +23,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         self.env = env
 
-        self.render_frequency = 1
+        self.render_frequency = 10 # TODO TEMP
 
         # Load primary agent subpolicies and teammate policies
         self.local_search_policy = local_search_policy
@@ -45,7 +45,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Action space: 3 possible sub-policies to choose from
         self.action_space = gym.spaces.Discrete(4)
-        self.action_rate = 10
+        self.action_rate = self.env.config['action_rate']
 
         self.render_mode = self.env.render_mode
         self.run_name = self.env.run_name  # For logging
@@ -57,7 +57,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.penalty_for_policy_switch = 0.02
         self.reward_per_step_early = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
-        self.fail_penalty = -17
+        self.fail_penalty = -20
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
@@ -210,7 +210,6 @@ class MaisrModeSelectorWrapper(gym.Env):
                                   self.env.agents[self.env.aircraft_ids[0]].y/self.env.config['gameboard_size']
                                   ])
             subpolicy_action = agent_pos
-            print(f'hold action is {subpolicy_action}')
 
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
@@ -339,6 +338,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Add wrapper-specific consolidated data
         info['policy_switches'] = self.total_switches
         info['final_subpolicy'] = self.subpolicy_choice
+        info['action_choice'] = action
         info['threat_ids'] = self.env.num_threats_identified
 
         # Add accumulated achievements
@@ -492,7 +492,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         # ~600 early * 0.05 rew/step early = 30
         # 600 policy switches * 0.02 = -12 penalty
 
-        reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward + fail_penalty
+        reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward + fail_penalty - 0.05
         return reward
 
 

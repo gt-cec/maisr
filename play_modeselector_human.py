@@ -679,10 +679,11 @@ def create_analysis_plots(episode_data):
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june20_leagues.json'
+    config_filename = 'configs/june23_poc1.json'
     league_type = 'strategy_diverse'
-    num_episodes = 75
-    tick_rate = 60
+    num_episodes = 20
+    tick_rate = 120
+    testing_1ship = False # Forces human agent to hold
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
@@ -789,6 +790,10 @@ if __name__ == "__main__":
             if done:
                 break
 
+            # TODO TEMP
+            if testing_1ship:
+                action = 3
+
             # Track subpolicy usage
             subpolicy_usage[action] += 1
             subpolicy_sequence.append(action)
@@ -797,11 +802,12 @@ if __name__ == "__main__":
             last_action = action
 
             # Track teammate behavior
-            ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
-            teammate_subpolicy_usage[ai_subpolicy_id] += 1
-            if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-                teammate_switches += 1
-            last_teammate_action = ai_subpolicy_id
+            if config['num_aircraft'] == 2:
+                ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+                teammate_subpolicy_usage[ai_subpolicy_id] += 1
+                if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+                    teammate_switches += 1
+                last_teammate_action = ai_subpolicy_id
 
             # Take step
             obs, reward, terminated, truncated, info = env.step(action)
@@ -811,9 +817,10 @@ if __name__ == "__main__":
 
             # Track position and distance
             current_pos = (env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)
-            teammate_current_pos = (env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
             positions_visited.append(current_pos)
-            teammate_positions_visited.append(teammate_current_pos)
+            if config['num_aircraft'] == 2:
+                teammate_current_pos = (env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
+                teammate_positions_visited.append(teammate_current_pos)
 
             if last_position is not None:
                 distance_traveled += math.sqrt((current_pos[0] - last_position[0]) ** 2 +
@@ -847,7 +854,10 @@ if __name__ == "__main__":
             # Render
             #env.render()
             human_subpolicy_id, human_subpolicy_name = env.get_current_subpolicy_info()
-            ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+            if config['num_aircraft'] == 2:
+                ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+            else:
+                ai_subpolicy_id, ai_subpolicy_name = 0, 'N/A'
             env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name, ai_subpolicy_id, ai_subpolicy_name)
             pygame.display.flip()
 

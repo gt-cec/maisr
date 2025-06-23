@@ -313,11 +313,10 @@ class EnhancedWandbCallback(BaseCallback):
             'lengths': [],
             'target_ids': [],
             'detections': [],
-            ### CLAUDE CHANGED ###
             'threat_ids': [],  # New: track threat identifications
             'policy_switches': [],  # New: track mode selector switches
-            'subpolicy_usage': []  # New: track which subpolicies were used
-            ### CLAUDE CHANGED ###
+            'subpolicy_usage': [],  # New: track which subpolicies were used
+            'action_choices': []  # Add this line
         }
 
         # Early stopping based on performance degradation
@@ -358,7 +357,13 @@ class EnhancedWandbCallback(BaseCallback):
                     # Track subpolicy usage
                     if "final_subpolicy" in info:
                         self.episode_buffer['subpolicy_usage'].append(info["final_subpolicy"])
-                    ### CLAUDE CHANGED ###
+
+                if "final_subpolicy" in info:
+                    self.episode_buffer['subpolicy_usage'].append(info["final_subpolicy"])
+
+                # Track action choices (mode selector decisions)
+                if "action_choice" in info:
+                    self.episode_buffer['action_choices'].append(info["action_choice"])
 
         # Only log episode data at the specified frequency
         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
@@ -369,12 +374,13 @@ class EnhancedWandbCallback(BaseCallback):
                 log_data["train/mean_episode_reward"] = np.mean(self.episode_buffer['rewards'])
                 log_data["train/mean_episode_length"] = np.mean(self.episode_buffer['lengths'])
 
+
+
             if self.episode_buffer['target_ids']:
                 log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
             if self.episode_buffer['detections']:
                 log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            ### CLAUDE CHANGED ###
             # Log mode selector specific metrics
             if self.episode_buffer['threat_ids']:
                 log_data["train/mean_threat_ids"] = np.mean(self.episode_buffer['threat_ids'])
@@ -382,26 +388,34 @@ class EnhancedWandbCallback(BaseCallback):
             if self.episode_buffer['policy_switches']:
                 log_data["train/mean_policy_switches"] = np.mean(self.episode_buffer['policy_switches'])
 
-            if self.episode_buffer['subpolicy_usage']:
-                # Log distribution of subpolicy usage
-                subpolicy_counts = np.bincount(self.episode_buffer['subpolicy_usage'], minlength=3)
+            if self.episode_buffer['subpolicy_usage']: # Log distribution of subpolicy usage
+                subpolicy_counts = np.bincount(self.episode_buffer['subpolicy_usage'], minlength=4)  # Changed to 4
                 total = len(self.episode_buffer['subpolicy_usage'])
                 if total > 0:
                     log_data["train/subpolicy_0_usage"] = subpolicy_counts[0] / total  # Local search
                     log_data["train/subpolicy_1_usage"] = subpolicy_counts[1] / total  # Change region
                     log_data["train/subpolicy_2_usage"] = subpolicy_counts[2] / total  # Go to threat
-            ### CLAUDE CHANGED ###
+                    log_data["train/subpolicy_3_usage"] = subpolicy_counts[3] / total  # Hold
+
+            # Log action choice distribution
+            if self.episode_buffer['action_choices']:
+                action_counts = np.bincount(self.episode_buffer['action_choices'], minlength=4)
+                total_actions = len(self.episode_buffer['action_choices'])
+                if total_actions > 0:
+                    log_data["train/action_0_frequency"] = action_counts[0] / total_actions
+                    log_data["train/action_1_frequency"] = action_counts[1] / total_actions
+                    log_data["train/action_2_frequency"] = action_counts[2] / total_actions
+                    log_data["train/action_3_frequency"] = action_counts[3] / total_actions
 
             if log_data:
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
 
             # Clear the buffer after logging
-            ### CLAUDE CHANGED ###
             self.episode_buffer = {
                 'rewards': [], 'lengths': [], 'target_ids': [], 'detections': [],
-                'threat_ids': [], 'policy_switches': [], 'subpolicy_usage': []
+                'threat_ids': [], 'policy_switches': [], 'subpolicy_usage': [],
+                'action_choices': []
             }
-            ### CLAUDE CHANGED ###
 
         # Log training metrics less frequently (e.g., every 10 steps)
         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
@@ -761,8 +775,8 @@ def train_modeselector(
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1,
-                                   model_save_path=f"{save_dir}/wandb/{run.id}" if save_model else None)
-    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=20)
+                                   model_save_path = f"{save_dir}/wandb/{run.id}" if save_model else None)
+    enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=50)
 
     print('Callbacks created')
 
@@ -854,7 +868,7 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june20_poc1.json'
+    config_filename = 'configs/june23_poc1.json'
     temp_identifier = 'poc1'
 
     ################################################
@@ -863,13 +877,13 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for num_timesteps in [5e5, 2e6]:
-        for inside_threat_penalty in [0]:#[0.03, 0.1, 0.15, 0.25]:
-            config['num_timesteps'] = num_timesteps
-            config['inside_threat_penalty'] = inside_threat_penalty
+    for lr in [0.0005, 0.001, 0.0002]:
+        for batch_size in [1024, 512, 256]:
+            config['lr'] = lr
+            config['batch_size'] = batch_size
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'modeselector_{temp_identifier}_{num_timesteps}timesteps_'+generate_run_name(config)
+            run_name = f'modeselector_{temp_identifier}_{lr}lr_{batch_size}bs_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_modeselector(
@@ -878,10 +892,10 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=False,
                 render=False,
-                n_envs=multiprocessing.cpu_count(),
+                n_envs=multiprocessing.cpu_count()-12,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-                save_model = True,
+                save_model = False,
             )
             print(f"✓ Completed training run")

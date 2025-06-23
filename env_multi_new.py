@@ -2133,7 +2133,7 @@ class MAISREnvVec(gym.Env):
 
                     # The subpolicy history should match step_count_outer, not the location history
                     # Each outer step corresponds to frame_skip inner steps (location history entries)
-                    frame_skip = self.config.get('frame_skip', 1)
+                    frame_skip = self.config.get('frame_skip', 1) * self.config['action_rate']
 
                     # Create properly aligned subpolicy data
                     subpolicy_data = []

@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 1,
-	"max_steps": 18000,
+	"max_steps": 16000,
 	"seed": 42,
 
 	"num_targets": 15,
@@ -40,8 +40,9 @@
 	"activation_fn": "Tanh",
 	"lr": 0.0005,
 	"batch_size": 1024,
-	"gamma": 0.99,
+	"gamma": 0.998,
 	"frame_skip": 30,
+	"action_rate": 10,
 	"ppo_update_steps": 2048,
 	"entropy_regularization": 0.015,
 	"vf_coef":0.5,
@@ -49,7 +50,7 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 20e6,
+	"num_timesteps": 5e6,
 	"save_freq": 13500,
 	"n_eval_episodes": 5,
 	"eval_freq": 13500,
