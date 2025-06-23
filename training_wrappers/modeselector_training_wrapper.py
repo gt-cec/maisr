@@ -57,7 +57,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.penalty_for_policy_switch = 0.02
         self.reward_per_step_early = 0.05
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
-        self.fail_penalty = -25
+        self.fail_penalty = -17
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
@@ -271,13 +271,15 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         #print(f'applying action {subpolicy_action} {type(subpolicy_action)}')
         # TODO: Testing new action rate log
+        macrostep_reward = 0
         for _ in range(self.action_rate):
             base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(subpolicy_action)
+            macrostep_reward += base_reward
 
         # Convert base_env elements to wrapper elements if needed
         observation = self.get_observation(0)
         reward = self.get_reward(base_info)
-        self.episode_reward += reward
+        self.episode_reward += macrostep_reward
         info = base_info
         #info['policy_switches'] = getattr(self, 'total_switches', 0)
         info['policy_switches'] = self.total_switches

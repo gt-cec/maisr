@@ -307,10 +307,10 @@ def run_sanity_checks(episode_data):
 
     # SANITY CHECK 9: Subpolicy Effectiveness Check
     print(f"\nCHECK 9 - Subpolicy Usage Validation:")
-    subpolicy_names = {0: "Local Search", 1: "Change Region", 2: "Go to Threat"}
+    subpolicy_names = {0: "Local Search", 1: "Change Region", 2: "Go to Threat", 3: "Hold"}
 
     # Check if all subpolicies are being used
-    total_usage = {0: 0, 1: 0, 2: 0}
+    total_usage = {0: 0, 1: 0, 2: 0, 3: 0}
     for ep in episode_data:
         if 'subpolicy_usage' in ep:
             for policy_id, count in ep['subpolicy_usage'].items():
@@ -613,13 +613,13 @@ def create_analysis_plots(episode_data):
     # Calculate dominant subpolicy for each episode
     dominant_subpolicies = []
     for ep in episode_data:
-        usage = ep.get('subpolicy_usage', {0: 0, 1: 0, 2: 0})
+        usage = ep.get('subpolicy_usage', {0: 0, 1: 0, 2: 0, 3:0})
         dominant = max(usage.keys(), key=lambda k: usage[k])
         dominant_subpolicies.append(dominant)
 
     # Group rewards by dominant subpolicy
     subpolicy_names = {0: "Local Search", 1: "Change Region", 2: "Go to Threat"}
-    colors = {0: 'blue', 1: 'green', 2: 'red'}
+    colors = {0: 'blue', 1: 'green', 2: 'red', 3: 'gray'}
 
     for policy_id in [0, 1, 2]:
         policy_episodes = [i for i, dom in enumerate(dominant_subpolicies) if dom == policy_id]
@@ -681,7 +681,7 @@ if __name__ == "__main__":
 
     config_filename = 'configs/june20_leagues.json'
     league_type = 'strategy_diverse'
-    num_episodes = 20
+    num_episodes = 100
     tick_rate = 120
 
     localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
