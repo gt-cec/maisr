@@ -612,7 +612,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir):
+def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir):
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
@@ -627,7 +627,8 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir):
         league_type,
         balance_method,
         subpolicies=subpolicies,
-        selfplay_checkpoint_dir=selfplay_checkpoint_dir
+        selfplay_checkpoint_dir=selfplay_checkpoint_dir,
+        pretrained_teammate_dir=pretrained_teammate_dir
     )
 
     print(f"Teammate manager setup with league_type: {league_type}")
@@ -639,7 +640,7 @@ def train_modeselector(
         project_name,
         use_normalize,
         use_teammate_manager,
-        selfplay_checkpoint_dir,
+        #selfplay_checkpoint_dir,
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
@@ -687,7 +688,12 @@ def train_modeselector(
     ################################################ Initialize envs ################################################
 
     if env_config['num_aircraft'] > 1 and use_teammate_manager:
-        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'], balance_method = env_config['balance_method'], selfplay_checkpoint_dir=selfplay_checkpoint_dir)
+        teammate_manager = setup_teammate_pool(
+            league_type=env_config['league_type'],
+            balance_method = env_config['balance_method'],
+            selfplay_checkpoint_dir=f"trained_models/checkpoints/{run_name}",
+            pretrained_teammate_dir=f'trained_models/pretrained_teammates'
+        )
         print('Instantiated teammate manager')
     else:
         teammate_manager = None
@@ -697,8 +703,7 @@ def train_modeselector(
 
     def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
-            # Create base environment
-            base_env = MAISREnvVec(
+            base_env = MAISREnvVec( # Create base environment
                 config=env_config,
                 render_mode='headless',
                 run_name=run_name,
@@ -774,7 +779,7 @@ def train_modeselector(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"{save_dir}/{run_name}",
+        save_path=f"trained_models/checkpoints/{run_name}",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -896,7 +901,7 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                selfplay_checkpoint_dir= './trained_models/checkpoint_test',
+                #selfplay_checkpoint_dir= './trained_models/checkpoint_test',
                 n_envs=multiprocessing.cpu_count()-14,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),

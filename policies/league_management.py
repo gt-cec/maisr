@@ -1,3 +1,5 @@
+import glob
+import os
 import random
 import numpy as np
 from abc import ABC, abstractmethod
@@ -33,7 +35,7 @@ class TeammatePolicy(ABC):
 class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
-    def __init__(self, league_type, balance_method, subpolicies=None, selfplay_checkpoint_dir=None):
+    def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, subpolicies=None):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -49,8 +51,7 @@ class TeammateManager:
         self.current_teammate = None
         self.episode_count = 0
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
-
-
+        self.pretrained_teammate_dir = pretrained_teammate_dir
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
@@ -82,62 +83,92 @@ class TeammateManager:
         """Select a teammate based on league type and balance method configuration"""
         if self.balance_method == "uniform":
             return self._select_uniform_teammate()
-        elif self.balance_method == "complex":
-            return self._select_complex_teammate()
+        #elif self.balance_method == "complex":
+            #return self._select_complex_teammate()
         else:
             raise ValueError(f"Unknown balance_method: {self.balance_method}")
 
+
     def _select_uniform_teammate(self):
         """Original uniform random selection method"""
-        if True: # TODO TESTING
-            return self._create_selfplay_teammate()
+
         if self.league_type == "baseline":
             return self._create_baseline_teammate()
+
         elif self.league_type == "vanilla":
-            return self._create_vanilla_teammate()
-        elif self.league_type == "strategy_diverse":
-            return self._create_strategy_diverse_teammate()
-        else:
-            raise ValueError(f"Unknown league_type: {self.league_type}")
-
-    def _select_complex_teammate(self):
-        """
-        Complex balancing method with different probabilities for different teammate types
-
-        Logic:
-        - 25% chance: Load previous checkpoint for self-play (placeholder)
-        - vanilla: 25% heuristic, 50% pretrained RL
-        - strategy_diverse: 50% heuristic, 25% pretrained RL
-        """
-        import random
-
-        # 25% chance of self-play (placeholder for now)
-        if random.random() < 0.25:
-            print(f'Creating selfplay teammate')
-            return self._create_selfplay_teammate()
-
-        # Remaining 75% split between heuristic and RL based on league type
-        remaining_prob = random.random()  # 0.0 to 1.0
-
-        if self.league_type == "vanilla":
-            # 25% heuristic (25/75 = 0.333), 50% RL (50/75 = 0.667)
-            if remaining_prob < (25 / 75):  # ~0.333
-                return self._create_vanilla_teammate()
+            # 25% selfplay, 25% heuristic , 50% RL
+            prob = random.random()
+            if prob < 0.25:
+                print(f'[_select_uniform_teammate] Creating selfplay teammate')
+                try:
+                    return self._create_selfplay_teammate()
+                except:
+                    print('Could not create selfplay, creating vanilla heuristic')
+                    return self._create_vanilla_heuristic_teammate()
+            elif prob < 0.50:
+                print(f'[_select_uniform_teammate] Creating selfplay teammate')
+                return self._create_vanilla_heuristic_teammate()
             else:
+                print(f'[_select_uniform_teammate] Creating pretrained RL teammate')
                 return self._create_pretrained_rl_teammate()
 
         elif self.league_type == "strategy_diverse":
-            # 50% heuristic (50/75 = 0.667), 25% RL (25/75 = 0.333)
-            if remaining_prob < (50 / 75):  # ~0.667
-                return self._create_strategy_diverse_teammate()
+
+            prob = random.random()
+            if prob < 0.25:
+                print(f'[_select_uniform_teammate] Creating selfplay teammate')
+                try: return self._create_selfplay_teammate()
+                except:
+                    print('Could not create selfplay, creating diverse heuristic')
+                    return self._create_strategy_diverse_heuristic_teammate()
+            elif prob < 0.75:
+                print(f'[_select_uniform_teammate] Creating selfplay teammate')
+                return self._create_strategy_diverse_heuristic_teammate()
             else:
+                print(f'[_select_uniform_teammate] Creating pretrained RL teammate')
                 return self._create_pretrained_rl_teammate()
 
-        elif self.league_type == "baseline":
-            # For baseline, just use the baseline teammate
-            return self._create_baseline_teammate()
         else:
             raise ValueError(f"Unknown league_type: {self.league_type}")
+
+
+    # def _select_complex_teammate(self):
+    #     """
+    #     Complex balancing method with different probabilities for different teammate types
+    #
+    #     Logic:
+    #     - 25% chance: Load previous checkpoint for self-play (placeholder)
+    #     - vanilla: 25% heuristic, 50% pretrained RL
+    #     - strategy_diverse: 50% heuristic, 25% pretrained RL
+    #     """
+    #     import random
+    #
+    #     # 25% chance of self-play (placeholder for now)
+    #     if random.random() < 0.25:
+    #         print(f'Creating selfplay teammate')
+    #         return self._create_selfplay_teammate()
+    #
+    #     # Remaining 75% split between heuristic and RL based on league type
+    #     remaining_prob = random.random()  # 0.0 to 1.0
+    #
+    #     if self.league_type == "vanilla":
+    #         # 25% heuristic (25/75 = 0.333), 50% RL (50/75 = 0.667)
+    #         if remaining_prob < (25 / 75):  # ~0.333
+    #             return self._create_vanilla_heuristic_teammate()
+    #         else:
+    #             return self._create_pretrained_rl_teammate()
+    #
+    #     elif self.league_type == "strategy_diverse": # TODO FIX
+    #         # 50% heuristic (50/75 = 0.667), 25% RL (25/75 = 0.333)
+    #         if remaining_prob < (50 / 75):  # ~0.667
+    #             return self._create_strategy_diverse_heuristic_teammate()
+    #         else:
+    #             return self._create_pretrained_rl_teammate()
+    #
+    #     elif self.league_type == "baseline": # For baseline, just use the baseline teammate
+    #         return self._create_baseline_teammate()
+    #     else:
+    #         raise ValueError(f"Unknown league_type: {self.league_type}")
 
     def _create_selfplay_teammate(self):
         """
@@ -150,12 +181,14 @@ class TeammateManager:
 
         if self.selfplay_checkpoint_dir is None:
             print("Warning: No selfplay_checkpoint_dir specified, falling back to baseline teammate")
+            raise ValueError
             teammate = self._create_baseline_teammate()
             teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
             return teammate
 
         if not os.path.exists(self.selfplay_checkpoint_dir):
             print(f"Warning: Checkpoint directory {self.selfplay_checkpoint_dir} does not exist, falling back to baseline")
+            raise ValueError
             teammate = self._create_baseline_teammate()
             teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
             return teammate
@@ -239,23 +272,63 @@ class TeammateManager:
     def _create_pretrained_rl_teammate(self):
         """
         Create pretrained RL mode selector teammate
-        TODO: Load actual pretrained RL model
         """
-        print("Loading pretrained RL teammate (placeholder - using heuristic for now)")
 
-        # Placeholder: use heuristic teammate for now
-        # TODO: Implement actual RL model loading
-        if self.league_type == "vanilla":
-            teammate = self._create_vanilla_teammate()
-            teammate.name = "PretrainedRL_Vanilla_Placeholder"
-        elif self.league_type == "strategy_diverse":
-            teammate = self._create_strategy_diverse_teammate()
-            teammate.name = "PretrainedRL_StrategyDiverse_Placeholder"
-        else:
+        if self.pretrained_teammate_dir is None:
+            print("Warning: No pretrained_teammate_dir specified, falling back to baseline teammate")
             teammate = self._create_baseline_teammate()
-            teammate.name = "PretrainedRL_Baseline_Placeholder"
+            teammate.name = "Pretrained_NoPretrainedDir_Fallback"
+            return teammate
 
-        return teammate
+        if not os.path.exists(self.pretrained_teammate_dir):
+            print(f"Warning: Pretrained directory {self.pretrained_teammate_dir} does not exist, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "Pretrained_NoPretrainedDir_Fallback"
+            return teammate
+
+        # Find all checkpoint files (assuming .zip format for stable-baselines3)
+        checkpoint_patterns = [
+            os.path.join(self.pretrained_teammate_dir, "*.zip"),
+            os.path.join(self.pretrained_teammate_dir, "**/*.zip"),  # Search subdirectories
+            os.path.join(self.pretrained_teammate_dir, "checkpoint_*.zip"),
+            os.path.join(self.pretrained_teammate_dir, "model_*.zip"),
+        ]
+
+        all_pretrained_teammates = []
+        for pattern in checkpoint_patterns:
+            all_pretrained_teammates.extend(glob.glob(pattern, recursive=True))
+
+        # Remove duplicates and sort by modification time (newest first)
+        all_pretrained_teammates = list(set(all_pretrained_teammates))
+        if not all_pretrained_teammates:
+            print(f"Warning: No pretrained files found in {self.pretrained_teammate_dir}, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "Pretrained_NoPretrained_Fallback"
+            return teammate
+
+        all_pretrained_teammates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        selected_teammate = random.choice(all_pretrained_teammates)
+
+        # Load the selected pretrained teammate
+        print(f"Loading pretrained agent: {os.path.basename(selected_teammate)}")
+        selfplay_model = PPO.load(selected_teammate)
+
+        # Create RL teammate policy using the loaded model
+        pretrained_teammate = RLTeammatePolicy(
+            model=selfplay_model,
+            env=None,  # Will be set later if needed
+            local_search_policy=self.subpolicies.get('local_search'),
+            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            change_region_subpolicy=self.subpolicies.get('change_region'),
+        )
+
+        # Extract teammate identifier for naming
+        pretrained_name = os.path.splitext(os.path.basename(selected_teammate))[0]
+        pretrained_teammate.name = f"Pretrained_{pretrained_name}"
+
+        self.current_teammate = pretrained_teammate
+        return pretrained_teammate
+
 
     def _create_baseline_teammate(self):
         """Create baseline teammate: always heuristic with conservative settings"""
@@ -282,16 +355,12 @@ class TeammateManager:
         self.current_teammate = teammate
         return teammate
 
-    def _create_vanilla_teammate(self):
+    def _create_vanilla_heuristic_teammate(self):
         """Create vanilla teammate: varied mode_selector, conservative spatial/risk settings"""
         # Randomly sample mode_selector
         mode_selector = random.choice(self.mode_selector_options['vanilla'])
         risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
-
-        if mode_selector == "trained":
-            # TODO: Load trained model when available
-            raise NotImplementedError
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -312,16 +381,13 @@ class TeammateManager:
         self.current_teammate = teammate
         return teammate
 
-    def _create_strategy_diverse_teammate(self):
+    def _create_strategy_diverse_heuristic_teammate(self):
         """Create strategy diverse teammate: all parameters randomly sampled"""
         # Randomly sample all parameters
         mode_selector = random.choice(self.mode_selector_options['strategy_diverse'])
         risk_tolerance = random.choice(self.risk_tolerance_options['strategy_diverse'])
         spatial_coord = random.choice(self.spatial_coord_options['strategy_diverse'])
 
-        if mode_selector == "trained":
-            # TODO: Load trained model when available
-            raise NotImplementedError
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -367,163 +433,6 @@ class TeammateManager:
         print("Warning: select_teammate_by_curriculum is deprecated, using select_random_teammate")
         return self.select_random_teammate()
 
-# class TeammateManager:
-#     """Manages pool of teammate policies and selection based on league type"""
-#
-#     def __init__(self,league_type="baseline", subpolicies=None):
-#         """
-#         Initialize teammate manager with specified league type.
-#
-#         Args:
-#             league_type (str): "baseline", "vanilla", or "strategy_diverse"
-#             subpolicies (dict): Dictionary containing subpolicy instances
-#                 Expected keys: 'local_search', 'change_region', 'go_to_threat'
-#         """
-#         self.league_type = league_type
-#         self.subpolicies = subpolicies or {}
-#         self.current_teammate = None
-#         self.episode_count = 0
-#
-#         # Validate league type
-#         valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
-#         if league_type not in valid_league_types:
-#             raise ValueError(f"league_type must be one of {valid_league_types}")
-#
-#         self.mode_selector_options = {
-#             'baseline':["none"],
-#             'vanilla': ["none", "heuristic"],
-#             'strategy_diverse': ["none", "heuristic"]}
-#         self.risk_tolerance_options = {
-#             'baseline':["none"],
-#             "vanilla": ["none"],
-#             "strategy_diverse": ["low", "medium", "high", "extreme"]}
-#         self.spatial_coord_options = {
-#             'baseline': ["none"],
-#             "vanilla": ["none"],
-#             "strategy_diverse": ["none", "some", "high"]}
-#
-#         print(f"\nTeammateManager initialized with league_type: {league_type}")
-#
-#     def select_random_teammate(self):
-#         """Randomly select a teammate based on league type configuration"""
-#         if self.league_type == "baseline":
-#             return self._create_baseline_teammate()
-#         elif self.league_type == "vanilla":
-#             return self._create_vanilla_teammate()
-#         elif self.league_type == "strategy_diverse":
-#             return self._create_strategy_diverse_teammate()
-#         else:
-#             raise ValueError(f"Unknown league_type: {self.league_type}")
-#
-#     def _create_baseline_teammate(self):
-#         """Create baseline teammate: always heuristic with conservative settings"""
-#         mode_selector = random.choice(self.mode_selector_options['vanilla'])
-#         risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
-#         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
-#
-#         heuristic_agent = HeuristicAgent(
-#             mode_selector=mode_selector,
-#             risk_tolerance=risk_tolerance,
-#             spatial_coord=spatial_coord
-#         )
-#
-#         teammate = GenericTeammatePolicy(
-#             env=None,  # Will be set later if needed
-#             local_search_policy=self.subpolicies.get('local_search'),
-#             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-#             change_region_subpolicy=self.subpolicies.get('change_region'),
-#             mode_selector_agent=heuristic_agent,
-#             use_collision_avoidance=False
-#         )
-#
-#         teammate.name = "Baseline_Greedy_noMS_lowrisk_nospatialcoord"
-#         self.current_teammate = teammate
-#         return teammate
-#
-#     def _create_vanilla_teammate(self):
-#         """Create vanilla teammate: varied mode_selector, conservative spatial/risk settings"""
-#         # Randomly sample mode_selector
-#         mode_selector = random.choice(self.mode_selector_options['vanilla'])
-#         risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
-#         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
-#
-#         if mode_selector == "trained":
-#             # TODO: Load trained model when available
-#             raise NotImplementedError
-#
-#         heuristic_agent = HeuristicAgent(
-#             mode_selector=mode_selector,
-#             risk_tolerance=risk_tolerance,
-#             spatial_coord=risk_tolerance
-#         )
-#
-#         teammate = GenericTeammatePolicy(
-#             env=None,
-#             local_search_policy=self.subpolicies.get('local_search'),
-#             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-#             change_region_subpolicy=self.subpolicies.get('change_region'),
-#             mode_selector_agent=heuristic_agent,
-#             use_collision_avoidance=False
-#         )
-#
-#         teammate.name = f"Vanilla_{mode_selector}MS_norisk_nospatialcoord"
-#         self.current_teammate = teammate
-#         return teammate
-#
-#     def _create_strategy_diverse_teammate(self):
-#         """Create strategy diverse teammate: all parameters randomly sampled"""
-#         # Randomly sample all parameters
-#         mode_selector = random.choice(self.mode_selector_options['strategy_diverse'])
-#         risk_tolerance = random.choice(self.risk_tolerance_options['strategy_diverse'])
-#         spatial_coord = random.choice(self.spatial_coord_options['strategy_diverse'])
-#
-#         if mode_selector == "trained":
-#             # TODO: Load trained model when available
-#             raise NotImplementedError
-#
-#         heuristic_agent = HeuristicAgent(
-#             mode_selector=mode_selector,
-#             risk_tolerance=risk_tolerance,
-#             spatial_coord=spatial_coord
-#         )
-#
-#         teammate = GenericTeammatePolicy(
-#             env=None,
-#             local_search_policy=self.subpolicies.get('local_search'),
-#             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-#             change_region_subpolicy=self.subpolicies.get('change_region'),
-#             mode_selector_agent=heuristic_agent,
-#             use_collision_avoidance=False
-#         )
-#
-#         teammate.name = f"Diverse_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatialcoord"
-#         self.current_teammate = teammate
-#         return teammate
-#
-#     def reset_for_episode(self):
-#         """Reset teammate for new episode and select new random teammate"""
-#         self.episode_count += 1
-#         # Select a new random teammate for each episode
-#         self.select_random_teammate()
-#
-#         if self.current_teammate and hasattr(self.current_teammate, 'reset'):
-#             self.current_teammate.reset()
-#
-#     # Legacy methods for backward compatibility
-#     def add_rl_teammate(self, model_path, policy_name):
-#         """Legacy method - not used with new league system"""
-#         print("Warning: add_rl_teammate is deprecated with league-based teammate management")
-#         pass
-#
-#     def add_heuristic_teammate(self, strategy_type, config=None):
-#         """Legacy method - not used with new league system"""
-#         print("Warning: add_heuristic_teammate is deprecated with league-based teammate management")
-#         pass
-#
-#     def select_teammate_by_curriculum(self):
-#         """Legacy method - use select_random_teammate instead"""
-#         print("Warning: select_teammate_by_curriculum is deprecated, using select_random_teammate")
-#         return self.select_random_teammate()
 
 class RLTeammatePolicy(TeammatePolicy):
     """
