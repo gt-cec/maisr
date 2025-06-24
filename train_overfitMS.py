@@ -787,7 +787,7 @@ def train_modeselector(
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1,
-                                   model_save_path = f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
+                                   model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=50)
 
     print('Callbacks created')
@@ -866,9 +866,10 @@ def train_modeselector(
     eval_env.close()
 
     # Save the final model
-    final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
-    model.save(final_model_path)
-    print(f"Training completed! Final model saved to {final_model_path}")
+    if save_model:
+        final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
+        model.save(final_model_path)
+        print(f"Training completed! Final model saved to {final_model_path}")
 
     # Run a final evaluation
     mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=env_config['n_eval_episodes'])
