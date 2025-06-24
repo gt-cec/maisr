@@ -20,7 +20,7 @@
 	"threat_radius": 30,
 	"max_threat_ids": 2,
     
-    "league_type": "strategy-diverse",
+    "league_type": "strategy_diverse",
 	"balance_method": "uniform",
 	"obs_type": "nearest",
 	"action_type": "Discrete16",
