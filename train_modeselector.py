@@ -877,8 +877,8 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june23_poc1_2ship.json'
-    temp_identifier = 'poc1_2ship'
+    config_filename = 'configs/june24_diverse.json'
+    temp_identifier = 'diverse_test'
 
     ################################################
 
@@ -901,8 +901,7 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                #selfplay_checkpoint_dir= './trained_models/checkpoint_test',
-                n_envs=multiprocessing.cpu_count()-14,
+                n_envs=multiprocessing.cpu_count()-12,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
