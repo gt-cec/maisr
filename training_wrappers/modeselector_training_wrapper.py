@@ -54,12 +54,13 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.tag = self.env.tag
 
         # Set rewards for mode selector
-        self.reward_per_target_id = 2
+        self.reward_per_target_id = 1.2
         self.reward_per_threat_id = 6
         self.penalty_for_policy_switch = 0.02
-        self.reward_per_step_early = 0.05
+        self.reward_per_step_early = 0.2
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
-        self.fail_penalty = -20
+        self.fail_penalty = -22
+        self.step_penalty = -0.005
 
         self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
 
@@ -494,14 +495,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         finish_reward = info['steps_left'] * self.reward_per_step_early if info['done'] else 0
         fail_penalty = self.fail_penalty if info['failed'] else 0
         switch_penalty = self.switched_policies * self.penalty_for_policy_switch  # Bool times penalty
-        detect_penalty = info['new_detections'] * self.penalty_per_detection
+        #detect_penalty = info['new_detections'] * self.penalty_per_detection
 
-        # 15 * 1 rew/tgt = 15
-        # 2 * 5 r/threat = 10
-        # ~600 early * 0.05 rew/step early = 30
-        # 600 policy switches * 0.02 = -12 penalty
-
-        reward = switch_penalty + detect_penalty + target_reward + + threat_reward + finish_reward + fail_penalty - 0.05
+        reward = switch_penalty + target_reward + + threat_reward + finish_reward + fail_penalty - self.step_penalty
         return reward
 
 

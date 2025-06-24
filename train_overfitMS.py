@@ -612,7 +612,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir):
+def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, overfit_test):
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
@@ -627,7 +627,9 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir):
         league_type,
         balance_method,
         subpolicies=subpolicies,
-        selfplay_checkpoint_dir=selfplay_checkpoint_dir
+        selfplay_checkpoint_dir=selfplay_checkpoint_dir,
+        pretrained_teammate_dir=pretrained_teammate_dir,
+        overfit_test=overfit_test
     )
 
     print(f"Teammate manager setup with league_type: {league_type}")
@@ -639,14 +641,15 @@ def train_modeselector(
         project_name,
         use_normalize,
         use_teammate_manager,
-        selfplay_checkpoint_dir,
+        #selfplay_checkpoint_dir,
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
         render=False,
         log_dir="./logs/",
         machine_name='machine',
-        save_model=True
+        save_model=True,
+        overfit_test=None,
 ):
     """
     Main training pipeline. Does the following:
@@ -687,7 +690,13 @@ def train_modeselector(
     ################################################ Initialize envs ################################################
 
     if env_config['num_aircraft'] > 1 and use_teammate_manager:
-        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'], balance_method = env_config['balance_method'], selfplay_checkpoint_dir=selfplay_checkpoint_dir)
+        teammate_manager = setup_teammate_pool(
+            league_type=env_config['league_type'],
+            balance_method = env_config['balance_method'],
+            selfplay_checkpoint_dir=f"trained_models/checkpoints/{run_name}",
+            pretrained_teammate_dir=f'trained_models/pretrained_teammates',
+            overfit_test=overfit_test
+        )
         print('Instantiated teammate manager')
     else:
         teammate_manager = None
@@ -697,8 +706,7 @@ def train_modeselector(
 
     def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
-            # Create base environment
-            base_env = MAISREnvVec(
+            base_env = MAISREnvVec( # Create base environment
                 config=env_config,
                 render_mode='headless',
                 run_name=run_name,
@@ -774,7 +782,7 @@ def train_modeselector(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"{save_dir}/{run_name}",
+        save_path=f"trained_models/checkpoints/{run_name}",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -842,8 +850,12 @@ def train_modeselector(
         'ret_mean': env.ret_rms.mean,
         'ret_var': env.ret_rms.var,
     }
-    np.save(f"trained_models/{run_name}local_search_norm_stats.npy", stats)
+
+    # Save with consistent naming
+    np.save(f"trained_models/{run_name}_norm_stats.npy", stats)
+    np.save(f"trained_models/checkpoints/{run_name}/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
     env.save(f"trained_models/{run_name}local_search_vecnormalize.pkl")
+
     print("Training Normalization Stats:")
     print(f"Obs mean: {env.obs_rms.mean}")
     print(f"Obs std: {np.sqrt(env.obs_rms.var + 1e-8)}")
@@ -872,8 +884,8 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june23_poc1_2ship.json'
-    temp_identifier = 'poc1_2ship'
+    config_filename = 'configs/june24_diverse.json'
+    #temp_identifier = 'overfit_test'
 
     ################################################
 
@@ -881,13 +893,11 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for lr in [0.0005, 0.001, 0.0002]:
-        for batch_size in [1024, 512, 256]:
-            config['lr'] = lr
-            config['batch_size'] = batch_size
+    for overfit_test in ["low_risk", "high_risk", "nospatial", "highspatial"]:
+            temp_identifier = 'overfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'modeselector_{temp_identifier}_{lr}lr_{batch_size}bs_'+generate_run_name(config)
+            run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
 
             print(f'\n--- Starting training run  ---')
             train_modeselector(
@@ -896,11 +906,11 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                selfplay_checkpoint_dir= './trained_models/checkpoint_test',
-                n_envs=multiprocessing.cpu_count(),
+                n_envs=multiprocessing.cpu_count()-14,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
                 save_model = False,
+                overfit_test = overfit_test
             )
             print(f"✓ Completed training run")

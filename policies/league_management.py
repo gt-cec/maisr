@@ -35,7 +35,7 @@ class TeammatePolicy(ABC):
 class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
-    def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, subpolicies=None):
+    def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, subpolicies=None, overfit_test = None):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -50,6 +50,7 @@ class TeammateManager:
         self.balance_method = balance_method
         self.current_teammate = None
         self.episode_count = 0
+        self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
 
@@ -62,6 +63,11 @@ class TeammateManager:
         valid_balance_methods = ["uniform", "complex"]
         if balance_method not in valid_balance_methods:
             raise ValueError(f"balance_method must be one of {valid_balance_methods}")
+
+        # Validate overfit_test parameter
+        valid_overfit_tests = [None, "low_risk", "high_risk", "nospatial", "highspatial"]
+        if overfit_test not in valid_overfit_tests:
+            raise ValueError(f"overfit_test must be one of {valid_overfit_tests}")
 
         self.mode_selector_options = {
             'baseline': ["none"],
@@ -81,7 +87,12 @@ class TeammateManager:
 
     def select_random_teammate(self):
         """Select a teammate based on league type and balance method configuration"""
-        if self.balance_method == "uniform":
+
+        # Handle overfit test cases
+        if self.overfit_test is not None:
+            return self._create_overfit_test_teammate()
+
+        elif self.balance_method == "uniform":
             return self._select_uniform_teammate()
         #elif self.balance_method == "complex":
             #return self._select_complex_teammate()
@@ -262,6 +273,56 @@ class TeammateManager:
             teammate = self._create_baseline_teammate()
             teammate.name = f"{fallback_prefix}_LoadError_Fallback"
             return teammate
+
+    def _create_overfit_test_teammate(self):
+        """Create teammate with specific configuration for overfit testing"""
+
+        if self.overfit_test == "low_risk":
+            print(f'[_create_overfit_test_teammate] Creating low risk teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "low"
+            spatial_coord = "some"  # Default spatial coordination
+
+        elif self.overfit_test == "high_risk":
+            print(f'[_create_overfit_test_teammate] Creating high risk teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "high"
+            spatial_coord = "some"  # Default spatial coordination
+
+        elif self.overfit_test == "nospatial":
+            print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "none"
+
+        elif self.overfit_test == "highspatial":
+            print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "high"
+
+        else:
+            raise ValueError(f"Unknown overfit_test value: {self.overfit_test}")
+
+        heuristic_agent = HeuristicAgent(
+            mode_selector=mode_selector,
+            risk_tolerance=risk_tolerance,
+            spatial_coord=spatial_coord
+        )
+
+        teammate = GenericTeammatePolicy(
+            env=None,
+            local_search_policy=self.subpolicies.get('local_search'),
+            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            change_region_subpolicy=self.subpolicies.get('change_region'),
+            mode_selector_agent=heuristic_agent,
+            use_collision_avoidance=False
+        )
+
+        teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
+        self.current_teammate = teammate
+        return teammate
+
 
     def _find_normalization_stats(self, checkpoint_path, teammate_type):
         """
