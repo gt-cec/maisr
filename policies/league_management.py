@@ -132,73 +132,54 @@ class TeammateManager:
             raise ValueError(f"Unknown league_type: {self.league_type}")
 
 
-    # def _select_complex_teammate(self):
-    #     """
-    #     Complex balancing method with different probabilities for different teammate types
-    #
-    #     Logic:
-    #     - 25% chance: Load previous checkpoint for self-play (placeholder)
-    #     - vanilla: 25% heuristic, 50% pretrained RL
-    #     - strategy_diverse: 50% heuristic, 25% pretrained RL
-    #     """
-    #     import random
-    #
-    #     # 25% chance of self-play (placeholder for now)
-    #     if random.random() < 0.25:
-    #         print(f'Creating selfplay teammate')
-    #         return self._create_selfplay_teammate()
-    #
-    #     # Remaining 75% split between heuristic and RL based on league type
-    #     remaining_prob = random.random()  # 0.0 to 1.0
-    #
-    #     if self.league_type == "vanilla":
-    #         # 25% heuristic (25/75 = 0.333), 50% RL (50/75 = 0.667)
-    #         if remaining_prob < (25 / 75):  # ~0.333
-    #             return self._create_vanilla_heuristic_teammate()
-    #         else:
-    #             return self._create_pretrained_rl_teammate()
-    #
-    #     elif self.league_type == "strategy_diverse": # TODO FIX
-    #         # 50% heuristic (50/75 = 0.667), 25% RL (25/75 = 0.333)
-    #         if remaining_prob < (50 / 75):  # ~0.667
-    #             return self._create_strategy_diverse_heuristic_teammate()
-    #         else:
-    #             return self._create_pretrained_rl_teammate()
-    #
-    #     elif self.league_type == "baseline": # For baseline, just use the baseline teammate
-    #         return self._create_baseline_teammate()
-    #     else:
-    #         raise ValueError(f"Unknown league_type: {self.league_type}")
-
     def _create_selfplay_teammate(self):
+        """Create self-play teammate by loading a previous checkpoint of the current agent"""
+        return self._create_rl_teammate("selfplay")
+
+    def _create_pretrained_rl_teammate(self):
+        """Create pretrained RL mode selector teammate"""
+        return self._create_rl_teammate("pretrained")
+
+    def _create_rl_teammate(self, teammate_type):
         """
-        Create self-play teammate by loading a previous checkpoint of the current agent
+        Create RL teammate by loading a checkpoint (either selfplay or pretrained)
+
+        Args:
+            teammate_type (str): "selfplay" or "pretrained"
         """
         import os
         import glob
         import random
         from stable_baselines3 import PPO
 
-        if self.selfplay_checkpoint_dir is None:
-            print("Warning: No selfplay_checkpoint_dir specified, falling back to baseline teammate")
-            raise ValueError
-            teammate = self._create_baseline_teammate()
-            teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
-            return teammate
+        # Set directory and fallback name based on type
+        if teammate_type == "selfplay":
+            checkpoint_dir = self.selfplay_checkpoint_dir
+            fallback_prefix = "SelfPlay"
+            selection_strategy_enabled = True  # Only selfplay uses strategy selection
+        elif teammate_type == "pretrained":
+            checkpoint_dir = self.pretrained_teammate_dir
+            fallback_prefix = "Pretrained"
+            selection_strategy_enabled = False  # Pretrained uses simple random selection
+        else:
+            raise ValueError(f"teammate_type must be 'selfplay' or 'pretrained', got {teammate_type}")
 
-        if not os.path.exists(self.selfplay_checkpoint_dir):
-            print(f"Warning: Checkpoint directory {self.selfplay_checkpoint_dir} does not exist, falling back to baseline")
+        # Validation checks
+        if checkpoint_dir is None:
+            print(f"Warning: No {teammate_type}_checkpoint_dir specified, falling back to baseline teammate")
             raise ValueError
-            teammate = self._create_baseline_teammate()
-            teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
-            return teammate
 
-        # Find all checkpoint files (assuming .zip format for stable-baselines3)
+        if not os.path.exists(checkpoint_dir):
+            print(
+                f"Warning: {teammate_type.title()} directory {checkpoint_dir} does not exist, falling back to baseline")
+            raise ValueError
+
+        # Find all checkpoint files
         checkpoint_patterns = [
-            os.path.join(self.selfplay_checkpoint_dir, "*.zip"),
-            os.path.join(self.selfplay_checkpoint_dir, "**/*.zip"),  # Search subdirectories
-            os.path.join(self.selfplay_checkpoint_dir, "checkpoint_*.zip"),
-            os.path.join(self.selfplay_checkpoint_dir, "model_*.zip"),
+            os.path.join(checkpoint_dir, "*.zip"),
+            os.path.join(checkpoint_dir, "**/*.zip"),
+            os.path.join(checkpoint_dir, "checkpoint_*.zip"),
+            os.path.join(checkpoint_dir, "model_*.zip"),
         ]
 
         all_checkpoints = []
@@ -208,126 +189,269 @@ class TeammateManager:
         # Remove duplicates and sort by modification time (newest first)
         all_checkpoints = list(set(all_checkpoints))
         if not all_checkpoints:
-            print(f"Warning: No checkpoint files found in {self.selfplay_checkpoint_dir}, falling back to baseline")
+            print(f"Warning: No {teammate_type} files found in {checkpoint_dir}, falling back to baseline")
             teammate = self._create_baseline_teammate()
-            teammate.name = "SelfPlay_NoCheckpoints_Fallback"
+            teammate.name = f"{fallback_prefix}_NoCheckpoints_Fallback"
             return teammate
 
-        # Sort by modification time (newest first)
         all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
 
-        # Strategy for checkpoint selection:
-        # - 50% chance: select from most recent 3 checkpoints (if available)
-        # - 30% chance: select from recent 25% of all checkpoints
-        # - 20% chance: select randomly from any checkpoint
+        # Select checkpoint based on type
+        if selection_strategy_enabled:  # Selfplay strategy
+            selection_strategy = random.random()
 
-        selection_strategy = random.random()
-
-        if selection_strategy < 0.5:
-            # Select from most recent 3 checkpoints
-            recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
-            selected_checkpoint = random.choice(recent_checkpoints)
-            strategy_name = "Recent3"
-
-        elif selection_strategy < 0.8:
-            # Select from recent 25% of checkpoints
-            recent_count = max(1, len(all_checkpoints) // 4)
-            recent_checkpoints = all_checkpoints[:recent_count]
-            selected_checkpoint = random.choice(recent_checkpoints)
-            strategy_name = "Recent25pct"
-
-        else:
-            # Select randomly from any checkpoint
+            if selection_strategy < 0.5:
+                # Select from most recent 3 checkpoints
+                recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
+                selected_checkpoint = random.choice(recent_checkpoints)
+                strategy_name = "Recent3"
+            elif selection_strategy < 0.8:
+                # Select from recent 25% of checkpoints
+                recent_count = max(1, len(all_checkpoints) // 4)
+                recent_checkpoints = all_checkpoints[:recent_count]
+                selected_checkpoint = random.choice(recent_checkpoints)
+                strategy_name = "Recent25pct"
+            else:
+                # Select randomly from any checkpoint
+                selected_checkpoint = random.choice(all_checkpoints)
+                strategy_name = "Random"
+        else:  # Pretrained simple selection
             selected_checkpoint = random.choice(all_checkpoints)
             strategy_name = "Random"
 
         try:
             # Load the selected checkpoint
-            print(f"Loading self-play checkpoint: {os.path.basename(selected_checkpoint)} (strategy: {strategy_name})")
-            selfplay_model = PPO.load(selected_checkpoint)
+            print(f"Loading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" +
+                  (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
+            model = PPO.load(selected_checkpoint)
+
+            # Look for corresponding normalization stats file
+            norm_stats_path = self._find_normalization_stats(selected_checkpoint, teammate_type)
 
             # Create RL teammate policy using the loaded model
-            selfplay_teammate = RLTeammatePolicy(
-                model=selfplay_model,
-                env=None,  # Will be set later if needed
+            rl_teammate = RLTeammatePolicy(
+                model=model,
+                env=None,
                 local_search_policy=self.subpolicies.get('local_search'),
                 go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
                 change_region_subpolicy=self.subpolicies.get('change_region'),
+                norm_stats_path=norm_stats_path  # Add this parameter
             )
+            # Create RL teammate policy using the loaded model
+            # rl_teammate = RLTeammatePolicy(
+            #     model=model,
+            #     env=None,
+            #     local_search_policy=self.subpolicies.get('local_search'),
+            #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+            #     change_region_subpolicy=self.subpolicies.get('change_region'),
+            # )
 
-            # Extract checkpoint identifier for naming
+            # Set name based on type
             checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
-            selfplay_teammate.name = f"SelfPlay_{strategy_name}_{checkpoint_name}"
+            if teammate_type == "selfplay":
+                rl_teammate.name = f"SelfPlay_{strategy_name}_{checkpoint_name}"
+            else:
+                rl_teammate.name = f"Pretrained_{checkpoint_name}"
 
-            self.current_teammate = selfplay_teammate
-            return selfplay_teammate
+            self.current_teammate = rl_teammate
+            return rl_teammate
 
         except Exception as e:
-            print(f"Error loading checkpoint {selected_checkpoint}: {e}")
+            print(f"Error loading {teammate_type} checkpoint {selected_checkpoint}: {e}")
             print("Falling back to baseline teammate")
             teammate = self._create_baseline_teammate()
-            teammate.name = "SelfPlay_LoadError_Fallback"
+            teammate.name = f"{fallback_prefix}_LoadError_Fallback"
             return teammate
 
-    def _create_pretrained_rl_teammate(self):
+    def _find_normalization_stats(self, checkpoint_path, teammate_type):
         """
-        Create pretrained RL mode selector teammate
+        Find the normalization stats file corresponding to a checkpoint
         """
+        checkpoint_dir = os.path.dirname(checkpoint_path)
+        checkpoint_name = os.path.splitext(os.path.basename(checkpoint_path))[0]
 
-        if self.pretrained_teammate_dir is None:
-            print("Warning: No pretrained_teammate_dir specified, falling back to baseline teammate")
-            teammate = self._create_baseline_teammate()
-            teammate.name = "Pretrained_NoPretrainedDir_Fallback"
-            return teammate
+        # Common patterns for normalization stats files
+        possible_patterns = [
+            os.path.join(checkpoint_dir, f"{checkpoint_name}_norm_stats.npy"), # Same name as checkpoint but with different extension
+            os.path.join(checkpoint_dir, f"{checkpoint_name}local_search_norm_stats.npy"),
 
-        if not os.path.exists(self.pretrained_teammate_dir):
-            print(f"Warning: Pretrained directory {self.pretrained_teammate_dir} does not exist, falling back to baseline")
-            teammate = self._create_baseline_teammate()
-            teammate.name = "Pretrained_NoPretrainedDir_Fallback"
-            return teammate
+            os.path.join(os.path.dirname(checkpoint_dir), f"{checkpoint_name}_norm_stats.npy"), # Look in parent directory
+            os.path.join(os.path.dirname(checkpoint_dir), f"{checkpoint_name}local_search_norm_stats.npy"),
 
-        # Find all checkpoint files (assuming .zip format for stable-baselines3)
-        checkpoint_patterns = [
-            os.path.join(self.pretrained_teammate_dir, "*.zip"),
-            os.path.join(self.pretrained_teammate_dir, "**/*.zip"),  # Search subdirectories
-            os.path.join(self.pretrained_teammate_dir, "checkpoint_*.zip"),
-            os.path.join(self.pretrained_teammate_dir, "model_*.zip"),
+            os.path.join(checkpoint_dir, "norm_stats.npy"), # Look for generic norm stats in the same directory
+            os.path.join(checkpoint_dir, "local_search_norm_stats.npy"),
+
+            os.path.join(os.path.dirname(checkpoint_dir), "norm_stats.npy"), # Look in parent directory for generic files
+            os.path.join(os.path.dirname(checkpoint_dir), "local_search_norm_stats.npy"),
         ]
 
-        all_pretrained_teammates = []
-        for pattern in checkpoint_patterns:
-            all_pretrained_teammates.extend(glob.glob(pattern, recursive=True))
+        for pattern in possible_patterns: # Try each pattern and return the first one that exists
+            if os.path.exists(pattern):
+                print(f"[TeammateManager] Found normalization stats for {teammate_type}: {pattern}")
+                return pattern
 
-        # Remove duplicates and sort by modification time (newest first)
-        all_pretrained_teammates = list(set(all_pretrained_teammates))
-        if not all_pretrained_teammates:
-            print(f"Warning: No pretrained files found in {self.pretrained_teammate_dir}, falling back to baseline")
-            teammate = self._create_baseline_teammate()
-            teammate.name = "Pretrained_NoPretrained_Fallback"
-            return teammate
+        print(f"[TeammateManager] No normalization stats found for {teammate_type} checkpoint {checkpoint_path}")
+        return None
 
-        all_pretrained_teammates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-        selected_teammate = random.choice(all_pretrained_teammates)
 
-        # Load the selected pretrained teammate
-        print(f"Loading pretrained agent: {os.path.basename(selected_teammate)}")
-        selfplay_model = PPO.load(selected_teammate)
-
-        # Create RL teammate policy using the loaded model
-        pretrained_teammate = RLTeammatePolicy(
-            model=selfplay_model,
-            env=None,  # Will be set later if needed
-            local_search_policy=self.subpolicies.get('local_search'),
-            go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-            change_region_subpolicy=self.subpolicies.get('change_region'),
-        )
-
-        # Extract teammate identifier for naming
-        pretrained_name = os.path.splitext(os.path.basename(selected_teammate))[0]
-        pretrained_teammate.name = f"Pretrained_{pretrained_name}"
-
-        self.current_teammate = pretrained_teammate
-        return pretrained_teammate
+    # def _create_selfplay_teammate(self):
+    #     """
+    #     Create self-play teammate by loading a previous checkpoint of the current agent
+    #     """
+    #     import os
+    #     import glob
+    #     import random
+    #     from stable_baselines3 import PPO
+    #
+    #     if self.selfplay_checkpoint_dir is None:
+    #         print("Warning: No selfplay_checkpoint_dir specified, falling back to baseline teammate")
+    #         raise ValueError
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
+    #         return teammate
+    #
+    #     if not os.path.exists(self.selfplay_checkpoint_dir):
+    #         print(f"Warning: Checkpoint directory {self.selfplay_checkpoint_dir} does not exist, falling back to baseline")
+    #         raise ValueError
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
+    #         return teammate
+    #
+    #     # Find all checkpoint files (assuming .zip format for stable-baselines3)
+    #     checkpoint_patterns = [
+    #         os.path.join(self.selfplay_checkpoint_dir, "*.zip"),
+    #         os.path.join(self.selfplay_checkpoint_dir, "**/*.zip"),  # Search subdirectories
+    #         os.path.join(self.selfplay_checkpoint_dir, "checkpoint_*.zip"),
+    #         os.path.join(self.selfplay_checkpoint_dir, "model_*.zip"),
+    #     ]
+    #
+    #     all_checkpoints = []
+    #     for pattern in checkpoint_patterns:
+    #         all_checkpoints.extend(glob.glob(pattern, recursive=True))
+    #
+    #     # Remove duplicates and sort by modification time (newest first)
+    #     all_checkpoints = list(set(all_checkpoints))
+    #     if not all_checkpoints:
+    #         print(f"Warning: No checkpoint files found in {self.selfplay_checkpoint_dir}, falling back to baseline")
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "SelfPlay_NoCheckpoints_Fallback"
+    #         return teammate
+    #
+    #     # Sort by modification time (newest first)
+    #     all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    #
+    #     # Strategy for checkpoint selection:
+    #     # - 50% chance: select from most recent 3 checkpoints (if available)
+    #     # - 30% chance: select from recent 25% of all checkpoints
+    #     # - 20% chance: select randomly from any checkpoint
+    #
+    #     selection_strategy = random.random()
+    #
+    #     if selection_strategy < 0.5:
+    #         # Select from most recent 3 checkpoints
+    #         recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
+    #         selected_checkpoint = random.choice(recent_checkpoints)
+    #         strategy_name = "Recent3"
+    #
+    #     elif selection_strategy < 0.8:
+    #         # Select from recent 25% of checkpoints
+    #         recent_count = max(1, len(all_checkpoints) // 4)
+    #         recent_checkpoints = all_checkpoints[:recent_count]
+    #         selected_checkpoint = random.choice(recent_checkpoints)
+    #         strategy_name = "Recent25pct"
+    #
+    #     else:
+    #         # Select randomly from any checkpoint
+    #         selected_checkpoint = random.choice(all_checkpoints)
+    #         strategy_name = "Random"
+    #
+    #     try:
+    #         # Load the selected checkpoint
+    #         print(f"Loading self-play checkpoint: {os.path.basename(selected_checkpoint)} (strategy: {strategy_name})")
+    #         selfplay_model = PPO.load(selected_checkpoint)
+    #
+    #         # Create RL teammate policy using the loaded model
+    #         selfplay_teammate = RLTeammatePolicy(
+    #             model=selfplay_model,
+    #             env=None,  # Will be set later if needed
+    #             local_search_policy=self.subpolicies.get('local_search'),
+    #             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+    #             change_region_subpolicy=self.subpolicies.get('change_region'),
+    #         )
+    #
+    #         # Extract checkpoint identifier for naming
+    #         checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
+    #         selfplay_teammate.name = f"SelfPlay_{strategy_name}_{checkpoint_name}"
+    #
+    #         self.current_teammate = selfplay_teammate
+    #         return selfplay_teammate
+    #
+    #     except Exception as e:
+    #         print(f"Error loading checkpoint {selected_checkpoint}: {e}")
+    #         print("Falling back to baseline teammate")
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "SelfPlay_LoadError_Fallback"
+    #         return teammate
+    #
+    # def _create_pretrained_rl_teammate(self):
+    #     """
+    #     Create pretrained RL mode selector teammate
+    #     """
+    #
+    #     if self.pretrained_teammate_dir is None:
+    #         print("Warning: No pretrained_teammate_dir specified, falling back to baseline teammate")
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "Pretrained_NoPretrainedDir_Fallback"
+    #         return teammate
+    #
+    #     if not os.path.exists(self.pretrained_teammate_dir):
+    #         print(f"Warning: Pretrained directory {self.pretrained_teammate_dir} does not exist, falling back to baseline")
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "Pretrained_NoPretrainedDir_Fallback"
+    #         return teammate
+    #
+    #     # Find all checkpoint files (assuming .zip format for stable-baselines3)
+    #     checkpoint_patterns = [
+    #         os.path.join(self.pretrained_teammate_dir, "*.zip"),
+    #         os.path.join(self.pretrained_teammate_dir, "**/*.zip"),  # Search subdirectories
+    #         os.path.join(self.pretrained_teammate_dir, "checkpoint_*.zip"),
+    #         os.path.join(self.pretrained_teammate_dir, "model_*.zip"),
+    #     ]
+    #
+    #     all_pretrained_teammates = []
+    #     for pattern in checkpoint_patterns:
+    #         all_pretrained_teammates.extend(glob.glob(pattern, recursive=True))
+    #
+    #     # Remove duplicates and sort by modification time (newest first)
+    #     all_pretrained_teammates = list(set(all_pretrained_teammates))
+    #     if not all_pretrained_teammates:
+    #         print(f"Warning: No pretrained files found in {self.pretrained_teammate_dir}, falling back to baseline")
+    #         teammate = self._create_baseline_teammate()
+    #         teammate.name = "Pretrained_NoPretrained_Fallback"
+    #         return teammate
+    #
+    #     all_pretrained_teammates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    #     selected_teammate = random.choice(all_pretrained_teammates)
+    #
+    #     # Load the selected pretrained teammate
+    #     print(f"Loading pretrained agent: {os.path.basename(selected_teammate)}")
+    #     selfplay_model = PPO.load(selected_teammate)
+    #
+    #     # Create RL teammate policy using the loaded model
+    #     pretrained_teammate = RLTeammatePolicy(
+    #         model=selfplay_model,
+    #         env=None,  # Will be set later if needed
+    #         local_search_policy=self.subpolicies.get('local_search'),
+    #         go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+    #         change_region_subpolicy=self.subpolicies.get('change_region'),
+    #     )
+    #
+    #     # Extract teammate identifier for naming
+    #     pretrained_name = os.path.splitext(os.path.basename(selected_teammate))[0]
+    #     pretrained_teammate.name = f"Pretrained_{pretrained_name}"
+    #
+    #     self.current_teammate = pretrained_teammate
+    #     return pretrained_teammate
 
 
     def _create_baseline_teammate(self):
@@ -445,11 +569,21 @@ class RLTeammatePolicy(TeammatePolicy):
                  local_search_policy,
                  go_to_highvalue_policy,
                  change_region_subpolicy,
-                 use_collision_avoidance: bool = False):
+                 use_collision_avoidance: bool = False,
+                 norm_stats_path: str = None):
 
         self.model = model
         self.env = env
         self.use_collision_avoidance = use_collision_avoidance
+
+        self.norm_stats = None
+        if norm_stats_path and os.path.exists(norm_stats_path):
+            try:
+                self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
+                #print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
+            except Exception as e:
+                print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
+                self.norm_stats = None
 
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
@@ -465,9 +599,9 @@ class RLTeammatePolicy(TeammatePolicy):
         """Choose subpolicy using the trained RL model"""
         try:
             self.last_observation = observation
+            normalized_obs = self._normalize_observation(observation) # Apply normalization if available
 
-            # Use the RL model to predict the action (subpolicy choice)
-            action, _ = self.model.predict(observation, deterministic=False)
+            action, _ = self.model.predict(normalized_obs, deterministic=False) # Use the RL model to predict the action (subpolicy choice)
 
             # Ensure action is a valid subpolicy choice (0, 1, 2, or 3)
             if hasattr(action, 'item'):  # Handle numpy scalars
@@ -479,8 +613,24 @@ class RLTeammatePolicy(TeammatePolicy):
 
         except Exception as e:
             print(f"[RLTeammatePolicy] Error in choose_subpolicy: {e}")
-            print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
+            #print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
             return 0  # Fallback to local search
+
+    def _normalize_observation(self, observation):
+        """Apply normalization to observation if stats are available"""
+        if self.norm_stats is None:
+            return observation
+
+        try:
+            obs_mean = self.norm_stats['obs_mean']
+            obs_var = self.norm_stats['obs_var']
+
+            # Apply normalization: (obs - mean) / sqrt(var + epsilon)
+            normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
+            return normalized_obs
+        except Exception as e:
+            print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
+            return observation
 
     def reset(self):
         """Reset any internal state"""
@@ -879,10 +1029,10 @@ class GoToNearestThreat(SubPolicy):
 
         if model_path is not None:
             self.model = PPO.load(model_path)
-            print('[GoToNearestThreat]: Using provided model for inference')
+            #print('[GoToNearestThreat]: Using provided model for inference')
         else:
             self.model = None
-            print('[GoToNearestThreat]: No model provided, using internal heuristic')
+            #print('[GoToNearestThreat]: No model provided, using internal heuristic')
 
         # Internal state of heuristic
         self._current_target_id = None
@@ -1217,15 +1367,15 @@ class LocalSearch(SubPolicy):
 
         if model_path:
             self.model = PPO.load(model_path)
-            print('[LocalSearch] Using provided model for inference')
+            #print('[LocalSearch] Using provided model for inference')
         else:
             self.model = None
-            print('[LocalSearch] No model provided, using internal heuristic')
+            #print('[LocalSearch] No model provided, using internal heuristic')
 
         self.norm_statistics_path = norm_stats_filepath
         if norm_stats_filepath:
             self.norm_stats_filepath = norm_stats_filepath
-            print(f'Loaded training normalization stats from {norm_stats_filepath}')
+            #print(f'Loaded training normalization stats from {norm_stats_filepath}')
         else:
             self.norm_stats_filepath = None
 
@@ -1649,10 +1799,10 @@ class ChangeRegions(SubPolicy):
         super().__init__(f"change_region")
         if model_path is not None:
             self.model = PPO.load(model_path)
-            print('[ChangeRegions]: Using provided model for inference')
+            #print('[ChangeRegions]: Using provided model for inference')
         else:
             self.model = None
-            print('[ChangeRegions]: No model provided, using internal heuristic')
+            #print('[ChangeRegions]: No model provided, using internal heuristic')
 
         self.update_rate = 10 # Recalculate every 10 steps to reduce computation cost
         self.steps_since_update = 0
