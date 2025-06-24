@@ -1596,13 +1596,13 @@ class MAISREnvVec(gym.Env):
         pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
 
 
-    def render_subpolicy_indicators(self, human_subpolicy_id, human_subpolicy_name,
-                                    ai_subpolicy_id, ai_subpolicy_name):
+    def render_subpolicy_indicators(self, agent0_subpolicy_id, agent0_subpolicy_name,
+                                    agent1_subpolicy_id, agent1_subpolicy_name):
         """Render colored squares indicating the current active subpolicy for each agent"""
         if self.render_mode != 'human':
             return
 
-        #print(f"[DEBUG] Rendering indicators: Human={human_subpolicy_name}, AI={ai_subpolicy_name}")
+        #print(f"[DEBUG] Rendering indicators: Human={human_subpolicy_name}, AI={agent1_subpolicy_name}")
 
         # Define colors for each subpolicy
         subpolicy_colors = {
@@ -1625,63 +1625,63 @@ class MAISREnvVec(gym.Env):
         margin = 10
 
         # Position indicators in top-left corner where they'll definitely be visible
-        human_indicator_x = self.config['gameboard_size']+margin
-        human_indicator_y = margin
+        agent0_indicator_x = self.config['gameboard_size']+margin
+        agent0_indicator_y = margin
 
-        # Position for AI indicator (below human indicator)
-        ai_indicator_x = human_indicator_x
-        ai_indicator_y = human_indicator_y + indicator_size + margin
+        # Position for AI indicator (below agent0 indicator)
+        agent1_indicator_x = agent0_indicator_x
+        agent1_indicator_y = agent0_indicator_y + indicator_size + margin
 
-        #print(f"[DEBUG] Drawing human indicator at ({human_indicator_x}, {human_indicator_y})")
-        #print(f"[DEBUG] Drawing AI indicator at ({ai_indicator_x}, {ai_indicator_y})")
+        #print(f"[DEBUG] Drawing agent0 indicator at ({agent0_indicator_x}, {agent0_indicator_y})")
+        #print(f"[DEBUG] Drawing AI indicator at ({agent1_indicator_x}, {agent1_indicator_y})")
 
-        # Draw human subpolicy indicator
-        human_color = subpolicy_colors.get(human_subpolicy_id, (128, 128, 128))
-        pygame.draw.rect(self.window, human_color,
-                         (human_indicator_x, human_indicator_y, indicator_size, indicator_size))
+        # Draw agent0 subpolicy indicator
+        agent0_color = subpolicy_colors.get(int(agent0_subpolicy_id), (128, 128, 128))
+        pygame.draw.rect(self.window, agent0_color,
+                         (agent0_indicator_x, agent0_indicator_y, indicator_size, indicator_size))
         pygame.draw.rect(self.window, (0, 0, 0),
-                         (human_indicator_x, human_indicator_y, indicator_size, indicator_size), 3)
+                         (agent0_indicator_x, agent0_indicator_y, indicator_size, indicator_size), 3)
 
         # Draw AI subpolicy indicator
-        ai_color = subpolicy_colors.get(ai_subpolicy_id, (128, 128, 128))
-        pygame.draw.rect(self.window, ai_color,
-                         (ai_indicator_x, ai_indicator_y, indicator_size, indicator_size))
+        agent1_color = subpolicy_colors.get(agent1_subpolicy_id, (128, 128, 128))
+        pygame.draw.rect(self.window, agent1_color,
+                         (agent1_indicator_x, agent1_indicator_y, indicator_size, indicator_size))
         pygame.draw.rect(self.window, (0, 0, 0),
-                         (ai_indicator_x, ai_indicator_y, indicator_size, indicator_size), 3)
+                         (agent1_indicator_x, agent1_indicator_y, indicator_size, indicator_size), 3)
 
         # Add text labels
         font = pygame.font.SysFont(None, 24)
         small_font = pygame.font.SysFont(None, 20)
 
-        # Human indicator text
-        human_title = font.render("HUMAN", True, (255, 255, 255))
-        human_title_rect = human_title.get_rect(
-            center=(human_indicator_x + indicator_size // 2, human_indicator_y + 20)
+        # agent0 indicator text
+        agent0_title = font.render("AGENT 0", True, (255, 255, 255))
+        agent0_title_rect = agent0_title.get_rect(
+            center=(agent0_indicator_x + indicator_size // 2, agent0_indicator_y + 20)
         )
 
-        human_subpolicy_text = small_font.render(subpolicy_names.get(human_subpolicy_id, "unknown"), True,
+        agent0_subpolicy_text = small_font.render(subpolicy_names.get(int(agent0_subpolicy_id), "unknown"), True,
                                                  (255, 255, 255))
-        human_subpolicy_rect = human_subpolicy_text.get_rect(
-            center=(human_indicator_x + indicator_size // 2, human_indicator_y + indicator_size - 15)
+        agent0_subpolicy_rect = agent0_subpolicy_text.get_rect(
+            center=(agent0_indicator_x + indicator_size // 2, agent0_indicator_y + indicator_size - 15)
         )
 
         # AI indicator text
-        ai_title = font.render("AI", True, (255, 255, 255))
-        ai_title_rect = ai_title.get_rect(
-            center=(ai_indicator_x + indicator_size // 2, ai_indicator_y + 20)
+        agent1_title = font.render("Teammate", True, (255, 255, 255))
+        agent1_title_rect = agent1_title.get_rect(
+            center=(agent1_indicator_x + indicator_size // 2, agent1_indicator_y + 20)
         )
 
-        ai_subpolicy_text = small_font.render(subpolicy_names.get(ai_subpolicy_id, "unknown"), True, (255, 255, 255))
-        ai_subpolicy_rect = ai_subpolicy_text.get_rect(
-            center=(ai_indicator_x + indicator_size // 2, ai_indicator_y + indicator_size - 15)
+        agent1_subpolicy_text = small_font.render(subpolicy_names.get(agent1_subpolicy_id, "unknown"), True, (255, 255, 255))
+        agent1_subpolicy_rect = agent1_subpolicy_text.get_rect(
+            center=(agent1_indicator_x + indicator_size // 2, agent1_indicator_y + indicator_size - 15)
         )
 
         # Draw text with semi-transparent backgrounds for readability
         text_items = [
-            (human_title, human_title_rect),
-            (human_subpolicy_text, human_subpolicy_rect),
-            (ai_title, ai_title_rect),
-            (ai_subpolicy_text, ai_subpolicy_rect)
+            (agent0_title, agent0_title_rect),
+            (agent0_subpolicy_text, agent0_subpolicy_rect),
+            (agent1_title, agent1_title_rect),
+            (agent1_subpolicy_text, agent1_subpolicy_rect)
         ]
 
         for text_surface, text_rect in text_items:

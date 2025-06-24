@@ -9,11 +9,17 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 #from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
 from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
-    EvadeDetection
+    EvadeDetection, TeammateManager
 
 if __name__ == "__main__":
 
     config_filename = 'configs/june23_poc1_2ship.json'
+
+    league_type = 'strategy_diverse'
+    balance_method = 'uniform'
+    num_episodes = 20
+    tick_rate = 20
+
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -22,10 +28,21 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
     ctypes.windll.user32.SetProcessDPIAware()
     window_width, window_height = config['window_size'][0], config['window_size'][1]
-    config['tick_rate'] = 30
+    config['tick_rate'] = tick_rate
     window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
     pygame.display.set_caption("MAISR Human Interface")
 
+    ####################################################################################################################
+    localsearch_model_path = None  # 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
+    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
+
+    subpolicies = {
+        'local_search': LocalSearch(model_path=None),  # Using heuristic
+        'change_region': ChangeRegions(model_path=None),  # Using heuristic
+        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
+    }
+
+    ####################################################################################################################
     base_env = MAISREnvVec(
         config=config,
         clock=clock,
@@ -35,37 +52,20 @@ if __name__ == "__main__":
         tag=f'test0',
     )
 
-    # Instantiate subpolicies
-    localsearch_model_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip'
-    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
-    local_search_policy = LocalSearch(
-        #model_path = localsearch_model_path,
-        norm_stats_filepath = localsearch_normstats_path
-    )
-    go_to_highvalue_policy = GoToNearestThreat(model_path=None)
-    change_region_subpolicy = ChangeRegions(model_path=None)
-    evade_policy = EvadeDetection(model_path=None)
-
-    # Instantiate teammate
-    teammate = GenericTeammatePolicy(
-        base_env,
-        LocalSearch(model_path=None),
-        GoToNearestThreat(model_path=None),
-        ChangeRegions(model_path=None),
-        'human',
-        False)
-
     env = MaisrModeSelectorWrapper(
         base_env,
-        local_search_policy,
-        go_to_highvalue_policy,
-        change_region_subpolicy,
-        evade_policy,
-        teammate_policy=teammate
+        local_search_policy=LocalSearch(
+            model_path=localsearch_model_path,
+            norm_stats_filepath=localsearch_normstats_path),
+        go_to_highvalue_policy=GoToNearestThreat(model_path=None),
+        change_region_subpolicy=ChangeRegions(model_path=None),
+        evade_policy=EvadeDetection(model_path=None),
+        teammate_manager=TeammateManager(league_type, balance_method, subpolicies=subpolicies)
     )
 
-    # Add this after the env creation and before the main loop
-    model_path = './trained_models/teammates/teammate_0623_1547_seed42_1agents_5envs_trained_model.zip'
+    ####################################################################################################################
+    # Load model
+    model_path = './trained_models/modeselector_poc1_2ship_0.0005lr_1024bs_0623_1424_16envs/maisr_checkpoint_modeselector_poc1_2ship_0.0005lr_1024bs_0623_1424_16envs_149760_steps.zip'
     model = PPO.load(model_path)
     print(f"Loaded PPO model from {model_path}")
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     episode_rewards = []
     all_actions = []
 
-    for episode in range(3):
+    for episode in range(num_episodes):
         obs = env.reset()[0]
         episode_reward = 0
         episode_observations, episode_actions, potential_gain_history = [], [], []
@@ -125,14 +125,13 @@ if __name__ == "__main__":
 
             step_count += 1
 
-            # Get current subpolicy info and render indicator
-            if hasattr(env, 'get_current_subpolicy_info'):
-                subpolicy_id, subpolicy_name = env.get_current_subpolicy_info()
-                env.render()
-                # Render the subpolicy indicator after the main render
-                env.env.render_subpolicy_indicator(subpolicy_id, subpolicy_name)
-                pygame.display.update()  # Update display after adding indicator
+            # Render subpolicy icons
+            agent0_subpolicy_id, agent0_subpolicy_name = env.get_current_subpolicy_info()
+            if config['num_aircraft'] == 2:
+                agent1_subpolicy_id, agent1_subpolicy_name = env.get_teammate_subpolicy_info()
             else:
-                env.render()
+                agent1_subpolicy_id, agent1_subpolicy_name = 0, 'N/A'
+            env.env.render_subpolicy_indicators(agent0_subpolicy_id, agent0_subpolicy_name, agent1_subpolicy_id,agent1_subpolicy_name)
+            pygame.display.flip()
 
     env.close()

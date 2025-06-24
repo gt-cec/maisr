@@ -50,6 +50,8 @@ class TeammateManager:
         self.episode_count = 0
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
 
+
+
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
         if league_type not in valid_league_types:
@@ -74,6 +76,7 @@ class TeammateManager:
             "strategy_diverse": ["none", "some", "high"]}
 
         print(f"\nTeammateManager initialized with league_type: {league_type}, balance_method: {balance_method}")
+        print(f'TeammateManager using selfplay_checkpoint_dir: {selfplay_checkpoint_dir}')
 
     def select_random_teammate(self):
         """Select a teammate based on league type and balance method configuration"""
@@ -86,6 +89,8 @@ class TeammateManager:
 
     def _select_uniform_teammate(self):
         """Original uniform random selection method"""
+        if True: # TODO TESTING
+            return self._create_selfplay_teammate()
         if self.league_type == "baseline":
             return self._create_baseline_teammate()
         elif self.league_type == "vanilla":
@@ -108,6 +113,7 @@ class TeammateManager:
 
         # 25% chance of self-play (placeholder for now)
         if random.random() < 0.25:
+            print(f'Creating selfplay teammate')
             return self._create_selfplay_teammate()
 
         # Remaining 75% split between heuristic and RL based on league type

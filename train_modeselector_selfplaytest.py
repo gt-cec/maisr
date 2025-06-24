@@ -897,7 +897,7 @@ if __name__ == "__main__":
                 use_teammate_manager=True,
                 render=False,
                 selfplay_checkpoint_dir= './trained_models/checkpoint_test',
-                n_envs=multiprocessing.cpu_count()-14,
+                n_envs=multiprocessing.cpu_count(),
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

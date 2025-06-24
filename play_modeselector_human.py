@@ -681,6 +681,7 @@ if __name__ == "__main__":
 
     config_filename = 'configs/june23_poc1_2ship.json'
     league_type = 'strategy_diverse'
+    balance_method = 'uniform'
     num_episodes = 20
     tick_rate = 40
     testing_1ship = False # Forces human agent to hold
@@ -691,7 +692,7 @@ if __name__ == "__main__":
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
-    balance_method = config['balance_method']
+
 
     pygame.display.init()
     pygame.font.init()

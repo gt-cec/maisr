@@ -242,12 +242,13 @@ class MaisrModeSelectorWrapper(gym.Env):
                 self.current_teammate.env = self.env
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
+            #print(f'[Wrapper.step] Chose teammate subpolicy {self.teammate_subpolicy_choice}')
 
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
+            #print(f'[Wrapper.step] Teammate subpolicy obs is {teammate_subpolicy_observation}')
             if self.teammate_subpolicy_choice == 0:  # Local search
-                #direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation)
                 direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation, env=self.env, agent_id=1)
-                teammate_subpolicy_action = teammate_subpolicy_action = self.env._direction_to_waypoint(direction_to_move, 1)
+                teammate_subpolicy_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 1:  # Change region
                 waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
@@ -257,16 +258,18 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
-                #print(f'[Wrapper] GoToThreat subpolicy raw action is {waypoint_to_go}')
                 teammate_subpolicy_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
-                #print(f'[Wrapper] GoToThreat subpolicy PROCESSED action is {teammate_subpolicy_action}')
 
+            elif self.teammate_subpolicy_choice == 3:  # Hold at current location
+                teammate_subpolicy_action = np.array([
+                    self.env.agents[self.env.aircraft_ids[1]].x / self.env.config['gameboard_size'],
+                    self.env.agents[self.env.aircraft_ids[1]].y / self.env.config['gameboard_size']])
+            else:
+                raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
+            #print(f'[Wrapper.step] Teammate subpolicy action is {teammate_subpolicy_action}')
             # Apply teammate action to aircraft[1]
-            #teammate_waypoint = self.env.process_action(teammate_subpolicy_action, agent_id=1)
-            #print(f'[Wrapper] Teammate waypoint set in env to {teammate_subpolicy_action}')
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_subpolicy_action
-            #print(f'Teammate location is {self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y}')
 
         ############################################ Step the environment #############################################
 
@@ -1144,7 +1147,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             2: "Go to Threat",
             3: "Evade"
         }
-        return self.subpolicy_choice, mode_names.get(self.subpolicy_choice, "Unknown")
+        return self.subpolicy_choice, mode_names.get(int(self.subpolicy_choice), "Unknown")
 
     def get_teammate_subpolicy_info(self):
         """Return teammate's current subpolicy information for display"""
