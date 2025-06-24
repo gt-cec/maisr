@@ -112,7 +112,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             self.current_teammate = self.teammate_manager.select_random_teammate()
             print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
         elif self.teammate_policy:
-            self.current_teammate = teammate_policy
+            self.current_teammate = self.teammate_policy
         else: # No manager specified, use fixed teammate
             self.current_teammate = None
 

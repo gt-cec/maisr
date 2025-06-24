@@ -8,12 +8,12 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 #from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
 #from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from utility.data_logging import load_env_config
-from utility.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
+from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
     EvadeDetection
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/old configs/june16_2ship.json'
+    config_filename = 'configs/june23_poc1_2ship.json'
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -64,6 +64,11 @@ if __name__ == "__main__":
         teammate_policy=teammate
     )
 
+    # Add this after the env creation and before the main loop
+    model_path = './trained_models/teammates/teammate_0623_1547_seed42_1agents_5envs_trained_model.zip'
+    model = PPO.load(model_path)
+    print(f"Loaded PPO model from {model_path}")
+
 
     ###################################################################################################################
 
@@ -94,11 +99,15 @@ if __name__ == "__main__":
                     if event.key == pygame.K_ESCAPE:
                         done = True
                         break
-                    elif event.key in key_to_action:
-                        action = key_to_action[event.key]
-                        print(f"Selected subpolicy {action}")
+                    # elif event.key in key_to_action:
+                    #     action = key_to_action[event.key]
+                    #     print(f"Selected subpolicy {action}")
             if done:
                 break
+
+            if not done:
+                action, _ = model.predict(obs, deterministic=True)
+                print(f"PPO selected subpolicy {action}")
 
             # Store data
             episode_observations.append(obs.copy())

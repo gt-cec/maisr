@@ -15,11 +15,33 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 from env_multi_new import MAISREnvVec
+from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
 
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 
+
+def setup_teammate_pool(league_type, balance_method):
+    """Setup teammate manager with specified league type"""
+
+    # Create subpolicies for teammates to use
+    # Note: These would typically be loaded from trained models
+    subpolicies = {
+        'local_search': LocalSearch(model_path=None),  # Using heuristic
+        'change_region': ChangeRegions(model_path=None),  # Using heuristic
+        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
+    }
+
+    teammate_manager = TeammateManager(
+        league_type,
+        balance_method,
+        subpolicies=subpolicies
+    )
+
+    print(f"Teammate manager setup with league_type: {league_type}")
+    return teammate_manager
 
 def generate_run_name(config, seed, num_agents):
     """Generate a unique, descriptive name for this training run."""
@@ -36,26 +58,6 @@ def generate_run_name(config, seed, num_agents):
     return run_name
 
 
-def make_env(env_config, rank, seed, run_name='no_name'):
-    """
-    Callable function that creates a MAISR environment for training teammates.
-    """
-
-    def _init():
-        env = MAISREnvVec(
-            config=env_config,
-            render_mode='headless',
-            run_name=run_name,
-            tag=f'train_mp{rank}',
-            seed=seed + rank,
-        )
-        env = Monitor(env)
-        env.reset()
-        return env
-
-    return _init
-
-
 def train_single_teammate(
         env_config,
         training_seed,
@@ -65,7 +67,8 @@ def train_single_teammate(
         use_normalize=True,
         save_dir="./trained_models/teammates/",
         log_dir="./logs/teammates/",
-        machine_name='machine'
+        machine_name='machine',
+        use_teammate_manager = True
 ):
     """
     Train a single teammate agent with specified configuration.
@@ -78,6 +81,48 @@ def train_single_teammate(
 
     # Generate unique run name
     run_name = generate_run_name(config, training_seed, num_agents)
+
+    if env_config['num_aircraft'] > 1 and use_teammate_manager:
+        teammate_manager = setup_teammate_pool(league_type=env_config['league_type'], balance_method = env_config['balance_method'])
+        print('Instantiated teammate manager')
+    else:
+        teammate_manager = None
+        print('NOT USING a teammate manager')
+
+    print(f"Training with {n_envs} environments in parallel")
+
+    def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
+        def _init():
+            # Create base environment
+            base_env = MAISREnvVec(
+                config=env_config,
+                render_mode='headless',
+                run_name=run_name,
+                tag=f'train_mp{rank}',
+                seed=seed + rank,
+            )
+
+            #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
+            local_search_policy = LocalSearch()
+            go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+            change_region_subpolicy = ChangeRegions(model_path=None)
+            evade_policy = None
+
+            wrapped_env = MaisrModeSelectorWrapper(
+                base_env,
+                local_search_policy,
+                go_to_highvalue_policy,
+                change_region_subpolicy,
+                evade_policy,
+                teammate_manager = teammate_manager,
+                observation_noise_std = env_config['observation_noise_std']
+            )
+
+            wrapped_env = Monitor(wrapped_env)
+            wrapped_env.reset()
+            return wrapped_env
+
+        return _init
 
     print(f'\n=== Training teammate: {run_name} ===')
     print(f'Seed: {training_seed}, Num agents: {num_agents}')
@@ -97,27 +142,28 @@ def train_single_teammate(
 
     print(f"Training with {n_envs} environments in parallel")
 
-    # Create vectorized training environments
-    env_fns = [make_env(config, i, training_seed + i, run_name=run_name) for i in range(n_envs)]
+    # Instantiate main env
+    env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
     if n_envs > 1:
         env = SubprocVecEnv(env_fns)
     else:
         env = DummyVecEnv(env_fns)
 
-    # Apply SB3 wrappers
-    env = VecMonitor(env, filename=os.path.join(log_dir, f'vecmonitor_{run_name}'))
-    if use_normalize:
-        env = VecNormalize(env)
+    # SB3 wrappers for main env
+    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    if use_normalize: env = VecNormalize(env)
 
-    # Create evaluation environment
-    base_eval_env = MAISREnvVec(
-        config=config,
-        render_mode='headless',
-        tag='eval',
-        run_name=run_name,
-        seed=training_seed + 1000  # Different seed for eval
+    # Create and wrap eval environment
+    base_eval_env = MAISREnvVec(env_config, None, render_mode='headless', tag='eval', run_name=run_name, )
+    eval_env = MaisrModeSelectorWrapper(
+        base_eval_env,
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        None,
+        teammate_manager=teammate_manager
     )
-    eval_env = Monitor(base_eval_env)
+    eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
 
     if use_normalize:
@@ -129,7 +175,7 @@ def train_single_teammate(
 
     # Setup callbacks
     checkpoint_callback = CheckpointCallback(
-        save_freq=config['save_freq'] // n_envs,
+        save_freq=50000 // n_envs,
         save_path=f"{save_dir}/{run_name}",
         name_prefix=f"teammate_checkpoint_{run_name}",
         save_replay_buffer=True,
@@ -259,7 +305,7 @@ def train_rl_teammates(
     config = load_env_config(config_filename)
     config['n_envs'] = n_envs
     config['config_filename'] = config_filename
-    config['num_timesteps'] = 1e5
+    #config['num_timesteps'] = 2e4
 
     # Determine machine name for WandB logging
     machine_name = (
@@ -348,7 +394,7 @@ def train_rl_teammates(
 if __name__ == "__main__":
     # Configuration parameters
     num_agents_to_train = 7
-    seed_list = [42, 123, 456, 789, 1337, 2048, 9999]
+    seed_list = [2048, 9999, 42, 123, 456, 789, 1337]
     config_filename = 'configs/june23_poc1_2ship.json'
 
     # Train the teammates
