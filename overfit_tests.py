@@ -6,13 +6,15 @@ from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
 from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
-    EvadeDetection, TeammateManager
+    EvadeDetection, TeammateManager, HeuristicAgent
 import json
 import datetime
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
 import os
+import pickle
 from collections import defaultdict
 
 
@@ -55,6 +57,489 @@ def calculate_coordination_score(human_sequence, teammate_usage):
     return coordination_score
 
 
+def get_counter_overfit_type(overfit_type):
+    """Get the opposite overfit type for counter behavior"""
+    counter_mapping = {
+        'low_risk': 'high_risk',
+        'high_risk': 'low_risk',
+        'nospatial': 'highspatial',
+        'highspatial': 'nospatial'
+    }
+    return counter_mapping[overfit_type]
+
+
+def create_overfit_agent(overfit_type, subpolicies):
+    """Create an overfit agent with specific configuration"""
+    if overfit_type == "low_risk":
+        mode_selector = "heuristic"
+        risk_tolerance = "low"
+        spatial_coord = "some"
+
+    elif overfit_type == "high_risk":
+        mode_selector = "heuristic"
+        risk_tolerance = "high"
+        spatial_coord = "some"
+
+    elif overfit_type == "nospatial":
+        mode_selector = "heuristic"
+        risk_tolerance = "medium"
+        spatial_coord = "none"
+
+    elif overfit_type == "highspatial":
+        mode_selector = "heuristic"
+        risk_tolerance = "medium"
+        spatial_coord = "high"
+
+    else:
+        raise ValueError(f"Unknown overfit_type: {overfit_type}")
+
+    heuristic_agent = HeuristicAgent(
+        mode_selector=mode_selector,
+        risk_tolerance=risk_tolerance,
+        spatial_coord=spatial_coord
+    )
+
+    agent = GenericTeammatePolicy(
+        env=None,
+        local_search_policy=subpolicies.get('local_search'),
+        go_to_highvalue_policy=subpolicies.get('go_to_threat'),
+        change_region_subpolicy=subpolicies.get('change_region'),
+        mode_selector_agent=heuristic_agent,
+        use_collision_avoidance=False
+    )
+
+    agent.name = f"OverfitAgent_{overfit_type}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
+    return agent
+
+
+def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type):
+    """Run a batch of episodes with the given agent configuration"""
+    episode_data = []
+
+    print(f"\nRunning {num_episodes} episodes for {overfit_type} agent with {behavior_type} behavior...")
+
+    for episode in range(num_episodes):
+        obs = env.reset()[0]
+        episode_reward = 0
+
+        # Initialize tracking variables
+        episode_steps = 0
+        initial_threat_ids = env.env.num_threats_identified
+        initial_target_ids = env.env.targets_identified
+
+        # Subpolicy tracking
+        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+        subpolicy_switches = 0
+        last_action = None
+        subpolicy_sequence = []
+
+        # Teammate tracking
+        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+        teammate_switches = 0
+        last_teammate_action = None
+
+        # Performance tracking
+        detection_events = []
+        identification_events = []
+        distance_traveled = 0
+        last_position = None
+        positions_visited = []
+        teammate_positions_visited = []
+        target_discovery_times = {}
+        threat_discovery_times = {}
+
+        # Timing tracking
+        episode_start_time = pygame.time.get_ticks()
+
+        done = False
+
+        while not done:
+            # Handle pygame events (minimal for automated testing)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    done = True
+                    break
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    done = True
+                    break
+
+            if done:
+                break
+
+            # Get action from agent
+            action = agent.choose_subpolicy(obs, last_action)
+
+            # Track subpolicy usage
+            subpolicy_usage[action] += 1
+            subpolicy_sequence.append(action)
+            if last_action is not None and last_action != action:
+                subpolicy_switches += 1
+            last_action = action
+
+            # Track teammate behavior
+            if env.env.config['num_aircraft'] == 2:
+                ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+                teammate_subpolicy_usage[ai_subpolicy_id] += 1
+                if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+                    teammate_switches += 1
+                last_teammate_action = ai_subpolicy_id
+
+            # Take step
+            obs, reward, terminated, truncated, info = env.step(action)
+            episode_reward += reward
+            done = terminated or truncated
+            episode_steps += 1
+
+            # Track position and distance
+            current_pos = (env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)
+            positions_visited.append(current_pos)
+            if env.env.config['num_aircraft'] == 2:
+                teammate_current_pos = (
+                env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
+                teammate_positions_visited.append(teammate_current_pos)
+
+            if last_position is not None:
+                distance_traveled += math.sqrt((current_pos[0] - last_position[0]) ** 2 +
+                                               (current_pos[1] - last_position[1]) ** 2)
+            last_position = current_pos
+
+            # Track events
+            if 'new_detections' in info and info['new_detections'] > 0:
+                detection_events.append({
+                    'step': episode_steps,
+                    'count': info['new_detections'],
+                    'position': current_pos
+                })
+
+            if 'new_target_ids' in info and info['new_target_ids'] > 0:
+                identification_events.append({
+                    'step': episode_steps,
+                    'type': 'target',
+                    'count': info['new_target_ids']
+                })
+                target_discovery_times[len(target_discovery_times)] = episode_steps
+
+            if 'new_threat_ids' in info and info['new_threat_ids'] > 0:
+                identification_events.append({
+                    'step': episode_steps,
+                    'type': 'threat',
+                    'count': info['new_threat_ids']
+                })
+                threat_discovery_times[len(threat_discovery_times)] = episode_steps
+
+        # Calculate episode duration
+        episode_end_time = pygame.time.get_ticks()
+        episode_duration_ms = episode_end_time - episode_start_time
+
+        # Calculate final counts
+        final_threat_ids = env.env.num_threats_identified
+        final_target_ids = env.env.targets_identified
+        threat_ids_gained = final_threat_ids - initial_threat_ids
+        target_ids_gained = final_target_ids - initial_target_ids
+
+        # Calculate average teammate distance
+        avg_teammate_distance = 0
+        if positions_visited and teammate_positions_visited:
+            min_length = min(len(positions_visited), len(teammate_positions_visited))
+            distances = []
+            for i in range(min_length):
+                agent_pos = positions_visited[i]
+                teammate_pos = teammate_positions_visited[i]
+                distance = math.sqrt((agent_pos[0] - teammate_pos[0]) ** 2 +
+                                     (agent_pos[1] - teammate_pos[1]) ** 2)
+                distances.append(distance)
+            avg_teammate_distance = sum(distances) / len(distances) if distances else 0
+
+        # Store comprehensive episode data
+        episode_info = {
+            # Basic metrics
+            'episode': episode + 1,
+            'steps': episode_steps,
+            'threat_ids': threat_ids_gained,
+            'target_ids': target_ids_gained,
+            'total_reward': episode_reward,
+            'duration_ms': episode_duration_ms,
+            'avg_teammate_distance': avg_teammate_distance,
+
+            # Configuration
+            'overfit_type': overfit_type,
+            'behavior_type': behavior_type,
+
+            # Subpolicy analytics
+            'subpolicy_usage': subpolicy_usage.copy(),
+            'subpolicy_switches': subpolicy_switches,
+            'subpolicy_percentages': {
+                k: (v / episode_steps * 100) if episode_steps > 0 else 0
+                for k, v in subpolicy_usage.items()
+            },
+            'subpolicy_sequence': subpolicy_sequence.copy(),
+
+            # Teammate analytics
+            'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
+            'teammate_switches': teammate_switches,
+            'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+            'positions_visited': positions_visited,
+            'teammate_positions_visited': teammate_positions_visited,
+
+            # Performance metrics
+            'distance_traveled': distance_traveled,
+            'efficiency_score': target_ids_gained / max(episode_steps, 1),
+            'spatial_coverage_percent': calculate_spatial_coverage(positions_visited, env.env.config['gameboard_size']),
+            'avg_distance_per_step': distance_traveled / max(episode_steps, 1),
+
+            # Event tracking
+            'detection_events': detection_events,
+            'identification_events': identification_events,
+            'total_detections': env.env.detections,
+            'num_detection_events': len(detection_events),
+
+            # Timing analysis
+            'target_discovery_times': target_discovery_times,
+            'threat_discovery_times': threat_discovery_times,
+            'time_to_first_target': min(target_discovery_times.values()) if target_discovery_times else None,
+            'time_to_last_target': max(target_discovery_times.values()) if target_discovery_times else None,
+
+            # Episode outcome
+            'completed_successfully': env.env.all_targets_identified,
+            'termination_reason': 'success' if env.env.all_targets_identified else
+            'failed' if env.env.failed else 'timeout',
+
+            # Environment state
+            'final_threat_count': final_threat_ids,
+            'final_target_count': final_target_ids,
+            'num_targets_total': env.env.config['num_targets'],
+            'num_threats_total': env.env.config['num_threats'],
+            'gameboard_size': env.env.config['gameboard_size'],
+            'max_steps_allowed': env.env.max_steps,
+        }
+
+        episode_data.append(episode_info)
+
+        # Print progress
+        if (episode + 1) % 5 == 0:
+            print(f"  Completed {episode + 1}/{num_episodes} episodes")
+
+    return episode_data
+
+
+def calculate_summary_statistics(episode_data):
+    """Calculate summary statistics for a batch of episodes"""
+    if not episode_data:
+        return {}
+
+    # Extract metrics
+    rewards = [ep['total_reward'] for ep in episode_data]
+    target_ids = [ep['target_ids'] for ep in episode_data]
+    threat_ids = [ep['threat_ids'] for ep in episode_data]
+    avg_distances = [ep['avg_teammate_distance'] for ep in episode_data]
+    steps = [ep['steps'] for ep in episode_data]
+    efficiency_scores = [ep['efficiency_score'] for ep in episode_data]
+    spatial_coverage = [ep['spatial_coverage_percent'] for ep in episode_data]
+    success_rate = sum(1 for ep in episode_data if ep['completed_successfully']) / len(episode_data)
+
+    return {
+        'reward': {'mean': np.mean(rewards), 'std': np.std(rewards), 'values': rewards},
+        'target_ids': {'mean': np.mean(target_ids), 'std': np.std(target_ids), 'values': target_ids},
+        'threat_ids': {'mean': np.mean(threat_ids), 'std': np.std(threat_ids), 'values': threat_ids},
+        'avg_teammate_distance': {'mean': np.mean(avg_distances), 'std': np.std(avg_distances),
+                                  'values': avg_distances},
+        'steps': {'mean': np.mean(steps), 'std': np.std(steps), 'values': steps},
+        'efficiency_score': {'mean': np.mean(efficiency_scores), 'std': np.std(efficiency_scores),
+                             'values': efficiency_scores},
+        'spatial_coverage': {'mean': np.mean(spatial_coverage), 'std': np.std(spatial_coverage),
+                             'values': spatial_coverage},
+        'success_rate': success_rate,
+        'num_episodes': len(episode_data)
+    }
+
+
+def create_comparison_plots(all_results, timestamp):
+    """Create comparison plots for all overfit agents and behaviors"""
+
+    # Create figure with subplots
+    fig, axes = plt.subplots(3, 3, figsize=(20, 16))
+    fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
+
+    overfit_types = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
+    behavior_types = ['aligned', 'counter']
+
+    metrics = ['reward', 'target_ids', 'avg_teammate_distance', 'steps', 'efficiency_score',
+               'spatial_coverage', 'success_rate', 'threat_ids']
+
+    # Plot 1: Reward comparison
+    ax = axes[0, 0]
+    x_pos = np.arange(len(overfit_types))
+    width = 0.35
+
+    aligned_rewards = [all_results[ot]['aligned']['reward']['mean'] for ot in overfit_types]
+    counter_rewards = [all_results[ot]['counter']['reward']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['reward']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['reward']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_rewards, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_rewards, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Reward')
+    ax.set_title('Reward Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 2: Target IDs comparison
+    ax = axes[0, 1]
+    aligned_targets = [all_results[ot]['aligned']['target_ids']['mean'] for ot in overfit_types]
+    counter_targets = [all_results[ot]['counter']['target_ids']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['target_ids']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['target_ids']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_targets, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_targets, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Target IDs')
+    ax.set_title('Target IDs Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 3: Average teammate distance comparison
+    ax = axes[0, 2]
+    aligned_distances = [all_results[ot]['aligned']['avg_teammate_distance']['mean'] for ot in overfit_types]
+    counter_distances = [all_results[ot]['counter']['avg_teammate_distance']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['avg_teammate_distance']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['avg_teammate_distance']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_distances, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_distances, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Teammate Distance')
+    ax.set_title('Teammate Distance Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 4: Success rate comparison
+    ax = axes[1, 0]
+    aligned_success = [all_results[ot]['aligned']['success_rate'] for ot in overfit_types]
+    counter_success = [all_results[ot]['counter']['success_rate'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_success, width, label='Aligned')
+    ax.bar(x_pos + width / 2, counter_success, width, label='Counter')
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Success Rate')
+    ax.set_title('Success Rate Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 1)
+
+    # Plot 5: Efficiency comparison
+    ax = axes[1, 1]
+    aligned_efficiency = [all_results[ot]['aligned']['efficiency_score']['mean'] for ot in overfit_types]
+    counter_efficiency = [all_results[ot]['counter']['efficiency_score']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['efficiency_score']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['efficiency_score']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_efficiency, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_efficiency, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Efficiency Score')
+    ax.set_title('Efficiency Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 6: Steps comparison
+    ax = axes[1, 2]
+    aligned_steps = [all_results[ot]['aligned']['steps']['mean'] for ot in overfit_types]
+    counter_steps = [all_results[ot]['counter']['steps']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['steps']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['steps']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_steps, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_steps, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Steps')
+    ax.set_title('Steps Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 7: Performance difference (Aligned - Counter)
+    ax = axes[2, 0]
+    reward_diff = [all_results[ot]['aligned']['reward']['mean'] - all_results[ot]['counter']['reward']['mean']
+                   for ot in overfit_types]
+    colors = ['green' if diff > 0 else 'red' for diff in reward_diff]
+
+    ax.bar(x_pos, reward_diff, color=colors, alpha=0.7)
+    ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Reward Difference (Aligned - Counter)')
+    ax.set_title('Performance Advantage of Aligned Behavior')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.grid(True, alpha=0.3)
+
+    # Plot 8: Spatial coverage comparison
+    ax = axes[2, 1]
+    aligned_coverage = [all_results[ot]['aligned']['spatial_coverage']['mean'] for ot in overfit_types]
+    counter_coverage = [all_results[ot]['counter']['spatial_coverage']['mean'] for ot in overfit_types]
+    aligned_stds = [all_results[ot]['aligned']['spatial_coverage']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['spatial_coverage']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width / 2, aligned_coverage, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos + width / 2, counter_coverage, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Spatial Coverage (%)')
+    ax.set_title('Spatial Coverage Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Plot 9: Combined effectiveness score
+    ax = axes[2, 2]
+    # Calculate combined score: (reward * target_ids * success_rate) / steps
+    aligned_combined = []
+    counter_combined = []
+
+    for ot in overfit_types:
+        aligned_score = (all_results[ot]['aligned']['reward']['mean'] *
+                         all_results[ot]['aligned']['target_ids']['mean'] *
+                         all_results[ot]['aligned']['success_rate']) / max(all_results[ot]['aligned']['steps']['mean'],
+                                                                           1)
+        counter_score = (all_results[ot]['counter']['reward']['mean'] *
+                         all_results[ot]['counter']['target_ids']['mean'] *
+                         all_results[ot]['counter']['success_rate']) / max(all_results[ot]['counter']['steps']['mean'],
+                                                                           1)
+        aligned_combined.append(aligned_score)
+        counter_combined.append(counter_score)
+
+    ax.bar(x_pos - width / 2, aligned_combined, width, label='Aligned')
+    ax.bar(x_pos + width / 2, counter_combined, width, label='Counter')
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Combined Effectiveness Score')
+    ax.set_title('Overall Effectiveness Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    # Save the plot
+    plot_filename = f"./logs/overfit_tests/overfit_comparison_plots_{timestamp}.png"
+    plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
+    plt.show()
+
+    print(f"Comparison plots saved to {plot_filename}")
+
+
 def convert_to_json_serializable(obj):
     """Convert numpy types and other non-serializable objects to JSON-serializable types"""
     import numpy as np
@@ -77,362 +562,25 @@ def convert_to_json_serializable(obj):
         return obj
 
 
-def get_behavior_instructions(overfit_type, behavior_type):
-    """Get instructions for human player based on overfit agent type and behavior type"""
-
-    base_instructions = {
-        'low_risk': {
-            'aligned': "Play CONSERVATIVELY. Avoid threats, focus on safe target identification. Use Local Search (1) most of the time.",
-            'counter': "Play AGGRESSIVELY. Actively seek threats, take risks. Use Go to Threat (3) frequently."
-        },
-        'high_risk': {
-            'aligned': "Play AGGRESSIVELY. Take risks, actively engage threats. Use Go to Threat (3) frequently.",
-            'counter': "Play CONSERVATIVELY. Avoid all risks, stay away from threats. Use Local Search (1) only."
-        },
-        'nospatial': {
-            'aligned': "Ignore your teammate's location. Focus only on your local area. Use Local Search (1) primarily.",
-            'counter': "Coordinate closely with your teammate. Avoid overlapping areas. Use Change Region (2) to spread out."
-        },
-        'highspatial': {
-            'aligned': "Coordinate closely with your teammate. Spread out to different areas. Use Change Region (2) when teammate is nearby.",
-            'counter': "Ignore your teammate completely. Focus only on your immediate area. Use Local Search (1) regardless of teammate location."
-        }
-    }
-
-    return base_instructions[overfit_type][behavior_type]
-
-
-def run_overfit_episode(env, overfit_type, behavior_type, episode_num, total_episodes):
-    """Run a single episode with the specified overfit agent and human behavior"""
-
-    obs = env.reset()[0]
-    episode_reward = 0
-    episode_steps = 0
-
-    # Initialize tracking variables
-    initial_threat_ids = env.env.num_threats_identified
-    initial_target_ids = env.env.targets_identified
-
-    # Subpolicy tracking for human (agent 0 - the controllable agent)
-    human_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
-    human_subpolicy_switches = 0
-    last_human_action = None
-    human_subpolicy_sequence = []
-
-    # Teammate tracking for overfit agent (agent 1 - the teammate)
-    overfit_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
-    overfit_switches = 0
-    last_overfit_action = None
-
-    # Performance tracking
-    detection_events = []
-    identification_events = []
-    distance_traveled = 0
-    last_position = None
-    human_positions_visited = []
-    overfit_positions_visited = []
-
-    # Get behavior instructions for display
-    instructions = get_behavior_instructions(overfit_type, behavior_type)
-
-    done = False
-    human_action = 0  # Default to Local Search
-
-    print(f"\n=== Episode {episode_num}/{total_episodes} ===")
-    print(f"Overfit Agent: {overfit_type} | Behavior: {behavior_type}")
-    print(f"Instructions: {instructions}")
-    print("Controls: 1=Local Search, 2=Change Region, 3=Go to Threat, 4=Hold")
-    print("Press ESC to quit\n")
-
-    # Key mapping
-    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3}
-
-    while not done:
-        # Handle pygame events for human input
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return None  # Signal to quit
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return None  # Signal to quit
-                elif event.key in key_to_action:
-                    human_action = key_to_action[event.key]
-
-        # Track human subpolicy usage
-        human_subpolicy_usage[human_action] += 1
-        human_subpolicy_sequence.append(human_action)
-        if last_human_action is not None and last_human_action != human_action:
-            human_subpolicy_switches += 1
-        last_human_action = human_action
-
-        # Track overfit agent behavior (teammate)
-        overfit_subpolicy_id, overfit_subpolicy_name = env.get_teammate_subpolicy_info()
-        overfit_subpolicy_usage[overfit_subpolicy_id] += 1
-        if last_overfit_action is not None and last_overfit_action != overfit_subpolicy_id:
-            overfit_switches += 1
-        last_overfit_action = overfit_subpolicy_id
-
-        # Take step (human_action controls the primary agent)
-        obs, reward, terminated, truncated, info = env.step(human_action)
-        episode_reward += reward
-        done = terminated or truncated
-        episode_steps += 1
-
-        # Track positions (human is agent 0, overfit agent is agent 1)
-        human_pos = (
-        env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)  # Human is agent 0
-        overfit_pos = (
-        env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)  # Overfit is agent 1
-
-        human_positions_visited.append(human_pos)
-        overfit_positions_visited.append(overfit_pos)
-
-        if last_position is not None:
-            distance_traveled += math.sqrt((human_pos[0] - last_position[0]) ** 2 +
-                                           (human_pos[1] - last_position[1]) ** 2)
-        last_position = human_pos
-
-        # Track events
-        if 'new_detections' in info and info['new_detections'] > 0:
-            detection_events.append({
-                'step': episode_steps,
-                'count': info['new_detections'],
-                'position': human_pos
-            })
-
-        if 'new_target_ids' in info and info['new_target_ids'] > 0:
-            identification_events.append({
-                'step': episode_steps,
-                'type': 'target',
-                'count': info['new_target_ids']
-            })
-
-        if 'new_threat_ids' in info and info['new_threat_ids'] > 0:
-            identification_events.append({
-                'step': episode_steps,
-                'type': 'threat',
-                'count': info['new_threat_ids']
-            })
-
-        # Render with behavior instructions overlay
-        human_subpolicy_id, human_subpolicy_name = env.get_current_subpolicy_info()
-        env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name,
-                                            overfit_subpolicy_id, overfit_subpolicy_name)
-
-        # Add behavior type indicator
-        font = pygame.font.Font(None, 24)
-        behavior_text = font.render(f"{behavior_type.upper()} BEHAVIOR", True, (255, 255, 255))
-        overfit_text = font.render(f"Overfit: {overfit_type.upper()}", True, (255, 255, 0))
-
-        env.env.window.blit(behavior_text, (10, 50))
-        env.env.window.blit(overfit_text, (10, 75))
-
-        pygame.display.flip()
-
-    # Calculate final metrics
-    final_threat_ids = env.env.num_threats_identified
-    final_target_ids = env.env.targets_identified
-    threat_ids_gained = final_threat_ids - initial_threat_ids
-    target_ids_gained = final_target_ids - initial_target_ids
-
-    # Calculate average distance between agents
-    distances = []
-    for i in range(min(len(human_positions_visited), len(overfit_positions_visited))):
-        human_pos = human_positions_visited[i]
-        overfit_pos = overfit_positions_visited[i]
-        distance = math.sqrt((human_pos[0] - overfit_pos[0]) ** 2 +
-                             (human_pos[1] - overfit_pos[1]) ** 2)
-        distances.append(distance)
-
-    avg_distance = sum(distances) / len(distances) if distances else 0
-
-    # Store episode data
-    episode_info = {
-        'overfit_type': overfit_type,
-        'behavior_type': behavior_type,
-        'episode': episode_num,
-        'steps': episode_steps,
-        'threat_ids': threat_ids_gained,
-        'target_ids': target_ids_gained,
-        'total_reward': episode_reward,
-        'avg_distance_between_agents': avg_distance,
-
-        # Human behavior tracking
-        'human_subpolicy_usage': human_subpolicy_usage.copy(),
-        'human_subpolicy_switches': human_subpolicy_switches,
-        'human_positions_visited': human_positions_visited,
-
-        # Overfit agent tracking
-        'overfit_subpolicy_usage': overfit_subpolicy_usage.copy(),
-        'overfit_switches': overfit_switches,
-        'overfit_positions_visited': overfit_positions_visited,
-
-        # Performance metrics
-        'distance_traveled': distance_traveled,
-        'efficiency_score': target_ids_gained / max(episode_steps, 1),
-        'spatial_coverage_percent': calculate_spatial_coverage(human_positions_visited,
-                                                               env.env.config['gameboard_size']),
-        'coordination_score': calculate_coordination_score(human_subpolicy_sequence, overfit_subpolicy_usage),
-
-        # Event tracking
-        'detection_events': detection_events,
-        'identification_events': identification_events,
-        'total_detections': env.env.detections,
-
-        # Episode outcome
-        'completed_successfully': env.env.all_targets_identified,
-        'termination_reason': 'success' if env.env.all_targets_identified else
-        'failed' if env.env.failed else 'timeout',
-    }
-
-    print(f"Episode completed: {target_ids_gained} targets, {threat_ids_gained} threats, reward: {episode_reward:.2f}")
-    return episode_info
-
-
-def calculate_summary_stats(episode_data):
-    """Calculate mean and std for key metrics"""
-    if not episode_data:
-        return {}
-
-    metrics = {
-        'total_reward': [ep['total_reward'] for ep in episode_data],
-        'target_ids': [ep['target_ids'] for ep in episode_data],
-        'threat_ids': [ep['threat_ids'] for ep in episode_data],
-        'avg_distance_between_agents': [ep['avg_distance_between_agents'] for ep in episode_data],
-        'steps': [ep['steps'] for ep in episode_data],
-        'efficiency_score': [ep['efficiency_score'] for ep in episode_data],
-        'spatial_coverage_percent': [ep['spatial_coverage_percent'] for ep in episode_data],
-        'coordination_score': [ep['coordination_score'] for ep in episode_data],
-    }
-
-    summary = {}
-    for metric_name, values in metrics.items():
-        summary[metric_name] = {
-            'mean': np.mean(values),
-            'std': np.std(values),
-            'min': np.min(values),
-            'max': np.max(values),
-            'values': values
-        }
-
-    return summary
-
-
-def create_comparison_plots(all_results, timestamp):
-    """Create comprehensive comparison plots"""
-
-    # Set up the figure
-    fig, axes = plt.subplots(3, 3, figsize=(18, 15))
-    fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
-
-    # Metrics to plot
-    metrics = [
-        ('total_reward', 'Total Reward'),
-        ('target_ids', 'Target IDs Gained'),
-        ('threat_ids', 'Threat IDs Gained'),
-        ('avg_distance_between_agents', 'Avg Distance Between Agents'),
-        ('steps', 'Episode Steps'),
-        ('efficiency_score', 'Efficiency Score'),
-        ('spatial_coverage_percent', 'Spatial Coverage %'),
-        ('coordination_score', 'Coordination Score'),
-    ]
-
-    overfit_types = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
-    behavior_types = ['aligned', 'counter']
-    colors = {'aligned': 'blue', 'counter': 'red'}
-
-    # Plot each metric
-    for idx, (metric_key, metric_title) in enumerate(metrics):
-        if idx >= 8:  # Only 8 subplots available
-            break
-
-        row = idx // 3
-        col = idx % 3
-        ax = axes[row, col]
-
-        # Prepare data for plotting
-        x_positions = np.arange(len(overfit_types))
-        width = 0.35
-
-        aligned_means = []
-        aligned_stds = []
-        counter_means = []
-        counter_stds = []
-
-        for overfit_type in overfit_types:
-            if overfit_type in all_results:
-                aligned_data = all_results[overfit_type]['aligned']['summary'][metric_key]
-                counter_data = all_results[overfit_type]['counter']['summary'][metric_key]
-
-                aligned_means.append(aligned_data['mean'])
-                aligned_stds.append(aligned_data['std'])
-                counter_means.append(counter_data['mean'])
-                counter_stds.append(counter_data['std'])
-            else:
-                aligned_means.append(0)
-                aligned_stds.append(0)
-                counter_means.append(0)
-                counter_stds.append(0)
-
-        # Create bar plot
-        bars1 = ax.bar(x_positions - width / 2, aligned_means, width, yerr=aligned_stds,
-                       label='Aligned', color=colors['aligned'], alpha=0.7)
-        bars2 = ax.bar(x_positions + width / 2, counter_means, width, yerr=counter_stds,
-                       label='Counter', color=colors['counter'], alpha=0.7)
-
-        ax.set_xlabel('Overfit Agent Type')
-        ax.set_ylabel(metric_title)
-        ax.set_title(f'{metric_title}')
-        ax.set_xticks(x_positions)
-        ax.set_xticklabels([t.replace('_', ' ').title() for t in overfit_types], rotation=45)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-    # Use the last subplot for a summary table
-    ax = axes[2, 2]
-    ax.axis('off')
-
-    # Create summary table
-    summary_text = "Performance Differences (Aligned - Counter):\n\n"
-    for overfit_type in overfit_types:
-        if overfit_type in all_results:
-            reward_diff = (all_results[overfit_type]['aligned']['summary']['total_reward']['mean'] -
-                           all_results[overfit_type]['counter']['summary']['total_reward']['mean'])
-            target_diff = (all_results[overfit_type]['aligned']['summary']['target_ids']['mean'] -
-                           all_results[overfit_type]['counter']['summary']['target_ids']['mean'])
-
-            summary_text += f"{overfit_type.replace('_', ' ').title()}:\n"
-            summary_text += f"  Reward: {reward_diff:+.2f}\n"
-            summary_text += f"  Targets: {target_diff:+.2f}\n\n"
-
-    ax.text(0.1, 0.9, summary_text, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', fontfamily='monospace')
-
-    plt.tight_layout()
-
-    # Save plot
-    plot_filename = f"./logs/overfit_tests/overfit_comparison_plots_{timestamp}.png"
-    plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
-    plt.show()
-
-    print(f"Comparison plots saved to {plot_filename}")
-
-
-def main():
+if __name__ == "__main__":
     # Configuration
     config_filename = 'configs/june23_poc1_2ship.json'
-    num_episodes_per_condition = 10  # 10 aligned + 10 counter = 20 total per overfit type
+    league_type = 'strategy_diverse'
+    balance_method = 'uniform'
+    num_episodes = 20
     tick_rate = 40
 
-    # Overfit agent types to test
-    overfit_types = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
+    localsearch_model_path = None
+    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
+
+    # Test configuration
+    overfit_agents = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
     behavior_types = ['aligned', 'counter']
 
-    # Load config
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
 
-    # Setup pygame
+    # Initialize pygame
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -440,153 +588,255 @@ def main():
     window_width, window_height = config['window_size'][0], config['window_size'][1]
     config['tick_rate'] = tick_rate
     window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
-    pygame.display.set_caption("MAISR Overfit Agent Testing")
+    pygame.display.set_caption("MAISR Overfit Testing")
 
-    # Create logs directory
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.makedirs('./logs/overfit_tests', exist_ok=True)
-
-    # Create base environment once (reuse for all episodes)
+    # Create base environment
     base_env = MAISREnvVec(
         config=config,
         clock=clock,
         window=window,
         render_mode='human',
         run_name='overfit_test',
-        tag=f'overfit_comparison',
+        tag=f'overfit_analysis',
     )
 
-    # Setup subpolicies
+    # Create subpolicies
     subpolicies = {
         'local_search': LocalSearch(model_path=None),
         'change_region': ChangeRegions(model_path=None),
         'go_to_threat': GoToNearestThreat(model_path=None)
     }
 
-    # Store all results
+    # Storage for all results
     all_results = {}
-    all_episode_data = []
+    all_episode_data = {}
 
-    # Test each overfit agent type
-    for overfit_type in overfit_types:
+    # Create output directory
+    os.makedirs('./logs/overfit_tests', exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print("=" * 80)
+    print("STARTING OVERFIT AGENT TESTING")
+    print("=" * 80)
+    print(f"Testing {len(overfit_agents)} agent types with {len(behavior_types)} behavior types")
+    print(f"Episodes per configuration: {num_episodes}")
+    print(f"Total episodes: {len(overfit_agents) * len(behavior_types) * num_episodes}")
+
+    # Main testing loop
+    for overfit_type in overfit_agents:
         print(f"\n{'=' * 60}")
-        print(f"TESTING OVERFIT AGENT: {overfit_type.upper()}")
+        print(f"TESTING AGENT TYPE: {overfit_type.upper()}")
         print(f"{'=' * 60}")
 
         all_results[overfit_type] = {}
+        all_episode_data[overfit_type] = {}
 
-        # Test both behavior types (aligned and counter)
+        # Create the overfit agent for this type
+        agent = create_overfit_agent(overfit_type, subpolicies)
+
         for behavior_type in behavior_types:
-            print(f"\n{'-' * 40}")
-            print(f"BEHAVIOR TYPE: {behavior_type.upper()}")
-            print(f"{'-' * 40}")
+            print(f"\n--- Testing {behavior_type} behavior ---")
 
-            episode_data = []
+            # Set up teammate manager based on behavior type
+            if behavior_type == 'aligned':
+                teammate_overfit_type = overfit_type
+            else:  # counter
+                teammate_overfit_type = get_counter_overfit_type(overfit_type)
 
-            # Run episodes for this condition
-            for episode in range(num_episodes_per_condition):
-                # Create teammate manager with overfit test parameter for this condition
-                teammate_manager = TeammateManager(
-                    league_type='strategy_diverse',
-                    balance_method='uniform',
+            print(f"Agent overfit type: {overfit_type}")
+            print(f"Teammate overfit type: {teammate_overfit_type}")
+
+            # Create environment with appropriate teammate manager
+            env = MaisrModeSelectorWrapper(
+                base_env,
+                local_search_policy=LocalSearch(model_path=localsearch_model_path, norm_stats_filepath=localsearch_normstats_path),
+                go_to_highvalue_policy=GoToNearestThreat(model_path=None),
+                change_region_subpolicy=ChangeRegions(model_path=None),
+                evade_policy=EvadeDetection(model_path=None),
+                teammate_manager=TeammateManager(
+                    league_type=league_type,
+                    balance_method=balance_method,
                     selfplay_checkpoint_dir=None,
                     pretrained_teammate_dir=None,
                     subpolicies=subpolicies,
-                    overfit_test=overfit_type  # This creates the overfit teammate
+                    overfit_test=teammate_overfit_type
                 )
+            )
 
-                # Create wrapped environment with the overfit teammate
-                env = MaisrModeSelectorWrapper(
-                    base_env,
-                    local_search_policy=LocalSearch(model_path=None),
-                    go_to_highvalue_policy=GoToNearestThreat(model_path=None),
-                    change_region_subpolicy=ChangeRegions(model_path=None),
-                    evade_policy=EvadeDetection(model_path=None),
-                    teammate_manager=teammate_manager
-                )
+            # Set the agent's environment reference
+            agent.env = env.env
 
-                # Run episode
-                episode_info = run_overfit_episode(
-                    env, overfit_type, behavior_type, episode + 1, num_episodes_per_condition
-                )
+            # Run episodes
+            episode_data = run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type)
 
-                if episode_info is None:  # User quit
-                    base_env.close()
-                    return
+            # Calculate summary statistics
+            summary_stats = calculate_summary_statistics(episode_data)
 
-                episode_data.append(episode_info)
-                all_episode_data.append(episode_info)
+            # Store results
+            all_results[overfit_type][behavior_type] = summary_stats
+            all_episode_data[overfit_type][behavior_type] = episode_data
 
-            # Calculate summary statistics for this condition
-            summary_stats = calculate_summary_stats(episode_data)
-
-            all_results[overfit_type][behavior_type] = {
-                'episodes': episode_data,
-                'summary': summary_stats
-            }
-
-            # Print summary for this condition
-            print(f"\n{behavior_type.upper()} BEHAVIOR SUMMARY:")
-            print(f"  Reward: {summary_stats['total_reward']['mean']:.2f} ± {summary_stats['total_reward']['std']:.2f}")
-            print(f"  Target IDs: {summary_stats['target_ids']['mean']:.2f} ± {summary_stats['target_ids']['std']:.2f}")
-            print(f"  Threat IDs: {summary_stats['threat_ids']['mean']:.2f} ± {summary_stats['threat_ids']['std']:.2f}")
+            # Print summary for this configuration
+            print(f"\nSummary for {overfit_type} agent with {behavior_type} behavior:")
+            print(f"  Mean reward: {summary_stats['reward']['mean']:.2f} ± {summary_stats['reward']['std']:.2f}")
             print(
-                f"  Avg Distance: {summary_stats['avg_distance_between_agents']['mean']:.1f} ± {summary_stats['avg_distance_between_agents']['std']:.1f}")
-
-    # Save all episode data
-    serializable_data = convert_to_json_serializable(all_episode_data)
-    filename = f"./logs/overfit_tests/overfit_episode_data_{timestamp}.json"
-
-    with open(filename, 'w') as f:
-        json.dump(serializable_data, f, indent=2)
-    print(f"\nAll episode data saved to {filename}")
-
-    # Save summary results
-    summary_filename = f"./logs/overfit_tests/overfit_summary_{timestamp}.json"
-    summary_data = {}
-    for overfit_type in all_results:
-        summary_data[overfit_type] = {}
-        for behavior_type in all_results[overfit_type]:
-            summary_data[overfit_type][behavior_type] = all_results[overfit_type][behavior_type]['summary']
-
-    with open(summary_filename, 'w') as f:
-        json.dump(convert_to_json_serializable(summary_data), f, indent=2)
-    print(f"Summary statistics saved to {summary_filename}")
-
-    # Create comparison plots
-    create_comparison_plots(all_results, timestamp)
-
-    # Print final comparison summary
-    print(f"\n{'=' * 80}")
-    print("FINAL COMPARISON SUMMARY")
-    print(f"{'=' * 80}")
-
-    for overfit_type in overfit_types:
-        if overfit_type in all_results:
-            print(f"\n{overfit_type.replace('_', ' ').title()}:")
-
-            aligned_reward = all_results[overfit_type]['aligned']['summary']['total_reward']['mean']
-            counter_reward = all_results[overfit_type]['counter']['summary']['total_reward']['mean']
-            reward_diff = aligned_reward - counter_reward
-
-            aligned_targets = all_results[overfit_type]['aligned']['summary']['target_ids']['mean']
-            counter_targets = all_results[overfit_type]['counter']['summary']['target_ids']['mean']
-            target_diff = aligned_targets - counter_targets
-
-            aligned_distance = all_results[overfit_type]['aligned']['summary']['avg_distance_between_agents']['mean']
-            counter_distance = all_results[overfit_type]['counter']['summary']['avg_distance_between_agents']['mean']
-            distance_diff = aligned_distance - counter_distance
-
+                f"  Mean target IDs: {summary_stats['target_ids']['mean']:.2f} ± {summary_stats['target_ids']['std']:.2f}")
             print(
-                f"  Aligned behavior:  Reward={aligned_reward:.2f}, Targets={aligned_targets:.2f}, Distance={aligned_distance:.1f}")
+                f"  Mean threat IDs: {summary_stats['threat_ids']['mean']:.2f} ± {summary_stats['threat_ids']['std']:.2f}")
             print(
-                f"  Counter behavior:  Reward={counter_reward:.2f}, Targets={counter_targets:.2f}, Distance={counter_distance:.1f}")
+                f"  Mean teammate distance: {summary_stats['avg_teammate_distance']['mean']:.1f} ± {summary_stats['avg_teammate_distance']['std']:.1f}")
+            print(f"  Success rate: {summary_stats['success_rate']:.2%}")
             print(
-                f"  Difference:        Reward={reward_diff:+.2f}, Targets={target_diff:+.2f}, Distance={distance_diff:+.1f}")
+                f"  Mean efficiency: {summary_stats['efficiency_score']['mean']:.4f} ± {summary_stats['efficiency_score']['std']:.4f}")
 
-    # Clean up
+    # Close environment
     base_env.close()
 
+    print(f"\n{'=' * 80}")
+    print("TESTING COMPLETED - GENERATING ANALYSIS")
+    print(f"{'=' * 80}")
 
-if __name__ == "__main__":
-    main()
+    # Create comprehensive comparison report
+    print(f"\n=== COMPREHENSIVE COMPARISON REPORT ===")
+
+    for overfit_type in overfit_agents:
+        print(f"\n{overfit_type.upper()} AGENT ANALYSIS:")
+        print(f"{'-' * 40}")
+
+        aligned_stats = all_results[overfit_type]['aligned']
+        counter_stats = all_results[overfit_type]['counter']
+
+        # Calculate differences (aligned - counter)
+        reward_diff = aligned_stats['reward']['mean'] - counter_stats['reward']['mean']
+        target_diff = aligned_stats['target_ids']['mean'] - counter_stats['target_ids']['mean']
+        distance_diff = aligned_stats['avg_teammate_distance']['mean'] - counter_stats['avg_teammate_distance']['mean']
+        success_diff = aligned_stats['success_rate'] - counter_stats['success_rate']
+        efficiency_diff = aligned_stats['efficiency_score']['mean'] - counter_stats['efficiency_score']['mean']
+
+        print(
+            f"Reward:     Aligned={aligned_stats['reward']['mean']:.2f}, Counter={counter_stats['reward']['mean']:.2f}, Diff={reward_diff:+.2f}")
+        print(
+            f"Targets:    Aligned={aligned_stats['target_ids']['mean']:.2f}, Counter={counter_stats['target_ids']['mean']:.2f}, Diff={target_diff:+.2f}")
+        print(
+            f"Distance:   Aligned={aligned_stats['avg_teammate_distance']['mean']:.1f}, Counter={counter_stats['avg_teammate_distance']['mean']:.1f}, Diff={distance_diff:+.1f}")
+        print(
+            f"Success:    Aligned={aligned_stats['success_rate']:.2%}, Counter={counter_stats['success_rate']:.2%}, Diff={success_diff:+.2%}")
+        print(
+            f"Efficiency: Aligned={aligned_stats['efficiency_score']['mean']:.4f}, Counter={counter_stats['efficiency_score']['mean']:.4f}, Diff={efficiency_diff:+.4f}")
+
+        # Determine which behavior is better
+        aligned_better = sum([reward_diff > 0, target_diff > 0, success_diff > 0, efficiency_diff > 0])
+        counter_better = sum([reward_diff < 0, target_diff < 0, success_diff < 0, efficiency_diff < 0])
+
+        if aligned_better > counter_better:
+            print(f"✅ ALIGNED behavior performs better ({aligned_better}/4 metrics)")
+        elif counter_better > aligned_better:
+            print(f"❌ COUNTER behavior performs better ({counter_better}/4 metrics)")
+        else:
+            print(f"🟡 MIXED results - no clear winner")
+
+    # Save detailed results
+    print(f"\n=== SAVING RESULTS ===")
+
+    # Convert to JSON-serializable format
+    serializable_results = convert_to_json_serializable(all_results)
+    serializable_episode_data = convert_to_json_serializable(all_episode_data)
+
+    # Save summary statistics
+    summary_filename = f"./logs/overfit_tests/overfit_summary_stats_{timestamp}.json"
+    try:
+        with open(summary_filename, 'w') as f:
+            json.dump(serializable_results, f, indent=2)
+        print(f"Summary statistics saved to {summary_filename}")
+    except Exception as e:
+        print(f"Error saving summary JSON: {e}")
+        # Fallback to pickle
+        pickle_filename = summary_filename.replace('.json', '.pkl')
+        with open(pickle_filename, 'wb') as f:
+            pickle.dump(all_results, f)
+        print(f"Saved as pickle instead: {pickle_filename}")
+
+    # Save detailed episode data
+    detailed_filename = f"./logs/overfit_tests/overfit_detailed_data_{timestamp}.json"
+    try:
+        with open(detailed_filename, 'w') as f:
+            json.dump(serializable_episode_data, f, indent=2)
+        print(f"Detailed episode data saved to {detailed_filename}")
+    except Exception as e:
+        print(f"Error saving detailed JSON: {e}")
+        # Fallback to pickle
+        pickle_filename = detailed_filename.replace('.json', '.pkl')
+        with open(pickle_filename, 'wb') as f:
+            pickle.dump(all_episode_data, f)
+        print(f"Saved as pickle instead: {pickle_filename}")
+
+    # Create and save comparison plots
+    create_comparison_plots(all_results, timestamp)
+
+    # Generate final summary table
+    print(f"\n=== FINAL PERFORMANCE SUMMARY TABLE ===")
+    print(
+        f"{'Agent Type':<12} | {'Behavior':<8} | {'Reward':<8} | {'Targets':<7} | {'Success%':<8} | {'Efficiency':<10}")
+    print(f"{'-' * 12} | {'-' * 8} | {'-' * 8} | {'-' * 7} | {'-' * 8} | {'-' * 10}")
+
+    for overfit_type in overfit_agents:
+        for behavior_type in behavior_types:
+            stats = all_results[overfit_type][behavior_type]
+            print(f"{overfit_type:<12} | {behavior_type:<8} | {stats['reward']['mean']:<8.2f} | "
+                  f"{stats['target_ids']['mean']:<7.2f} | {stats['success_rate']:<8.1%} | "
+                  f"{stats['efficiency_score']['mean']:<10.4f}")
+
+    # Calculate and display correlation analysis
+    print(f"\n=== CORRELATION ANALYSIS ===")
+
+    # Analyze correlation between agent type characteristics and performance differences
+    print(f"Performance advantage of aligned vs counter behavior:")
+
+    reward_advantages = []
+    target_advantages = []
+    success_advantages = []
+
+    for overfit_type in overfit_agents:
+        reward_adv = all_results[overfit_type]['aligned']['reward']['mean'] - \
+                     all_results[overfit_type]['counter']['reward']['mean']
+        target_adv = all_results[overfit_type]['aligned']['target_ids']['mean'] - \
+                     all_results[overfit_type]['counter']['target_ids']['mean']
+        success_adv = all_results[overfit_type]['aligned']['success_rate'] - all_results[overfit_type]['counter'][
+            'success_rate']
+
+        reward_advantages.append(reward_adv)
+        target_advantages.append(target_adv)
+        success_advantages.append(success_adv)
+
+        print(f"{overfit_type:<12}: Reward={reward_adv:+.2f}, Targets={target_adv:+.2f}, Success={success_adv:+.2%}")
+
+    # Find best and worst performing configurations
+    best_configs = []
+    worst_configs = []
+
+    for overfit_type in overfit_agents:
+        for behavior_type in behavior_types:
+            config_name = f"{overfit_type}_{behavior_type}"
+            combined_score = (all_results[overfit_type][behavior_type]['reward']['mean'] +
+                              all_results[overfit_type][behavior_type]['target_ids']['mean'] +
+                              all_results[overfit_type][behavior_type]['success_rate'] * 10)
+            best_configs.append((config_name, combined_score))
+
+    best_configs.sort(key=lambda x: x[1], reverse=True)
+
+    print(f"\n=== TOP 3 CONFIGURATIONS ===")
+    for i, (config, score) in enumerate(best_configs[:3]):
+        print(f"{i + 1}. {config} (Combined Score: {score:.2f})")
+
+    print(f"\n=== BOTTOM 3 CONFIGURATIONS ===")
+    for i, (config, score) in enumerate(best_configs[-3:]):
+        print(f"{len(best_configs) - 2 + i}. {config} (Combined Score: {score:.2f})")
+
+    print(f"\n{'=' * 80}")
+    print("OVERFIT TESTING ANALYSIS COMPLETE")
+    print(f"{'=' * 80}")
+    print(f"Results saved to: ./logs/overfit_tests/")
+    print(f"Timestamp: {timestamp}")
+    print(f"Total episodes run: {len(overfit_agents) * len(behavior_types) * num_episodes}")
+
+    pygame.quit()

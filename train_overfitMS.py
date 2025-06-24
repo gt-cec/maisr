@@ -693,7 +693,7 @@ def train_modeselector(
         teammate_manager = setup_teammate_pool(
             league_type=env_config['league_type'],
             balance_method = env_config['balance_method'],
-            selfplay_checkpoint_dir=f"trained_models/checkpoints/{run_name}",
+            selfplay_checkpoint_dir=f"trained_models/{run_name}/checkpoints",
             pretrained_teammate_dir=f'trained_models/pretrained_teammates',
             overfit_test=overfit_test
         )
@@ -782,12 +782,12 @@ def train_modeselector(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"trained_models/checkpoints/{run_name}",
+        save_path=f"trained_models/{run_name}/checkpoints",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1,
-                                   model_save_path = f"{save_dir}/wandb/{run.id}" if save_model else None)
+                                   model_save_path = f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
     enhanced_wandb_callback = EnhancedWandbCallback(env_config, eval_env=eval_env, run=run, log_freq=50)
 
     print('Callbacks created')
@@ -852,9 +852,9 @@ def train_modeselector(
     }
 
     # Save with consistent naming
-    np.save(f"trained_models/{run_name}_norm_stats.npy", stats)
-    np.save(f"trained_models/checkpoints/{run_name}/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
-    env.save(f"trained_models/{run_name}local_search_vecnormalize.pkl")
+    np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
+    np.save(f"trained_models/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
+    env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
 
     print("Training Normalization Stats:")
     print(f"Obs mean: {env.obs_rms.mean}")
@@ -866,7 +866,7 @@ def train_modeselector(
     eval_env.close()
 
     # Save the final model
-    final_model_path = os.path.join(save_dir, f"{run_name}_maisr_trained_model")
+    final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
     model.save(final_model_path)
     print(f"Training completed! Final model saved to {final_model_path}")
 
@@ -906,11 +906,11 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                n_envs=multiprocessing.cpu_count()-14,
+                n_envs=multiprocessing.cpu_count(),
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-                save_model = False,
+                save_model = True,
                 overfit_test = overfit_test
             )
             print(f"✓ Completed training run")

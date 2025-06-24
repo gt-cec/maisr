@@ -24,7 +24,7 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         self.env = env
 
-        self.render_frequency = 10 # TODO TEMP
+        self.render_frequency = 1 # TODO TEMP
         self.observation_noise_std = observation_noise_std
 
         # Load primary agent subpolicies and teammate policies
@@ -62,7 +62,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.fail_penalty = -22
         self.step_penalty = -0.005
 
-        self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat'}
+        self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat', 3:'hold', 4:'custom_waypoint'}
+
+        self.human_custom_waypoint = None
 
         # Goal tracking for evade policy
         #self.evade_goal = None
@@ -197,6 +199,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         ########################################## Process subpolicy's action ##########################################
 
+        map_half_size = self.env.config['gameboard_size']/2
+
         subpolicy_observation = self.get_subpolicy_observation(self.subpolicy_choice, 0)
         if self.subpolicy_choice == 0:  # Local search
             subpolicy_action = self.local_search_policy.act(subpolicy_observation, env=self.env, agent_id=0)
@@ -209,11 +213,27 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif self.subpolicy_choice == 3:  # Hold (no op) - Set waypoint to current location
             agent_pos = np.array([
-                                  self.env.agents[self.env.aircraft_ids[0]].x/self.env.config['gameboard_size'],
-                                  self.env.agents[self.env.aircraft_ids[0]].y/self.env.config['gameboard_size']
+                                  self.env.agents[self.env.aircraft_ids[0]].x/map_half_size,
+                                  self.env.agents[self.env.aircraft_ids[0]].y/map_half_size
                                   ])
             subpolicy_action = agent_pos
 
+        elif self.subpolicy_choice == 4:  # Custom waypoint from human input
+            #print(f'[wrapper.step] subpolicy choice 4, human custom waypoint = {self.human_custom_waypoint}')
+            if hasattr(self, 'human_custom_waypoint') and self.human_custom_waypoint is not None:
+                # Use the custom waypoint set by the human
+                subpolicy_action = self.human_custom_waypoint.copy()
+                #print(f'[Wrapper] Using human custom waypoint: {subpolicy_action}')
+
+            else:
+                # Fallback to current position if no custom waypoint set
+                agent_pos = np.array([
+                    self.env.agents[self.env.aircraft_ids[0]].x/map_half_size,
+                    self.env.agents[self.env.aircraft_ids[0]].y/map_half_size
+
+                ])
+                subpolicy_action = agent_pos
+                print('[Wrapper] No custom waypoint found, using current position')
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
 
@@ -519,6 +539,9 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         elif selected_subpolicy == 3: # Hold
             #observation = self.get_observation_evade(agent_id)
+            observation = self.get_observation_localsearch(agent_id)
+
+        if selected_subpolicy == 4: # Get obs for local search
             observation = self.get_observation_localsearch(agent_id)
 
         return observation
