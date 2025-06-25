@@ -291,7 +291,7 @@ def train_rl_teammates(
 
     # Default seed list if not provided
     if seed_list is None:
-        seed_list = [42, 123, 456, 789, 1337, 2048, 9999]
+        seed_list = [2048, 9999, 42, 123, 456, 789, 1337]
 
     # Validate seed list length
     if len(seed_list) < num_agents_to_train:
