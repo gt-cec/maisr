@@ -1609,15 +1609,21 @@ class MAISREnvVec(gym.Env):
             0: (0, 200, 0),  # Green for Local Search
             1: (0, 100, 255),  # Blue for Change Region
             2: (255, 50, 50),  # Red for Go to Threat
-            3: (255, 165, 0)  # Orange for Evade
+            3: (255, 165, 0),  # Orange for hold
+            4: (0, 100, 255),  # Blue for Change Region
+            5: (0, 100, 255),  # Blue for Change Region
+            6: (0, 100, 255),  # Blue for Change Region
         }
 
-        # Add this new dictionary
         subpolicy_names = {
             0: "local",
-            1: "changeregion",
+            1: "changeregion_NW",
             2: "threat",
-            3: "evade"
+            3: "hold",
+            4: "changeregion_NE",
+            5: "changeregion_SE",
+            6: "changeregion_SW",
+            7: "waypoint_override",
         }
 
         # Indicator dimensions and positions - moved to top-left for visibility

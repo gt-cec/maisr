@@ -752,10 +752,10 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Map subpolicy choices to quadrant IDs
         subpolicy_to_quadrant = {1: 0, 4: 1, 6: 2, 5: 3}  # NW, NE, SW, SE
 
-        if subpolicy_choice not in subpolicy_to_quadrant:
+        if int(subpolicy_choice) not in subpolicy_to_quadrant:
             return False
 
-        target_quadrant = subpolicy_to_quadrant[subpolicy_choice]
+        target_quadrant = subpolicy_to_quadrant[int(subpolicy_choice)]
 
         # Get agent position
         agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
