@@ -108,7 +108,7 @@ if __name__ == "__main__":
                 episode_reward += reward
 
                 done = terminated or truncated
-                step_count += 1
+            step_count += 1
             env.render()
 
     env.close()

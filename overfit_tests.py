@@ -1,5 +1,6 @@
 import ctypes
 import pygame
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
@@ -112,29 +113,36 @@ def create_overfit_agent(overfit_type, subpolicies):
     return agent
 
 
-def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type):
+def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use_normalize):
     """Run a batch of episodes with the given agent configuration"""
     episode_data = []
 
     print(f"\nRunning {num_episodes} episodes for {overfit_type} agent with {behavior_type} behavior...")
 
     for episode in range(num_episodes):
-        obs = env.reset()[0]
+        if use_normalize:
+            obs = env.reset()
+        else:
+            obs, info = env.reset()
         episode_reward = 0
 
         # Initialize tracking variables
         episode_steps = 0
-        initial_threat_ids = env.env.num_threats_identified
-        initial_target_ids = env.env.targets_identified
+        if use_normalize:
+            initial_threat_ids = env.envs[0].env.num_threats_identified
+            initial_target_ids = env.envs[0].env.targets_identified
+        else:
+            initial_threat_ids = env.env.num_threats_identified
+            initial_target_ids = env.env.targets_identified
 
         # Subpolicy tracking
-        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
         subpolicy_switches = 0
         last_action = None
         subpolicy_sequence = []
 
         # Teammate tracking
-        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
         teammate_switches = 0
         last_teammate_action = None
 
@@ -167,36 +175,57 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type):
                 break
 
             # Get action from agent
-            action = agent.choose_subpolicy(obs, last_action)
+            action, _ = agent.predict(obs, deterministic=True)
 
             # Track subpolicy usage
-            subpolicy_usage[action] += 1
-            subpolicy_sequence.append(action)
+            subpolicy_usage[int(action)] += 1
+            subpolicy_sequence.append(int(action))
             if last_action is not None and last_action != action:
                 subpolicy_switches += 1
             last_action = action
 
             # Track teammate behavior
-            if env.env.config['num_aircraft'] == 2:
-                ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
-                teammate_subpolicy_usage[ai_subpolicy_id] += 1
-                if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-                    teammate_switches += 1
-                last_teammate_action = ai_subpolicy_id
+            if use_normalize:
+                if env.envs[0].env.config['num_aircraft'] == 2:
+                    ai_subpolicy_id, ai_subpolicy_name = env.envs[0].get_teammate_subpolicy_info()
+                    teammate_subpolicy_usage[ai_subpolicy_id] += 1
+                    if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+                        teammate_switches += 1
+                    last_teammate_action = ai_subpolicy_id
+            else:
+                if env.env.config['num_aircraft'] == 2:
+                    ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+                    teammate_subpolicy_usage[ai_subpolicy_id] += 1
+                    if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+                        teammate_switches += 1
+                    last_teammate_action = ai_subpolicy_id
 
             # Take step
-            obs, reward, terminated, truncated, info = env.step(action)
+            if use_normalize:
+                obses, rewards, dones, infos = env.step([action])
+                obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
+            else:
+                obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+
             episode_reward += reward
-            done = terminated or truncated
             episode_steps += 1
 
             # Track position and distance
-            current_pos = (env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)
-            positions_visited.append(current_pos)
-            if env.env.config['num_aircraft'] == 2:
-                teammate_current_pos = (
-                env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
-                teammate_positions_visited.append(teammate_current_pos)
+            if use_normalize:
+                current_pos = (env.envs[0].env.agents[env.envs[0].env.aircraft_ids[0]].x, env.envs[0].env.agents[env.envs[0].env.aircraft_ids[0]].y)
+                positions_visited.append(current_pos)
+                if env.envs[0].env.config['num_aircraft'] == 2:
+                    teammate_current_pos = (
+                        env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]].x, env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]].y)
+                    teammate_positions_visited.append(teammate_current_pos)
+            else:
+                current_pos = (env.env.agents[env.env.aircraft_ids[0]].x, env.env.agents[env.env.aircraft_ids[0]].y)
+                positions_visited.append(current_pos)
+                if env.env.config['num_aircraft'] == 2:
+                    teammate_current_pos = (
+                    env.env.agents[env.env.aircraft_ids[1]].x, env.env.agents[env.env.aircraft_ids[1]].y)
+                    teammate_positions_visited.append(teammate_current_pos)
 
             if last_position is not None:
                 distance_traveled += math.sqrt((current_pos[0] - last_position[0]) ** 2 +
@@ -232,8 +261,12 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type):
         episode_duration_ms = episode_end_time - episode_start_time
 
         # Calculate final counts
-        final_threat_ids = env.env.num_threats_identified
-        final_target_ids = env.env.targets_identified
+        if use_normalize:
+            final_threat_ids = env.envs[0].env.num_threats_identified
+            final_target_ids = env.envs[0].env.targets_identified
+        else:
+            final_threat_ids = env.env.num_threats_identified
+            final_target_ids = env.env.targets_identified
         threat_ids_gained = final_threat_ids - initial_threat_ids
         target_ids_gained = final_target_ids - initial_target_ids
 
@@ -251,67 +284,129 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type):
             avg_teammate_distance = sum(distances) / len(distances) if distances else 0
 
         # Store comprehensive episode data
-        episode_info = {
-            # Basic metrics
-            'episode': episode + 1,
-            'steps': episode_steps,
-            'threat_ids': threat_ids_gained,
-            'target_ids': target_ids_gained,
-            'total_reward': episode_reward,
-            'duration_ms': episode_duration_ms,
-            'avg_teammate_distance': avg_teammate_distance,
+        if use_normalize:
+            episode_info = {
+                # Basic metrics
+                'episode': episode + 1,
+                'steps': episode_steps,
+                'threat_ids': threat_ids_gained,
+                'target_ids': target_ids_gained,
+                'total_reward': episode_reward,
+                'duration_ms': episode_duration_ms,
+                'avg_teammate_distance': avg_teammate_distance,
 
-            # Configuration
-            'overfit_type': overfit_type,
-            'behavior_type': behavior_type,
+                # Configuration
+                'overfit_type': overfit_type,
+                'behavior_type': behavior_type,
 
-            # Subpolicy analytics
-            'subpolicy_usage': subpolicy_usage.copy(),
-            'subpolicy_switches': subpolicy_switches,
-            'subpolicy_percentages': {
-                k: (v / episode_steps * 100) if episode_steps > 0 else 0
-                for k, v in subpolicy_usage.items()
-            },
-            'subpolicy_sequence': subpolicy_sequence.copy(),
+                # Subpolicy analytics
+                'subpolicy_usage': subpolicy_usage.copy(),
+                'subpolicy_switches': subpolicy_switches,
+                'subpolicy_percentages': {
+                    k: (v / episode_steps * 100) if episode_steps > 0 else 0
+                    for k, v in subpolicy_usage.items()
+                },
+                'subpolicy_sequence': subpolicy_sequence.copy(),
 
-            # Teammate analytics
-            'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
-            'teammate_switches': teammate_switches,
-            'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
-            'positions_visited': positions_visited,
-            'teammate_positions_visited': teammate_positions_visited,
+                # Teammate analytics
+                'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
+                'teammate_switches': teammate_switches,
+                'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+                'positions_visited': positions_visited,
+                'teammate_positions_visited': teammate_positions_visited,
 
-            # Performance metrics
-            'distance_traveled': distance_traveled,
-            'efficiency_score': target_ids_gained / max(episode_steps, 1),
-            'spatial_coverage_percent': calculate_spatial_coverage(positions_visited, env.env.config['gameboard_size']),
-            'avg_distance_per_step': distance_traveled / max(episode_steps, 1),
+                # Performance metrics
+                'distance_traveled': distance_traveled,
+                'efficiency_score': target_ids_gained / max(episode_steps, 1),
+                'spatial_coverage_percent': calculate_spatial_coverage(positions_visited,env.envs[0].env.config['gameboard_size']),
+                'avg_distance_per_step': distance_traveled / max(episode_steps, 1),
 
-            # Event tracking
-            'detection_events': detection_events,
-            'identification_events': identification_events,
-            'total_detections': env.env.detections,
-            'num_detection_events': len(detection_events),
+                # Event tracking
+                'detection_events': detection_events,
+                'identification_events': identification_events,
+                'total_detections': env.envs[0].env.detections,
+                'num_detection_events': len(detection_events),
 
-            # Timing analysis
-            'target_discovery_times': target_discovery_times,
-            'threat_discovery_times': threat_discovery_times,
-            'time_to_first_target': min(target_discovery_times.values()) if target_discovery_times else None,
-            'time_to_last_target': max(target_discovery_times.values()) if target_discovery_times else None,
+                # Timing analysis
+                'target_discovery_times': target_discovery_times,
+                'threat_discovery_times': threat_discovery_times,
+                'time_to_first_target': min(target_discovery_times.values()) if target_discovery_times else None,
+                'time_to_last_target': max(target_discovery_times.values()) if target_discovery_times else None,
 
-            # Episode outcome
-            'completed_successfully': env.env.all_targets_identified,
-            'termination_reason': 'success' if env.env.all_targets_identified else
-            'failed' if env.env.failed else 'timeout',
+                # Episode outcome
+                'completed_successfully': env.envs[0].env.all_targets_identified,
+                'termination_reason': 'success' if env.envs[0].env.all_targets_identified else 'failed' if env.envs[0].env.failed else 'timeout',
 
-            # Environment state
-            'final_threat_count': final_threat_ids,
-            'final_target_count': final_target_ids,
-            'num_targets_total': env.env.config['num_targets'],
-            'num_threats_total': env.env.config['num_threats'],
-            'gameboard_size': env.env.config['gameboard_size'],
-            'max_steps_allowed': env.env.max_steps,
-        }
+                # Environment state
+                'final_threat_count': final_threat_ids,
+                'final_target_count': final_target_ids,
+                'num_targets_total': env.envs[0].env.config['num_targets'],
+                'num_threats_total': env.envs[0].env.config['num_threats'],
+                'gameboard_size': env.envs[0].env.config['gameboard_size'],
+                'max_steps_allowed': env.envs[0].env.max_steps,
+            }
+        else:
+            episode_info = {
+                # Basic metrics
+                'episode': episode + 1,
+                'steps': episode_steps,
+                'threat_ids': threat_ids_gained,
+                'target_ids': target_ids_gained,
+                'total_reward': episode_reward,
+                'duration_ms': episode_duration_ms,
+                'avg_teammate_distance': avg_teammate_distance,
+
+                # Configuration
+                'overfit_type': overfit_type,
+                'behavior_type': behavior_type,
+
+                # Subpolicy analytics
+                'subpolicy_usage': subpolicy_usage.copy(),
+                'subpolicy_switches': subpolicy_switches,
+                'subpolicy_percentages': {
+                    k: (v / episode_steps * 100) if episode_steps > 0 else 0
+                    for k, v in subpolicy_usage.items()
+                },
+                'subpolicy_sequence': subpolicy_sequence.copy(),
+
+                # Teammate analytics
+                'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
+                'teammate_switches': teammate_switches,
+                'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+                'positions_visited': positions_visited,
+                'teammate_positions_visited': teammate_positions_visited,
+
+                # Performance metrics
+                'distance_traveled': distance_traveled,
+                'efficiency_score': target_ids_gained / max(episode_steps, 1),
+                'spatial_coverage_percent': calculate_spatial_coverage(positions_visited, env.env.config['gameboard_size']),
+                'avg_distance_per_step': distance_traveled / max(episode_steps, 1),
+
+                # Event tracking
+                'detection_events': detection_events,
+                'identification_events': identification_events,
+                'total_detections': env.env.detections,
+                'num_detection_events': len(detection_events),
+
+                # Timing analysis
+                'target_discovery_times': target_discovery_times,
+                'threat_discovery_times': threat_discovery_times,
+                'time_to_first_target': min(target_discovery_times.values()) if target_discovery_times else None,
+                'time_to_last_target': max(target_discovery_times.values()) if target_discovery_times else None,
+
+                # Episode outcome
+                'completed_successfully': env.env.all_targets_identified,
+                'termination_reason': 'success' if env.env.all_targets_identified else
+                'failed' if env.env.failed else 'timeout',
+
+                # Environment state
+                'final_threat_count': final_threat_ids,
+                'final_target_count': final_target_ids,
+                'num_targets_total': env.env.config['num_targets'],
+                'num_threats_total': env.env.config['num_threats'],
+                'gameboard_size': env.env.config['gameboard_size'],
+                'max_steps_allowed': env.env.max_steps,
+            }
 
         episode_data.append(episode_info)
 
@@ -564,18 +659,27 @@ def convert_to_json_serializable(obj):
 
 if __name__ == "__main__":
     # Configuration
-    config_filename = 'configs/june23_poc1_2ship.json'
-    league_type = 'strategy_diverse'
-    balance_method = 'uniform'
+    config_filename = 'configs/june24_diverse.json'
     num_episodes = 20
     tick_rate = 40
+    use_normalize = True
 
     localsearch_model_path = None
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Test configuration
-    overfit_agents = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
+    overfit_agents = ['low_risk', 'high_risk']#, 'nospatial', 'highspatial']
     behavior_types = ['aligned', 'counter']
+
+    model_path_dict = {
+        'low_risk': './trained_models/overfit_tests/finished_overfit_lowrisk/maisr_checkpoint_modeselector_homeOverfitTest_low_risk_0625_1104_6envs_97344_steps.zip',
+        'high_risk': './trained_models/overfit_tests/finished_overfit_highrisk/maisr_checkpoint_modeselector_homeOverfitTest_high_risk_0625_1211_6envs_109824_steps.zip'
+    }
+
+    norm_stats_path_dict = {
+        'low_risk': './trained_models/overfit_tests/finished_overfit_lowrisk/maisr_checkpoint_modeselector_homeOverfitTest_low_risk_0625_1104_6envs_vecnormalize_97344_steps.pkl',
+        'high_risk': './trained_models/overfit_tests/finished_overfit_highrisk/maisr_checkpoint_modeselector_homeOverfitTest_high_risk_0625_1211_6envs_vecnormalize_109824_steps.pkl'
+    }
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -597,7 +701,7 @@ if __name__ == "__main__":
         window=window,
         render_mode='human',
         run_name='overfit_test',
-        tag=f'overfit_analysis',
+        tag=f'overfit_analysis_0',
     )
 
     # Create subpolicies
@@ -622,6 +726,7 @@ if __name__ == "__main__":
     print(f"Episodes per configuration: {num_episodes}")
     print(f"Total episodes: {len(overfit_agents) * len(behavior_types) * num_episodes}")
 
+
     # Main testing loop
     for overfit_type in overfit_agents:
         print(f"\n{'=' * 60}")
@@ -631,8 +736,9 @@ if __name__ == "__main__":
         all_results[overfit_type] = {}
         all_episode_data[overfit_type] = {}
 
-        # Create the overfit agent for this type
-        agent = create_overfit_agent(overfit_type, subpolicies)
+        # Load the agent for this type
+        model_path = model_path_dict[overfit_type]
+        agent = model = PPO.load(model_path)
 
         for behavior_type in behavior_types:
             print(f"\n--- Testing {behavior_type} behavior ---")
@@ -643,8 +749,8 @@ if __name__ == "__main__":
             else:  # counter
                 teammate_overfit_type = get_counter_overfit_type(overfit_type)
 
-            print(f"Agent overfit type: {overfit_type}")
-            print(f"Teammate overfit type: {teammate_overfit_type}")
+            print(f"Testing Agent overfit to: {overfit_type}")
+            print(f"Teammate type: {teammate_overfit_type}")
 
             # Create environment with appropriate teammate manager
             env = MaisrModeSelectorWrapper(
@@ -654,20 +760,24 @@ if __name__ == "__main__":
                 change_region_subpolicy=ChangeRegions(model_path=None),
                 evade_policy=EvadeDetection(model_path=None),
                 teammate_manager=TeammateManager(
-                    league_type=league_type,
-                    balance_method=balance_method,
+                    league_type='vanilla',
+                    balance_method='uniform',
                     selfplay_checkpoint_dir=None,
                     pretrained_teammate_dir=None,
                     subpolicies=subpolicies,
                     overfit_test=teammate_overfit_type
                 )
             )
-
-            # Set the agent's environment reference
-            agent.env = env.env
+            env = DummyVecEnv([lambda: env])
+            env = VecNormalize.load(
+                norm_stats_path_dict[overfit_type],
+                env)
+            print(f'Loaded norm stats from {norm_stats_path_dict[overfit_type]}')
+            env.training = False
+            env.norm_Reward = False
 
             # Run episodes
-            episode_data = run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type)
+            episode_data = run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use_normalize)
 
             # Calculate summary statistics
             summary_stats = calculate_summary_statistics(episode_data)

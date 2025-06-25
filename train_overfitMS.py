@@ -433,7 +433,8 @@ def train_modeselector(
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
+    os.makedirs(f"{save_dir}/overfit_tests/{run_name}", exist_ok=True)
+    os.makedirs(f"/trained_models/overfit_tests/{run_name}/", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
 
@@ -653,7 +654,7 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["high_risk", "low_risk"]:#, "nospatial", "highspatial"]:
+    for overfit_test in ["nospatial", "highspatial"]: #["high_risk", "low_risk"]:#, "]:
             temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
