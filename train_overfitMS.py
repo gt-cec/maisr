@@ -654,7 +654,7 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["nospatial", "highspatial"]: #["high_risk", "low_risk"]:#, "]:
+    for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
             temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)

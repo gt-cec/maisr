@@ -455,7 +455,7 @@ def create_comparison_plots(all_results, timestamp):
     fig, axes = plt.subplots(3, 3, figsize=(20, 16))
     fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
 
-    overfit_types = ['low_risk', 'high_risk', 'nospatial', 'highspatial']
+    overfit_types = ['low_risk', 'high_risk']#, 'nospatial', 'highspatial']
     behavior_types = ['aligned', 'counter']
 
     metrics = ['reward', 'target_ids', 'avg_teammate_distance', 'steps', 'efficiency_score',
@@ -660,7 +660,7 @@ def convert_to_json_serializable(obj):
 if __name__ == "__main__":
     # Configuration
     config_filename = 'configs/june24_diverse.json'
-    num_episodes = 20
+    num_episodes = 40
     tick_rate = 40
     use_normalize = True
 
