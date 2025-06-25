@@ -541,7 +541,7 @@ def train_modeselector(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"trained_models/{run_name}/checkpoints",
+        save_path=f"trained_models/overfit_tests/{run_name}/checkpoints",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -612,7 +612,7 @@ def train_modeselector(
 
     # Save with consistent naming
     np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-    np.save(f"trained_models/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
+    np.save(f"trained_models/overfit_tests/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
     env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
 
     print("Training Normalization Stats:")
@@ -653,7 +653,7 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["low_risk", "high_risk"]:#, "nospatial", "highspatial"]:
+    for overfit_test in ["high_risk", "low_risk"]:#, "nospatial", "highspatial"]:
             temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)

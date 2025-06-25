@@ -55,7 +55,7 @@
 	"num_timesteps": 1e5,
 	"save_freq": 2500,
 	"n_eval_episodes": 5,
-	"eval_freq": 2500,
+	"eval_freq": 500,
 
 	"use_curriculum": false,
 	"cl_lr_decrease": 1,
