@@ -777,11 +777,10 @@ class HeuristicAgent:
 
         # Check if we should choose gotothreat based on risk tolerance and detections
         detections = env.num_threats_identified
-        should_go_to_threat = self._should_go_to_threat(env)
 
+        should_go_to_threat = self._should_go_to_threat(env)
         if should_go_to_threat:
             self._update_tracking(2)
-            #print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance} -> gotothreat(2)")
             return 2  # gotothreat
 
         # Check if we should stick with current subpolicy to avoid oscillation
@@ -797,7 +796,7 @@ class HeuristicAgent:
                 reason = f"committed_for_{self.subpolicy_commit_steps}_steps"
 
             self._update_tracking(choice)
-            action_name = ["localsearch", "changeregion", "gotothreat"][choice]
+            #action_name = ["localsearch", "changeregion", "gotothreat"][choice]
             #print(f"[HeuristicAgent] {reason} -> {action_name}({choice})")
             return choice
 
@@ -805,7 +804,7 @@ class HeuristicAgent:
         choice = self._choose_search_strategy(env, agent_id)
 
         # Apply changeregion cooldown
-        if choice == 1 and self.changeregion_cooldown > 0:
+        if choice in [1,4,5,6] and self.changeregion_cooldown > 0:
             choice = 0  # Force localsearch if changeregion is in cooldown
             reason = "changeregion_in_cooldown"
         else:
@@ -821,11 +820,11 @@ class HeuristicAgent:
                 reason = "default"
 
         # Start cooldown if switching away from changeregion
-        if self.last_subpolicy == 1 and choice != 1:
+        if self.last_subpolicy in [1,4,5,6] and choice != self.last_subpolicy:
             self.changeregion_cooldown = self.changeregion_cooldown_duration
 
         self._update_tracking(choice)
-        action_name = ["localsearch", "changeregion", "gotothreat"][choice]
+        #action_name = ["localsearch", "changeregion", "gotothreat"][choice]
         #print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
         return choice
 
@@ -840,12 +839,7 @@ class HeuristicAgent:
     def _should_go_to_threat(self, env):
         """
         Determine if the agent should choose gotothreat based on risk tolerance and current detections.
-
-        Args:
-            env: The environment instance
-
-        Returns:
-            bool: True if should choose gotothreat, False otherwise
+        Note: gotothreat is now action 2 in the new action space
         """
         detections = env.num_threats_identified
 
@@ -861,32 +855,74 @@ class HeuristicAgent:
         return False
 
     def _choose_search_strategy(self, env, agent_id):
-        """
-        Choose between localsearch and changeregion based on spatial coordination setting.
-
-        Args:
-            env: The environment instance
-            agent_id (int): ID of the agent making the decision
-
-        Returns:
-            int: 0 for localsearch, 1 for changeregion
-        """
+        """Choose between local search and specific quadrant goto policies"""
         if self.spatial_coord == "none":
             return 0  # Always choose localsearch
 
         elif self.spatial_coord == "some":
-            # Choose changeregion if there's a quadrant with lots of targets
-            # and neither agent nor teammate is in that quadrant
-            return self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
+            # Use existing hysteresis logic but return specific quadrant policies
+            quadrant_choice = self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
+            if quadrant_choice == 1:  # Original logic returned 1 for changeregion
+                # Now we need to determine WHICH quadrant has the most targets
+                target_rich_quadrant_id = self._find_best_quadrant(env, agent_id)
+                # Map quadrant ID to subpolicy: 0=NW->1, 1=NE->4, 2=SW->6, 3=SE->5
+                quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
+                return quadrant_to_subpolicy.get(target_rich_quadrant_id, 0)
+            return 0
 
         elif self.spatial_coord == "high":
-            # Always choose changeregion if both agents are in the same quadrant
             if self._agents_in_same_quadrant(env, agent_id):
-                return 1  # changeregion
-            else:
-                return 0  # localsearch
+                # Choose a different quadrant to go to
+                current_quadrant_name = self._get_agent_quadrant(env, agent_id)
+                # Convert quadrant name to ID
+                quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
+                current_quadrant_id = quadrant_name_to_id.get(current_quadrant_name, 0)
 
-        return 0  # Default to localsearch
+                # Go to opposite quadrant
+                opposite_quadrant_id = (current_quadrant_id + 2) % 4
+                quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
+                return quadrant_to_subpolicy.get(opposite_quadrant_id, 0)
+            return 0
+
+        return 0
+
+    def _find_best_quadrant(self, env, agent_id):
+        """Find the quadrant with the most unknown targets that's not occupied by agents"""
+        if env.config['num_aircraft'] < 2:
+            # No teammate, just find quadrant with most targets
+            quadrant_counts = self._get_unknown_targets_per_quadrant(env)
+            max_targets = max(quadrant_counts.values())
+            for quadrant_name, count in quadrant_counts.items():
+                if count == max_targets:
+                    quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
+                    return quadrant_name_to_id.get(quadrant_name, 0)
+            return 0
+
+        # Get agent and teammate positions
+        agent_quadrant = self._get_agent_quadrant(env, agent_id)
+        teammate_id = 1 if agent_id == 0 else 0
+        teammate_quadrant = self._get_agent_quadrant(env, teammate_id)
+
+        # Get target counts per quadrant
+        quadrant_counts = self._get_unknown_targets_per_quadrant(env)
+
+        # Find quadrant with most targets that's not occupied
+        quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
+
+        # Sort quadrants by target count (descending)
+        sorted_quadrants = sorted(quadrant_counts.items(), key=lambda x: x[1], reverse=True)
+
+        # Choose first quadrant that's not occupied by either agent
+        for quadrant_name, target_count in sorted_quadrants:
+            if target_count > 0 and quadrant_name != agent_quadrant and quadrant_name != teammate_quadrant:
+                return quadrant_name_to_id.get(quadrant_name, 0)
+
+        # If all good quadrants are occupied, just go to the one with most targets
+        if sorted_quadrants:
+            best_quadrant_name = sorted_quadrants[0][0]
+            return quadrant_name_to_id.get(best_quadrant_name, 0)
+
+        return 0  # Default to NW if no targets found
 
     def _check_target_rich_quadrant_with_hysteresis(self, env, agent_id):
         """

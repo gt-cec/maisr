@@ -60,15 +60,24 @@ class HumanSubpolicyController:
         """Handle keyboard input for subpolicy selection"""
         key_to_subpolicy = {
             pygame.K_1: 0,  # Local search
-            pygame.K_2: 1,  # Change region
+            pygame.K_2: 1,  # Goto NW
             pygame.K_3: 2,  # Go to threat
-            pygame.K_4: 3,  # Hold/Evade
+            pygame.K_4: 3,  # Hold
+            pygame.K_5: 4,  # Goto NE
+            pygame.K_6: 5,  # Goto SE
+            pygame.K_7: 6,  # Goto SW
+            pygame.K_8: 7,  # Custom waypoint mode
         }
 
         if key in key_to_subpolicy:
             self.current_subpolicy = key_to_subpolicy[key]
-            self.use_custom_waypoint = False  # Switch back to subpolicy mode
-            subpolicy_names = ["Local Search", "Change Region", "Go to Threat", "Hold/Evade"]
+            if self.current_subpolicy == 7:
+                self.use_custom_waypoint = True
+            else:
+                self.use_custom_waypoint = False
+
+            subpolicy_names = ["Local Search", "Goto NW", "Go to Threat", "Hold",
+                               "Goto NE", "Goto SE", "Goto SW", "Custom Waypoint"]
             print(f"Human selected subpolicy: {subpolicy_names[self.current_subpolicy]}")
             return True
 
@@ -76,11 +85,7 @@ class HumanSubpolicyController:
 
     def get_current_action(self):
         """Get the current action for the human player"""
-        if self.use_custom_waypoint:
-            # In custom waypoint mode, use a special subpolicy (hold) and override waypoint
-            return 4  # Hold subpolicy, waypoint will be overridden
-        else:
-            return self.current_subpolicy
+        return self.current_subpolicy  # Always return the current subpolicy
 
     def should_override_waypoint(self):
         """Check if we should override the agent's waypoint with custom waypoint"""
@@ -139,9 +144,10 @@ def draw_instructions(window, font):
     """Draw instructions for the human player"""
     instructions = [
         "HUMAN CONTROL INSTRUCTIONS:",
-        "• Keys 1-4: Select subpolicy",
-        "  1 = Local Search, 2 = Change Region",
-        "  3 = Go to Threat, 4 = Hold/Evade",
+        "• Keys 1-7: Select subpolicy",
+        "  1 = Local Search, 2 = Goto NW",
+        "  3 = Go to Threat, 4 = Hold",
+        "  5 = Goto NE, 6 = Goto SE, 7 = Goto SW",
         "• Click map: Direct waypoint control",
         "• Green targets = identified, Orange = unknown",
         "• Avoid gold threat circles",
@@ -158,7 +164,7 @@ def draw_instructions(window, font):
 
 def draw_status_info(window, font, episode, step_count, episode_reward, controller):
     """Draw current status information"""
-    subpolicy_names = ["Local Search", "Change Region", "Go to Threat", "Hold/Evade"]
+    subpolicy_names = ["Local Search", "Goto NW", "Go to Threat", "Hold", "Goto NE", "Goto SE", "Goto SW"]
     current_mode = "Custom Waypoint" if controller.use_custom_waypoint else subpolicy_names[
         controller.current_subpolicy]
 

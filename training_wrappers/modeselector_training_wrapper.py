@@ -1,9 +1,5 @@
-import warnings
-
 import gymnasium as gym
 import numpy as np
-
-#from policies.sub_policies import SubPolicy, GoToNearestThreat, ChangeRegions
 from policies.league_management import TeammateManager, TeammatePolicy, LocalSearch, ChangeRegions, GoToNearestThreat
 
 
@@ -42,11 +38,11 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Define observation space (6 high-level elements about the current game state)
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
-            shape=(8,),
+            shape=(10,),
             dtype=np.float32)
 
         # Action space: 3 possible sub-policies to choose from
-        self.action_space = gym.spaces.Discrete(4)
+        self.action_space = gym.spaces.Discrete(7)
         self.action_rate = self.env.config['action_rate']
 
         self.render_mode = self.env.render_mode
@@ -62,7 +58,15 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.fail_penalty = -22
         self.step_penalty = -0.005
 
-        self.mode_dict = {0:"local search", 1:'change_region', 2:'go_to_threat', 3:'hold', 4:'custom_waypoint'}
+        self.mode_dict = {
+            0: "local search",
+            1: "goto NW",
+            2: "go_to_threat",
+            3: "hold",
+            4: "goto NE",
+            5: "goto SE",
+            6: "goto SW"
+        }
 
         self.human_custom_waypoint = None
 
@@ -185,14 +189,9 @@ class MaisrModeSelectorWrapper(gym.Env):
             self.total_switches += 1
             self.switched_policies = True
 
-        if action == 1 and self.has_reached_target_region(0):  # action 1 = change_region
-            #print("Auto-switching from change_region to local_search - target region reached")
+        if self.subpolicy_choice in [1, 4, 5, 6] and self.has_reached_target_quadrant(0, self.subpolicy_choice):
+            #print(f"Auto-switching from {self.mode_dict[self.subpolicy_choice]} to local_search - target quadrant reached")
             self.subpolicy_choice = 0  # Switch to local search
-
-            # Reset the change_region policy's target so it will select a new one next time
-            if hasattr(self.change_region_subpolicy, 'target_region'):
-                self.change_region_subpolicy.target_region = None
-
         else:
             self.subpolicy_choice = action
 
@@ -205,35 +204,36 @@ class MaisrModeSelectorWrapper(gym.Env):
         if self.subpolicy_choice == 0:  # Local search
             subpolicy_action = self.local_search_policy.act(subpolicy_observation, env=self.env, agent_id=0)
 
-        elif self.subpolicy_choice == 1:  # Change region
-            subpolicy_action = self.change_region_subpolicy.act(subpolicy_observation)
+        elif self.subpolicy_choice == 1:  # Goto NW
+            subpolicy_action = self._get_quadrant_waypoint(0)  # NW = quadrant 0
 
-        elif self.subpolicy_choice == 2:  # go to high value target
+        elif self.subpolicy_choice == 2:  # go to threat
             subpolicy_action = self.go_to_highvalue_policy.act(subpolicy_observation)
 
-        elif self.subpolicy_choice == 3:  # Hold (no op) - Set waypoint to current location
+        elif self.subpolicy_choice == 3:  # Hold
             agent_pos = np.array([
-                                  self.env.agents[self.env.aircraft_ids[0]].x/map_half_size,
-                                  self.env.agents[self.env.aircraft_ids[0]].y/map_half_size
-                                  ])
+                self.env.agents[self.env.aircraft_ids[0]].x / map_half_size,
+                self.env.agents[self.env.aircraft_ids[0]].y / map_half_size])
             subpolicy_action = agent_pos
 
-        elif self.subpolicy_choice == 4:  # Custom waypoint from human input
-            #print(f'[wrapper.step] subpolicy choice 4, human custom waypoint = {self.human_custom_waypoint}')
+        elif self.subpolicy_choice == 4:  # Goto NE
+            subpolicy_action = self._get_quadrant_waypoint(1)  # NE = quadrant 1
+
+        elif self.subpolicy_choice == 5:  # Goto SE
+            subpolicy_action = self._get_quadrant_waypoint(3)  # SE = quadrant 3
+
+        elif self.subpolicy_choice == 6:  # Goto SW
+            subpolicy_action = self._get_quadrant_waypoint(2)  # SW = quadrant 2
+
+
+        elif self.subpolicy_choice == 7:  # Custom human waypoint
             if hasattr(self, 'human_custom_waypoint') and self.human_custom_waypoint is not None:
-                # Use the custom waypoint set by the human
                 subpolicy_action = self.human_custom_waypoint.copy()
-                #print(f'[Wrapper] Using human custom waypoint: {subpolicy_action}')
-
-            else:
-                # Fallback to current position if no custom waypoint set
+            else: # Fallback to current position if no custom waypoint set
                 agent_pos = np.array([
-                    self.env.agents[self.env.aircraft_ids[0]].x/map_half_size,
-                    self.env.agents[self.env.aircraft_ids[0]].y/map_half_size
-
-                ])
+                    self.env.agents[self.env.aircraft_ids[0]].x / map_half_size,
+                    self.env.agents[self.env.aircraft_ids[0]].y / map_half_size])
                 subpolicy_action = agent_pos
-                print('[Wrapper] No custom waypoint found, using current position')
         else:
             raise ValueError(f'ERROR: Got invalid subpolicy selection {self.subpolicy_choice}')
 
@@ -263,19 +263,15 @@ class MaisrModeSelectorWrapper(gym.Env):
                 self.current_teammate.env = self.env
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
-            #print(f'[Wrapper.step] Chose teammate subpolicy {self.teammate_subpolicy_choice}')
 
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
-            #print(f'[Wrapper.step] Teammate subpolicy obs is {teammate_subpolicy_observation}')
             if self.teammate_subpolicy_choice == 0:  # Local search
                 direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation, env=self.env, agent_id=1)
                 teammate_subpolicy_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
-            elif self.teammate_subpolicy_choice == 1:  # Change region
-                waypoint_to_go = self.change_region_subpolicy.act(teammate_subpolicy_observation)
-                waypoint_to_go = self.env._denormalize_waypoint(waypoint_to_go)
-                teammate_subpolicy_action = waypoint_to_go
-                #print(f'[Wrapper] ChangeRegion subpolicy action is {teammate_subpolicy_action}')
+            elif self.teammate_subpolicy_choice == 1:  # Change region - NW
+                waypoint_to_go = self._get_quadrant_waypoint(0)
+                teammate_subpolicy_action = self.env._denormalize_waypoint(waypoint_to_go)
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
@@ -285,6 +281,18 @@ class MaisrModeSelectorWrapper(gym.Env):
                 teammate_subpolicy_action = np.array([
                     self.env.agents[self.env.aircraft_ids[1]].x / self.env.config['gameboard_size'],
                     self.env.agents[self.env.aircraft_ids[1]].y / self.env.config['gameboard_size']])
+
+            elif self.teammate_subpolicy_choice == 4:  # Change region - NE
+                waypoint_to_go = self._get_quadrant_waypoint(1)
+                teammate_subpolicy_action = self.env._denormalize_waypoint(waypoint_to_go)
+
+            elif self.teammate_subpolicy_choice == 5:  # Change region - SE
+                waypoint_to_go = self._get_quadrant_waypoint(3)
+                teammate_subpolicy_action = self.env._denormalize_waypoint(waypoint_to_go)
+
+            elif self.teammate_subpolicy_choice == 6:  # Change region - SW
+                waypoint_to_go = self._get_quadrant_waypoint(2)
+                teammate_subpolicy_action = self.env._denormalize_waypoint(waypoint_to_go)
             else:
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
@@ -427,7 +435,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         Generates the observation for the mode selector using env attributes
         """
         # Initialize observation as float32 (not int32)
-        obs = np.zeros(8, dtype=np.float32)
+        obs = np.zeros(10, dtype=np.float32)
 
         # Calculate targets left
         targets_left = self.env.config['num_targets'] - self.env.targets_identified
@@ -456,8 +464,8 @@ class MaisrModeSelectorWrapper(gym.Env):
         obs[5] = self.get_adaptation_signal()
 
         # obs[6] and obs[7]: dx, dy to nearest threat
+        agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x, self.env.agents[self.env.aircraft_ids[agent_id]].y])
         if len(self.env.threats) > 0:
-            agent_pos = np.array([self.env.agents[self.env.aircraft_ids[agent_id]].x, self.env.agents[self.env.aircraft_ids[agent_id]].y])
 
             # Find nearest threat
             threat_distances = []
@@ -477,6 +485,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         else:
             obs[6] = 0.0  # No threats
             obs[7] = 0.0
+
+        obs[8] = agent_pos[0]
+        obs[9] = agent_pos[1]
 
         if self.observation_noise_std > 0:
             noise = np.random.normal(0, self.observation_noise_std, obs.shape)
@@ -531,7 +542,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             observation = self.get_observation_localsearch(agent_id)
             #observation = self.normalize_local_search_obs(observation)
 
-        elif selected_subpolicy == 1: # Change region
+        elif selected_subpolicy in [1,4,5,6]: # Change region
             observation = self.get_observation_changeregion(agent_id)
 
         elif selected_subpolicy == 2: # Go to nearest
@@ -541,7 +552,7 @@ class MaisrModeSelectorWrapper(gym.Env):
             #observation = self.get_observation_evade(agent_id)
             observation = self.get_observation_localsearch(agent_id)
 
-        if selected_subpolicy == 4: # Get obs for local search
+        elif selected_subpolicy == 7: # Custom human waypoint
             observation = self.get_observation_localsearch(agent_id)
 
         return observation
@@ -725,6 +736,46 @@ class MaisrModeSelectorWrapper(gym.Env):
 ########################################################################################################################
 ###############################################    Helper functions     ################################################
 ########################################################################################################################
+
+    def _get_quadrant_waypoint(self, quadrant_id):
+        """Get waypoint for specific quadrant (0=NW, 1=NE, 2=SW, 3=SE)"""
+        quadrant_centers = {
+            0: np.array([-0.5, 0.5]),  # NW
+            1: np.array([0.5, 0.5]),  # NE
+            2: np.array([-0.5, -0.5]),  # SW
+            3: np.array([0.5, -0.5])  # SE
+        }
+        return quadrant_centers.get(quadrant_id, np.array([0.0, 0.0]))
+
+    def has_reached_target_quadrant(self, agent_id, subpolicy_choice):
+        """Check if agent has reached the target quadrant for goto policies"""
+        # Map subpolicy choices to quadrant IDs
+        subpolicy_to_quadrant = {1: 0, 4: 1, 6: 2, 5: 3}  # NW, NE, SW, SE
+
+        if subpolicy_choice not in subpolicy_to_quadrant:
+            return False
+
+        target_quadrant = subpolicy_to_quadrant[subpolicy_choice]
+
+        # Get agent position
+        agent_x = self.env.agents[self.env.aircraft_ids[agent_id]].x
+        agent_y = self.env.agents[self.env.aircraft_ids[agent_id]].y
+        agent_pos = np.array([agent_x, agent_y])
+
+        # Get target quadrant center
+        map_half_size = self.env.config['gameboard_size'] / 2
+        quadrant_centers = {
+            0: np.array([-map_half_size / 2, map_half_size / 2]),  # NW
+            1: np.array([map_half_size / 2, map_half_size / 2]),  # NE
+            2: np.array([-map_half_size / 2, -map_half_size / 2]),  # SW
+            3: np.array([map_half_size / 2, -map_half_size / 2])  # SE
+        }
+
+        quadrant_center = quadrant_centers[target_quadrant]
+        distance_to_center = np.linalg.norm(agent_pos - quadrant_center)
+        arrival_threshold = map_half_size * 0.25  # 25% of quadrant size
+
+        return distance_to_center <= arrival_threshold
 
     def has_reached_target_region(self, agent_id=0):
         """
@@ -1148,12 +1199,15 @@ class MaisrModeSelectorWrapper(gym.Env):
 
         # Get percentages with safe access using .get() method
         local_search_pct = (subpolicy_counts.get(0, 0) / total_steps) * 100
-        change_region_pct = (subpolicy_counts.get(1, 0) / total_steps) * 100
+        gotoNW_pct = (subpolicy_counts.get(1, 0) / total_steps) * 100
+        gotoNE_pct = (subpolicy_counts.get(4, 0) / total_steps) * 100
+        gotoSE_pct = (subpolicy_counts.get(5, 0) / total_steps) * 100
+        gotoSW_pct = (subpolicy_counts.get(6, 0) / total_steps) * 100
+        change_region_pct = gotoNW_pct + gotoNE_pct + gotoSE_pct + gotoSW_pct
         go_to_threat_pct = (subpolicy_counts.get(2, 0) / total_steps) * 100
+        hold_pct = (subpolicy_counts.get(3, 0) / total_steps) * 100
 
-        # Calculate percentages
-        print(
-            f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.total_switches} policy switches ({self.total_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}%")
+        print(f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.total_switches} policy switches ({self.total_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}% / Hold {hold_pct:.1f}%")
 
     def get_current_subpolicy_info(self):
         """Return current subpolicy information for display"""

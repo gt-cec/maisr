@@ -894,8 +894,8 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["low_risk", "high_risk", "nospatial", "highspatial"]:
-            temp_identifier = 'overfitTest_'+overfit_test
+    for overfit_test in ["low_risk", "high_risk"]:#, "nospatial", "highspatial"]:
+            temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
             run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
@@ -912,6 +912,7 @@ if __name__ == "__main__":
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
                 save_model = True,
-                overfit_test = overfit_test
+                overfit_test = overfit_test,
+                save_dir="./trained_models/overfit_tests/",
             )
             print(f"✓ Completed training run")
