@@ -37,7 +37,9 @@ def setup_teammate_pool(league_type, balance_method):
     teammate_manager = TeammateManager(
         league_type,
         balance_method,
-        subpolicies=subpolicies
+        subpolicies=subpolicies,
+        selfplay_checkpoint_dir=None,
+        pretrained_teammate_dir=None,
     )
 
     print(f"Teammate manager setup with league_type: {league_type}")
@@ -264,7 +266,7 @@ def train_single_teammate(
 
 
 def train_rl_teammates(
-        config_filename='configs/june23_poc1.json',
+        config_filename='configs/teammate_training.json',
         num_agents_to_train=7,
         seed_list=None,
         n_envs=None,
@@ -330,7 +332,7 @@ def train_rl_teammates(
             model_path = train_single_teammate(
                 env_config=config,
                 training_seed=seed,
-                num_agents=1,
+                num_agents=2,
                 n_envs=n_envs,
                 project_name=project_name,
                 use_normalize=use_normalize,
@@ -356,7 +358,7 @@ def train_rl_teammates(
             model_path = train_single_teammate(
                 env_config=config,
                 training_seed=seed,
-                num_agents=2,
+                num_agents=1,
                 n_envs=n_envs,
                 project_name=project_name,
                 use_normalize=use_normalize,
@@ -395,7 +397,7 @@ if __name__ == "__main__":
     # Configuration parameters
     num_agents_to_train = 7
     seed_list = [2048, 9999, 42, 123, 456, 789, 1337]
-    config_filename = 'configs/june23_poc1_2ship.json'
+    config_filename = 'configs/teammate_training.json'
 
     # Train the teammates
     trained_models = train_rl_teammates(
