@@ -811,7 +811,7 @@ class MAISREnvVec(gym.Env):
             self.terminated = True
 
         if self.num_threats_identified > self.config['max_threat_ids']:
-            self.terminated = True
+            #self.terminated = True
             self.failed = True
             print(f'%%% TOO MANY THREAT IDS, TERMINATED')
 

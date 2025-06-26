@@ -613,7 +613,7 @@ def train_modeselector(
 
     # Save with consistent naming
     np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-    np.save(f"trained_models/overfit_tests/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
+    #np.save(f"trained_models/overfit_tests/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
     env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
 
     print("Training Normalization Stats:")
@@ -654,7 +654,7 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
+    for overfit_test in ["low_risk","high_risk", "nospatial", "highspatial"]:
             temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
@@ -667,7 +667,7 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                n_envs=multiprocessing.cpu_count(),
+                n_envs=multiprocessing.cpu_count()-1,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'

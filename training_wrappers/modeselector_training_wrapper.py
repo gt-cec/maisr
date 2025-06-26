@@ -520,15 +520,28 @@ class MaisrModeSelectorWrapper(gym.Env):
             (Reward)  Finishing early (Maybe?)
             (Penalty) Changing modes too frequently
             (Penalty) Getting detected by a high value target
+            (Penalty) Immediate penalty for excess threat identification
         """
         target_reward = info['new_target_ids'] * self.reward_per_target_id
         threat_reward = info['new_threat_ids'] * self.reward_per_threat_id
         finish_reward = info['steps_left'] * self.reward_per_step_early if info['done'] else 0
         fail_penalty = self.fail_penalty if info['failed'] else 0
         switch_penalty = self.switched_policies * self.penalty_for_policy_switch  # Bool times penalty
-        #detect_penalty = info['new_detections'] * self.penalty_per_detection
 
-        reward = switch_penalty + target_reward + + threat_reward + finish_reward + fail_penalty - self.step_penalty
+        # Immediate penalty for identifying threats beyond the limit
+        excess_threat_penalty = 0
+        if 'new_threat_ids' in info and info['new_threat_ids'] > 0:
+            # Check if this new threat identification puts us over the limit
+            current_threats = getattr(self.env, 'num_threats_identified', 0)
+            max_allowed = self.env.config.get('max_threat_ids', 2)
+            if current_threats > max_allowed:
+                # Apply penalty for each excess threat
+                excess_threats = current_threats - max_allowed
+                excess_threat_penalty = excess_threats * self.fail_penalty  # Use same penalty magnitude
+
+        # detect_penalty = info['new_detections'] * self.penalty_per_detection
+
+        reward = switch_penalty + target_reward + threat_reward + finish_reward + fail_penalty + excess_threat_penalty - self.step_penalty
         return reward
 
 
