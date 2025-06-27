@@ -6,7 +6,7 @@
 	"game_speed": 0.07,
 	"agent_speed": 2.8,
 	"num_aircraft": 2,
-	"max_steps": 12000,
+	"max_steps": 15000,
 	"seed": 42,
 
 	"num_targets": 15,
@@ -20,7 +20,7 @@
 	"threat_radius": 30,
 	"max_threat_ids": 2,
     
-    "league_type": "strategy_diverse",
+    "league_type": "baseline",
 	"balance_method": "uniform",
 	"obs_type": "nearest",
 	"action_type": "Discrete16",

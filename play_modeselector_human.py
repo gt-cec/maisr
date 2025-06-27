@@ -310,7 +310,7 @@ def run_sanity_checks(episode_data):
     subpolicy_names = {0: "Local Search", 1: "Change Region", 2: "Go to Threat", 3: "Hold"}
 
     # Check if all subpolicies are being used
-    total_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+    total_usage = {0: 0, 1: 0, 2: 0, 3:0, 4:0, 5:0, 6:0, 7:0}
     for ep in episode_data:
         if 'subpolicy_usage' in ep:
             for policy_id, count in ep['subpolicy_usage'].items():
@@ -613,7 +613,7 @@ def create_analysis_plots(episode_data):
     # Calculate dominant subpolicy for each episode
     dominant_subpolicies = []
     for ep in episode_data:
-        usage = ep.get('subpolicy_usage', {0: 0, 1: 0, 2: 0, 3:0})
+        usage = ep.get('subpolicy_usage', {0: 0, 1: 0, 2: 0, 3:0, 4:0, 5:0, 6:0, 7:0})
         dominant = max(usage.keys(), key=lambda k: usage[k])
         dominant_subpolicies.append(dominant)
 
@@ -679,8 +679,8 @@ def create_analysis_plots(episode_data):
 
 if __name__ == "__main__":
 
-    config_filename = 'configs/june23_poc1_2ship.json'
-    league_type = 'strategy_diverse'
+    config_filename = 'configs/june24_diverse.json'
+    #league_type = 'strategy_diverse'
     balance_method = 'uniform'
     num_episodes = 20
     tick_rate = 40
@@ -696,6 +696,7 @@ if __name__ == "__main__":
 
     pygame.display.init()
     pygame.font.init()
+    font = pygame.font.Font(None, 36)  # You can adjust the size as needed
     clock = pygame.time.Clock()
     ctypes.windll.user32.SetProcessDPIAware()
     window_width, window_height = config['window_size'][0], config['window_size'][1]
@@ -724,13 +725,13 @@ if __name__ == "__main__":
         go_to_highvalue_policy=GoToNearestThreat(model_path=None),
         change_region_subpolicy = ChangeRegions(model_path=None),
         evade_policy = EvadeDetection(model_path=None),
-        teammate_manager = TeammateManager(league_type, balance_method, subpolicies=subpolicies)
+        teammate_manager = TeammateManager(config['league_type'], balance_method, subpolicies=subpolicies, selfplay_checkpoint_dir=None, pretrained_teammate_dir=None)
     )
 
 
     ###################################################################################################################
 
-    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3}
+    key_to_action = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2, pygame.K_4: 3, pygame.K_5: 4, pygame.K_6: 5, pygame.K_7: 6, pygame.K_8: 7}
     all_observations = []
     episode_rewards = []
     episode_observations = []
@@ -749,13 +750,13 @@ if __name__ == "__main__":
         initial_target_ids = env.env.targets_identified
 
         # Subpolicy tracking
-        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3:0}
+        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3:0, 4:0, 5:0, 6:0, 7:0}
         subpolicy_switches = 0
         last_action = None
         subpolicy_sequence = []
 
         # Teammate tracking
-        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0}
+        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3:0, 4:0, 5:0, 6:0, 7:0}
         teammate_switches = 0
         last_teammate_action = None
 
@@ -855,13 +856,21 @@ if __name__ == "__main__":
                 threat_discovery_times[len(threat_discovery_times)] = episode_steps
 
             # Render
-            #env.render()
+            # env.render()
             human_subpolicy_id, human_subpolicy_name = env.get_current_subpolicy_info()
             if config['num_aircraft'] == 2:
                 ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
             else:
                 ai_subpolicy_id, ai_subpolicy_name = 0, 'N/A'
-            env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name, ai_subpolicy_id, ai_subpolicy_name)
+            env.env.render_subpolicy_indicators(human_subpolicy_id, human_subpolicy_name, ai_subpolicy_id,
+                                                ai_subpolicy_name)
+
+            # Add reward display
+            reward_text = font.render(f"Episode Reward: {episode_reward:.2f}", True, (255, 255, 255))  # White text
+            step_reward_text = font.render(f"Step Reward: {reward:.2f}", True, (255, 255, 255))
+            window.blit(reward_text, (10, 1020))  # Position at top-left
+            window.blit(step_reward_text, (10, 1050))  # Position below episode reward
+
             pygame.display.flip()
 
         # Calculate episode duration
