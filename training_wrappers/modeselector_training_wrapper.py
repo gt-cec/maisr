@@ -52,14 +52,17 @@ class MaisrModeSelectorWrapper(gym.Env):
         # Set rewards for mode selector
         self.reward_per_target_id = 1.2
         self.reward_per_threat_id = 5
-        self.penalty_for_policy_switch = -0.02
+        self.penalty_for_policy_switch = -0.1
         self.reward_per_step_early = 0.2
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
-        self.fail_penalty = -25
+        self.fail_penalty = -20
         self.step_penalty = -0.5
-        self.reward_for_appropriate_threat_action = 0.5  # Small reward for choosing GoToThreat when under limit
-        self.penalty_for_inappropriate_threat_action = -0.2  # Small penalty for choosing GoToThreat when at/over limit
-        self.penalty_for_holding = -0.5
+
+        self.reward_for_appropriate_threat_action = 0.3  # Small reward for choosing GoToThreat when under limit
+        self.penalty_for_inappropriate_threat_action = -0.15  # Small penalty for choosing GoToThreat when at/over limit
+        self.penalty_for_holding = -0.4
+        self.reward_for_quadrant_coordination = 0.2
+        self.penalty_for_quadrant_separation = -0.1
 
         self.mode_dict = {
             0: "local search",
@@ -539,8 +542,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         else:
             fail_penalty = 0
 
-        
-        # Add shaping reward for appropriate subpolicy usage
+        # Add shaping reward for subpolicy usage
         action_shaping = 0
         if hasattr(self, 'current_action'):
             if self.current_action == 2:  # GoToThreat action    
@@ -551,10 +553,27 @@ class MaisrModeSelectorWrapper(gym.Env):
             
             elif self.current_action == 3: #Hold
                 action_shaping = self.penalty_for_holding
-        
+
+        coordination_shaping = 0
+        if hasattr(self, 'current_action') and self.current_action in [1, 4, 5, 6]:  # Quadrant movement subpolicies
+            if self.current_teammate and self.env.config['num_aircraft'] >= 2:
+                # Get agent and teammate positions
+                agent_x = self.env.agents[self.env.aircraft_ids[0]].x
+                agent_y = self.env.agents[self.env.aircraft_ids[0]].y
+                teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
+                teammate_y = self.env.agents[self.env.aircraft_ids[1]].y
+
+                # Determine quadrants (0=NW, 1=NE, 2=SW, 3=SE)
+                agent_quadrant = self._get_agent_quadrant(agent_x, agent_y)
+                teammate_quadrant = self._get_agent_quadrant(teammate_x, teammate_y)
+
+                if agent_quadrant == teammate_quadrant:
+                    coordination_shaping = self.reward_for_quadrant_coordination  # Reward for being in same quadrant
+                else:
+                    coordination_shaping = self.penalty_for_quadrant_separation  # Small penalty for being in different quadrants
 
         reward = (switch_penalty + target_reward + threat_reward + finish_reward +
-                  fail_penalty + action_shaping + self.step_penalty)
+                  fail_penalty + action_shaping + coordination_shaping + self.step_penalty)
 
         return reward
 
@@ -1141,6 +1160,20 @@ class MaisrModeSelectorWrapper(gym.Env):
             return distance_to_threat > threat_radius
 
         return True  # Threat is not along the path
+
+    def _get_agent_quadrant(self, x, y):
+        """
+        Determine which quadrant an agent is in based on x,y coordinates
+        Returns: 0=NW, 1=NE, 2=SW, 3=SE
+        """
+        if x < 0 and y >= 0:
+            return 0  # NW
+        elif x >= 0 and y >= 0:
+            return 1  # NE
+        elif x < 0 and y < 0:
+            return 2  # SW
+        else:  # x >= 0 and y < 0
+            return 3  # SE
 
     def _get_circumnavigation_action(self, current_angle, threat_to_agent, directions):
         """Get action to continue circumnavigation"""

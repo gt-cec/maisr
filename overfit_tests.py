@@ -660,7 +660,7 @@ def convert_to_json_serializable(obj):
 if __name__ == "__main__":
     # Configuration
     config_filename = 'configs/june24_diverse.json'
-    num_episodes = 40
+    num_episodes = 50
     tick_rate = 40
     use_normalize = True
 
@@ -672,13 +672,13 @@ if __name__ == "__main__":
     behavior_types = ['aligned', 'counter']
 
     model_path_dict = {
-        'low_risk': './trained_models/overfit_tests/finished_overfit_lowrisk/maisr_checkpoint_modeselector_homeOverfitTest_low_risk_0625_1104_6envs_97344_steps.zip',
-        'high_risk': './trained_models/overfit_tests/finished_overfit_highrisk/maisr_checkpoint_modeselector_homeOverfitTest_high_risk_0625_1211_6envs_109824_steps.zip'
+        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV4_low_risk_0627_0259_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_low_risk_0627_0259_6envs_257088_steps.zip',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV4_high_risk_0626_2211_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_high_risk_0626_2211_6envs_257088_steps.zip',
     }
 
     norm_stats_path_dict = {
-        'low_risk': './trained_models/overfit_tests/finished_overfit_lowrisk/maisr_checkpoint_modeselector_homeOverfitTest_low_risk_0625_1104_6envs_vecnormalize_97344_steps.pkl',
-        'high_risk': './trained_models/overfit_tests/finished_overfit_highrisk/maisr_checkpoint_modeselector_homeOverfitTest_high_risk_0625_1211_6envs_vecnormalize_109824_steps.pkl'
+        'low_risk': 'trained_models/overfit_tests/modeselector_OverfitV4_low_risk_0627_0259_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_low_risk_0627_0259_6envs_vecnormalize_257088_steps.pkl',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV4_high_risk_0626_2211_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_high_risk_0626_2211_6envs_vecnormalize_257088_steps.pkl',
     }
 
     config = load_env_config(config_filename)
