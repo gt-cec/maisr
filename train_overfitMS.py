@@ -434,7 +434,7 @@ def train_modeselector(
         pygame.display.set_caption("MAISR Human Interface")
 
     os.makedirs(f"{save_dir}/overfit_tests/{run_name}", exist_ok=True)
-    os.makedirs(f"/trained_models/overfit_tests/{run_name}/", exist_ok=True)
+    os.makedirs(f"./trained_models/overfit_tests/{run_name}/", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
 
@@ -656,7 +656,7 @@ if __name__ == "__main__":
     config['config_filename'] = config_filename
 
     for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
-            temp_identifier = 'OverfitV5_'+overfit_test
+            temp_identifier = 'OverfitV6_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
             run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
@@ -668,7 +668,7 @@ if __name__ == "__main__":
                 use_normalize=True,
                 use_teammate_manager=True,
                 render=False,
-                n_envs=multiprocessing.cpu_count()-1,
+                n_envs=multiprocessing.cpu_count()-2,
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
