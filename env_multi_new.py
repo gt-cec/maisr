@@ -813,7 +813,7 @@ class MAISREnvVec(gym.Env):
         if self.num_threats_identified > self.config['max_threat_ids']:
             #self.terminated = True
             self.failed = True
-            print(f'%%% TOO MANY THREAT IDS, TERMINATED')
+            #print(f'%%% TOO MANY THREAT IDS, TERMINATED')
 
         # Advance time (only relevant for human play)
         if self.render_mode == 'headless': self.display_time = self.display_time + (1000/60) # If agent training, each step is 1/60th of a second

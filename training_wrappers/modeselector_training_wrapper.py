@@ -57,6 +57,9 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
         self.fail_penalty = -22
         self.step_penalty = -0.005
+        self.reward_for_appropriate_threat_action = 0.05  # Small reward for choosing GoToThreat when under limit
+        self.penalty_for_inappropriate_threat_action = -0.02  # Small penalty for choosing GoToThreat when at/over limit
+        self.penalty_for_holding = -0.1
 
         self.mode_dict = {
             0: "local search",
@@ -101,6 +104,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.subpolicy_choice = None
         self.teammate_subpolicy_choice = 0
         self.switched_policies = False
+        self.applied_fail_penalty = False # For applying failure penalty upon first time we exceed max threat IDs
 
         self.episode_reward = 0
 
@@ -183,6 +187,8 @@ class MaisrModeSelectorWrapper(gym.Env):
 
 
         ################################################ Process action ################################################
+        self.current_action = action
+
         # Track policy switching for penalty later
         self.switched_policies = False
         if self.last_action != action:
@@ -521,27 +527,41 @@ class MaisrModeSelectorWrapper(gym.Env):
             (Penalty) Changing modes too frequently
             (Penalty) Getting detected by a high value target
             (Penalty) Immediate penalty for excess threat identification
+            (Shaping) Small reward/penalty for appropriate/inappropriate GoToThreat usage
         """
         target_reward = info['new_target_ids'] * self.reward_per_target_id
         threat_reward = info['new_threat_ids'] * self.reward_per_threat_id
         finish_reward = info['steps_left'] * self.reward_per_step_early if info['done'] else 0
         fail_penalty = self.fail_penalty if info['failed'] else 0
-        switch_penalty = self.switched_policies * self.penalty_for_policy_switch  # Bool times penalty
+        switch_penalty = self.switched_policies * self.penalty_for_policy_switch
 
-        # Immediate penalty for identifying threats beyond the limit
+        # Penalty for identifying threats beyond the limit
         excess_threat_penalty = 0
         if 'new_threat_ids' in info and info['new_threat_ids'] > 0:
-            # Check if this new threat identification puts us over the limit
             current_threats = getattr(self.env, 'num_threats_identified', 0)
             max_allowed = self.env.config.get('max_threat_ids', 2)
-            if current_threats > max_allowed:
-                # Apply penalty for each excess threat
+            if current_threats > max_allowed and not self.applied_fail_penalty:
                 excess_threats = current_threats - max_allowed
-                excess_threat_penalty = excess_threats * self.fail_penalty  # Use same penalty magnitude
+                excess_threat_penalty = excess_threats * self.fail_penalty
+                self.applied_fail_penalty = True
 
-        # detect_penalty = info['new_detections'] * self.penalty_per_detection
+        
+        # Add shaping reward for appropriate GoToThreat usage
+        action_shaping = 0
+        if hasattr(self, 'current_action'):
+            if self.current_action == 2:  # GoToThreat action    
+                if self.env.num_threats_identified < self.env.config.get('max_threat_ids', 2):
+                    action_shaping = self.reward_for_appropriate_threat_action
+                else:
+                    action_shaping = self.penalty_for_inappropriate_threat_action
+            
+            elif self.current_action == 3: #Hold
+                action_shaping = self.penalty_for_holding
+        
 
-        reward = switch_penalty + target_reward + threat_reward + finish_reward + fail_penalty + excess_threat_penalty - self.step_penalty
+        reward = (switch_penalty + target_reward + threat_reward + finish_reward +
+                  fail_penalty + excess_threat_penalty + action_shaping - self.step_penalty)
+
         return reward
 
 
@@ -1220,7 +1240,7 @@ class MaisrModeSelectorWrapper(gym.Env):
         go_to_threat_pct = (subpolicy_counts.get(2, 0) / total_steps) * 100
         hold_pct = (subpolicy_counts.get(3, 0) / total_steps) * 100
 
-        print(f"\n=== Episode {getattr(self.env, 'episode_counter', 'N/A')}: {self.total_switches} policy switches ({self.total_switches / total_steps:.2f}/step), Local search {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}% / Hold {hold_pct:.1f}%")
+        print(f"\n=== Ep {getattr(self.env, 'episode_counter', 'N/A')}: {self.env.targets_identified} targets, {self.env.num_threats_identified} threats | {self.total_switches}  switches ({self.total_switches / total_steps:.2f}/step), LocalSearch {local_search_pct:.1f}% / ChangeRegion {change_region_pct:.1f}% / GoToThreat {go_to_threat_pct:.1f}% / Hold {hold_pct:.1f}%")
 
     def get_current_subpolicy_info(self):
         """Return current subpolicy information for display"""

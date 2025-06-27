@@ -611,10 +611,6 @@ def train_modeselector(
         'ret_var': env.ret_rms.var,
     }
 
-    # Save with consistent naming
-    np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-    #np.save(f"trained_models/overfit_tests/{run_name}/checkpoints/{run_name}_norm_stats.npy", stats)  # Also save in checkpoint dir
-    env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
 
     print("Training Normalization Stats:")
     print(f"Obs mean: {env.obs_rms.mean}")
@@ -627,9 +623,14 @@ def train_modeselector(
 
     # Save the final model
     if save_model:
-        final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
-        model.save(final_model_path)
-        print(f"Training completed! Final model saved to {final_model_path}")
+        try:
+            np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
+            env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
+            final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
+            model.save(final_model_path)
+            print(f"Training completed! Final model saved to {final_model_path}")
+        except:
+            print('Failed to save model and norm stats')
 
     # Run a final evaluation
     mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=env_config['n_eval_episodes'])
@@ -654,7 +655,7 @@ if __name__ == "__main__":
     config['n_envs'] = multiprocessing.cpu_count()
     config['config_filename'] = config_filename
 
-    for overfit_test in ["low_risk","high_risk", "nospatial", "highspatial"]:
+    for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
             temp_identifier = 'homeOverfitTest_'+overfit_test
 
             # Generate run name (To be consistent between WandB, model saving, and action history plots)
