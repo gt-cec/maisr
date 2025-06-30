@@ -32,7 +32,7 @@ def generate_run_name(config):
     """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
     history plots to make it easy to match them."""
 
-    components = [f"{config['n_envs']}envs",]
+    components = []#[f"{config['n_envs']}envs",]
     from datetime import datetime
     timestamp = datetime.now().strftime("%m%d_%H%M")
     run_name = f"{timestamp}_" + "_".join(components)
@@ -151,10 +151,10 @@ class EnhancedWandbCallback(BaseCallback):
                 subpolicy_counts = np.bincount(self.episode_buffer['subpolicy_usage'], minlength=4)  # Changed to 4
                 total = len(self.episode_buffer['subpolicy_usage'])
                 if total > 0:
-                    log_data["train/subpolicy_0_usage"] = subpolicy_counts[0] / total  # Local search
-                    log_data["train/subpolicy_1_usage"] = subpolicy_counts[1] / total  # Change region
-                    log_data["train/subpolicy_2_usage"] = subpolicy_counts[2] / total  # Go to threat
-                    log_data["train/subpolicy_3_usage"] = subpolicy_counts[3] / total  # Hold
+                    log_data["train/subpolicy_usage_localsearch"] = subpolicy_counts[0] / total  # Local search
+                    log_data["train/subpolicy_usage_changeregion"] = (subpolicy_counts[1]+subpolicy_counts[4]+subpolicy_counts[5]+subpolicy_counts[6]) / total  # Change region
+                    log_data["train/subpolicy_usage_gotothreat"] = subpolicy_counts[2] / total  # Go to threat
+                    log_data["train/subpolicy_usage_hold"] = subpolicy_counts[3] / total  # Hold,
 
             # # Log action choice distribution
             # if self.episode_buffer['action_choices']:
@@ -646,34 +646,36 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june24_diverse.json'
-    #temp_identifier = 'overfit_test'
+    config_filename = 'configs/july1_MS_overfitv9.json'
+    num_envs = multiprocessing.cpu_count()
 
     ################################################
 
     config = load_env_config(config_filename)
-    config['n_envs'] = multiprocessing.cpu_count()
+    config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
-            temp_identifier = 'OverfitV7_'+overfit_test
+    for shaping_ratio in [1, 0.8]:
+        for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
+                config['shaping_ratio'] = shaping_ratio
+                temp_identifier = 'OverfitV8_'+overfit_test
 
-            # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
+                # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
 
-            print(f'\n--- Starting training run  ---')
-            train_modeselector(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                use_teammate_manager=True,
-                render=False,
-                n_envs=multiprocessing.cpu_count(),
-                load_path=load_path,
-                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-                save_model = True,
-                overfit_test = overfit_test,
-                save_dir="./trained_models/overfit_tests/",
-            )
-            print(f"✓ Completed training run")
+                print(f'\n--- Starting training run  ---')
+                train_modeselector(
+                    config,
+                    run_name=run_name,
+                    use_normalize=True,
+                    use_teammate_manager=True,
+                    render=False,
+                    n_envs=num_envs,
+                    load_path=load_path,
+                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+                    save_model = True,
+                    overfit_test = overfit_test,
+                    save_dir="./trained_models/overfit_tests/",
+                )
+                print(f"✓ Completed training run")

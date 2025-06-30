@@ -50,20 +50,20 @@ class MaisrModeSelectorWrapper(gym.Env):
         self.tag = self.env.tag
 
         # Set rewards for mode selector
-        self.reward_per_target_id = 0.8
+        self.reward_per_target_id = 1
         self.reward_per_threat_id = 2.5
-        self.penalty_for_policy_switch = -0.3
+        self.penalty_for_policy_switch = -0.15
         self.reward_per_step_early = 0.2
         self.penalty_per_detection = 0 # Currently none (but episode ends if we exceed max)
         self.fail_penalty = -20
         self.step_penalty = -0.3
 
-        self.reward_for_appropriate_threat_action = 0.1  # Small reward for choosing GoToThreat when under limit
-        self.penalty_for_inappropriate_threat_action = -0.1  # Small penalty for choosing GoToThreat when at/over limit
-        self.penalty_for_holding = -0.3
-        self.reward_for_quadrant_coordination = 0.1
-        self.penalty_for_quadrant_separation = -0.05
-        self.reward_for_localsearch = 0.1
+        self.reward_for_appropriate_threat_action = self.env.config['shaping_ratio']* 0.2  # Small reward for choosing GoToThreat when under limit
+        self.penalty_for_inappropriate_threat_action = self.env.config['shaping_ratio']* -0.2  # Small penalty for choosing GoToThreat when at/over limit
+        self.penalty_for_holding = self.env.config['shaping_ratio']* -0.3
+        self.reward_for_quadrant_coordination = self.env.config['shaping_ratio']* 0.15
+        self.penalty_for_quadrant_separation = self.env.config['shaping_ratio']* -0.1
+        self.reward_for_localsearch = self.env.config['shaping_ratio']* 0
 
         self.mode_dict = {
             0: "local search",
@@ -558,20 +558,31 @@ class MaisrModeSelectorWrapper(gym.Env):
 
             elif self.current_action in [1, 4, 5, 6]:  # Quadrant movement subpolicies
                 if self.current_teammate and self.env.config['num_aircraft'] >= 2:
-                    # Get agent and teammate positions
                     agent_x = self.env.agents[self.env.aircraft_ids[0]].x
                     agent_y = self.env.agents[self.env.aircraft_ids[0]].y
                     teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
                     teammate_y = self.env.agents[self.env.aircraft_ids[1]].y
 
-                    # Determine quadrants (0=NW, 1=NE, 2=SW, 3=SE)
+                    # Determine current quadrants (0=NW, 1=NE, 2=SW, 3=SE)
                     agent_quadrant = self._get_agent_quadrant(agent_x, agent_y)
                     teammate_quadrant = self._get_agent_quadrant(teammate_x, teammate_y)
 
-                    if agent_quadrant == teammate_quadrant:
-                        coordination_shaping = self.reward_for_quadrant_coordination  # Reward for being in same quadrant
-                    else:
-                        coordination_shaping = self.penalty_for_quadrant_separation  # Small penalty for being in different quadrants
+                    # Map action to target quadrant
+                    action_to_quadrant = {1: 0, 4: 1, 5: 3, 6: 2}  # NW, NE, SE, SW
+                    target_quadrant = action_to_quadrant[int(self.current_action)]
+
+                    currently_same_quadrant = (agent_quadrant == teammate_quadrant) # Check if agent and teammate are currently in same quadrant
+                    selecting_different_region = (target_quadrant != agent_quadrant) # Check if selected region is different from agent's current region
+                    would_bring_together = (target_quadrant == teammate_quadrant) # Check if target quadrant would bring them together
+
+                    if currently_same_quadrant and selecting_different_region:
+                        coordination_shaping = self.reward_for_quadrant_coordination # Reward for separating when currently together
+
+                    elif would_bring_together: # Penalty for choosing a region that brings them together
+                        coordination_shaping = self.penalty_for_quadrant_separation
+
+                    else: # No coordination shaping for other cases
+                        coordination_shaping = 0
 
             elif self.current_action == 0: # localsearch
                 action_shaping = self.reward_for_localsearch

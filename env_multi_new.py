@@ -1,3 +1,6 @@
+import json
+import os
+
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -565,24 +568,28 @@ class MAISREnvVec(gym.Env):
         map_half_size = self.config["gameboard_size"] / 2
         if self.config["agent_start_locations_per_lesson"][str(self.difficulty)] == 99:
             agent_x, agent_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
+            teammate_x, teammate_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
+
         else:
             self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
 
-            if self.tag in ['eval','test_suite']: start_loc_index = self.episode_counter % len(self.start_locations)
-            else: start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+            if self.tag in ['eval','test_suite']:
+                start_loc_index = self.episode_counter % len(self.start_locations)
+                teammate_start_loc_index = (self.episode_counter + 1) % len(self.start_locations)
+            else:
+                start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+                teammate_start_loc_index = (self.episode_counter+int(self.tag[-1])+1) % len(self.start_locations)
 
-            #map_half_size = self.config["gameboard_size"] / 2
             agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
-            #print(f'Agent spawned at {agent_x}, {agent_y}')
+            teammate_x, teammate_y = self.start_locations[teammate_start_loc_index][0] * map_half_size, self.start_locations[teammate_start_loc_index][1] * map_half_size
+
+        agent_starts = [(agent_x, agent_y), (teammate_x, teammate_y)]
 
 
         ############################################# Create the aircraft ##############################################
         for i in range(self.config['num_aircraft']):
             agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_x, agent_y
-            #print(f'Agent {i} spawned at {agent_x, agent_y}')
-
-        #self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y = agent_y, agent_x
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
 
         if self.config['num_aircraft'] == 2: # TODO delete
             self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
@@ -2109,9 +2116,13 @@ class MAISREnvVec(gym.Env):
             # Define subpolicy colors and labels
             subpolicy_colors = {
                 0: '#2E8B57',  # Local Search - Sea Green
-                1: '#4169E1',  # Change Region - Royal Blue
+                1: '#4169E1',  # Change Region (NW) - Royal Blue
                 2: '#DC143C',  # Go to Threat - Crimson
-                3: '#FF8C00',  # Evade - Dark Orange
+                3: '#FF8C00',  # Evade/Hold - Dark Orange
+                4: '#4169E1',  # Change Region (NE) - Royal Blue (same as 1)
+                5: '#4169E1',  # Change Region (SE) - Royal Blue (same as 1)
+                6: '#4169E1',  # Change Region (SW) - Royal Blue (same as 1)
+                7: '#9932CC',  # Waypoint Override - Dark Violet
                 -1: '#808080'  # Unknown/Default - Gray
             }
 
@@ -2120,7 +2131,11 @@ class MAISREnvVec(gym.Env):
                 1: 'Change Region',
                 2: 'Go to Threat',
                 3: 'Evade',
-                -1: 'Unknown'
+                -1: 'Unknown',
+                4: 'Change Region',
+                5: 'Change Region',
+                6: 'Change Region',
+                7: 'Change Region'
             }
 
             # Replace the subpolicy plotting section in save_action_history_plot method
@@ -2182,17 +2197,28 @@ class MAISREnvVec(gym.Env):
                     for i, (x, y, policy) in enumerate(zip(agent_x_coords, agent_y_coords, subpolicy_data)):
                         # Convert policy to int to avoid numpy array key issues
                         policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
-                        if policy_key not in subpolicy_points:
-                            subpolicy_points[policy_key] = {'x': [], 'y': [], 'indices': []}
-                        subpolicy_points[policy_key]['x'].append(x)
-                        subpolicy_points[policy_key]['y'].append(y)
-                        subpolicy_points[policy_key]['indices'].append(i)
+
+                        # Group ChangeRegion policies (1,4,5,6) under policy key 1
+                        if policy_key in [4, 5, 6]:
+                            grouped_key = 1  # Group all ChangeRegion under key 1
+                        else:
+                            grouped_key = policy_key
+                        if grouped_key not in subpolicy_points:
+                            subpolicy_points[grouped_key] = {'x': [], 'y': [], 'indices': []}
+                        subpolicy_points[grouped_key]['x'].append(x)
+                        subpolicy_points[grouped_key]['y'].append(y)
+                        subpolicy_points[grouped_key]['indices'].append(i)
 
                     # Plot each subpolicy group with its own color
                     legend_handles = []
                     for policy_key, points in subpolicy_points.items():
                         color = subpolicy_colors.get(policy_key, '#808080')
-                        label = subpolicy_labels.get(policy_key, f'Policy {policy_key}')
+                        if policy_key in [1, 4, 5, 6]: label = 'Change Region'
+                        elif policy_key == 0: label = 'Local Search'
+                        elif policy_key == 2: label = 'Go to Threat'
+                        elif policy_key == 3: label = 'Hold'
+                        elif policy_key == 7: label = 'Waypoint Override'
+                        else: label = f'Policy {policy_key}'
 
                         scatter = plt.scatter(points['x'], points['y'],
                                               s=15,
@@ -2430,3 +2456,78 @@ class MAISREnvVec(gym.Env):
     def set_wrapper_observations(self, wrapper_observations):
         """Method to receive wrapper observations from wrapper"""
         self.wrapper_observations = wrapper_observations
+
+
+    def load_level_from_yaml(self, yaml_file_path):
+        """
+        Load level configuration from YAML file and apply to environment.
+        Args:
+            yaml_file_path (str): Path to the YAML level file
+        Returns:
+            bool: True if level loaded successfully, False otherwise
+        """
+        import yaml
+        try:
+            with open(yaml_file_path, 'r') as file:
+                level_data = yaml.safe_load(file)
+
+            # Validate required sections
+            if 'agents' not in level_data or 'targets' not in level_data or 'threats' not in level_data:
+                raise ValueError("YAML file must contain 'agents', 'targets', and 'threats' sections")
+
+            # Validate counts
+            if len(level_data['agents']) != self.config['num_aircraft']:
+                raise ValueError(f"Expected {self.config['num_aircraft']} agents, got {len(level_data['agents'])}")
+
+            if len(level_data['targets']) != self.config['num_targets']:
+                raise ValueError(f"Expected {self.config['num_targets']} targets, got {len(level_data['targets'])}")
+
+            if len(level_data['threats']) != self.config['num_threats']:
+                raise ValueError(f"Expected {self.config['num_threats']} threats, got {len(level_data['threats'])}")
+
+            # Validate coordinates are within map bounds
+            map_half_size = self.config["gameboard_size"] / 2
+
+            def validate_coords(entities, entity_type):
+                for i, entity in enumerate(entities):
+                    x, y = entity['x'], entity['y']
+                    if not (-map_half_size <= x <= map_half_size and -map_half_size <= y <= map_half_size):
+                        raise ValueError(f"{entity_type} {i} coordinates ({x}, {y}) are outside map bounds")
+
+            validate_coords(level_data['agents'], "Agent")
+            validate_coords(level_data['targets'], "Target")
+            validate_coords(level_data['threats'], "Threat")
+
+            # Load agent positions
+            for i, agent_data in enumerate(level_data['agents']):
+                self.agents[self.aircraft_ids[i]].x = float(agent_data['x'])
+                self.agents[self.aircraft_ids[i]].y = float(agent_data['y'])
+
+            # Load target data
+            for i, target_data in enumerate(level_data['targets']):
+                self.targets[i, 0] = i  # ID
+                self.targets[i, 1] = 1.0 if target_data.get('high_value', False) else 0.0  # Value type
+                self.targets[i, 2] = 0.0  # Info level (always start unknown)
+                self.targets[i, 3] = float(target_data['x'])  # X position
+                self.targets[i, 4] = float(target_data['y'])  # Y position
+
+            # Load threat positions
+            for i, threat_data in enumerate(level_data['threats']):
+                self.threats[i, 0] = float(threat_data['x'])  # X position
+                self.threats[i, 1] = float(threat_data['y'])  # Y position
+
+            print(f"Successfully loaded level from {yaml_file_path}")
+            return True
+
+        except FileNotFoundError:
+            print(f"Error: Could not find level file {yaml_file_path}")
+            return False
+        except yaml.YAMLError as e:
+            print(f"Error parsing YAML file: {e}")
+            return False
+        except ValueError as e:
+            print(f"Error validating level data: {e}")
+            return False
+        except Exception as e:
+            print(f"Unexpected error loading level: {e}")
+            return False

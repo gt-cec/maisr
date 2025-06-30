@@ -528,34 +528,32 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/old configs/june16_noise.json'
-
+    config_filename = 'configs/june30_LS.json'
+    n_envs = multiprocessing.cpu_count()-2
     ################################################
 
     print(f'\n############################ STARTING TRAINING ############################')
     config = load_env_config(config_filename)
-    config['n_envs'] = multiprocessing.cpu_count()
+    config['n_envs'] = n_envs
     config['config_filename'] = config_filename
     config['policy_to_train'] = 'local-search'
+    config['obs_noise_std'] = 0.02
+    config['num_timesteps'] = 7e5
 
-    for num_timesteps in [7e5]:
-        for obs_noise in [0,0.02, 0.05, 0.1]:
-            config['num_timesteps'] = num_timesteps
-            config['inside_threat_penalty'] = 0.03
-            config['obs_noise_std'] = obs_noise
+    temp_identifier = 'localsearch_v2'
 
-            # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'local_search_{num_timesteps}timesteps_{obs_noise}obs_noise_'+generate_run_name(config)
+    # Generate run name (To be consistent between WandB, model saving, and action history plots)
+    run_name = f'localsearch_{temp_identifier}_' + generate_run_name(config)
 
-            print(f'\n--- Starting training run  ---')
-            train_hrl(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                n_envs=multiprocessing.cpu_count(),
-                load_path=load_path,
-                machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-                save_model = False,
-            )
-            print(f"✓ Completed training run")
+    print(f'\n--- Starting training run  ---')
+    train_hrl(
+        config,
+        run_name=run_name,
+        use_normalize=True,
+        n_envs=n_envs,
+        load_path=load_path,
+        machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+        project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+        save_model = False,
+    )
+    print(f"✓ Completed training run")

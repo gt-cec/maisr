@@ -163,16 +163,17 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
 
         while not done:
             # Handle pygame events (minimal for automated testing)
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    done = True
-                    break
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    done = True
-                    break
+            if render:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        done = True
+                        break
+                    elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                        done = True
+                        break
 
-            if done:
-                break
+                if done:
+                    break
 
             # Get action from agent
             action, _ = agent.predict(obs, deterministic=True)
@@ -660,9 +661,10 @@ def convert_to_json_serializable(obj):
 if __name__ == "__main__":
     # Configuration
     config_filename = 'configs/june24_diverse.json'
-    num_episodes = 50
-    tick_rate = 40
+    num_episodes = 100
+    tick_rate = 120
     use_normalize = True
+    render = False
 
     localsearch_model_path = None
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
@@ -672,37 +674,45 @@ if __name__ == "__main__":
     behavior_types = ['aligned', 'counter']
 
     model_path_dict = {
-        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV4_low_risk_0627_0259_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_low_risk_0627_0259_6envs_257088_steps.zip',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV4_high_risk_0626_2211_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_high_risk_0626_2211_6envs_257088_steps.zip',
+        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV7_low_risk_0628_1939_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_low_risk_0628_1939_6envs_257088_steps.zip',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV7_high_risk_0628_1514_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_high_risk_0628_1514_6envs_99840_steps.zip',
     }
 
     norm_stats_path_dict = {
-        'low_risk': 'trained_models/overfit_tests/modeselector_OverfitV4_low_risk_0627_0259_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_low_risk_0627_0259_6envs_vecnormalize_257088_steps.pkl',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV4_high_risk_0626_2211_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV4_high_risk_0626_2211_6envs_vecnormalize_257088_steps.pkl',
+        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV7_low_risk_0628_1939_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_low_risk_0628_1939_6envs_vecnormalize_257088_steps.pkl',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV7_high_risk_0628_1514_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_high_risk_0628_1514_6envs_vecnormalize_99840_steps.pkl',
     }
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
-    pygame.display.init()
-    pygame.font.init()
-    clock = pygame.time.Clock()
-    ctypes.windll.user32.SetProcessDPIAware()
-    window_width, window_height = config['window_size'][0], config['window_size'][1]
-    config['tick_rate'] = tick_rate
-    window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
-    pygame.display.set_caption("MAISR Overfit Testing")
+    if render:
+        pygame.display.init()
+        pygame.font.init()
+        clock = pygame.time.Clock()
+        ctypes.windll.user32.SetProcessDPIAware()
+        window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['tick_rate'] = tick_rate
+        window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
+        pygame.display.set_caption("MAISR Overfit Testing")
 
-    # Create base environment
-    base_env = MAISREnvVec(
-        config=config,
-        clock=clock,
-        window=window,
-        render_mode='human',
-        run_name='overfit_test',
-        tag=f'overfit_analysis_0',
-    )
+        # Create base environment
+        base_env = MAISREnvVec(
+            config=config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            run_name='overfit_test',
+            tag=f'overfit_analysis_0',
+        )
+    else:
+        base_env = MAISREnvVec(
+            config=config,
+            render_mode='headless',
+            run_name='overfit_test',
+            tag=f'overfit_analysis_0',
+        )
 
     # Create subpolicies
     subpolicies = {
