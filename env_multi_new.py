@@ -621,7 +621,7 @@ class MAISREnvVec(gym.Env):
         # Calculate potential (distance improvement to target)
         self.target_potential, self.threat_potential = self.get_potential(self.observation)
         target_potential_gain = max(-0.1, min(0.1, self.target_potential - last_target_potential))  # Cap between -10 and +10
-        threat_potential_gain = max(-0.1, min(0.1, self.potential - last_threat_potential))  # Cap between -10 and +10
+        threat_potential_gain = max(-0.1, min(0.1, self.threat_potential - last_threat_potential))  # Cap between -10 and +10
 
         # Calculate reward
         reward = self.get_reward(new_reward, target_potential_gain, threat_potential_gain)  # For agent
