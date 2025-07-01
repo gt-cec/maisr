@@ -240,7 +240,10 @@ class MAISREnvVec(gym.Env):
 
         if self.config['use_fixed_levels']:
             num_fixed_levels = 6 # TODO make this dynamic
-            self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
+            try:
+                self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
+            except:
+                self.level_idx = (self.episode_counter) % num_fixed_levels
 
         # Init threat and target matrices
         self.threats = np.zeros((self.config['num_threats'], 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
@@ -336,7 +339,8 @@ class MAISREnvVec(gym.Env):
                     self.threats[i, 1] = np.random.uniform(-0.9, 0.9)
 
         # Decay shaping rewards
-        self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
+        self.config['target_potential_coeff'] = self.config['target_potential_coeff'] * self.config['shaping_decay_rate']
+        self.config['threat_potential_coeff'] = self.config['threat_potential_coeff'] * self.config['shaping_decay_rate']
 
         # Set agent start location
         map_half_size = self.config["gameboard_size"] / 2
@@ -468,8 +472,14 @@ class MAISREnvVec(gym.Env):
             raise ValueError(f'[single_step] Action is a {type(action)}')
 
         self.step_count_inner += 1
-        if self.potential: last_potential = self.potential
-        else: last_potential = 0
+        if self.target_potential:
+            last_target_potential = self.target_potential
+        else:
+            last_target_potential = 0
+        if self.threat_potential:
+            last_threat_potential = self.threat_potential
+        else:
+            last_threat_potential = 0
 
         new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0, 'threat_identification':0, 'teammate_target_ids':0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking score to display to the human
@@ -586,8 +596,9 @@ class MAISREnvVec(gym.Env):
                 #         info["detections"] = self.detections
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
+        self.all_threats_identified = np.all(self.threat_identified == 1.0)
 
-        if self.all_targets_identified:
+        if self.all_targets_identified and self.all_threats_identified:
             self.terminated = True
             new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
@@ -608,11 +619,12 @@ class MAISREnvVec(gym.Env):
         self.observation = self.get_observation()  # Get observation
 
         # Calculate potential (distance improvement to target)
-        self.potential = self.get_potential(self.observation)
-        potential_gain = max(-0.1, min(0.1, self.potential - last_potential))  # Cap between -10 and +10
+        self.target_potential, self.threat_potential = self.get_potential(self.observation)
+        target_potential_gain = max(-0.1, min(0.1, self.target_potential - last_target_potential))  # Cap between -10 and +10
+        threat_potential_gain = max(-0.1, min(0.1, self.potential - last_threat_potential))  # Cap between -10 and +10
 
         # Calculate reward
-        reward = self.get_reward(new_reward, potential_gain)  # For agent
+        reward = self.get_reward(new_reward, target_potential_gain, threat_potential_gain)  # For agent
         self.ep_reward += reward
         self.score += new_score  # For human
 
@@ -621,7 +633,7 @@ class MAISREnvVec(gym.Env):
         info['reward_components'] = new_reward
         info['detections'] = self.detections
         info["target_ids"] = self.targets_identified
-        info["potential_gain"] = potential_gain
+        info["potential_gain"] = target_potential_gain + threat_potential_gain
 
         info['done'] = self.terminated or self.truncated
         info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
@@ -637,7 +649,7 @@ class MAISREnvVec(gym.Env):
         return self.observation, reward, self.terminated, self.truncated, info
 
 
-    def get_reward(self, new_reward, potential_gain):
+    def get_reward(self, new_reward, target_potential_gain, threat_potential_gain):
 
         teammate_target_ids = new_reward['teammate_target_ids']
         agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
@@ -669,7 +681,8 @@ class MAISREnvVec(gym.Env):
                  (teammate_target_ids * self.config['base_env_target_id_reward_teammate']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
-                 (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
+                 (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
+                 (threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty']) - \
                  threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
 
@@ -697,19 +710,25 @@ class MAISREnvVec(gym.Env):
         unidentified_mask = target_info_levels < 1.0
 
         if not np.any(unidentified_mask): # No unidentified targets remaining
-            return 0.0
+            nearest_target_distance = 0
+        else: # Calculate distances to unidentified targets only
+            unidentified_target_positions = target_positions[unidentified_mask]
+            target_distances = np.sqrt(np.sum((unidentified_target_positions - agent_pos) ** 2, axis=1))
+            nearest_target_distance = np.min(target_distances)
 
-        # Calculate distances to unidentified targets only
-        unidentified_positions = target_positions[unidentified_mask]
-        distances = np.sqrt(np.sum((unidentified_positions - agent_pos) ** 2, axis=1))
-        nearest_distance = np.min(distances)
 
-        # Progressive multiplier - higher when fewer targets remain
-        # targets_remaining = np.sum(unidentified_mask)
-        # total_targets = len(target_info_levels)
-        # progress_multiplier = 1.0 + (total_targets - targets_remaining) * 0.3
+        threat_positions = self.threats
+        threat_info_levels = self.threat_identified
+        unidentified_threat_mask = threat_info_levels < 1.0
 
-        return -nearest_distance #* progress_multiplier
+        if not np.any(unidentified_threat_mask):  # No unidentified targets remaining
+            nearest_threat_distance = 0
+        else:
+            unidentified_threat_positions = threat_positions[unidentified_threat_mask]
+            threat_distances = np.sqrt(np.sum((unidentified_threat_positions - agent_pos) ** 2, axis=1))
+            nearest_threat_distance = np.min(threat_distances)
+
+        return -nearest_target_distance, -nearest_threat_distance
 
     def get_observation(self):
         """Main function to return the observation vector. Calls specific observation functions depending on obs type. """
@@ -2224,12 +2243,8 @@ class MAISREnvVec(gym.Env):
 
         # Map level index to level name
         level_names = list(level_data.keys())
-        if isinstance(self.tag[-1], str):
-            level_name = level_names[self.level_idx + int(self.tag[-1]) % len(level_names)]
-        else:
-            level_name = level_names[self.level_idx % len(level_names)]
+        level_name = level_names[self.level_idx % len(level_names)]
         level = level_data[level_name]
-        print(f'Loaded from level {level_name}')
 
         # Load agent positions
         agent_x, agent_y = level['agents'][0]
