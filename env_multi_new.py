@@ -271,7 +271,7 @@ class MAISREnvVec(gym.Env):
 
         self.id_requested = False
         self.final_wrapper_reward = 0 # Used for saving plots
-        self.potential = None # Initialize potential for reward shaping
+        self.target_potential, self.threat_potential = None, None # Initialize potential for reward shaping
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
 
