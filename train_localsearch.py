@@ -571,15 +571,18 @@ if __name__ == "__main__":
     # Generate run name (To be consistent between WandB, model saving, and action history plots)
     run_name = f'localsearch_{temp_identifier}_' + generate_run_name(config)
 
-    print(f'\n--- Starting training run  ---')
-    train_hrl(
-        config,
-        run_name=run_name,
-        use_normalize=True,
-        n_envs=n_envs,
-        load_path=load_path,
-        machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-        project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-        save_model = False,
-    )
-    print(f"✓ Completed training run")
+    for target_potential_coef in [0.05, 0.02, 0.08]:
+        config['threat_potential_coeff'] = target_potential_coef
+
+        print(f'\n--- Starting training run  ---')
+        train_hrl(
+            config,
+            run_name=run_name,
+            use_normalize=True,
+            n_envs=n_envs,
+            load_path=load_path,
+            machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+            project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+            save_model = False,
+        )
+        print(f"✓ Completed training run")
