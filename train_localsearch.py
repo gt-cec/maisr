@@ -84,6 +84,9 @@ class EnhancedWandbCallback(BaseCallback):
         self.current_difficulty = 0
         self.above_threshold_counter = 0
 
+        self.switched_to_twoship = False
+        self.twoship_switch_threshold = 10
+
         # Buffer for accumulating data between log events
         self.episode_buffer = {
             'rewards': [],
@@ -238,6 +241,30 @@ class EnhancedWandbCallback(BaseCallback):
                 print(f'Threshold: {performance_threshold:.3f}')
                 print(f'{"=" * 80}\n')
 
+            # Add this after calculating eval_metrics but before self.run.log(eval_metrics, step=self.num_timesteps)
+
+            #################################### Aircraft switching ####################################
+            print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
+            if (not self.switched_to_twoship) and target_ids_list:
+                avg_target_ids = np.mean(target_ids_list)
+                if avg_target_ids > self.twoship_switch_threshold:
+                    print(f'\n{"=" * 80}')
+                    print(f'AIRCRAFT SWITCHING TRIGGERED! (step {self.num_timesteps})')
+                    print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
+                    print(f'Switching from 1 aircraft to 2 aircraft...')
+                    print(f'{"=" * 80}\n')
+
+                    self.model.get_env().env_method("set_teammate_active", True)
+                    self.switched_to_twoship = True
+
+                    # Log the switch
+                    eval_metrics["aircraft/num_aircraft"] = 2
+                    eval_metrics["aircraft/switch_step"] = self.num_timesteps
+
+
+                if not self.switched_to_twoship:
+                    eval_metrics["aircraft/num_aircraft"] = 1 if not self.switched_to_twoship else 2
+
             self.run.log(eval_metrics, step=self.num_timesteps)
 
             print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
@@ -368,7 +395,7 @@ def train_hrl(
                     seed=seed + rank,
                 )
                 # Wrap with local search wrapper
-                obs_noise_std = env_config['obs_noise_std']
+                obs_noise_std = env_config['obs_noise_std_localsearch']
                 wrapped_env = MaisrLocalSearchWrapper(base_env, obs_noise_std=obs_noise_std)
                 wrapped_env = Monitor(wrapped_env)
                 wrapped_env.reset()
@@ -403,7 +430,7 @@ def train_hrl(
         tag='eval',
         run_name=run_name,
     )
-    eval_env = MaisrLocalSearchWrapper(base_eval_env, obs_noise_std=env_config['obs_noise_std'])
+    eval_env = MaisrLocalSearchWrapper(base_eval_env, obs_noise_std=env_config['obs_noise_std_localsearch'])
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
     if use_normalize:
@@ -527,7 +554,7 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
-    config_filename = 'configs/june30_LS.json'
+    config_filename = 'configs/july1_ls_2ship.json'
     n_envs = multiprocessing.cpu_count()
     ################################################
 
@@ -536,10 +563,10 @@ if __name__ == "__main__":
     config['n_envs'] = n_envs
     config['config_filename'] = config_filename
     config['policy_to_train'] = 'local-search'
-    config['obs_noise_std'] = 0.02
+    config['obs_noise_std_localsearch'] = 0.02
     config['num_timesteps'] = 7e5
 
-    temp_identifier = 'localsearch_v2'
+    temp_identifier = 'monolith_2ship'
 
     # Generate run name (To be consistent between WandB, model saving, and action history plots)
     run_name = f'localsearch_{temp_identifier}_' + generate_run_name(config)

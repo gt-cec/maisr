@@ -22,7 +22,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
 from utility.data_logging import load_env_config
 
 
@@ -379,7 +379,9 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pr
     subpolicies = {
         'local_search': LocalSearch(model_path=None),  # Using heuristic
         'change_region': ChangeRegions(model_path=None),  # Using heuristic
-        'go_to_threat': GoToNearestThreat(model_path=None)  # Using heuristic
+        'go_to_threat': GoToNearestThreat(model_path=None),  # Using heuristic
+        'local_tsp': TargetSearchLocalTSP(search_radius = 200),
+        'global_tsp': TargetSearchLocalTSP(search_radius = 1000)
     }
 
     teammate_manager = TeammateManager(
@@ -655,10 +657,10 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    for shaping_ratio in [1, 0.8]:
+    for shaping_ratio in [1, 1.2]:
         for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
                 config['shaping_ratio'] = shaping_ratio
-                temp_identifier = 'OverfitV8_'+overfit_test
+                temp_identifier = 'OverfitV9_'+overfit_test+'_shaping_ratio'+str(shaping_ratio)
 
                 # Generate run name (To be consistent between WandB, model saving, and action history plots)
                 run_name = f'modeselector_{temp_identifier}_'+generate_run_name(config)
@@ -672,7 +674,7 @@ if __name__ == "__main__":
                     render=False,
                     n_envs=num_envs,
                     load_path=load_path,
-                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                     project_name='maisr-rl-modeselector', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
                     save_model = True,
                     overfit_test = overfit_test,

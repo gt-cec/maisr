@@ -81,6 +81,16 @@ class TeammateManager:
             'baseline': ["none"],
             "vanilla": ["none"],
             "strategy_diverse": ["none", "some", "high"]}
+        self.action_stability_options = {
+            'baseline': ["stable"],
+            'vanilla': ["stable"],
+            'strategy_diverse': ["stable"]#, "noisy"]
+        }
+        self.planning_horizon_options = {
+            'baseline': ["short"],
+            'vanilla': ["medium"],
+            'strategy_diverse': ["long"]
+        }
 
         print(f"\nTeammateManager initialized with league_type: {league_type}, balance_method: {balance_method}")
         print(f'TeammateManager using selfplay_checkpoint_dir: {selfplay_checkpoint_dir}')
@@ -239,6 +249,7 @@ class TeammateManager:
             # Look for corresponding normalization stats file
             norm_stats_path = self._find_normalization_stats(selected_checkpoint, teammate_type)
 
+
             # Create RL teammate policy using the loaded model
             rl_teammate = RLTeammatePolicy(
                 model=model,
@@ -282,24 +293,42 @@ class TeammateManager:
             mode_selector = "heuristic"
             risk_tolerance = "low"
             spatial_coord = "some"  # Default spatial coordination
+            action_stability = "stable"  # Default for overfit tests
 
         elif self.overfit_test == "high_risk":
             print(f'[_create_overfit_test_teammate] Creating high risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "high"
             spatial_coord = "some"  # Default spatial coordination
+            action_stability = "stable"  # Default for overfit tests
 
         elif self.overfit_test == "nospatial":
             print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
             spatial_coord = "none"
+            action_stability = "stable"  # Default for overfit tests
 
         elif self.overfit_test == "highspatial":
             print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
             spatial_coord = "high"
+            action_stability = "stable"  # Default for overfit tests
+
+        elif self.overfit_test == 'noisy_actions':
+            print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "some"
+            action_stability = "noisy"  # Default for overfit tests
+
+        elif self.overfit_test == 'stable_actions':
+            print(f'[_create_overfit_test_teammate] Creating stable action teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "some"
+            action_stability = "stable"  # Default for overfit tests
 
         else:
             raise ValueError(f"Unknown overfit_test value: {self.overfit_test}")
@@ -307,9 +336,11 @@ class TeammateManager:
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord
+            spatial_coord=spatial_coord,
+            action_stability=action_stability
         )
 
+        # TODO FIX HERE
         teammate = GenericTeammatePolicy(
             env=None,
             local_search_policy=self.subpolicies.get('local_search'),
@@ -319,7 +350,7 @@ class TeammateManager:
             use_collision_avoidance=False
         )
 
-        teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
+        teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial_{action_stability}stability"
         self.current_teammate = teammate
         return teammate
 
@@ -520,6 +551,9 @@ class TeammateManager:
         mode_selector = random.choice(self.mode_selector_options['baseline'])
         risk_tolerance = random.choice(self.risk_tolerance_options['baseline'])
         spatial_coord = random.choice(self.spatial_coord_options['baseline'])
+        planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
+
+        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -529,7 +563,7 @@ class TeammateManager:
 
         teammate = GenericTeammatePolicy(
             env=None,  # Will be set later if needed
-            local_search_policy=self.subpolicies.get('local_search'),
+            local_search_policy=self.subpolicies.get(localsearch_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -546,6 +580,9 @@ class TeammateManager:
         mode_selector = random.choice(self.mode_selector_options['vanilla'])
         risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
+        planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
+
+        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -555,7 +592,7 @@ class TeammateManager:
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get('local_search'),
+            local_search_policy=self.subpolicies.get(localsearch_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -572,24 +609,30 @@ class TeammateManager:
         mode_selector = random.choice(self.mode_selector_options['strategy_diverse'])
         risk_tolerance = random.choice(self.risk_tolerance_options['strategy_diverse'])
         spatial_coord = random.choice(self.spatial_coord_options['strategy_diverse'])
+        action_stability = random.choice(self.action_stability_options['strategy_diverse'])
+        planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
 
+        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord
+            spatial_coord=spatial_coord,
+            action_stability=action_stability,
+
         )
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get('local_search'),
+            local_search_policy=self.subpolicies.get(localsearch_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
+
             use_collision_avoidance=False
         )
 
-        teammate.name = f"Diverse_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatialcoord"
+        teammate.name = f"Diverse_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial_{action_stability}stability"
         self.current_teammate = teammate
         return teammate
 
@@ -716,7 +759,11 @@ class HeuristicAgent:
     2 = gotothreat
     """
 
-    def __init__(self, mode_selector="heuristic", risk_tolerance="medium", spatial_coord="some"):
+    def __init__(self,
+                 mode_selector="heuristic",
+                 risk_tolerance="medium",
+                 spatial_coord="some",
+                 action_stability="stable"):
         """
         Initialize the heuristic agent.
 
@@ -741,12 +788,20 @@ class HeuristicAgent:
         self.target_rich_threshold_low = 0.15  # Threshold to STOP considering quadrant target-rich
         self.currently_consider_target_rich = False  # Current state with hysteresis
 
+        self.action_stability = action_stability
+
+        # Action stability parameters
+        self.jitter_frequency = 0.15  # 15% chance to jitter each step when noisy
+        self.jitter_steps = [2, -2]  # Jitter by ±1 direction step
+
         # Validate configuration
         valid_risk_levels = ["low", "medium", "high", "extreme", "none"]
         valid_spatial_levels = ["none", "some", "high", "none"]
         valid_mode_selectors = ["none", "heuristic", "none"]
+        valid_stability_levels = ["stable", "noisy"]
 
-        #print(f'Set up heuristic teammate with risk tolerance {risk_tolerance}, spatial_Coord {spatial_coord}, mode selector {mode_selector}')
+        if action_stability not in valid_stability_levels:
+            raise ValueError(f"action_stability must be one of {valid_stability_levels}")
         if risk_tolerance not in valid_risk_levels:
             raise ValueError(f"risk_tolerance must be one of {valid_risk_levels}")
         if spatial_coord not in valid_spatial_levels:
@@ -755,6 +810,17 @@ class HeuristicAgent:
             raise ValueError(f"mode_selector must be one of {valid_mode_selectors}")
 
     def choose_subpolicy(self, env, agent_id=0):
+        """Choose a subpolicy and potentially apply action jitter"""
+        # Get the base subpolicy choice using existing logic
+        base_subpolicy = self._choose_base_subpolicy(env, agent_id)
+
+        # Apply jitter if action_stability is "noisy"
+        if self.action_stability == "noisy":
+            return self._apply_action_jitter(base_subpolicy)
+        else:
+            return base_subpolicy
+
+    def _choose_base_subpolicy(self, env, agent_id=0):
         """
         Choose a subpolicy based on the agent's configuration and current environment state.
 
@@ -853,6 +919,35 @@ class HeuristicAgent:
             return detections <= 1
 
         return False
+
+    def _apply_action_jitter(self, base_subpolicy):
+        """Apply directional jitter to the chosen subpolicy"""
+        # TODO need to fix. Currently disabled
+        # Random chance to apply jitter
+        if random.random() > self.jitter_frequency:
+            return base_subpolicy
+
+        # Map subpolicies to their "directional" equivalents for jittering
+        # 1=NW, 4=NE, 5=SE, 6=SW
+        direction_map = {1: 0, 4: 1, 6: 2, 5: 3}  # Map to 0-3 for easier math
+        reverse_map = {0: 1, 1: 4, 2: 6, 3: 5}
+
+        jitter = random.choice(self.jitter_steps)
+
+        if base_subpolicy in direction_map:
+            current_dir = direction_map[base_subpolicy]
+
+            # Apply jitter (±1 direction, wrapping around)
+            jitter = random.choice(self.jitter_steps)
+            new_dir = (current_dir + jitter) % 4
+
+            jittered_subpolicy = reverse_map[new_dir]
+
+            # print(f"[HeuristicAgent] Jittered subpolicy {base_subpolicy} -> {jittered_subpolicy}")
+            return jittered_subpolicy
+
+        return base_subpolicy
+
 
     def _choose_search_strategy(self, env, agent_id):
         """Choose between local search and specific quadrant goto policies"""
@@ -1887,6 +1982,388 @@ class LocalSearch(SubPolicy):
         self.evade_goal = None
         self.last_evade_step = -1
         self._reset_circumnavigation_state()
+
+
+import itertools
+
+class TargetSearchLocalTSP(SubPolicy):
+    """
+    Sub-policy that uses TSP optimization to find the best route through unknown targets
+    within a 200-pixel radius, considering teammate's position and greedy search behavior.
+    """
+
+    def __init__(self, search_radius = 200, model_path: str = None, norm_stats_filepath: str = None):
+        super().__init__("target_search_local_tsp")
+        self.search_radius = search_radius  # Search within this radius
+        self.recalculation_period = 1  # Recalculate TSP every N steps
+        self.teammate_prediction_steps = 5  # How many steps ahead to predict teammate movement
+
+        # TSP-related state
+        self.current_waypoints = []  # Current sequence of waypoints
+        self.current_waypoint_index = 0  # Which waypoint we're heading to
+        self.steps_since_recalculation = 0
+        self.last_known_targets = set()  # Track which targets we've seen before
+
+        # Teammate prediction
+        self.teammate_last_positions = []  # Track teammate movement for prediction
+        self.teammate_prediction_history_length = 3
+
+        # Fallback to original LocalSearch behavior
+        self.fallback_policy = LocalSearch(model_path, norm_stats_filepath)
+
+        # Direction mapping for discrete actions
+        self.directions = np.array([
+            (0, 1),  # North (0°)
+            (0.383, 0.924),  # NNE (22.5°)
+            (0.707, 0.707),  # NE (45°)
+            (0.924, 0.383),  # ENE (67.5°)
+            (1, 0),  # East (90°)
+            (0.924, -0.383),  # ESE (112.5°)
+            (0.707, -0.707),  # SE (135°)
+            (0.383, -0.924),  # SSE (157.5°)
+            (0, -1),  # South (180°)
+            (-0.383, -0.924),  # SSW (202.5°)
+            (-0.707, -0.707),  # SW (225°)
+            (-0.924, -0.383),  # WSW (247.5°)
+            (-1, 0),  # West (270°)
+            (-0.924, 0.383),  # WNW (292.5°)
+            (-0.707, 0.707),  # NW (315°)
+            (-0.383, 0.924),  # NNW (337.5°)
+        ], dtype=np.float32)
+
+        # Anti-oscillation state
+        self._last_action = None
+        self._action_repeat_count = 0
+        self._max_repeat_count = 3
+
+    def act(self, observation, env=None, agent_id=0):
+        """
+        Main action method that either follows TSP waypoints or falls back to local search
+        """
+        if env is None:
+            # Fallback to original local search if no environment provided
+            return self.fallback_policy.act(observation, env, agent_id)
+
+        # Check if we need to evade threats first
+        if self.near_threat(env, agent_id):
+            return self.compute_tangential_escape_action(env, agent_id)
+
+        # Update teammate position tracking
+        self._update_teammate_tracking(env, agent_id)
+
+        # Check if we need to recalculate TSP route
+        if (self.steps_since_recalculation >= self.recalculation_period or
+                len(self.current_waypoints) == 0 or
+                self._targets_changed(env)):
+            self._recalculate_tsp_route(env, agent_id)
+            self.steps_since_recalculation = 0
+
+        # Follow current TSP route or fallback to local search
+        if len(self.current_waypoints) > 0 and self.current_waypoint_index < len(self.current_waypoints):
+            action = self._navigate_to_current_waypoint(env, agent_id)
+        else:
+            # No TSP route available, use fallback
+            action = self.fallback_policy.act(observation, env, agent_id)
+
+        self.steps_since_recalculation += 1
+        return action, None
+
+    def _update_teammate_tracking(self, env, agent_id):
+        """Update teammate position history for movement prediction"""
+        if env.config['num_aircraft'] < 2:
+            return
+
+        teammate_id = 1 if agent_id == 0 else 0
+        teammate_pos = np.array([
+            env.agents[env.aircraft_ids[teammate_id]].x,
+            env.agents[env.aircraft_ids[teammate_id]].y
+        ])
+
+        self.teammate_last_positions.append(teammate_pos)
+        if len(self.teammate_last_positions) > self.teammate_prediction_history_length:
+            self.teammate_last_positions.pop(0)
+
+    def _targets_changed(self, env):
+        """Check if the set of unknown targets has changed significantly"""
+        current_targets = set()
+        target_positions = env.targets[:env.config['num_targets'], 3:5]
+        target_info_levels = env.targets[:env.config['num_targets'], 2]
+
+        agent_pos = np.array([
+            env.agents[env.aircraft_ids[0]].x,
+            env.agents[env.aircraft_ids[0]].y
+        ])
+
+        for i, (pos, info_level) in enumerate(zip(target_positions, target_info_levels)):
+            if info_level < 1.0:  # Unknown target
+                distance = np.linalg.norm(pos - agent_pos)
+                if distance <= self.search_radius:
+                    current_targets.add(i)
+
+        # Check if targets changed significantly
+        changed = len(current_targets.symmetric_difference(self.last_known_targets)) > 0
+        self.last_known_targets = current_targets
+        return changed
+
+    def _recalculate_tsp_route(self, env, agent_id):
+        """Recalculate the optimal TSP route through nearby unknown targets"""
+        agent_pos = np.array([
+            env.agents[env.aircraft_ids[agent_id]].x,
+            env.agents[env.aircraft_ids[agent_id]].y
+        ])
+
+        # Get unknown targets within radius
+        nearby_targets = self._get_nearby_unknown_targets(env, agent_pos)
+
+        if len(nearby_targets) == 0:
+            self.current_waypoints = []
+            self.current_waypoint_index = 0
+            return
+
+        # Predict where teammate will search and filter out those targets
+        teammate_will_visit = self._predict_teammate_targets(env, agent_id)
+        filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
+
+        if len(filtered_targets) == 0:
+            # All nearby targets will be handled by teammate, use original targets
+            filtered_targets = nearby_targets
+
+        # Solve TSP for remaining targets
+        if len(filtered_targets) == 1:
+            # Only one target, go directly to it
+            self.current_waypoints = [filtered_targets[0]['position']]
+        elif len(filtered_targets) <= 8:  # Use exact TSP for small problems
+            self.current_waypoints = self._solve_tsp_exact(agent_pos, filtered_targets)
+        else:  # Use heuristic for larger problems
+            self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
+
+        self.current_waypoint_index = 0
+
+        print(
+            f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints for {len(filtered_targets)} targets")
+
+    def _get_nearby_unknown_targets(self, env, agent_pos):
+        """Get all unknown targets within search radius"""
+        targets = []
+        target_positions = env.targets[:env.config['num_targets'], 3:5]
+        target_info_levels = env.targets[:env.config['num_targets'], 2]
+
+        for i, (pos, info_level) in enumerate(zip(target_positions, target_info_levels)):
+            if info_level < 1.0:  # Unknown target
+                distance = np.linalg.norm(pos - agent_pos)
+                if distance <= self.search_radius:
+                    targets.append({
+                        'id': i,
+                        'position': pos.copy(),
+                        'distance': distance
+                    })
+
+        return targets
+
+    def _predict_teammate_targets(self, env, agent_id):
+        """Predict which targets the teammate will likely visit based on greedy search"""
+        if env.config['num_aircraft'] < 2 or len(self.teammate_last_positions) < 2:
+            return set()
+
+        teammate_id = 1 if agent_id == 0 else 0
+        teammate_pos = np.array([
+            env.agents[env.aircraft_ids[teammate_id]].x,
+            env.agents[env.aircraft_ids[teammate_id]].y
+        ])
+
+        # Predict teammate movement direction
+        teammate_velocity = np.array([0.0, 0.0])
+        if len(self.teammate_last_positions) >= 2:
+            teammate_velocity = self.teammate_last_positions[-1] - self.teammate_last_positions[-2]
+
+        # Predict teammate position in the future
+        predicted_pos = teammate_pos + teammate_velocity * self.teammate_prediction_steps
+
+        # Find targets the teammate is likely to visit (closest targets to predicted position)
+        targets_teammate_will_visit = set()
+        target_positions = env.targets[:env.config['num_targets'], 3:5]
+        target_info_levels = env.targets[:env.config['num_targets'], 2]
+
+        teammate_target_distances = []
+        for i, (pos, info_level) in enumerate(zip(target_positions, target_info_levels)):
+            if info_level < 1.0:  # Unknown target
+                distance_to_predicted = np.linalg.norm(pos - predicted_pos)
+                distance_to_current = np.linalg.norm(pos - teammate_pos)
+                teammate_target_distances.append((i, min(distance_to_predicted, distance_to_current)))
+
+        # Assume teammate will go for closest 2-3 targets
+        teammate_target_distances.sort(key=lambda x: x[1])
+        max_teammate_targets = min(3, len(teammate_target_distances))
+
+        for i in range(max_teammate_targets):
+            targets_teammate_will_visit.add(teammate_target_distances[i][0])
+
+        return targets_teammate_will_visit
+
+    def _solve_tsp_exact(self, start_pos, targets):
+        """Solve TSP exactly using brute force for small problems"""
+        if len(targets) <= 1:
+            return [t['position'] for t in targets]
+
+        target_positions = [start_pos] + [t['position'] for t in targets]
+        n = len(target_positions)
+
+        # Create distance matrix
+        distances = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    distances[i, j] = np.linalg.norm(target_positions[i] - target_positions[j])
+
+        # Try all permutations (excluding start position)
+        best_distance = float('inf')
+        best_route = None
+
+        for perm in itertools.permutations(range(1, n)):  # Start from 1 to exclude start position
+            route = [0] + list(perm)  # Add start position at beginning
+            total_distance = 0
+
+            for i in range(len(route) - 1):
+                total_distance += distances[route[i], route[i + 1]]
+
+            if total_distance < best_distance:
+                best_distance = total_distance
+                best_route = route
+
+        # Convert back to waypoints (excluding start position)
+        if best_route:
+            return [target_positions[i] for i in best_route[1:]]
+        else:
+            return [t['position'] for t in targets]
+
+    def _solve_tsp_heuristic(self, start_pos, targets):
+        """Solve TSP using nearest neighbor heuristic for larger problems"""
+        if len(targets) == 0:
+            return []
+
+        target_positions = [t['position'] for t in targets]
+        unvisited = list(range(len(targets)))
+        route = []
+        current_pos = start_pos
+
+        while unvisited:
+            # Find nearest unvisited target
+            distances = [np.linalg.norm(target_positions[i] - current_pos) for i in unvisited]
+            nearest_idx = unvisited[np.argmin(distances)]
+
+            route.append(target_positions[nearest_idx])
+            current_pos = target_positions[nearest_idx]
+            unvisited.remove(nearest_idx)
+
+        return route
+
+    def _navigate_to_current_waypoint(self, env, agent_id):
+        """Navigate to the current waypoint in the TSP route"""
+        if (self.current_waypoint_index >= len(self.current_waypoints)):
+            return 0
+
+        agent_pos = np.array([
+            env.agents[env.aircraft_ids[agent_id]].x,
+            env.agents[env.aircraft_ids[agent_id]].y
+        ])
+
+        target_pos = self.current_waypoints[self.current_waypoint_index]
+
+        # Check if we've reached the current waypoint
+        distance_to_waypoint = np.linalg.norm(target_pos - agent_pos)
+        if distance_to_waypoint <= 30.0:  # Waypoint reached threshold
+            self.current_waypoint_index += 1
+            if self.current_waypoint_index >= len(self.current_waypoints):
+                return 0  # All waypoints visited
+            target_pos = self.current_waypoints[self.current_waypoint_index]
+
+        # Calculate direction to target
+        direction_to_target = target_pos - agent_pos
+        target_norm = np.linalg.norm(direction_to_target)
+
+        if target_norm == 0:
+            return 0
+
+        direction_to_target_norm = direction_to_target / target_norm
+
+        # Find best matching action
+        dot_products = np.dot(self.directions, direction_to_target_norm)
+        best_action = np.argmax(dot_products)
+
+        # Anti-oscillation logic
+        if (self._last_action is not None and
+                self._action_repeat_count < self._max_repeat_count and
+                self._last_action != best_action):
+
+            last_dot_product = dot_products[self._last_action]
+            if last_dot_product > 0.5:
+                best_action = self._last_action
+                self._action_repeat_count += 1
+            else:
+                self._action_repeat_count = 0
+        else:
+            self._action_repeat_count = 0
+
+        # Prevent direct opposite actions
+        if (self._last_action is not None and abs(self._last_action - best_action) == 8):
+            adjacent_actions = [(self._last_action + 1) % 16, (self._last_action - 1) % 16]
+            adjacent_dots = [dot_products[a] for a in adjacent_actions]
+            best_adjacent_idx = np.argmax(adjacent_dots)
+            best_action = adjacent_actions[best_adjacent_idx]
+
+        self._last_action = best_action
+        return np.int32(best_action)
+
+    # Threat avoidance methods (copied from LocalSearch)
+    def near_threat(self, env, agent_id=0):
+        """Check if the agent is near a threat and should automatically switch to evade mode"""
+        agent_pos = np.array([env.agents[env.aircraft_ids[agent_id]].x,
+                              env.agents[env.aircraft_ids[agent_id]].y])
+
+        for threat_idx in range(len(env.threats)):
+            threat_pos = np.array([env.threats[threat_idx, 0], env.threats[threat_idx, 1]])
+            distance_to_threat = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+
+            threat_radius = env.config['threat_radius']
+            warning_radius = threat_radius * 1.7
+
+            if distance_to_threat <= warning_radius:
+                return True
+        return False
+
+    def compute_tangential_escape_action(self, env, agent_id=0):
+        """Compute escape action when near threat (simplified version)"""
+        agent_pos = np.array([env.agents[env.aircraft_ids[agent_id]].x,
+                              env.agents[env.aircraft_ids[agent_id]].y])
+
+        # Find nearest threat
+        nearest_threat_pos = None
+        min_distance = float('inf')
+
+        for threat_idx in range(len(env.threats)):
+            threat_pos = np.array([env.threats[threat_idx, 0], env.threats[threat_idx, 1]])
+            distance = np.sqrt(np.sum((threat_pos - agent_pos) ** 2))
+            if distance < min_distance:
+                min_distance = distance
+                nearest_threat_pos = threat_pos
+
+        if nearest_threat_pos is None:
+            return 0
+
+        # Move directly away from nearest threat
+        escape_direction = agent_pos - nearest_threat_pos
+        escape_norm = np.linalg.norm(escape_direction)
+
+        if escape_norm > 0:
+            escape_direction = escape_direction / escape_norm
+            dot_products = np.dot(self.directions, escape_direction)
+            return np.int32(np.argmax(dot_products))
+
+        return 0
+
+    def reset_evade_state(self):
+        """Reset evade-related state"""
+        pass  # TSP policy doesn't maintain evade state like LocalSearch
 
 
 class ChangeRegions(SubPolicy):

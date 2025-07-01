@@ -26,8 +26,8 @@
 	"action_type": "Discrete16",
 	"observation_noise_std": 0.03,
 
-	"highqual_regulartarget_reward": 0,
-	"highqual_highvaltarget_reward": 0,
+	"base_env_target_id_reward_teammate": 0.3,
+	"base_env_target_id_reward_agent": 1,
 	"threat_id_reward": 3,
 	"shaping_decay_rate":1,
 	"shaping_coeff_prox": 0.21,

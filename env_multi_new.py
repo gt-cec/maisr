@@ -23,10 +23,9 @@ class MAISREnvVec(gym.Env):
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
-
         self.run_name = run_name # For logging
 
-        self.use_buttons = False # TODO make configurable in config
+        self.use_buttons = False
 
         if seed is not None:
             np.random.seed(seed)
@@ -239,6 +238,14 @@ class MAISREnvVec(gym.Env):
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
+        if self.config['use_fixed_levels']:
+            num_fixed_levels = 6 # TODO make this dynamic
+            self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
+
+        # Init threat and target matrices
+        self.threats = np.zeros((self.config['num_threats'], 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
+        self.targets = np.zeros((self.config['num_targets'], 5), dtype=np.float32)
+
         # Set seed for this level
         seed_list = self.level_seeds[0:self.num_levels]
         if self.tag in ['eval','test_suite']: current_seed_index = self.episode_counter % len(seed_list)
@@ -260,313 +267,84 @@ class MAISREnvVec(gym.Env):
         self.failed = False
 
         self.id_requested = False
-
         self.final_wrapper_reward = 0 # Used for saving plots
-
         self.potential = None # Initialize potential for reward shaping
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
 
-        self.targets = np.zeros((self.config['num_targets'], 5), dtype=np.float32)
         self.targets[:, 0] = np.arange(self.config['num_targets']) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
         self.targets[:, 1] = np.random.choice([0, 1], size=self.config['num_targets'], p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
         self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
 
         map_half_size = self.config["gameboard_size"] / 2  # Convert to [-150, +150] coordinate system
-        margin = map_half_size * 0.03  # 3% margin from edges
-        self.targets[:, 3] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
-        self.targets[:, 4] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
-        #print(f'Target xs: {self.targets[:, 3]}')
+
+
+        if self.config['use_fixed_levels']:
+            agent_x, agent_y, teammate_x, teammate_y = self.load_level_from_json()
+
+        else:
+            margin = map_half_size * 0.03  # 3% margin from edges
+            self.targets[:, 3] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
+            self.targets[:, 4] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
 
         self.target_timers = np.zeros(self.config['num_targets'], dtype=np.int32)  # How long each target has been sensed for
         self.detections = 0 # Number of times a target has detected us. Results in a score penalty
         self.targets_identified = 0
 
-        # Create a single threat at random location
-        #self.threat = np.zeros(2, dtype=np.float32)  # [x_pos, y_pos, radius]
-        #margin = map_half_size * 0.03  # 3% margin from edges
-        #self.threat[0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # x position
-        #self.threat[1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)  # y position
-
-        # Create a single threat at strategic location (likely to be on greedy search path)
-        self.threats = np.zeros((self.config['num_threats'], 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
-        #self.threat_timers = np.zeros(2, dtype=np.int32)  # How long each threat has been in range
-        #self.threat_identified = np.zeros(2, dtype=bool)  # Whether each threat is identified
+        # Create threats
         self.threat_timers = np.zeros((self.config['num_aircraft'], self.config['num_threats']), dtype=np.int32)  # [aircraft_id][threat_id]
         self.threat_identified = np.zeros(self.config['num_threats'], dtype=bool)  # Whether each threat is identified
         self.num_threats_identified = 0
-        margin = map_half_size * 0.03  # 3% margin from edges
 
-        ############################################################################################################
-        for i in range(self.config['num_threats']):
-            max_attempts = 50
-            threat_placed = False
+        # Place threats
+        if self.config['use_fixed_levels']:
+            pass # Already handled above
+        else:
+            margin = map_half_size * 0.03  # 3% margin from edges
+            for i in range(self.config['num_threats']):
+                max_attempts = 50
+                threat_placed = False
 
-            for attempt in range(max_attempts):
-                candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-                candidate_pos = np.array([candidate_x, candidate_y])
+                for attempt in range(max_attempts):
+                    candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                    candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                    candidate_pos = np.array([candidate_x, candidate_y])
 
-                # Check distance from all targets
-                valid_position = True
-                if self.config['num_targets'] > 0:
-                    target_positions = self.targets[:, 3:5]
-                    distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
-                    if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
-                        valid_position = False
+                    # Check distance from all targets
+                    valid_position = True
+                    if self.config['num_targets'] > 0:
+                        target_positions = self.targets[:, 3:5]
+                        distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
+                        if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
+                            valid_position = False
 
-                # Check distance from other threats
-                if i > 0 and valid_position:
-                    distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
-                    if distance_to_other_threat < 50.0:
-                        valid_position = False
+                    # Check distance from other threats
+                    if i > 0 and valid_position:
+                        distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
+                        if distance_to_other_threat < 50.0:
+                            valid_position = False
 
-                if valid_position:
-                    self.threats[i, 0] = candidate_x
-                    self.threats[i, 1] = candidate_y
-                    threat_placed = True
-                    break
+                    if valid_position:
+                        self.threats[i, 0] = candidate_x
+                        self.threats[i, 1] = candidate_y
+                        threat_placed = True
+                        break
 
-            if not threat_placed:
-                # Final fallback
-                self.threats[i, 0] = np.random.uniform(-0.9, 0.9)
-                self.threats[i, 1] = np.random.uniform(-0.9, 0.9)
-
-        ############################################################################################################
-        # if self.config['num_targets'] >= 2:
-        #     # Find centroid of all targets
-        #     target_centroid_x = np.mean(self.targets[:, 3])
-        #     target_centroid_y = np.mean(self.targets[:, 4])
-        #
-        #     # Find the two targets closest to the centroid for first threat
-        #     target_positions = self.targets[:, 3:5]
-        #     centroid_pos = np.array([target_centroid_x, target_centroid_y])
-        #     distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
-        #     closest_indices = np.argsort(distances_to_centroid)[:2]
-        #
-        #     # Place first threat with guaranteed separation
-        #     min_threat_distance = 50.0  # Minimum distance from any target
-        #     max_attempts = 50
-        #
-        #     # Try strategic placement first
-        #     target1_pos = self.targets[closest_indices[0], 3:5]
-        #     target2_pos = self.targets[closest_indices[1], 3:5]
-        #
-        #     threat1_placed = False
-        #     for attempt in range(max_attempts):
-        #         if attempt < 20:  # First 20 attempts: try strategic placement
-        #             interpolation_factor = np.random.uniform(0.2, 0.8)
-        #             threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
-        #
-        #             # Add perpendicular offset
-        #             line_vector = target2_pos - target1_pos
-        #             line_length = np.linalg.norm(line_vector)
-        #             if line_length > 0:
-        #                 perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
-        #                 offset_distance = np.random.uniform(60.0, 100.0)
-        #                 side = 1 if np.random.random() > 0.5 else -1
-        #                 threat1_candidate = threat_base_pos + (perpendicular * offset_distance * side)
-        #             else:
-        #                 # Fallback if targets are at same location
-        #                 angle = np.random.uniform(0, 2 * np.pi)
-        #                 offset_distance = 80.0
-        #                 threat1_candidate = threat_base_pos + np.array([
-        #                     offset_distance * np.cos(angle),
-        #                     offset_distance * np.sin(angle)
-        #                 ])
-        #         else:  # Last 30 attempts: try random placement
-        #             threat1_candidate = np.array([
-        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin),
-        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        #             ])
-        #
-        #         # Check if position is valid (not too close to targets and within bounds)
-        #         distances_to_targets = np.sqrt(np.sum((target_positions - threat1_candidate) ** 2, axis=1))
-        #         within_bounds = (threat1_candidate[0] >= -map_half_size + margin and
-        #                          threat1_candidate[0] <= map_half_size - margin and
-        #                          threat1_candidate[1] >= -map_half_size + margin and
-        #                          threat1_candidate[1] <= map_half_size - margin)
-        #
-        #         if np.min(distances_to_targets) >= min_threat_distance and within_bounds:
-        #             self.threats[0, 0] = threat1_candidate[0]
-        #             self.threats[0, 1] = threat1_candidate[1]
-        #             threat1_placed = True
-        #             break
-        #
-        #     if not threat1_placed:
-        #         # Fallback: place at map center with some offset
-        #         self.threats[0, 0] = np.random.uniform(-50, 50)
-        #         self.threats[0, 1] = np.random.uniform(-50, 50)
-        #
-        #     # Place second threat at a different location
-        #     threat1_pos = np.array([self.threats[0, 0], self.threats[0, 1]])
-        #     threat2_placed = False
-        #
-        #     for attempt in range(max_attempts):
-        #         if attempt < 20:  # First 20 attempts: try strategic placement
-        #             # Find targets farthest from first threat
-        #             distances_from_threat1 = np.sqrt(np.sum((target_positions - threat1_pos) ** 2, axis=1))
-        #             farthest_indices = np.argsort(distances_from_threat1)[-2:]  # Two farthest targets
-        #
-        #             target3_pos = self.targets[farthest_indices[0], 3:5]
-        #             target4_pos = self.targets[farthest_indices[1], 3:5]
-        #             interpolation_factor = np.random.uniform(0.2, 0.8)
-        #             threat_base_pos = target3_pos + interpolation_factor * (target4_pos - target3_pos)
-        #
-        #             # Add perpendicular offset
-        #             line_vector = target4_pos - target3_pos
-        #             line_length = np.linalg.norm(line_vector)
-        #             if line_length > 0:
-        #                 perpendicular = np.array([-line_vector[1], line_vector[0]]) / line_length
-        #                 offset_distance = np.random.uniform(60.0, 100.0)
-        #                 side = 1 if np.random.random() > 0.5 else -1
-        #                 threat2_candidate = threat_base_pos + (perpendicular * offset_distance * side)
-        #             else:
-        #                 # Fallback if targets are at same location
-        #                 angle = np.random.uniform(0, 2 * np.pi)
-        #                 offset_distance = 80.0
-        #                 threat2_candidate = threat_base_pos + np.array([
-        #                     offset_distance * np.cos(angle),
-        #                     offset_distance * np.sin(angle)
-        #                 ])
-        #         else:  # Last 30 attempts: try random placement
-        #             threat2_candidate = np.array([
-        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin),
-        #                 np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        #             ])
-        #
-        #         # Check if position is valid (not too close to targets, first threat, and within bounds)
-        #         distances_to_targets = np.sqrt(np.sum((target_positions - threat2_candidate) ** 2, axis=1))
-        #         distance_to_threat1 = np.sqrt(np.sum((threat1_pos - threat2_candidate) ** 2))
-        #         within_bounds = (threat2_candidate[0] >= -map_half_size + margin and
-        #                          threat2_candidate[0] <= map_half_size - margin and
-        #                          threat2_candidate[1] >= -map_half_size + margin and
-        #                          threat2_candidate[1] <= map_half_size - margin)
-        #
-        #         if (np.min(distances_to_targets) >= min_threat_distance and
-        #                 distance_to_threat1 >= min_threat_distance and
-        #                 within_bounds):
-        #             self.threats[1, 0] = threat2_candidate[0]
-        #             self.threats[1, 1] = threat2_candidate[1]
-        #             threat2_placed = True
-        #             break
-        #
-        #     if not threat2_placed:
-        #         # Fallback: place opposite to first threat
-        #         self.threats[1, 0] = -self.threats[0, 0] * 0.5
-        #         self.threats[1, 1] = -self.threats[0, 1] * 0.5
-        #
-        # else:
-        #     # Fallback to random placement if fewer than 2 targets, with distance checking
-        #     for i in range(2):
-        #         max_attempts = 50
-        #         threat_placed = False
-        #
-        #         for attempt in range(max_attempts):
-        #             candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        #             candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        #             candidate_pos = np.array([candidate_x, candidate_y])
-        #
-        #             # Check distance from all targets
-        #             valid_position = True
-        #             if self.config['num_targets'] > 0:
-        #                 target_positions = self.targets[:, 3:5]
-        #                 distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
-        #                 if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
-        #                     valid_position = False
-        #
-        #             # Check distance from other threats
-        #             if i > 0 and valid_position:
-        #                 distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
-        #                 if distance_to_other_threat < 50.0:
-        #                     valid_position = False
-        #
-        #             if valid_position:
-        #                 self.threats[i, 0] = candidate_x
-        #                 self.threats[i, 1] = candidate_y
-        #                 threat_placed = True
-        #                 break
-        #
-        #         if not threat_placed:
-        #             # Final fallback
-        #             self.threats[i, 0] = np.random.uniform(-100, 100)
-        #             self.threats[i, 1] = np.random.uniform(-100, 100)
-        #
-        # # Final validation: ensure no threats are on top of targets
-        # for threat_idx in range(2):
-        #     threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-        #     target_positions = self.targets[:, 3:5]
-        #     distances_to_targets = np.sqrt(np.sum((target_positions - threat_pos) ** 2, axis=1))
-        #
-        #     if np.min(distances_to_targets) < 30.0:  # If too close to any target
-        #         print(f"Warning: Threat {threat_idx} too close to targets. Moving to safe position.")
-        #         # Move threat to a guaranteed safe position
-        #         self.threats[threat_idx, 0] = np.random.uniform(-50, 50)
-        #         self.threats[threat_idx, 1] = np.random.uniform(-50, 50)
-
-        ############################################################################################################
-        ############################################################################################################
-
-        # if self.config['num_targets'] >= 2:
-        #     # Find centroid of all targets
-        #     target_centroid_x = np.mean(self.targets[:, 3])
-        #     target_centroid_y = np.mean(self.targets[:, 4])
-        #
-        #     # Find the two targets closest to the centroid for first threat
-        #     target_positions = self.targets[:, 3:5]
-        #     centroid_pos = np.array([target_centroid_x, target_centroid_y])
-        #     distances_to_centroid = np.sqrt(np.sum((target_positions - centroid_pos) ** 2, axis=1))
-        #     closest_indices = np.argsort(distances_to_centroid)[:2]
-        #
-        #     # Place first threat between central targets
-        #     target1_pos = self.targets[closest_indices[0], 3:5]
-        #     target2_pos = self.targets[closest_indices[1], 3:5]
-        #     interpolation_factor = np.random.uniform(0.3, 0.7)
-        #     threat_base_pos = target1_pos + interpolation_factor * (target2_pos - target1_pos)
-        #
-        #     offset_distance = min(50.0, np.linalg.norm(target2_pos - target1_pos) * 0.2)
-        #     random_angle = np.random.uniform(0, 2 * np.pi)
-        #     offset_x = offset_distance * np.cos(random_angle)
-        #     offset_y = offset_distance * np.sin(random_angle)
-        #
-        #     self.threats[0, 0] = threat_base_pos[0] + offset_x
-        #     self.threats[0, 1] = threat_base_pos[1] + offset_y
-        #
-        #     # Place second threat at a different strategic location
-        #     # Find two targets farthest from the first threat
-        #     threat1_pos = np.array([self.threats[0, 0], self.threats[0, 1]])
-        #     distances_from_threat1 = np.sqrt(np.sum((target_positions - threat1_pos) ** 2, axis=1))
-        #     farthest_indices = np.argsort(distances_from_threat1)[-2:]  # Two farthest targets
-        #
-        #     target3_pos = self.targets[farthest_indices[0], 3:5]
-        #     target4_pos = self.targets[farthest_indices[1], 3:5]
-        #     interpolation_factor = np.random.uniform(0.3, 0.7)
-        #     threat2_base_pos = target3_pos + interpolation_factor * (target4_pos - target3_pos)
-        #
-        #     random_angle = np.random.uniform(0, 2 * np.pi)
-        #     offset_x = offset_distance * np.cos(random_angle)
-        #     offset_y = offset_distance * np.sin(random_angle)
-        #
-        #     self.threats[1, 0] = threat2_base_pos[0] + offset_x
-        #     self.threats[1, 1] = threat2_base_pos[1] + offset_y
-        #
-        #     # Ensure both threats stay within map bounds
-        #     for i in range(2):
-        #         self.threats[i, 0] = np.clip(self.threats[i, 0], -map_half_size + margin, map_half_size - margin)
-        #         self.threats[i, 1] = np.clip(self.threats[i, 1], -map_half_size + margin, map_half_size - margin)
-        # else:
-        #     # Fallback to random placement if fewer than 2 targets
-        #     for i in range(2):
-        #         self.threats[i, 0] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        #         self.threats[i, 1] = np.random.uniform(-map_half_size + margin, map_half_size - margin)
-        ############################################################################################################
+                if not threat_placed:
+                    # Final fallback
+                    self.threats[i, 0] = np.random.uniform(-0.9, 0.9)
+                    self.threats[i, 1] = np.random.uniform(-0.9, 0.9)
 
         # Decay shaping rewards
         self.config['shaping_coeff_prox'] = self.config['shaping_coeff_prox'] * self.config['shaping_decay_rate']
 
         # Set agent start location
         map_half_size = self.config["gameboard_size"] / 2
-        if self.config["agent_start_locations_per_lesson"][str(self.difficulty)] == 99:
+
+        if self.config['use_fixed_levels']:
+            pass # Already handled above
+
+        elif self.config["agent_start_locations_per_lesson"][str(self.difficulty)] == 99:
             agent_x, agent_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
             teammate_x, teammate_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
 
@@ -642,10 +420,6 @@ class MAISREnvVec(gym.Env):
             total_potential_gain += info["potential_gain"]
             steps_executed += 1
 
-            # # TODO TESTING
-            # if self.render_mode == 'human':
-            #     self.render()
-
             # Accumulate new identifications
             if "new_identifications" in info:
                 consolidated_new_identifications.extend(info["new_identifications"])
@@ -697,7 +471,7 @@ class MAISREnvVec(gym.Env):
         if self.potential: last_potential = self.potential
         else: last_potential = 0
 
-        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0, 'threat_identification':0} # Track events that give reward. Will be passed to get_reward at end of step
+        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0, 'threat_identification':0, 'teammate_target_ids':0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking score to display to the human
         info = {
             "new_identifications": [], # List to track newly identified targets/threats
@@ -787,14 +561,16 @@ class MAISREnvVec(gym.Env):
 
                     # Add reward (for agent) and score (for human).
                     if self.targets[target_idx, 1] == 0.0:
-                        new_score += self.config['highqual_regulartarget_reward']
+                        new_score += self.config['base_env_target_id_reward_agent']
                         new_reward['regular val target id'] += 1
+                        if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
                     else:
-                        new_score += self.config['highqual_highvaltarget_reward']
+                        new_score += self.config['base_env_target_id_reward_agent']
                         new_reward['high val target id'] += 1
+                        if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
 
                     # Update info dictionary
-                    info["score_breakdown"]["target_points"] += self.config['highqual_regulartarget_reward'] if self.targets[target_idx, 1] == 0.0 else self.config['highqual_highvaltarget_reward']
+                    info["score_breakdown"]["target_points"] += self.config['base_env_target_id_reward_agent'] if self.targets[target_idx, 1] == 0.0 else self.config['base_env_target_id_reward_agent']
                     info["new_identifications"].append({
                         "type": "low quality info gathered",
                         "target_id": int(self.targets[target_idx, 0]),
@@ -862,7 +638,9 @@ class MAISREnvVec(gym.Env):
 
 
     def get_reward(self, new_reward, potential_gain):
-        # TODO threat penalty should only be applied for the local_search training wrapper
+
+        teammate_target_ids = new_reward['teammate_target_ids']
+        agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
 
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
         threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
@@ -886,30 +664,9 @@ class MAISREnvVec(gym.Env):
                         penalty_multiplier = 0.4 * (1.0 - normalized_distance)
                         threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
-        # if hasattr(self, 'threat'):
-        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
-        #         threat_pos = np.array([self.threat[0], self.threat[1]])
-        #         distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-        #
-        #         threat_radius = self.config['threat_radius']
-        #         warning_radius = threat_radius * 1.5  # 50% larger than threat radius
-        #
-        #         if distance_to_threat <= threat_radius:
-        #             # Maximum penalty when at center, decreasing linearly to zero at radius edge
-        #             normalized_distance = distance_to_threat / threat_radius  # 0 at center, 1 at edge
-        #             penalty_multiplier = 1.0 - normalized_distance  # 1 at center, 0 at edge
-        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
-        #
-        #         elif distance_to_threat <= warning_radius:
-        #             # Warning zone - penalty decreases from 50% to 0% as distance increases
-        #             normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-        #             penalty_multiplier = 0.4 * (1.0 - normalized_distance)  # 0.5 at threat edge, 0 at warning edge
-        #             threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
-
-        reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
-                 (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
+        reward = (agent_target_ids * self.config['base_env_target_id_reward_agent']) + \
+                 (teammate_target_ids * self.config['base_env_target_id_reward_teammate']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
                  (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
@@ -2461,77 +2218,29 @@ class MAISREnvVec(gym.Env):
         """Method to receive wrapper observations from wrapper"""
         self.wrapper_observations = wrapper_observations
 
+    def load_level_from_json(self, level_data_path="level_layouts.json"):
+        with open(level_data_path, 'r') as f:
+            level_data = json.load(f)['levels']
 
-    def load_level_from_yaml(self, yaml_file_path):
-        """
-        Load level configuration from YAML file and apply to environment.
-        Args:
-            yaml_file_path (str): Path to the YAML level file
-        Returns:
-            bool: True if level loaded successfully, False otherwise
-        """
-        import yaml
-        try:
-            with open(yaml_file_path, 'r') as file:
-                level_data = yaml.safe_load(file)
+        # Map level index to level name
+        level_names = list(level_data.keys())
+        if isinstance(self.tag[-1], str):
+            level_name = level_names[self.level_idx + int(self.tag[-1]) % len(level_names)]
+        else:
+            level_name = level_names[self.level_idx % len(level_names)]
+        level = level_data[level_name]
+        print(f'Loaded from level {level_name}')
 
-            # Validate required sections
-            if 'agents' not in level_data or 'targets' not in level_data or 'threats' not in level_data:
-                raise ValueError("YAML file must contain 'agents', 'targets', and 'threats' sections")
+        # Load agent positions
+        agent_x, agent_y = level['agents'][0]
+        teammate_x, teammate_y = level['agents'][1]
 
-            # Validate counts
-            if len(level_data['agents']) != self.config['num_aircraft']:
-                raise ValueError(f"Expected {self.config['num_aircraft']} agents, got {len(level_data['agents'])}")
+        # Load target positions
+        target_positions = np.array(level['targets'], dtype=np.float32)
+        self.targets[:, 3:5] = target_positions[:self.config['num_targets']]
 
-            if len(level_data['targets']) != self.config['num_targets']:
-                raise ValueError(f"Expected {self.config['num_targets']} targets, got {len(level_data['targets'])}")
+        # Load threat positions
+        threat_positions = np.array(level['threats'], dtype=np.float32)
+        self.threats[:, 0:2] = threat_positions[:self.config['num_threats']]
 
-            if len(level_data['threats']) != self.config['num_threats']:
-                raise ValueError(f"Expected {self.config['num_threats']} threats, got {len(level_data['threats'])}")
-
-            # Validate coordinates are within map bounds
-            map_half_size = self.config["gameboard_size"] / 2
-
-            def validate_coords(entities, entity_type):
-                for i, entity in enumerate(entities):
-                    x, y = entity['x'], entity['y']
-                    if not (-map_half_size <= x <= map_half_size and -map_half_size <= y <= map_half_size):
-                        raise ValueError(f"{entity_type} {i} coordinates ({x}, {y}) are outside map bounds")
-
-            validate_coords(level_data['agents'], "Agent")
-            validate_coords(level_data['targets'], "Target")
-            validate_coords(level_data['threats'], "Threat")
-
-            # Load agent positions
-            for i, agent_data in enumerate(level_data['agents']):
-                self.agents[self.aircraft_ids[i]].x = float(agent_data['x'])
-                self.agents[self.aircraft_ids[i]].y = float(agent_data['y'])
-
-            # Load target data
-            for i, target_data in enumerate(level_data['targets']):
-                self.targets[i, 0] = i  # ID
-                self.targets[i, 1] = 1.0 if target_data.get('high_value', False) else 0.0  # Value type
-                self.targets[i, 2] = 0.0  # Info level (always start unknown)
-                self.targets[i, 3] = float(target_data['x'])  # X position
-                self.targets[i, 4] = float(target_data['y'])  # Y position
-
-            # Load threat positions
-            for i, threat_data in enumerate(level_data['threats']):
-                self.threats[i, 0] = float(threat_data['x'])  # X position
-                self.threats[i, 1] = float(threat_data['y'])  # Y position
-
-            print(f"Successfully loaded level from {yaml_file_path}")
-            return True
-
-        except FileNotFoundError:
-            print(f"Error: Could not find level file {yaml_file_path}")
-            return False
-        except yaml.YAMLError as e:
-            print(f"Error parsing YAML file: {e}")
-            return False
-        except ValueError as e:
-            print(f"Error validating level data: {e}")
-            return False
-        except Exception as e:
-            print(f"Unexpected error loading level: {e}")
-            return False
+        return agent_x, agent_y, teammate_x, teammate_y

@@ -456,7 +456,7 @@ def create_comparison_plots(all_results, timestamp):
     fig, axes = plt.subplots(3, 3, figsize=(20, 16))
     fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
 
-    overfit_types = ['low_risk', 'high_risk']#, 'nospatial', 'highspatial']
+    overfit_types = ['nospatial', 'highspatial'] # 'low_risk', 'high_risk'
     behavior_types = ['aligned', 'counter']
 
     metrics = ['reward', 'target_ids', 'avg_teammate_distance', 'steps', 'efficiency_score',
@@ -660,8 +660,8 @@ def convert_to_json_serializable(obj):
 
 if __name__ == "__main__":
     # Configuration
-    config_filename = 'configs/june24_diverse.json'
-    num_episodes = 100
+    config_filename = 'configs/july1_MS_overfitv10.json'
+    num_episodes = 50
     tick_rate = 120
     use_normalize = True
     render = False
@@ -670,17 +670,21 @@ if __name__ == "__main__":
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Test configuration
-    overfit_agents = ['low_risk', 'high_risk']#, 'nospatial', 'highspatial']
+    overfit_agents = ['nospatial', 'highspatial'] # 'low_risk', 'high_risk',
     behavior_types = ['aligned', 'counter']
 
     model_path_dict = {
-        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV7_low_risk_0628_1939_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_low_risk_0628_1939_6envs_257088_steps.zip',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV7_high_risk_0628_1514_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_high_risk_0628_1514_6envs_99840_steps.zip',
+        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__262080_steps.zip',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__262080_steps.zip',
+        'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__262080_steps.zip',
+        'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__262080_steps.zip'
     }
 
     norm_stats_path_dict = {
-        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV7_low_risk_0628_1939_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_low_risk_0628_1939_6envs_vecnormalize_257088_steps.pkl',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV7_high_risk_0628_1514_6envs/checkpoints/maisr_checkpoint_modeselector_OverfitV7_high_risk_0628_1514_6envs_vecnormalize_99840_steps.pkl',
+        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__vecnormalize_262080_steps.pkl',
+        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__vecnormalize_262080_steps.pkl',
+        'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__vecnormalize_262080_steps.pkl',
+        'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__vecnormalize_262080_steps.pkl'
     }
 
     config = load_env_config(config_filename)
