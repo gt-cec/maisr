@@ -697,7 +697,7 @@ class MAISREnvVec(gym.Env):
         if self.potential: last_potential = self.potential
         else: last_potential = 0
 
-        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0} # Track events that give reward. Will be passed to get_reward at end of step
+        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0, 'threat_identification':0} # Track events that give reward. Will be passed to get_reward at end of step
         new_score = 0 # For tracking score to display to the human
         info = {
             "new_identifications": [], # List to track newly identified targets/threats
