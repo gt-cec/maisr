@@ -709,14 +709,16 @@ class MAISREnvVec(gym.Env):
 
 
         ############################################### Process action ################################################
-
-        if isinstance(action, np.ndarray) and len(action) == 2:
-            #print(f'Input to _single_step is {action} ({type(action)}) (ndim {action.ndim}, len {len(action)}')
-            waypoint = self._denormalize_waypoint(action)
-
+        #print(f'In env, action is a {type(action)}')
+        if isinstance(action, np.ndarray) and action.ndim > 0:
+            if len(action) == 2:
+                waypoint = self._denormalize_waypoint(action)
+            else:
+                waypoint = self._direction_to_waypoint(action)
         else:
-            #print(f'Input to _single_step is {action} ({type(action)})')
+            # Handle scalar actions (int, np.int32, np.int64, etc.)
             waypoint = self._direction_to_waypoint(action)
+
 
         self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
 
@@ -909,6 +911,7 @@ class MAISREnvVec(gym.Env):
         reward = (new_reward['high val target id'] * self.config['highqual_highvaltarget_reward']) + \
                  (new_reward['regular val target id'] * self.config['highqual_regulartarget_reward']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
+                 (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
                  (potential_gain * self.config['shaping_coeff_prox'] * (300/self.config['gameboard_size'])) + \
                  (self.config['shaping_time_penalty']) - \
                  threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
@@ -2367,9 +2370,10 @@ class MAISREnvVec(gym.Env):
 
             if other_elements:
                 #legend2 = plt.legend(handles=other_elements, loc='upper left', bbox_to_anchor=(0.82, 0.6),fontsize='small')
-                main_ax.add_artist(legend1)  # Keep both legends
-
-
+                try:
+                    main_ax.add_artist(legend1)  # Keep both legends
+                except:
+                    pass
 
             if hasattr(self, 'wrapper_observations') and self.wrapper_observations:
                 obs_ax = plt.subplot2grid((4, 1), (3, 0))

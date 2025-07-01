@@ -19,10 +19,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 
 from utility.data_logging import load_env_config
-from utility.config_management import load_env_config_with_sweeps, generate_sweep_run_name
 
 
 def generate_run_name(config):
@@ -182,6 +180,7 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
+                    #print(f'eval action: {action}')
                     #print(f'agent action: {action} (type: {type(action)})')
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
@@ -529,7 +528,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
     config_filename = 'configs/june30_LS.json'
-    n_envs = multiprocessing.cpu_count()-2
+    n_envs = multiprocessing.cpu_count()
     ################################################
 
     print(f'\n############################ STARTING TRAINING ############################')
