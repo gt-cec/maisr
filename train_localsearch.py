@@ -85,7 +85,7 @@ class EnhancedWandbCallback(BaseCallback):
         self.above_threshold_counter = 0
 
         self.switched_to_twoship = False
-        self.twoship_switch_threshold = 10
+        self.twoship_switch_threshold = env_config['twoship_switch_threshold']
 
         # Buffer for accumulating data between log events
         self.episode_buffer = {
@@ -553,9 +553,11 @@ def train_hrl(
 if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
+
     load_path = None  # './trained_models/6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425/maisr_checkpoint_6envs_obs-relative_act-continuous-normalized_lr-5e-05_bs-128_g-0.99_fs-1_ppoupdates-2048_curriculum-Truerew-wtn-0.02_rew-prox-0.005_rew-timepenalty--0.0_0516_1425_156672_steps'
     config_filename = 'configs/july1_ls_2ship.json'
     n_envs = multiprocessing.cpu_count()
+
     ################################################
 
     print(f'\n############################ STARTING TRAINING ############################')
@@ -566,23 +568,28 @@ if __name__ == "__main__":
     config['obs_noise_std_localsearch'] = 0.02
     config['num_timesteps'] = 7e5
 
-    temp_identifier = 'monolith_2ship'
 
-    # Generate run name (To be consistent between WandB, model saving, and action history plots)
-    run_name = f'localsearch_{temp_identifier}_' + generate_run_name(config)
 
-    for target_potential_coef in [0.05, 0.02, 0.08]:
-        config['threat_potential_coeff'] = target_potential_coef
+    for threat_potential_coef in [0.05, 0.02]:
+        for max_steps in [1500, 1200]:
+            for twoship_switch_threshold in [7, 10]:
 
-        print(f'\n--- Starting training run  ---')
-        train_hrl(
-            config,
-            run_name=run_name,
-            use_normalize=True,
-            n_envs=n_envs,
-            load_path=load_path,
-            machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-            project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-            save_model = False,
-        )
-        print(f"✓ Completed training run")
+                temp_identifier = f'2ship_threatcoef{threat_potential_coef}_maxsteps{max_steps}_switchthreshold{twoship_switch_threshold}'
+                run_name = f'monolith_{temp_identifier}_' + generate_run_name(config)
+
+                config['threat_potential_coeff'] = threat_potential_coef
+                config['max_steps'] = max_steps
+                config['twoship_switch_threshold'] = twoship_switch_threshold
+
+                print(f'\n--- Starting training run  ---')
+                train_hrl(
+                    config,
+                    run_name=run_name,
+                    use_normalize=True,
+                    n_envs=n_envs,
+                    load_path=load_path,
+                    machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+                    save_model = False,
+                )
+                print(f"✓ Completed training run")
