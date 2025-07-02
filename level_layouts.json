@@ -93,7 +93,7 @@
   "level_2b": {
       "note": "Divide risk based on suitability - switched indices",
       "agents": [
-        [-425, -450],
+        [-300, -450],
         [425, -450]
       ],
       "targets": [

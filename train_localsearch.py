@@ -169,13 +169,13 @@ class EnhancedWandbCallback(BaseCallback):
                 self.eval_env.obs_rms = self.model.get_env().obs_rms
                 self.eval_env.ret_rms = self.model.get_env().ret_rms
 
-            # ... rest of evaluation code remains unchanged ...
             target_ids_list = []
+            threat_ids_list = []
             target_ids_per_step_list = []
             mean_reward, std_reward = 0, 0
             eval_lengths = []
 
-            obs = self.eval_env.reset() # We call reset() at the beginning (vec envs reset automatically after this)
+            obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
 
                 done = False
@@ -183,8 +183,6 @@ class EnhancedWandbCallback(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
-                    #print(f'eval action: {action}')
-                    #print(f'agent action: {action} (type: {type(action)})')
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
@@ -192,56 +190,60 @@ class EnhancedWandbCallback(BaseCallback):
                     done = dones[0]
                     ep_reward += reward
 
-                if "target_ids" in info: target_ids_list.append(info["target_ids"])
+                if "target_ids" in info:
+                    target_ids_list.append(info["target_ids"])
+                elif "new_target_ids" in info:
+                    target_ids_list.append(info["new_target_ids"])
+                if "new_threat_ids" in info:
+                    threat_ids_list.append(info["new_threat_ids"])
 
                 mean_reward += ep_reward / self.n_eval_episodes
                 eval_lengths.append(info["episode"]["l"])
                 target_ids_per_step_list.append(info["target_ids"] / info["episode"]["l"])
 
-            std_reward = np.std(target_ids_list) if target_ids_list else 0
+            #std_reward = np.std(e) if target_ids_list else 0
 
             # Log evaluation results
             eval_metrics = {
                 "eval/mean_reward": mean_reward,
-                "misc/std_reward": std_reward,
+                #"misc/std_reward": std_reward,
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+                "eval/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
 
-            #################################### Early stopping ####################################
-            # Check for performance crash
-            current_performance = np.mean(target_ids_list) if target_ids_list else 0
-            if current_performance > self.best_eval_performance:
-                self.best_eval_performance = current_performance
-                self.performance_crash_counter = 0
-                eval_metrics["early_stopping/best_performance"] = self.best_eval_performance
-                print(f'NEW BEST PERFORMANCE: {self.best_eval_performance:.3f}')
-
-            performance_threshold = self.best_eval_performance * self.performance_crash_ratio
-            if current_performance < performance_threshold and self.best_eval_performance > 0:
-                self.performance_crash_counter += 1
-                print(f'PERFORMANCE CRASH WARNING: {current_performance:.3f} < {performance_threshold:.3f} '
-                      f'({self.performance_crash_counter}/{self.performance_crash_threshold})')
-            else:
-                self.performance_crash_counter = 0
-
-            eval_metrics["early_stopping/performance_crash_counter"] = self.performance_crash_counter
-            eval_metrics["early_stopping/performance_threshold"] = performance_threshold
-
-            # Check if we should stop training
-            if self.performance_crash_counter >= self.performance_crash_threshold:
-                self.should_stop_training = True
-                print(f'\n{"=" * 80}')
-                print(f'EARLY STOPPING TRIGGERED!')
-                print(f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
-                print(f'Best performance: {self.best_eval_performance:.3f}')
-                print(f'Current performance: {current_performance:.3f}')
-                print(f'Threshold: {performance_threshold:.3f}')
-                print(f'{"=" * 80}\n')
-
-            # Add this after calculating eval_metrics but before self.run.log(eval_metrics, step=self.num_timesteps)
+            # #################################### Early stopping ####################################
+            # # Check for performance crash
+            # current_performance = np.mean(target_ids_list) if target_ids_list else 0
+            # if current_performance > self.best_eval_performance:
+            #     self.best_eval_performance = current_performance
+            #     self.performance_crash_counter = 0
+            #     eval_metrics["early_stopping/best_performance"] = self.best_eval_performance
+            #     print(f'NEW BEST PERFORMANCE: {self.best_eval_performance:.3f}')
+            #
+            # performance_threshold = self.best_eval_performance * self.performance_crash_ratio
+            # if current_performance < performance_threshold and self.best_eval_performance > 0:
+            #     self.performance_crash_counter += 1
+            #     print(f'PERFORMANCE CRASH WARNING: {current_performance:.3f} < {performance_threshold:.3f} '
+            #           f'({self.performance_crash_counter}/{self.performance_crash_threshold})')
+            # else:
+            #     self.performance_crash_counter = 0
+            #
+            # eval_metrics["early_stopping/performance_crash_counter"] = self.performance_crash_counter
+            # eval_metrics["early_stopping/performance_threshold"] = performance_threshold
+            #
+            # # Check if we should stop training
+            # if self.performance_crash_counter >= self.performance_crash_threshold:
+            #     self.should_stop_training = True
+            #     print(f'\n{"=" * 80}')
+            #     print(f'EARLY STOPPING TRIGGERED!')
+            #     print(f'Performance has been below {self.performance_crash_ratio * 100}% of best for {self.performance_crash_counter} consecutive evaluations')
+            #     print(f'Best performance: {self.best_eval_performance:.3f}')
+            #     print(f'Current performance: {current_performance:.3f}')
+            #     print(f'Threshold: {performance_threshold:.3f}')
+            #     print(f'{"=" * 80}\n')
 
             #################################### Aircraft switching ####################################
             print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
@@ -255,6 +257,7 @@ class EnhancedWandbCallback(BaseCallback):
                     print(f'{"=" * 80}\n')
 
                     self.model.get_env().env_method("set_teammate_active", True)
+                    self.eval_env.env_method("set_teammate_active", True)
                     self.switched_to_twoship = True
 
                     # Log the switch
@@ -296,10 +299,10 @@ class EnhancedWandbCallback(BaseCallback):
                     try: self.eval_env.env_method("set_difficulty", self.current_difficulty)
                     except Exception as e: print(f"Failed to set difficulty on eval env: {e}")
 
-                    print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
-                    try: self.best_eval_performance = current_performance  # Reset best to current performance
-                    except: self.best_eval_performance = -np.inf
-                    self.performance_crash_counter = 0  # Reset crash counter
+                    # print(f'CURRICULUM: Resetting performance tracking due to difficulty increase')
+                    # try: self.best_eval_performance = current_performance  # Reset best to current performance
+                    # except: self.best_eval_performance = -np.inf
+                    # self.performance_crash_counter = 0  # Reset crash counter
 
                     self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
 
@@ -567,29 +570,27 @@ if __name__ == "__main__":
     config['policy_to_train'] = 'local-search'
     config['obs_noise_std_localsearch'] = 0.02
     config['num_timesteps'] = 7e5
+    config['twoship_switch_threshold'] = 7
+    config['max_steps'] = 1500
+    config['threat_potential_coeff'] = 0.05
 
+    for teammate_reward_scale in [0.5, 1, 0.25]:
+        for ent_reg in [0.015, 0.02, 0.01]:
+            config['entropy_regularization'] = ent_reg
+            config['teammate_reward_scale'] = teammate_reward_scale
 
+            temp_identifier = f'2ship_teammaterewardscale{teammate_reward_scale}_entreg{ent_reg}'
+            run_name = f'monolith_{temp_identifier}_' + generate_run_name(config)
 
-    for threat_potential_coef in [0.05, 0.02]:
-        for max_steps in [1500, 1200]:
-            for twoship_switch_threshold in [7, 10]:
-
-                temp_identifier = f'2ship_threatcoef{threat_potential_coef}_maxsteps{max_steps}_switchthreshold{twoship_switch_threshold}'
-                run_name = f'monolith_{temp_identifier}_' + generate_run_name(config)
-
-                config['threat_potential_coeff'] = threat_potential_coef
-                config['max_steps'] = max_steps
-                config['twoship_switch_threshold'] = twoship_switch_threshold
-
-                print(f'\n--- Starting training run  ---')
-                train_hrl(
-                    config,
-                    run_name=run_name,
-                    use_normalize=True,
-                    n_envs=n_envs,
-                    load_path=load_path,
-                    machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                    project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-                    save_model = False,
-                )
-                print(f"✓ Completed training run")
+            print(f'\n--- Starting training run  ---')
+            train_hrl(
+                config,
+                run_name=run_name,
+                use_normalize=True,
+                n_envs=n_envs,
+                load_path=load_path,
+                machine_name='localsearch_home'+('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab_pc' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                project_name='maisr-rl-lab', #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+                save_model = False,
+            )
+            print(f"✓ Completed training run")

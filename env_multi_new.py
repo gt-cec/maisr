@@ -571,16 +571,16 @@ class MAISREnvVec(gym.Env):
 
                     # Add reward (for agent) and score (for human).
                     if self.targets[target_idx, 1] == 0.0:
-                        new_score += self.config['base_env_target_id_reward_agent']
+                        new_score += self.config['base_env_target_id_reward']
                         new_reward['regular val target id'] += 1
                         if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
                     else:
-                        new_score += self.config['base_env_target_id_reward_agent']
+                        new_score += self.config['base_env_target_id_reward']
                         new_reward['high val target id'] += 1
                         if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
 
                     # Update info dictionary
-                    info["score_breakdown"]["target_points"] += self.config['base_env_target_id_reward_agent'] if self.targets[target_idx, 1] == 0.0 else self.config['base_env_target_id_reward_agent']
+                    info["score_breakdown"]["target_points"] += self.config['base_env_target_id_reward'] if self.targets[target_idx, 1] == 0.0 else self.config['base_env_target_id_reward']
                     info["new_identifications"].append({
                         "type": "low quality info gathered",
                         "target_id": int(self.targets[target_idx, 0]),
@@ -676,13 +676,17 @@ class MAISREnvVec(gym.Env):
                         penalty_multiplier = 0.4 * (1.0 - normalized_distance)
                         threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
+        if self.num_threats_identified < self.config['max_threat_ids']:
+            threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+        else:
+            threat_potential_reward = - 0.25 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
 
-        reward = (agent_target_ids * self.config['base_env_target_id_reward_agent']) + \
-                 (teammate_target_ids * self.config['base_env_target_id_reward_teammate']) + \
+        reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
+                 (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
                  (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
                  (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
-                 (threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])) + \
+                 threat_potential_reward + \
                  (self.config['shaping_time_penalty']) - \
                  threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
 
@@ -2061,10 +2065,24 @@ class MAISREnvVec(gym.Env):
             # Add labels and title
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config[
-                'action_type']
-            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
-            plt.title(plot_title)
+            teammate_name = "No Teammate"
+            if hasattr(self, 'config') and self.config.get('num_aircraft', 1) >= 2:
+                # Try to get teammate name from the wrapper (if using teammate manager)
+                if hasattr(self, 'teammate_name'):
+                    teammate_name = self.teammate_name
+                elif hasattr(self, 'current_teammate') and hasattr(self.current_teammate, 'name'):
+                    teammate_name = self.current_teammate.name
+                else:
+                    teammate_name = "Unknown Teammate"
+
+            action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config['action_type']
+            #plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
+            #plt.title(plot_title)
+            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})\nTeammate: {teammate_name}'
+            plt.title(plot_title, fontsize=10)  # Reduced font size to accommodate longer title
+
+
+
 
             # Create legend with subpolicy colors
             legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.92, 1), fontsize='small')
