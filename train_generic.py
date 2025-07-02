@@ -123,7 +123,13 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
 
             # Clear the buffer after logging
-            self.episode_buffer = {'rewards': [], 'lengths': [], 'target_ids': [], 'detections': []}
+            self.episode_buffer = {
+                'rewards': [],
+                'lengths': [],
+                'target_ids': [],
+                'threat_ids': [],
+                'detections': []
+            }
 
         # Log training metrics less frequently (e.g., every 10 steps)
         should_log_training_metrics = self.num_timesteps % (self.log_freq * 2) == 0
@@ -608,7 +614,6 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pr
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
-    # Note: These would typically be loaded from trained models
     subpolicies = {
         'local_search': LocalSearch(model_path=None),  # Using heuristic
         'change_region': ChangeRegions(model_path=None),  # Using heuristic
@@ -902,7 +907,7 @@ if __name__ == "__main__":
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'MonolithTeammates_lowrisk'
+    note = 'Monolith'
 
     ################################################
 
@@ -910,33 +915,33 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    overfit_test = 'low_risk'
+    #overfit_test = 'low_risk'
 
-    #for overfit_test in ["high_risk", "low_risk", "nospatial", "highspatial"]:
-    for teammate_reward_scale in [0.5, 1, 0.25]:
-        for ent_reg in [0.015, 0.02, 0.01]:
-            config['entropy_regularization'] = ent_reg
-            config['teammate_reward_scale'] = teammate_reward_scale
+    for overfit_test in ["low_risk", "high_risk", "nospatial", "highspatial"]:
+        for teammate_reward_scale in [0.5, 1, 0.25]:
+            for ent_reg in [0.015, 0.02, 0.01]:
+                config['entropy_regularization'] = ent_reg
+                config['teammate_reward_scale'] = teammate_reward_scale
 
-            temp_identifier = note+f'teammaterewardscale{teammate_reward_scale}_entreg{ent_reg}'
+                temp_identifier = note+f'overfit-{overfit_test}teammaterewardscale-{teammate_reward_scale}_entreg-{ent_reg}'
 
-            # Generate run name (To be consistent between WandB, model saving, and action history plots)
-            run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
+                # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
 
-            print(f'\n--- Starting training run  ---')
-            train_generic(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                use_teammate_manager=True,
-                train_type = train_type,
-                render=False,
-                n_envs=num_envs,
-                load_path=load_path,
-                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name=project_name,
-                save_model = True,
-                overfit_test = overfit_test,
-                save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-            )
-            print(f"✓ Completed training run")
+                print(f'\n--- Starting training run  ---')
+                train_generic(
+                    config,
+                    run_name=run_name,
+                    use_normalize=True,
+                    use_teammate_manager=True,
+                    train_type = train_type,
+                    render=False,
+                    n_envs=num_envs,
+                    load_path=load_path,
+                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    project_name=project_name,
+                    save_model = True,
+                    overfit_test = overfit_test,
+                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                )
+                print(f"✓ Completed training run")

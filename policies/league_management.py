@@ -80,7 +80,7 @@ class TeammateManager:
         self.spatial_coord_options = {
             'baseline': ["none"],
             "vanilla": ["none"],
-            "strategy_diverse": ["none", "some", "high"]}
+            "strategy_diverse": ["none"]} #["none", "some", "high"]}
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
@@ -88,8 +88,8 @@ class TeammateManager:
         }
         self.planning_horizon_options = {
             'baseline': ["short"],
-            'vanilla': ["medium"],
-            'strategy_diverse': ["long"]
+            'vanilla': ["short"],
+            'strategy_diverse': ["short", "medium", "long"]
         }
 
         print(f"\nTeammateManager initialized with league_type: {league_type}, balance_method: {balance_method}")
@@ -289,45 +289,78 @@ class TeammateManager:
         """Create teammate with specific configuration for overfit testing"""
 
         if self.overfit_test == "low_risk":
-            print(f'[_create_overfit_test_teammate] Creating low risk teammate')
+            #print(f'[_create_overfit_test_teammate] Creating low risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "low"
-            spatial_coord = "some"  # Default spatial coordination
+            spatial_coord = "none"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "short"
 
         elif self.overfit_test == "high_risk":
-            print(f'[_create_overfit_test_teammate] Creating high risk teammate')
+            #print(f'[_create_overfit_test_teammate] Creating high risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "high"
-            spatial_coord = "some"  # Default spatial coordination
+            spatial_coord = "none"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "short"
 
-        elif self.overfit_test == "nospatial":
-            print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
+        ####################################################################################################
+        # TODO remove spatial coord
+
+        # elif self.overfit_test == "nospatial":
+        #     #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
+        #     mode_selector = "heuristic"
+        #     risk_tolerance = "medium"  # Default risk tolerance
+        #     spatial_coord = "none"
+        #     action_stability = "stable"  # Default for overfit tests
+        #
+        # elif self.overfit_test == "highspatial":
+        #     #print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+        #     mode_selector = "heuristic"
+        #     risk_tolerance = "medium"  # Default risk tolerance
+        #     spatial_coord = "high"
+        #     action_stability = "stable"  # Default for overfit tests
+
+        elif self.overfit_test == "short_planning":
+            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "none" # Deprecated
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "short"
+
+        elif self.overfit_test == "medium_planning":
+            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "none" # Deprecated
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "medium"
+
+        elif self.overfit_test == "long_planning":
+            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "none" # Deprecated
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "long"
+
+        ####################################################################################################
+
+        elif self.overfit_test == 'noisy_actions':
+            #print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
             spatial_coord = "none"
-            action_stability = "stable"  # Default for overfit tests
-
-        elif self.overfit_test == "highspatial":
-            print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-            mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "high"
-            action_stability = "stable"  # Default for overfit tests
-
-        elif self.overfit_test == 'noisy_actions':
-            print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
-            mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "some"
+            planning_horizon = "short"
             action_stability = "noisy"  # Default for overfit tests
 
         elif self.overfit_test == 'stable_actions':
-            print(f'[_create_overfit_test_teammate] Creating stable action teammate')
+            #print(f'[_create_overfit_test_teammate] Creating stable action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "some"
+            spatial_coord = "none"
+            planning_horizon = "short"
             action_stability = "stable"  # Default for overfit tests
 
         else:
@@ -341,16 +374,34 @@ class TeammateManager:
         )
 
         # TODO FIX HERE
+        # teammate = GenericTeammatePolicy(
+        #     env=None,
+        #     local_search_policy=self.subpolicies.get('local_search'),
+        #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+        #     change_region_subpolicy=self.subpolicies.get('change_region'),
+        #     mode_selector_agent=heuristic_agent,
+        #     use_collision_avoidance=False
+        # )
+
+        if planning_horizon == 'short':
+            target_search_policy = self.subpolicies.get('local_search')
+        elif planning_horizon == 'medium':
+            target_search_policy = self.subpolicies.get('local_tsp')
+        elif planning_horizon == 'long':
+            target_search_policy = self.subpolicies.get('global_tsp')
+        else:
+            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get('local_search'),
+            local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
             use_collision_avoidance=False
         )
 
-        teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial_{action_stability}stability"
+        teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}-MS_{risk_tolerance}-risk_{planning_horizon}-planninghorizon_{action_stability}-stability"
         self.current_teammate = teammate
         return teammate
 
@@ -619,7 +670,6 @@ class TeammateManager:
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
             action_stability=action_stability,
-
         )
 
         teammate = GenericTeammatePolicy(
@@ -628,7 +678,6 @@ class TeammateManager:
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
-
             use_collision_avoidance=False
         )
 
