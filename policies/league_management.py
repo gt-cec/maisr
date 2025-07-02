@@ -65,7 +65,7 @@ class TeammateManager:
             raise ValueError(f"balance_method must be one of {valid_balance_methods}")
 
         # Validate overfit_test parameter
-        valid_overfit_tests = [None, "low_risk", "high_risk", "nospatial", "highspatial"]
+        valid_overfit_tests = [None, "low_risk", "high_risk", "no_coord", "yes_coord", "greedy_planning", "cluster_planning"]
         if overfit_test not in valid_overfit_tests:
             raise ValueError(f"overfit_test must be one of {valid_overfit_tests}")
 
@@ -78,13 +78,13 @@ class TeammateManager:
             "vanilla": ["none"],
             "strategy_diverse": ["low", "medium", "high", "extreme"]}
         self.spatial_coord_options = {
-            'baseline': ["none"],
-            "vanilla": ["none"],
-            "strategy_diverse": ["none"]} #["none", "some", "high"]}
+            'baseline': ["false"],
+            "vanilla": ["false"],
+            "strategy_diverse": ["false", "true"]}
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
-            'strategy_diverse': ["stable"]#, "noisy"]
+            'strategy_diverse': ["stable"]#, "noisy"] # TODO finish noisy action stab
         }
         self.planning_horizon_options = {
             'baseline': ["short"],
@@ -292,7 +292,7 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating low risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "low"
-            spatial_coord = "none"  # Default spatial coordination
+            spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "short"
 
@@ -300,32 +300,31 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating high risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "high"
-            spatial_coord = "none"  # Default spatial coordination
+            spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "short"
 
-        ####################################################################################################
-        # TODO remove spatial coord
+        elif self.overfit_test == "no_coord":
+            #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "false"
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "medium"
 
-        # elif self.overfit_test == "nospatial":
-        #     #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
-        #     mode_selector = "heuristic"
-        #     risk_tolerance = "medium"  # Default risk tolerance
-        #     spatial_coord = "none"
-        #     action_stability = "stable"  # Default for overfit tests
-        #
-        # elif self.overfit_test == "highspatial":
-        #     #print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-        #     mode_selector = "heuristic"
-        #     risk_tolerance = "medium"  # Default risk tolerance
-        #     spatial_coord = "high"
-        #     action_stability = "stable"  # Default for overfit tests
+        elif self.overfit_test == "yes_coord":
+            #print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "medium"  # Default risk tolerance
+            spatial_coord = "true"
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "medium"
 
         elif self.overfit_test == "short_planning":
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "none" # Deprecated
+            spatial_coord = "false" # Deprecated
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "short"
 
@@ -333,7 +332,7 @@ class TeammateManager:
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "none" # Deprecated
+            spatial_coord = "false" # Deprecated
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "medium"
 
@@ -341,17 +340,36 @@ class TeammateManager:
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "none" # Deprecated
+            spatial_coord = "false" # Deprecated
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "long"
 
-        ####################################################################################################
+
+
+        elif self.overfit_test == "greedy_planning":
+            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "low"  # Default risk tolerance
+            spatial_coord = "false"  # Deprecated
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = "greedy_planning"
+
+
+        elif self.overfit_test == "cluster_planning":
+            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+            mode_selector = "heuristic"
+            risk_tolerance = "low"  # Default risk tolerance
+            spatial_coord = "false"  # Deprecated
+            action_stability = "stable"  # Default for overfit tests
+            planning_horizon = 'cluster_planning'
+
+
 
         elif self.overfit_test == 'noisy_actions':
             #print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "none"
+            spatial_coord = "false"
             planning_horizon = "short"
             action_stability = "noisy"  # Default for overfit tests
 
@@ -359,12 +377,44 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating stable action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "none"
+            spatial_coord = "false"
             planning_horizon = "short"
             action_stability = "stable"  # Default for overfit tests
 
         else:
             raise ValueError(f"Unknown overfit_test value: {self.overfit_test}")
+
+        if planning_horizon == 'cluster_planning':
+            target_search_policy = TargetSearchLocalTSP(
+                search_radius=1000,
+                spatial_coord=False,
+                model_path=None,
+                norm_stats_filepath=None,
+                search_method='clusters'
+            )
+        elif planning_horizon == 'greedy_planning':
+            target_search_policy = TargetSearchLocalTSP(
+                search_radius=1000,
+                spatial_coord=False,
+                model_path=None,
+                norm_stats_filepath=None,
+                search_method='greedy'
+            )
+
+        elif planning_horizon == 'short':
+            target_search_policy = self.subpolicies.get('local_search')
+        elif planning_horizon == 'medium':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        elif planning_horizon == 'long':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        else:
+            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -372,25 +422,6 @@ class TeammateManager:
             spatial_coord=spatial_coord,
             action_stability=action_stability
         )
-
-        # TODO FIX HERE
-        # teammate = GenericTeammatePolicy(
-        #     env=None,
-        #     local_search_policy=self.subpolicies.get('local_search'),
-        #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-        #     change_region_subpolicy=self.subpolicies.get('change_region'),
-        #     mode_selector_agent=heuristic_agent,
-        #     use_collision_avoidance=False
-        # )
-
-        if planning_horizon == 'short':
-            target_search_policy = self.subpolicies.get('local_search')
-        elif planning_horizon == 'medium':
-            target_search_policy = self.subpolicies.get('local_tsp')
-        elif planning_horizon == 'long':
-            target_search_policy = self.subpolicies.get('global_tsp')
-        else:
-            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         teammate = GenericTeammatePolicy(
             env=None,
@@ -604,7 +635,20 @@ class TeammateManager:
         spatial_coord = random.choice(self.spatial_coord_options['baseline'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
 
-        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
+        if planning_horizon == 'short':
+            target_search_policy = self.subpolicies.get('local_search')
+        elif planning_horizon == 'medium':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        elif planning_horizon == 'long':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        else:
+            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -614,7 +658,7 @@ class TeammateManager:
 
         teammate = GenericTeammatePolicy(
             env=None,  # Will be set later if needed
-            local_search_policy=self.subpolicies.get(localsearch_policy),
+            local_search_policy=self.subpolicies.get(target_search_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -633,7 +677,20 @@ class TeammateManager:
         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
 
-        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
+        if planning_horizon == 'short':
+            target_search_policy = self.subpolicies.get('local_search')
+        elif planning_horizon == 'medium':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        elif planning_horizon == 'long':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        else:
+            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -643,7 +700,7 @@ class TeammateManager:
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get(localsearch_policy),
+            local_search_policy=self.subpolicies.get(target_search_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -663,7 +720,19 @@ class TeammateManager:
         action_stability = random.choice(self.action_stability_options['strategy_diverse'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
 
-        localsearch_policy = 'local_search' if planning_horizon == 'short' else 'local_tsp' if planning_horizon == 'medium' else 'global_tsp'
+        if planning_horizon == 'short':
+            target_search_policy = self.subpolicies.get('local_search')
+        elif planning_horizon == 'medium':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        elif planning_horizon == 'long':
+            if spatial_coord == 'true':
+                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+            else:
+                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        else: raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -674,7 +743,7 @@ class TeammateManager:
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get(localsearch_policy),
+            local_search_policy=self.subpolicies.get(target_search_policy),
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -845,7 +914,7 @@ class HeuristicAgent:
 
         # Validate configuration
         valid_risk_levels = ["low", "medium", "high", "extreme", "none"]
-        valid_spatial_levels = ["none", "some", "high", "none"]
+        valid_spatial_levels = ["false", "true"]
         valid_mode_selectors = ["none", "heuristic", "none"]
         valid_stability_levels = ["stable", "noisy"]
 
@@ -1000,33 +1069,33 @@ class HeuristicAgent:
 
     def _choose_search_strategy(self, env, agent_id):
         """Choose between local search and specific quadrant goto policies"""
-        if self.spatial_coord == "none":
+        if self.spatial_coord == "false":
             return 0  # Always choose localsearch
 
-        elif self.spatial_coord == "some":
-            # Use existing hysteresis logic but return specific quadrant policies
-            quadrant_choice = self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
-            if quadrant_choice == 1:  # Original logic returned 1 for changeregion
-                # Now we need to determine WHICH quadrant has the most targets
-                target_rich_quadrant_id = self._find_best_quadrant(env, agent_id)
-                # Map quadrant ID to subpolicy: 0=NW->1, 1=NE->4, 2=SW->6, 3=SE->5
-                quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
-                return quadrant_to_subpolicy.get(target_rich_quadrant_id, 0)
-            return 0
-
-        elif self.spatial_coord == "high":
-            if self._agents_in_same_quadrant(env, agent_id):
-                # Choose a different quadrant to go to
-                current_quadrant_name = self._get_agent_quadrant(env, agent_id)
-                # Convert quadrant name to ID
-                quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
-                current_quadrant_id = quadrant_name_to_id.get(current_quadrant_name, 0)
-
-                # Go to opposite quadrant
-                opposite_quadrant_id = (current_quadrant_id + 2) % 4
-                quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
-                return quadrant_to_subpolicy.get(opposite_quadrant_id, 0)
-            return 0
+        # elif self.spatial_coord == "some":
+        #     # Use existing hysteresis logic but return specific quadrant policies
+        #     quadrant_choice = self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
+        #     if quadrant_choice == 1:  # Original logic returned 1 for changeregion
+        #         # Now we need to determine WHICH quadrant has the most targets
+        #         target_rich_quadrant_id = self._find_best_quadrant(env, agent_id)
+        #         # Map quadrant ID to subpolicy: 0=NW->1, 1=NE->4, 2=SW->6, 3=SE->5
+        #         quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
+        #         return quadrant_to_subpolicy.get(target_rich_quadrant_id, 0)
+        #     return 0
+        #
+        # elif self.spatial_coord == "high":
+        #     if self._agents_in_same_quadrant(env, agent_id):
+        #         # Choose a different quadrant to go to
+        #         current_quadrant_name = self._get_agent_quadrant(env, agent_id)
+        #         # Convert quadrant name to ID
+        #         quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
+        #         current_quadrant_id = quadrant_name_to_id.get(current_quadrant_name, 0)
+        #
+        #         # Go to opposite quadrant
+        #         opposite_quadrant_id = (current_quadrant_id + 2) % 4
+        #         quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
+        #         return quadrant_to_subpolicy.get(opposite_quadrant_id, 0)
+        #     return 0
 
         return 0
 
@@ -2041,9 +2110,19 @@ class TargetSearchLocalTSP(SubPolicy):
     within a 200-pixel radius, considering teammate's position and greedy search behavior.
     """
 
-    def __init__(self, search_radius = 200, model_path: str = None, norm_stats_filepath: str = None):
+    def __init__(self,
+                 search_radius=200, spatial_coord=False, search_method="greedy",
+                 model_path: str = None, norm_stats_filepath: str = None):
         super().__init__("target_search_local_tsp")
-        self.search_radius = search_radius  # Search within this radius
+        self.search_radius = search_radius
+        self.spatial_coord = spatial_coord
+
+        self.search_method = search_method  # "greedy" or "clusters"
+
+        # Add clustering parameters
+        self.discount_factor = 0.9  # Exponential decay for later targets
+        self.cluster_threshold = 100
+
         self.recalculation_period = 1  # Recalculate TSP every N steps
         self.teammate_prediction_steps = 5  # How many steps ahead to predict teammate movement
 
@@ -2091,11 +2170,11 @@ class TargetSearchLocalTSP(SubPolicy):
         """
         if env is None:
             # Fallback to original local search if no environment provided
-            return self.fallback_policy.act(observation, env, agent_id)
+            return self.fallback_policy.act(observation, env, agent_id), None
 
         # Check if we need to evade threats first
-        if self.near_threat(env, agent_id):
-            return self.compute_tangential_escape_action(env, agent_id)
+        # if self.near_threat(env, agent_id):
+        #     return self.compute_tangential_escape_action(env, agent_id), None
 
         # Update teammate position tracking
         self._update_teammate_tracking(env, agent_id)
@@ -2154,6 +2233,45 @@ class TargetSearchLocalTSP(SubPolicy):
         self.last_known_targets = current_targets
         return changed
 
+    # def _recalculate_tsp_route(self, env, agent_id):
+    #     """Recalculate the optimal TSP route through nearby unknown targets"""
+    #     agent_pos = np.array([
+    #         env.agents[env.aircraft_ids[agent_id]].x,
+    #         env.agents[env.aircraft_ids[agent_id]].y
+    #     ])
+    #
+    #     # Get unknown targets within radius
+    #     nearby_targets = self._get_nearby_unknown_targets(env, agent_pos)
+    #
+    #     if len(nearby_targets) == 0:
+    #         self.current_waypoints = []
+    #         self.current_waypoint_index = 0
+    #         return
+    #
+    #     # Predict where teammate will search and filter out those targets
+    #     if self.spatial_coord == 'true':
+    #         teammate_will_visit = self._predict_teammate_targets(env, agent_id)
+    #         filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
+    #     else:
+    #         filtered_targets = nearby_targets
+    #
+    #     if len(filtered_targets) == 0:
+    #         # All nearby targets will be handled by teammate, use original targets
+    #         filtered_targets = nearby_targets
+    #
+    #     # Solve TSP for remaining targets
+    #     if len(filtered_targets) == 1: # Only one target, go directly to it
+    #         self.current_waypoints = [filtered_targets[0]['position']]
+    #     elif len(filtered_targets) <= 8:  # Use exact TSP for small problems
+    #         self.current_waypoints = self._solve_tsp_exact(agent_pos, filtered_targets)
+    #     else:  # Use heuristic for larger problems
+    #         self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
+    #
+    #     self.current_waypoint_index = 0
+    #
+    #     print(
+    #         f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints for {len(filtered_targets)} targets")
+
     def _recalculate_tsp_route(self, env, agent_id):
         """Recalculate the optimal TSP route through nearby unknown targets"""
         agent_pos = np.array([
@@ -2170,26 +2288,30 @@ class TargetSearchLocalTSP(SubPolicy):
             return
 
         # Predict where teammate will search and filter out those targets
-        teammate_will_visit = self._predict_teammate_targets(env, agent_id)
-        filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
-
-        if len(filtered_targets) == 0:
-            # All nearby targets will be handled by teammate, use original targets
+        if self.spatial_coord == 'true':
+            teammate_will_visit = self._predict_teammate_targets(env, agent_id)
+            filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
+        else:
             filtered_targets = nearby_targets
 
-        # Solve TSP for remaining targets
-        if len(filtered_targets) == 1:
-            # Only one target, go directly to it
-            self.current_waypoints = [filtered_targets[0]['position']]
-        elif len(filtered_targets) <= 8:  # Use exact TSP for small problems
-            self.current_waypoints = self._solve_tsp_exact(agent_pos, filtered_targets)
-        else:  # Use heuristic for larger problems
-            self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
+        if len(filtered_targets) == 0:
+            filtered_targets = nearby_targets
+
+        # Choose solving method based on search_method parameter
+        if self.search_method == "clusters":
+            self.current_waypoints = self._solve_tsp_with_clustering(agent_pos, filtered_targets)
+        elif self.search_method == 'early_weighted':
+            self.current_waypoints = self._solve_weighted_tsp(agent_pos, filtered_targets)
+        else:  # "greedy" (default behavior)
+            if len(filtered_targets) == 1:
+                self.current_waypoints = [filtered_targets[0]['position']]
+            elif len(filtered_targets) <= 8:
+                self.current_waypoints = self._solve_tsp_exact(agent_pos, filtered_targets)
+            else:
+                self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
 
         self.current_waypoint_index = 0
-
-        print(
-            f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints for {len(filtered_targets)} targets")
+        print(f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints using {self.search_method} method")
 
     def _get_nearby_unknown_targets(self, env, agent_pos):
         """Get all unknown targets within search radius"""
@@ -2208,6 +2330,291 @@ class TargetSearchLocalTSP(SubPolicy):
                     })
 
         return targets
+
+    def _solve_tsp_with_clustering(self, start_pos, targets):
+        """
+        Solve TSP using clustering approach to maximize early target acquisition.
+        Enhanced to better prioritize dense clusters.
+        """
+        if len(targets) == 0:
+            return []
+
+        if len(targets) == 1:
+            return [targets[0]['position']]
+
+        # Step 1: Identify clusters
+        clusters = self._identify_target_clusters(targets)
+
+        # Step 2: Calculate enhanced cluster values
+        cluster_values = []
+        for cluster_id, cluster_targets in clusters.items():
+            cluster_center = self._calculate_cluster_center(cluster_targets)
+            distance_from_start = np.linalg.norm(cluster_center - start_pos)
+
+            # Enhanced value calculation
+            cluster_size = len(cluster_targets)
+            cluster_density = self._calculate_cluster_density(cluster_targets)
+
+            # Prioritize larger, denser clusters
+            base_value = cluster_size * cluster_density
+
+            # Apply distance penalty (but don't let it dominate)
+            distance_penalty = max(0.1, 1.0 / (1.0 + distance_from_start / 200.0))
+
+            # Apply time-based discount more conservatively
+            estimated_visit_time = distance_from_start / 50.0
+            time_discount = self.discount_factor ** (estimated_visit_time * 0.5)  # Reduced impact
+
+            final_value = base_value * distance_penalty * time_discount
+
+            cluster_values.append({
+                'id': cluster_id,
+                'targets': cluster_targets,
+                'center': cluster_center,
+                'value': final_value,
+                'distance': distance_from_start,
+                'size': cluster_size,
+                'density': cluster_density
+            })
+
+        # Step 3: Sort by value (higher is better)
+        cluster_values.sort(key=lambda c: c['value'], reverse=True)
+
+        # Debug output
+        print(f"[TSP Clusters] Found {len(cluster_values)} clusters:")
+        for i, cluster in enumerate(cluster_values):
+            print(f"  Cluster {i}: size={cluster['size']}, density={cluster['density']:.2f}, "
+                  f"distance={cluster['distance']:.1f}, value={cluster['value']:.2f}")
+
+        # Step 4: Build route visiting high-value clusters first
+        route = []
+        current_pos = start_pos
+
+        for cluster_info in cluster_values:
+            cluster_targets = cluster_info['targets']
+
+            # Solve TSP within this cluster
+            if len(cluster_targets) == 1:
+                cluster_route = [cluster_targets[0]['position']]
+            else:
+                cluster_route = self._solve_cluster_internal_tsp(current_pos, cluster_targets)
+
+            route.extend(cluster_route)
+
+            # Update current position
+            if cluster_route:
+                current_pos = cluster_route[-1]
+
+        return route
+
+    def _calculate_cluster_density(self, cluster_targets):
+        """
+        Calculate cluster density as targets per unit area.
+        Higher density = more tightly packed targets.
+        """
+        if len(cluster_targets) <= 1:
+            return 1.0
+
+        positions = np.array([t['position'] for t in cluster_targets])
+
+        # Calculate bounding box area
+        min_coords = np.min(positions, axis=0)
+        max_coords = np.max(positions, axis=0)
+
+        width = max_coords[0] - min_coords[0]
+        height = max_coords[1] - min_coords[1]
+
+        # Avoid division by zero
+        area = max((width + 50) * (height + 50), 1000)  # Add padding and minimum area
+
+        density = len(cluster_targets) / area * 10000  # Scale for readability
+
+        return density
+
+    def _identify_target_clusters(self, targets):
+        """
+        Group targets into clusters using a more robust density-based approach.
+        """
+        if len(targets) <= 1:
+            return {0: targets}
+
+        # Convert to numpy array for easier distance calculations
+        positions = np.array([t['position'] for t in targets])
+
+        # Use a simple agglomerative clustering approach
+        clusters = {}
+        cluster_id = 0
+        assigned = [False] * len(targets)
+
+        for i, target in enumerate(targets):
+            if assigned[i]:
+                continue
+
+            # Start new cluster
+            current_cluster = [target]
+            assigned[i] = True
+            cluster_positions = [target['position']]
+
+            # Iteratively add nearby targets
+            added_target = True
+            while added_target:
+                added_target = False
+
+                for j, candidate in enumerate(targets):
+                    if assigned[j]:
+                        continue
+
+                    # Check if candidate is close to any target in current cluster
+                    min_dist_to_cluster = min(
+                        np.linalg.norm(candidate['position'] - cluster_pos)
+                        for cluster_pos in cluster_positions
+                    )
+
+                    if min_dist_to_cluster <= self.cluster_threshold:
+                        current_cluster.append(candidate)
+                        cluster_positions.append(candidate['position'])
+                        assigned[j] = True
+                        added_target = True
+
+            clusters[cluster_id] = current_cluster
+            cluster_id += 1
+
+        return clusters
+
+    def _calculate_cluster_center(self, cluster_targets):
+        """Calculate the geometric center of a cluster"""
+        positions = np.array([t['position'] for t in cluster_targets])
+        return np.mean(positions, axis=0)
+
+    def _solve_cluster_internal_tsp(self, entry_point, cluster_targets):
+        """
+        Solve TSP within a single cluster, starting from entry_point.
+        Uses nearest neighbor heuristic for efficiency.
+        """
+        if len(cluster_targets) == 0:
+            return []
+
+        if len(cluster_targets) == 1:
+            return [cluster_targets[0]['position']]
+
+        # Use nearest neighbor starting from entry point
+        target_positions = [t['position'] for t in cluster_targets]
+        unvisited = list(range(len(target_positions)))
+        route = []
+        current_pos = entry_point
+
+        while unvisited:
+            # Find nearest unvisited target
+            distances = [np.linalg.norm(target_positions[i] - current_pos) for i in unvisited]
+            nearest_idx = unvisited[np.argmin(distances)]
+
+            route.append(target_positions[nearest_idx])
+            current_pos = target_positions[nearest_idx]
+            unvisited.remove(nearest_idx)
+
+        return route
+
+    def _solve_weighted_tsp(self, start_pos, targets):
+        """
+        Solve TSP using weighted approach that favors visiting targets earlier.
+        Uses discount factor to weight target values by visit order.
+        """
+        if len(targets) == 0:
+            return []
+
+        if len(targets) == 1:
+            return [targets[0]['position']]
+
+        target_positions = [start_pos] + [t['position'] for t in targets]
+        n = len(target_positions)
+
+        # Create distance matrix
+        distances = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    distances[i, j] = np.linalg.norm(target_positions[i] - target_positions[j])
+
+        if len(targets) <= 8:  # Use exact solution for small problems
+            return self._solve_weighted_tsp_exact(start_pos, targets, distances, target_positions)
+        else:  # Use heuristic for larger problems
+            return self._solve_weighted_tsp_heuristic(start_pos, targets, distances, target_positions)
+
+    def _solve_weighted_tsp_exact(self, start_pos, targets, distances, target_positions):
+        """Solve weighted TSP exactly using brute force for small problems"""
+        import itertools
+
+        n = len(target_positions)
+        best_value = float('-inf')
+        best_route = None
+
+        # Try all permutations (excluding start position)
+        for perm in itertools.permutations(range(1, n)):  # Start from 1 to exclude start position
+            route = [0] + list(perm)  # Add start position at beginning
+
+            # Calculate weighted value (higher is better)
+            total_value = 0
+            cumulative_distance = 0
+
+            for i in range(len(route) - 1):
+                cumulative_distance += distances[route[i], route[i + 1]]
+                # Each target gets value based on when it's reached (earlier = higher value)
+                if i > 0:  # Skip start position
+                    visit_order = i  # 1st target has order 1, 2nd has order 2, etc.
+                    target_value = self.discount_factor ** (visit_order - 1)
+                    total_value += target_value
+
+            if total_value > best_value:
+                best_value = total_value
+                best_route = route
+
+        # Convert back to waypoints (excluding start position)
+        if best_route:
+            return [target_positions[i] for i in best_route[1:]]
+        else:
+            return [t['position'] for t in targets]
+
+    def _solve_weighted_tsp_heuristic(self, start_pos, targets, distances, target_positions):
+        """
+        Solve weighted TSP using greedy heuristic that considers both distance and discount factor.
+        At each step, choose the target that maximizes (discounted_value / distance_cost).
+        """
+        n = len(target_positions)
+        unvisited = list(range(1, n))  # Exclude start position (index 0)
+        route = []
+        current_pos_idx = 0
+        visit_order = 1
+
+        while unvisited:
+            best_ratio = float('-inf')
+            best_target = None
+
+            for target_idx in unvisited:
+                # Calculate distance cost
+                distance_cost = distances[current_pos_idx, target_idx]
+
+                # Calculate discounted value for this target if visited at current order
+                target_value = self.discount_factor ** (visit_order - 1)
+
+                # Calculate value-to-cost ratio (higher is better)
+                if distance_cost > 0:
+                    ratio = target_value / distance_cost
+                else:
+                    ratio = float('inf')  # If distance is 0, this target is infinitely good
+
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_target = target_idx
+
+            # Visit the best target
+            route.append(target_positions[best_target])
+            current_pos_idx = best_target
+            unvisited.remove(best_target)
+            visit_order += 1
+
+        return route
+
+
 
     def _predict_teammate_targets(self, env, agent_id):
         """Predict which targets the teammate will likely visit based on greedy search"""

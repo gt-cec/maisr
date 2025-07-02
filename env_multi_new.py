@@ -239,7 +239,7 @@ class MAISREnvVec(gym.Env):
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
         if self.config['use_fixed_levels']:
-            num_fixed_levels = 6 # TODO make this dynamic
+            num_fixed_levels = 7 # TODO make this dynamic
             try:
                 self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
             except:
@@ -468,7 +468,7 @@ class MAISREnvVec(gym.Env):
             1. Discrete16 input: np.ndarray of 1 element, e.g. [5]
             2. Continuous input: np.ndarray of 2 elements from -1 to +1, e.g. [0.5, -0.5]
         """
-        if not isinstance(action, (np.ndarray, np.int32, np.int64)):
+        if not isinstance(action, (np.ndarray, int, np.int32, np.int64)):
             raise ValueError(f'[single_step] Action is a {type(action)}')
 
         self.step_count_inner += 1

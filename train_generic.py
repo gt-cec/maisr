@@ -618,8 +618,12 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pr
         'local_search': LocalSearch(model_path=None),  # Using heuristic
         'change_region': ChangeRegions(model_path=None),  # Using heuristic
         'go_to_threat': GoToNearestThreat(model_path=None),  # Using heuristic
-        'local_tsp': TargetSearchLocalTSP(search_radius = 200),
-        'global_tsp': TargetSearchLocalTSP(search_radius = 1000)
+        'local_tsp_nocoord': TargetSearchLocalTSP(search_radius = 200),
+        'global_tsp_nocoord': TargetSearchLocalTSP(search_radius = 1000),
+
+        'local_tsp_yescoord': TargetSearchLocalTSP(search_radius=200, spatial_coord=True),
+        'global_tsp_yescoord': TargetSearchLocalTSP(search_radius=1000, spatial_coord=True)
+
     }
 
     teammate_manager = TeammateManager(
@@ -917,31 +921,35 @@ if __name__ == "__main__":
 
     #overfit_test = 'low_risk'
 
-    for overfit_test in ["low_risk", "high_risk", "nospatial", "highspatial"]:
-        for teammate_reward_scale in [0.5, 1, 0.25]:
-            for ent_reg in [0.015, 0.02, 0.01]:
-                config['entropy_regularization'] = ent_reg
-                config['teammate_reward_scale'] = teammate_reward_scale
+    for ent_reg in [0.02, 0.015, 0.01]:
+        for network_size in [64, 128]:
+            for overfit_test in ["greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
+                for teammate_reward_scale in [1]: #[0.5, 1, 0.25]:
 
-                temp_identifier = note+f'overfit-{overfit_test}teammaterewardscale-{teammate_reward_scale}_entreg-{ent_reg}'
+                    config['policy_network_size'] = network_size
+                    config['value_network_size'] = network_size
+                    config['entropy_regularization'] = ent_reg
+                    config['teammate_reward_scale'] = teammate_reward_scale
 
-                # Generate run name (To be consistent between WandB, model saving, and action history plots)
-                run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
+                    temp_identifier = note+f'overfit-{overfit_test}teammaterewardscale-{teammate_reward_scale}_entreg-{ent_reg}'
 
-                print(f'\n--- Starting training run  ---')
-                train_generic(
-                    config,
-                    run_name=run_name,
-                    use_normalize=True,
-                    use_teammate_manager=True,
-                    train_type = train_type,
-                    render=False,
-                    n_envs=num_envs,
-                    load_path=load_path,
-                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                    project_name=project_name,
-                    save_model = True,
-                    overfit_test = overfit_test,
-                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-                )
-                print(f"✓ Completed training run")
+                    # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                    run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
+
+                    print(f'\n--- Starting training run  ---')
+                    train_generic(
+                        config,
+                        run_name=run_name,
+                        use_normalize=True,
+                        use_teammate_manager=True,
+                        train_type = train_type,
+                        render=False,
+                        n_envs=num_envs,
+                        load_path=load_path,
+                        machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                        project_name=project_name,
+                        save_model = True,
+                        overfit_test = overfit_test,
+                        save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                    )
+                    print(f"✓ Completed training run")
