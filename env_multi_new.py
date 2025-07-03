@@ -654,27 +654,39 @@ class MAISREnvVec(gym.Env):
         teammate_target_ids = new_reward['teammate_target_ids']
         agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
 
+        # Calculate proximity penalty between aircraft
+        proximity_penalty = 0
+        if self.config['num_aircraft'] >= 2:
+            agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+            teammate_pos = np.array([self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y])
+
+            distance = np.linalg.norm(agent_pos - teammate_pos)
+            min_distance = self.config['team_dist_penalty_threshold']  # Minimum desired distance
+
+            if distance < min_distance: # Penalty increases as aircraft get closer
+                proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
+
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
-        threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
-        if hasattr(self, 'threats'):
-            for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-                aircraft_pos = np.array([aircraft.x, aircraft.y])
-
-                for threat_idx in range(2):
-                    threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-                    distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-
-                    threat_radius = self.config['threat_radius']
-                    warning_radius = threat_radius * 1.5
-
-                    if distance_to_threat <= threat_radius:
-                        normalized_distance = distance_to_threat / threat_radius
-                        penalty_multiplier = 1.0 - normalized_distance
-                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
-                    elif distance_to_threat <= warning_radius:
-                        normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-                        penalty_multiplier = 0.4 * (1.0 - normalized_distance)
-                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+        # threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
+        # if hasattr(self, 'threats'):
+        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
+        #
+        #         for threat_idx in range(2):
+        #             threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+        #             distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+        #
+        #             threat_radius = self.config['threat_radius']
+        #             warning_radius = threat_radius * 1.5
+        #
+        #             if distance_to_threat <= threat_radius:
+        #                 normalized_distance = distance_to_threat / threat_radius
+        #                 penalty_multiplier = 1.0 - normalized_distance
+        #                 threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+        #             elif distance_to_threat <= warning_radius:
+        #                 normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+        #                 penalty_multiplier = 0.4 * (1.0 - normalized_distance)
+        #                 threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
         if self.num_threats_identified < self.config['max_threat_ids']:
             threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
@@ -687,8 +699,9 @@ class MAISREnvVec(gym.Env):
                  (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
                  (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
                  threat_potential_reward + \
-                 (self.config['shaping_time_penalty']) - \
-                 threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
+                 (self.config['shaping_time_penalty']) + \
+                 proximity_penalty
+                 #threat_penalty[0] - threat_penalty[1] # TODO eventually split penalty reward between the two agents individually
 
 
         return reward

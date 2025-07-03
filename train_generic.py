@@ -686,7 +686,7 @@ def train_generic(
 
     run = wandb.init(
         project=project_name,
-        name=f'{machine_name}_{n_envs}envs_' + run_name,
+        name=run_name+f'{machine_name}_{n_envs}envs',
         config=env_config,
         sync_tensorboard=True,
         monitor_gym=True,
@@ -911,7 +911,7 @@ if __name__ == "__main__":
     num_envs = multiprocessing.cpu_count() - 2
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'Monolith'
+    note = 'R1'
 
     ################################################
 
@@ -923,31 +923,33 @@ if __name__ == "__main__":
 
     #overfit_test = 'low_risk'
 
-    for ent_reg in [0.07, 0.05, 0.02]:
-        for threat_potential_coeff in [0.15, 0.2]:
-            for overfit_test in ["greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
-                config['entropy_regularization'] = ent_reg
-                config['threat_potential_coeff'] = threat_potential_coeff
+    for threat_potential_coeff in [0.25, 0.2]:
+        for ent_reg in [0.1, 0.15, 0.07]:
+            for team_dist_shaping_coeff in [-0.01, -0.02, -0]:
+                for overfit_test in ["greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
+                    config['team_dist_shaping_coeff'] = team_dist_shaping_coeff
+                    config['entropy_regularization'] = ent_reg
+                    config['threat_potential_coeff'] = threat_potential_coeff
 
-                temp_identifier = note+f'overfit-{overfit_test}_entreg-{ent_reg}_threat_potential_coeff{threat_potential_coeff}'
+                    temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threat_potential_coeff{threat_potential_coeff}'
 
-                # Generate run name (To be consistent between WandB, model saving, and action history plots)
-                run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
+                    # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                    run_name = f'{note}_{train_type}_{temp_identifier}_'+generate_run_name(config)
 
-                print(f'\n--- Starting training run  ---')
-                train_generic(
-                    config,
-                    run_name=run_name,
-                    use_normalize=True,
-                    use_teammate_manager=True,
-                    train_type = train_type,
-                    render=False,
-                    n_envs=num_envs,
-                    load_path=load_path,
-                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                    project_name=project_name,
-                    save_model = True,
-                    overfit_test = overfit_test,
-                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-                )
-                print(f"✓ Completed training run")
+                    print(f'\n--- Starting training run  ---')
+                    train_generic(
+                        config,
+                        run_name=run_name,
+                        use_normalize=True,
+                        use_teammate_manager=True,
+                        train_type = train_type,
+                        render=False,
+                        n_envs=num_envs,
+                        load_path=load_path,
+                        machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                        project_name=project_name,
+                        save_model = True,
+                        overfit_test = overfit_test,
+                        save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                    )
+                    print(f"✓ Completed training run")

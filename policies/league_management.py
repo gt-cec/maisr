@@ -2342,10 +2342,10 @@ class TargetSearchLocalTSP(SubPolicy):
         cluster_values.sort(key=lambda c: c['value'], reverse=True)
 
         # Debug output
-        print(f"[TSP Clusters] Found {len(cluster_values)} clusters:")
-        for i, cluster in enumerate(cluster_values):
-            print(f"  Cluster {i}: size={cluster['size']}, density={cluster['density']:.2f}, "
-                  f"distance={cluster['distance']:.1f}, value={cluster['value']:.2f}")
+        #print(f"[TSP Clusters] Found {len(cluster_values)} clusters:")
+        #for i, cluster in enumerate(cluster_values):
+            #print(f"  Cluster {i}: size={cluster['size']}, density={cluster['density']:.2f}, "
+             #     f"distance={cluster['distance']:.1f}, value={cluster['value']:.2f}")
 
         # Step 4: Build route visiting high-value clusters first
         route = []
