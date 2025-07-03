@@ -1684,6 +1684,8 @@ class MAISREnvVec(gym.Env):
             waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
         """
         #if action.ndim < 2:
+        if isinstance(action, tuple):
+            action = action[0]
         action = int(action)
 
         direction_map = {

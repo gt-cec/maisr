@@ -2233,45 +2233,6 @@ class TargetSearchLocalTSP(SubPolicy):
         self.last_known_targets = current_targets
         return changed
 
-    # def _recalculate_tsp_route(self, env, agent_id):
-    #     """Recalculate the optimal TSP route through nearby unknown targets"""
-    #     agent_pos = np.array([
-    #         env.agents[env.aircraft_ids[agent_id]].x,
-    #         env.agents[env.aircraft_ids[agent_id]].y
-    #     ])
-    #
-    #     # Get unknown targets within radius
-    #     nearby_targets = self._get_nearby_unknown_targets(env, agent_pos)
-    #
-    #     if len(nearby_targets) == 0:
-    #         self.current_waypoints = []
-    #         self.current_waypoint_index = 0
-    #         return
-    #
-    #     # Predict where teammate will search and filter out those targets
-    #     if self.spatial_coord == 'true':
-    #         teammate_will_visit = self._predict_teammate_targets(env, agent_id)
-    #         filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
-    #     else:
-    #         filtered_targets = nearby_targets
-    #
-    #     if len(filtered_targets) == 0:
-    #         # All nearby targets will be handled by teammate, use original targets
-    #         filtered_targets = nearby_targets
-    #
-    #     # Solve TSP for remaining targets
-    #     if len(filtered_targets) == 1: # Only one target, go directly to it
-    #         self.current_waypoints = [filtered_targets[0]['position']]
-    #     elif len(filtered_targets) <= 8:  # Use exact TSP for small problems
-    #         self.current_waypoints = self._solve_tsp_exact(agent_pos, filtered_targets)
-    #     else:  # Use heuristic for larger problems
-    #         self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
-    #
-    #     self.current_waypoint_index = 0
-    #
-    #     print(
-    #         f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints for {len(filtered_targets)} targets")
-
     def _recalculate_tsp_route(self, env, agent_id):
         """Recalculate the optimal TSP route through nearby unknown targets"""
         agent_pos = np.array([
@@ -2311,7 +2272,7 @@ class TargetSearchLocalTSP(SubPolicy):
                 self.current_waypoints = self._solve_tsp_heuristic(agent_pos, filtered_targets)
 
         self.current_waypoint_index = 0
-        print(f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints using {self.search_method} method")
+        #print(f"[TSP] Calculated route with {len(self.current_waypoints)} waypoints using {self.search_method} method")
 
     def _get_nearby_unknown_targets(self, env, agent_pos):
         """Get all unknown targets within search radius"""

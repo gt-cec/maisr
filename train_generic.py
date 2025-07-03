@@ -908,7 +908,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     load_path = None
     config_filename = 'configs/july1_ls_2ship.json'
-    num_envs = multiprocessing.cpu_count()
+    num_envs = multiprocessing.cpu_count() - 2
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
     note = 'Monolith'
@@ -919,37 +919,35 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
+    config['teammate_reward_scale'] = 0.5
+
     #overfit_test = 'low_risk'
 
-    for ent_reg in [0.02, 0.015, 0.01]:
-        for network_size in [64, 128]:
+    for ent_reg in [0.07, 0.05, 0.02]:
+        for threat_potential_coeff in [0.15, 0.2]:
             for overfit_test in ["greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
-                for teammate_reward_scale in [1]: #[0.5, 1, 0.25]:
+                config['entropy_regularization'] = ent_reg
+                config['threat_potential_coeff'] = threat_potential_coeff
 
-                    config['policy_network_size'] = network_size
-                    config['value_network_size'] = network_size
-                    config['entropy_regularization'] = ent_reg
-                    config['teammate_reward_scale'] = teammate_reward_scale
+                temp_identifier = note+f'overfit-{overfit_test}_entreg-{ent_reg}_threat_potential_coeff{threat_potential_coeff}'
 
-                    temp_identifier = note+f'overfit-{overfit_test}teammaterewardscale-{teammate_reward_scale}_entreg-{ent_reg}'
+                # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
 
-                    # Generate run name (To be consistent between WandB, model saving, and action history plots)
-                    run_name = f'{train_type}_{temp_identifier}_'+generate_run_name(config)
-
-                    print(f'\n--- Starting training run  ---')
-                    train_generic(
-                        config,
-                        run_name=run_name,
-                        use_normalize=True,
-                        use_teammate_manager=True,
-                        train_type = train_type,
-                        render=False,
-                        n_envs=num_envs,
-                        load_path=load_path,
-                        machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                        project_name=project_name,
-                        save_model = True,
-                        overfit_test = overfit_test,
-                        save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-                    )
-                    print(f"✓ Completed training run")
+                print(f'\n--- Starting training run  ---')
+                train_generic(
+                    config,
+                    run_name=run_name,
+                    use_normalize=True,
+                    use_teammate_manager=True,
+                    train_type = train_type,
+                    render=False,
+                    n_envs=num_envs,
+                    load_path=load_path,
+                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    project_name=project_name,
+                    save_model = True,
+                    overfit_test = overfit_test,
+                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                )
+                print(f"✓ Completed training run")
