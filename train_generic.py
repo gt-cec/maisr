@@ -908,10 +908,10 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     load_path = None
     config_filename = 'configs/july1_ls_2ship.json'
-    num_envs = multiprocessing.cpu_count() - 2
+    num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'R1'
+    note = 'R2'
 
     ################################################
 
@@ -922,34 +922,41 @@ if __name__ == "__main__":
     config['teammate_reward_scale'] = 0.5
 
     #overfit_test = 'low_risk'
+    config['num_timesteps'] = 3e5
 
     for threat_potential_coeff in [0.25, 0.2]:
-        for ent_reg in [0.1, 0.15, 0.07]:
-            for team_dist_shaping_coeff in [-0.01, -0.02, -0]:
-                for overfit_test in ["greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
-                    config['team_dist_shaping_coeff'] = team_dist_shaping_coeff
-                    config['entropy_regularization'] = ent_reg
-                    config['threat_potential_coeff'] = threat_potential_coeff
+        for ent_reg in [0.07, 0.02, 0.1]:
+            for team_dist_shaping_coeff in [0, -0.005, -0.002]:
+                for num_observed_threats in [1,2]:
+                    for gamma in [0.98, 0.987]:
+                        for observe_teammate_direction in [True, False]:
+                            for overfit_test in ["greedy_planning"]:#, "cluster_planning", "high_risk", "low_risk"]:
+                                config['team_dist_shaping_coeff'] = team_dist_shaping_coeff
+                                config['entropy_regularization'] = ent_reg
+                                config['threat_potential_coeff'] = threat_potential_coeff
+                                config['num_observed_threats'] = num_observed_threats
+                                config['observe_teammate_direction'] = observe_teammate_direction
+                                config['gamma'] = gamma
 
-                    temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threat_potential_coeff{threat_potential_coeff}'
+                                temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threatpotential-{threat_potential_coeff}_gamma{gamma}_observeteammatedir{observe_teammate_direction}_M{num_observed_threats}'
 
-                    # Generate run name (To be consistent between WandB, model saving, and action history plots)
-                    run_name = f'{note}_{train_type}_{temp_identifier}_'+generate_run_name(config)
+                                # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                                run_name = f'{note}-{train_type}_{temp_identifier}_'+generate_run_name(config)
 
-                    print(f'\n--- Starting training run  ---')
-                    train_generic(
-                        config,
-                        run_name=run_name,
-                        use_normalize=True,
-                        use_teammate_manager=True,
-                        train_type = train_type,
-                        render=False,
-                        n_envs=num_envs,
-                        load_path=load_path,
-                        machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                        project_name=project_name,
-                        save_model = True,
-                        overfit_test = overfit_test,
-                        save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-                    )
-                    print(f"✓ Completed training run")
+                                print(f'\n--- Starting training run  ---')
+                                train_generic(
+                                    config,
+                                    run_name=run_name,
+                                    use_normalize=True,
+                                    use_teammate_manager=True,
+                                    train_type = train_type,
+                                    render=False,
+                                    n_envs=num_envs,
+                                    load_path=load_path,
+                                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                                    project_name=project_name,
+                                    save_model = True,
+                                    overfit_test = overfit_test,
+                                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                                )
+                                print(f"✓ Completed training run")
