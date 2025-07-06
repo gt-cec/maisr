@@ -639,6 +639,7 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pr
     return teammate_manager
 
 def train_generic(
+
         env_config,
         n_envs,
         project_name,
@@ -911,7 +912,7 @@ if __name__ == "__main__":
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'R2'
+    note = 'R3'
 
     ################################################
 
@@ -919,26 +920,26 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    config['teammate_reward_scale'] = 0.5
-
     #overfit_test = 'low_risk'
-    config['num_timesteps'] = 3e5
+    config['num_timesteps'] = 4e5
 
-    for threat_potential_coeff in [0.25, 0.2]:
-        for ent_reg in [0.07, 0.02, 0.1]:
-            for team_dist_shaping_coeff in [0, -0.005, -0.002]:
-                for num_observed_threats in [1,2]:
-                    for gamma in [0.98, 0.987]:
-                        for observe_teammate_direction in [True, False]:
+    for threat_potential_coeff in [0.25]:
+        for ent_reg in [0.02, 0.05, 0.7]:
+            for teammate_reward_scale in [0.75, 1.0, 0.5]:
+                for num_observed_threats in [2]:
+                    for gamma in [0.98, 0.985, 0.99]:
+                        for shaping_reward_earlyfinish in [0, 0.0025, 0.0035]:
                             for overfit_test in ["greedy_planning"]:#, "cluster_planning", "high_risk", "low_risk"]:
-                                config['team_dist_shaping_coeff'] = team_dist_shaping_coeff
+                                config['team_dist_shaping_coeff'] = 0
                                 config['entropy_regularization'] = ent_reg
                                 config['threat_potential_coeff'] = threat_potential_coeff
                                 config['num_observed_threats'] = num_observed_threats
-                                config['observe_teammate_direction'] = observe_teammate_direction
+                                config['observe_teammate_direction'] = True
+                                config['shaping_reward_earlyfinish'] = shaping_reward_earlyfinish
                                 config['gamma'] = gamma
+                                config['teammate_reward_scale'] = teammate_reward_scale
 
-                                temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threatpotential-{threat_potential_coeff}_gamma{gamma}_observeteammatedir{observe_teammate_direction}_M{num_observed_threats}'
+                                temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threatpotential-{threat_potential_coeff}_gamma-{gamma}_teammatereward-{teammate_reward_scale}_earlyfinish-{shaping_reward_earlyfinish}'
 
                                 # Generate run name (To be consistent between WandB, model saving, and action history plots)
                                 run_name = f'{note}-{train_type}_{temp_identifier}_'+generate_run_name(config)

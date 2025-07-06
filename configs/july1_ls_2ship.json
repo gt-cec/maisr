@@ -24,7 +24,7 @@
 	"balance_method": "uniform",
 	"obs_type": "nearest",
 	"observe_teammate": true,
-	"observe_teammate_direction": false,
+	"observe_teammate_direction": true,
 	"action_type": "Discrete16",
 	"obs_noise_std_localsearch": 0.02,
 
