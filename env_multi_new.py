@@ -243,7 +243,9 @@ class MAISREnvVec(gym.Env):
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
-        if self.config['use_fixed_levels']:
+        if self.config['force_specific_level'] != 99:
+            self.level_idx = self.config['force_specific_level']
+        elif self.config['use_fixed_levels']:
             num_fixed_levels = 7 # TODO make this dynamic
             try:
                 self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
@@ -686,6 +688,21 @@ class MAISREnvVec(gym.Env):
         teammate_target_ids = new_reward['teammate_target_ids']
         agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
 
+        # Calculate spread-out bonus between aircraft
+        spread_bonus = 0
+        if self.config['num_aircraft'] >= 2:
+            agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+            teammate_pos = np.array([self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y])
+
+            distance = np.linalg.norm(agent_pos - teammate_pos)
+            optimal_distance = self.config["team_optimal_distance"]  # Optimal spread distance
+            max_bonus_distance = self.config["team_max_bonus_distance"]  # Distance for maximum bonus
+
+            if distance >= optimal_distance:
+                # Give bonus for being spread out, capped at max_bonus_distance
+                normalized_distance = min(distance, max_bonus_distance) / max_bonus_distance
+                spread_bonus = self.config["team_spread_bonus_coeff"] * normalized_distance
+
         # Calculate proximity penalty between aircraft
         proximity_penalty = 0
         if self.config['num_aircraft'] >= 2:
@@ -699,37 +716,31 @@ class MAISREnvVec(gym.Env):
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
         # Check if agent is inside threat radius and apply penalty # TODO make this per agent
-        threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
-        if hasattr(self, 'threats'):
-            for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
-                aircraft_pos = np.array([aircraft.x, aircraft.y])
-
-                for threat_idx in range(2):
-                    threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-                    distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
-
-                    threat_radius = self.config['threat_radius']
-                    warning_radius = threat_radius * 1.5
-
-                    if distance_to_threat <= threat_radius:
-                        normalized_distance = distance_to_threat / threat_radius
-                        penalty_multiplier = 1.0 - normalized_distance
-                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
-                    elif distance_to_threat <= warning_radius:
-                        normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
-                        penalty_multiplier = 0.4 * (1.0 - normalized_distance)
-                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+        # threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
+        # if hasattr(self, 'threats'):
+        #     for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+        #         aircraft_pos = np.array([aircraft.x, aircraft.y])
+        #
+        #         for threat_idx in range(2):
+        #             threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+        #             distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+        #
+        #             threat_radius = self.config['threat_radius']
+        #             warning_radius = threat_radius * 1.5
+        #
+        #             if distance_to_threat <= threat_radius:
+        #                 normalized_distance = distance_to_threat / threat_radius
+        #                 penalty_multiplier = 1.0 - normalized_distance
+        #                 threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+        #             elif distance_to_threat <= warning_radius:
+        #                 normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+        #                 penalty_multiplier = 0.4 * (1.0 - normalized_distance)
+        #                 threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
 
         if self.num_threats_identified < self.config['max_threat_ids']:
             threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
         else:
             threat_potential_reward = - 0.25 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
-
-        # if self.just_failed:
-        #     fail_penalty = -15
-        #     self.just_failed = False
-        # else:
-        #     fail_penalty = 0
 
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
@@ -738,9 +749,8 @@ class MAISREnvVec(gym.Env):
                  (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
                  threat_potential_reward + \
                  (self.config['shaping_time_penalty']) + \
-                 threat_penalty[0] - threat_penalty[1] + \
-                 proximity_penalty #fail_penalty
-
+                 proximity_penalty + spread_bonus
+                 ##threat_penalty[0] - threat_penalty[1] + \
 
         return reward
 

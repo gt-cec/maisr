@@ -908,11 +908,19 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/july1_ls_2ship.json'
+    config_filename = 'configs/july7_monolith_R3.5.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
-    project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'R3'
+    project_name = 'maisr-rl-pace' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
+    note = 'configtest'
+
+    # Define hyperparameter sweep
+    hyperparams = {
+        'entropy_regularization': [0.02, 0.05, 0.7],
+        "teammate_reward_scale": [0.75, 0.5],
+        "team_spread_bonus_coeff": [0.15, 0.1],
+    }
+    overfit_tests = ["high_risk", "low_risk"]#, "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
 
     ################################################
 
@@ -920,44 +928,38 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    #overfit_test = 'low_risk'
-    config['num_timesteps'] = 4e5
+    import itertools
+    param_names = list(hyperparams.keys())
+    param_values = list(hyperparams.values())
 
-    for threat_potential_coeff in [0.25]:
-        for ent_reg in [0.02, 0.05, 0.7]:
-            for teammate_reward_scale in [0.75, 1.0, 0.5]:
-                for num_observed_threats in [2]:
-                    for gamma in [0.98, 0.985, 0.99]:
-                        for shaping_reward_earlyfinish in [0, 0.0025, 0.0035]:
-                            for overfit_test in ["greedy_planning"]:#, "cluster_planning", "high_risk", "low_risk"]:
-                                config['team_dist_shaping_coeff'] = 0
-                                config['entropy_regularization'] = ent_reg
-                                config['threat_potential_coeff'] = threat_potential_coeff
-                                config['num_observed_threats'] = num_observed_threats
-                                config['observe_teammate_direction'] = True
-                                config['shaping_reward_earlyfinish'] = shaping_reward_earlyfinish
-                                config['gamma'] = gamma
-                                config['teammate_reward_scale'] = teammate_reward_scale
+    for overfit_test in overfit_tests:
+        for param_combination in itertools.product(*param_values):
+            current_params = dict(zip(param_names, param_combination))
+            for param_name, param_value in current_params.items():
+                config[param_name] = param_value
 
-                                temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threatpotential-{threat_potential_coeff}_gamma-{gamma}_teammatereward-{teammate_reward_scale}_earlyfinish-{shaping_reward_earlyfinish}'
+            param_strings = []
+            for param_name, param_value in current_params.items():
+                param_key = param_name.replace('_', '')
+                param_strings.append(f'{param_key}-{param_value}')
 
-                                # Generate run name (To be consistent between WandB, model saving, and action history plots)
-                                run_name = f'{note}-{train_type}_{temp_identifier}_'+generate_run_name(config)
+            temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+            run_name = f'{note}-{train_type}_{temp_identifier}_' + generate_run_name(config)
 
-                                print(f'\n--- Starting training run  ---')
-                                train_generic(
-                                    config,
-                                    run_name=run_name,
-                                    use_normalize=True,
-                                    use_teammate_manager=True,
-                                    train_type = train_type,
-                                    render=False,
-                                    n_envs=num_envs,
-                                    load_path=load_path,
-                                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                                    project_name=project_name,
-                                    save_model = True,
-                                    overfit_test = overfit_test,
-                                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-                                )
-                                print(f"✓ Completed training run")
+        print(f'\n--- Starting training run with params: {current_params} ---')
+        train_generic(
+            config,
+            run_name=run_name,
+            use_normalize=True,
+            use_teammate_manager=True,
+            train_type = train_type,
+            render=False,
+            n_envs=num_envs,
+            load_path=load_path,
+            machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+            project_name=project_name,
+            save_model = True,
+            overfit_test = overfit_test,
+            save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+        )
+        print(f"✓ Completed training run")
