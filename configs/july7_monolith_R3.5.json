@@ -16,7 +16,7 @@
 	"prob_detect": 0,
 	"action_noise_std": 0,
 	"num_observed_targets": 4,
-	"num_observed_threats": 2,
+	"num_observed_threats": 1,
 	"threat_radius": 30,
 	"max_threat_ids": 2,
     
