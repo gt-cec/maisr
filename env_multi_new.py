@@ -2002,6 +2002,8 @@ class MAISREnvVec(gym.Env):
 
                 plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.9, marker='o', edgecolors='black')
 
+                plt.annotate(f'T{i}', (target_x, target_y), xytext=(5, 5), textcoords='offset points', fontsize=8)
+
             # Plot the threat if it exists
             if hasattr(self, 'threats'):
                 for threat_idx, threat in enumerate(self.threats):
@@ -2014,14 +2016,13 @@ class MAISREnvVec(gym.Env):
                     threat_color = 'lime' if self.threat_identified[threat_idx] else 'gold'
 
                     # Draw threat circle
-                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color=threat_color,
-                                        linewidth=2,
-                                        alpha=0.7)
+                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color=threat_color, linewidth=2, alpha=0.7)
                     plt.gca().add_patch(circle)
 
                     # Draw upside-down triangle marker
-                    plt.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v', alpha=0.8, label='Threat',
-                                edgecolors='black')
+                    plt.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v', alpha=0.8, label='Threat', edgecolors='black')
+
+                    plt.annotate(f'Thr{i}', (threat_x, threat_y), xytext=(5, 5), textcoords='offset points', fontsize=8)
 
             # Define subpolicy colors and labels
             subpolicy_colors = {
