@@ -26,9 +26,6 @@ class MAISREnvVec(gym.Env):
         self.run_name = run_name # For logging
 
         self.use_buttons = False
-        self.teammate_active = self.config['teammate_active_at_start']
-        
-        self.save_plot_freq = 7*self.config['num_fixed_levels']
 
         if seed is not None:
             np.random.seed(seed)
@@ -83,31 +80,26 @@ class MAISREnvVec(gym.Env):
                 low=0, high=255,
                 shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
                 dtype=np.uint8)
-        # elif self.config['obs_type'] == 'absolute':
-        #     self.obs_size = 2 + 3 * self.config['num_targets']
-        #     self.observation_space = gym.spaces.Box(
-        #         low=-1, high=1,
-        #         shape=(self.obs_size,),
-        #         dtype=np.float32)
-
-        elif self.config['obs_type'] == 'nearest':
-
-            self.obs_size = 2 * self.config['num_observed_targets'] + 2*self.config['num_observed_threats']
-
-            if self.config['observe_teammate'] == True:
-                self.obs_size += 2
-            if self.config['observe_teammate_direction'] == True:
-                self.obs_size += 2
-
+        elif self.config['obs_type'] == 'absolute':
+            self.obs_size = 2 + 3 * self.config['num_targets']
             self.observation_space = gym.spaces.Box(
                 low=-1, high=1,
                 shape=(self.obs_size,),
                 dtype=np.float32)
 
+        elif self.config['obs_type'] == 'nearest':
+            self.obs_size = 2 * self.config['num_observed_targets'] + 2*self.config['num_observed_threats']# x,y components of unit vector
+            if self.config['observe_teammate'] == True:
+                self.obs_size += 2
+            if self.config['observe_teammate_direction'] == True:
+                self.obs_size += 2
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),
+                dtype=np.float32)
             if self.tag == 'train_mp0':
                 print(f'Using obs space size {self.obs_size} ({self.config['num_observed_targets']} nearest targets, {self.config['num_observed_threats']} nearest threats')
-
-        else:
+        else: 
             raise ValueError("Obs type not recognized")
 
         ############################################## TUNABLE PARAMETERS ##############################################
@@ -251,9 +243,7 @@ class MAISREnvVec(gym.Env):
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
-        if self.config['force_specific_level'] != 99:
-            self.level_idx = self.config['force_specific_level']
-        elif self.config['use_fixed_levels']:
+        if self.config['use_fixed_levels']:
             num_fixed_levels = 7 # TODO make this dynamic
             try:
                 self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
@@ -659,13 +649,27 @@ class MAISREnvVec(gym.Env):
         info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
         info['failed'] = getattr(self, 'failed', False)
 
+        # if self.terminated or self.truncated:
+        #     print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info['episode']['r'], 1)}, {self.step_count_outer}({info['episode']['l']}) steps, | {self.detections} detections | {round(self.max_steps/self.config['frame_skip'] - self.step_count_outer,0)} outer steps early')
+        #     if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
+        #         self.save_action_history_plot()
+        #     if self.render_mode == 'human':
+        #         pygame.time.wait(50)
+
+        # In the _single_step method, replace the existing plotting section with:
+
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps')
 
-            # Check if we should collect data for combined plotting
+            # # Check if we should collect data for combined plotting
             # if self.should_save_combined_plot():
-            #     print(f"[DEBUG] Collecting data for combined plot - episode {self.episode_counter}, level {self.level_idx}")
+            #     #print(f"[DEBUG] Collecting data for combined plot - episode {self.episode_counter}, level {self.level_idx}")
             #     self.collect_level_data()
+            #
+            # # Save combined plot if we have all 7 levels
+            # if hasattr(self, 'combined_plot_data') and len(self.combined_plot_data) == 7:
+            #     print(f"[DEBUG] Saving combined plot with 7 levels")
+            #     self.save_combined_level_plots()
 
             # Keep individual plots for specific episodes if needed
             if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
@@ -682,28 +686,6 @@ class MAISREnvVec(gym.Env):
         teammate_target_ids = new_reward['teammate_target_ids']
         agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
 
-        optimal_distance = self.config["team_optimal_distance"]  # Optimal spread distance
-        max_bonus_distance = self.config["team_max_bonus_distance"]  # Distance for maximum bonus
-
-        fail_penalty = 0
-        if self.failed:
-            if self.just_failed:
-                fail_penalty = -25
-                self.just_failed = False
-
-        # Calculate spread-out bonus between aircraft
-        spread_bonus = 0
-        if self.config['num_aircraft'] >= 2 and self.teammate_active:
-            agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
-            teammate_pos = np.array([self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y])
-
-            distance = np.linalg.norm(agent_pos - teammate_pos)
-
-            if distance >= optimal_distance:
-                # Give bonus for being spread out, capped at max_bonus_distance
-                normalized_distance = min(distance, max_bonus_distance) / max_bonus_distance
-                spread_bonus = self.config["team_spread_bonus_coeff"] * normalized_distance
-
         # Calculate proximity penalty between aircraft
         proximity_penalty = 0
         if self.config['num_aircraft'] >= 2:
@@ -716,53 +698,38 @@ class MAISREnvVec(gym.Env):
             if distance < min_distance: # Penalty increases as aircraft get closer
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
+        # Check if agent is inside threat radius and apply penalty # TODO make this per agent
+        threat_penalty = {0:0, 1:0} # Dictionary {agent_idx: penalty}
+        if hasattr(self, 'threats'):
+            for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+                aircraft_pos = np.array([aircraft.x, aircraft.y])
+
+                for threat_idx in range(2):
+                    threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                    distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+
+                    threat_radius = self.config['threat_radius']
+                    warning_radius = threat_radius * 1.5
+
+                    if distance_to_threat <= threat_radius:
+                        normalized_distance = distance_to_threat / threat_radius
+                        penalty_multiplier = 1.0 - normalized_distance
+                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+                    elif distance_to_threat <= warning_radius:
+                        normalized_distance = (distance_to_threat - threat_radius) / (warning_radius - threat_radius)
+                        penalty_multiplier = 0.4 * (1.0 - normalized_distance)
+                        threat_penalty[aircraft.agent_idx] += self.config['inside_threat_penalty'] * penalty_multiplier
+
         if self.num_threats_identified < self.config['max_threat_ids']:
             threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
         else:
             threat_potential_reward = 0#- 0.25 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
 
-        # Add debugging print statements
-        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
-            print(f'\n=== REWARD DEBUG (Ep {self.episode_counter}, Step {self.step_count_outer}) ===')
-
-            # Target ID rewards
-            agent_target_reward = agent_target_ids * self.config['base_env_target_id_reward']
-            teammate_target_reward = teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']
-            print(
-                f'Agent Target IDs: {agent_target_ids} IDs * {self.config["base_env_target_id_reward"]} rew/ID = {agent_target_reward}')
-            print(
-                f'Teammate Target IDs: {teammate_target_ids} IDs * {self.config["base_env_target_id_reward"]} rew/ID * {self.config["teammate_reward_scale"]} scale = {teammate_target_reward} reward')
-
-            # Early finish reward
-            early_finish_reward = new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']
-            print(f'Early finish: {new_reward["early finish"]} early steps * {self.config["shaping_coeff_earlyfinish"]} coeff = {early_finish_reward} reward')
-
-            # Threat identification reward
-            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward']
-            print(f'Threat ID: {new_reward["threat_identification"]} IDs * {self.config["threat_id_reward"]} rew/ID = {threat_id_reward} reward')
-
-            # Potential-based rewards
-            target_potential_reward = target_potential_gain * self.config['target_potential_coeff'] * (300 / self.config['gameboard_size'])
-            print(
-                f'Target potential: {target_potential_gain:.4f} potential * {self.config["target_potential_coeff"]} coeff * {300 / self.config["gameboard_size"]:.2f} scale = {target_potential_reward:.4f} reward')
-            print(f'Threat potential: threat_gain={threat_potential_gain:.4f}, identified={self.num_threats_identified}/{self.config["max_threat_ids"]}, reward={threat_potential_reward:.4f}')
-            print(f'Fail penalty: {fail_penalty}')
-
-            # Time penalty
-            time_penalty = self.config['shaping_time_penalty']
-            print(f'Time penalty: {time_penalty} reward')
-
-            # Team dynamics
-            if self.config['num_aircraft'] >= 2:
-                team_distance = np.linalg.norm(agent_pos - teammate_pos)
-                print(f'Team distance: {team_distance:.2f}')
-                print(f'Spread bonus: dist={team_distance:.2f}, optimal={optimal_distance}, max_bonus={max_bonus_distance}, bonus={spread_bonus:.4f} reward')
-                print(f'Proximity penalty: dist={team_distance:.2f}, min_dist={min_distance}, coeff = {self.config['team_dist_shaping_coeff']} -> penalty={proximity_penalty:.4f} reward')
-
-            # Total reward calculation
-            total_reward = agent_target_reward + teammate_target_reward + early_finish_reward + threat_id_reward + target_potential_reward + threat_potential_reward + time_penalty + proximity_penalty + spread_bonus
-            print(f'TOTAL INNER STEP REWARD: {total_reward:.4f}')
-            print('=== END REWARD DEBUG ===\n')
+        # if self.just_failed:
+        #     fail_penalty = -15
+        #     self.just_failed = False
+        # else:
+        #     fail_penalty = 0
 
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
@@ -771,8 +738,9 @@ class MAISREnvVec(gym.Env):
                  (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
                  threat_potential_reward + \
                  (self.config['shaping_time_penalty']) + \
-                 proximity_penalty + spread_bonus + fail_penalty
-                 ##threat_penalty[0] - threat_penalty[1] + \
+                 threat_penalty[0] - threat_penalty[1] + \
+                 proximity_penalty #fail_penalty
+
 
         return reward
 
@@ -876,6 +844,126 @@ class MAISREnvVec(gym.Env):
         #print(self.observation)
         return self.observation
 
+    # Add this method to the MAISREnvVec class in env_multi_new.py
+
+    def get_observation_nearest_n_safe(self, agent_id=0):
+        """
+        State will include the following features:
+            For each of the N nearest unknown targets that are NOT inside threat radii:
+                unit_vector_x,           # (-1 to +1) x component of unit vector to target
+                unit_vector_y,           # (-1 to +1) y component of unit vector to target
+        """
+        # Get N from config
+        N = self.config['num_observed_targets']
+        M = self.config['num_observed_threats']
+
+        # Initialize observation array (2 * N for x,y components of N targets)
+        self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        teammate_idx = 1 if agent_id == 0 else 0
+        teammate_pos = np.array([self.agents[self.aircraft_ids[teammate_idx]].x, self.agents[self.aircraft_ids[teammate_idx]].y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+
+        unknown_mask = target_info_levels < 1.0  # Create mask for unknown targets (info_level < 1.0)
+
+        # Filter out targets that are inside threat radii
+        safe_target_mask = self._get_safe_target_mask(target_positions)
+
+        # Combine unknown mask with safe target mask
+        valid_target_mask = unknown_mask & safe_target_mask
+
+        if np.any(valid_target_mask):
+            valid_target_positions = target_positions[valid_target_mask]
+            distances = np.sqrt(np.sum((valid_target_positions - agent_pos) ** 2, axis=1))
+
+            # Get indices of N nearest targets (or all if fewer than N)
+            num_targets_to_use = min(N, len(distances))
+            nearest_indices = np.argsort(distances)[:num_targets_to_use]
+
+            # Fill observation with unit vectors to nearest N safe targets
+            for i in range(num_targets_to_use):
+                target_idx = nearest_indices[i]
+                target_pos = valid_target_positions[target_idx]
+                vector_to_target = target_pos - agent_pos
+
+                distance = np.linalg.norm(vector_to_target)
+
+                if distance > 0:
+                    unit_vector = vector_to_target
+                    self.observation[i * 2] = unit_vector[0]  # x component
+                    self.observation[i * 2 + 1] = unit_vector[1]  # y component
+                else:
+                    # Agent is exactly at target position
+                    self.observation[i * 2] = 0.0
+                    self.observation[i * 2 + 1] = 0.0
+
+        # Add threat vectors
+        for threat_idx in range(M):
+            threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+            vector_to_threat = threat_pos - agent_pos
+            self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
+            self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
+
+        if self.config['observe_teammate_direction']: # TODO add
+            self.observation[-4] = teammate_pos[0] - agent_pos[0]
+            self.observation[-3] = teammate_pos[1] - agent_pos[1]
+
+            # Get teammate's current waypoint/target
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+
+            if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+                waypoint = np.array(teammate_agent.waypoint_override)
+
+                direction_vector = waypoint - teammate_pos
+                distance = np.linalg.norm(direction_vector)
+                teammate_heading = direction_vector / distance
+            else:
+                teammate_heading = [0,0]
+
+            self.observation[-2], self.observation[-1] = teammate_heading
+
+        else:
+            self.observation[-2] = teammate_pos[0] - agent_pos[0]
+            self.observation[-1] = teammate_pos[1] - agent_pos[1]
+
+        return self.observation
+
+    def _get_safe_target_mask(self, target_positions):
+        """
+        Returns a boolean mask indicating which targets are NOT inside any threat radius
+
+        Args:
+            target_positions: numpy array of target positions (N x 2)
+
+        Returns:
+            numpy array of booleans, True if target is safe (not in threat radius)
+        """
+        num_targets = len(target_positions)
+        safe_mask = np.ones(num_targets, dtype=bool)  # Start with all targets being safe
+
+        threat_radius = self.config['threat_radius']
+
+        # Check each target against each threat
+        for target_idx in range(num_targets):
+            target_pos = target_positions[target_idx]
+
+            for threat_idx in range(len(self.threats)):
+                threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                distance_to_threat = np.sqrt(np.sum((threat_pos - target_pos) ** 2))
+
+                # If target is inside threat radius, mark as unsafe
+                if distance_to_threat <= threat_radius:
+                    safe_mask[target_idx] = False
+                    break  # No need to check other threats for this target
+
+        return safe_mask
 
     def get_observation_nearest_n(self, agent_id=0):
         """
@@ -890,7 +978,7 @@ class MAISREnvVec(gym.Env):
         M = self.config['num_observed_threats']
 
         # Initialize observation array (2 * N for x,y components of N targets)
-        self.observation = np.zeros(self.obs_size, dtype=np.float32)
+        self.observation = np.zeros(2 * (N+M), dtype=np.float32)
 
         agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
 
@@ -929,8 +1017,8 @@ class MAISREnvVec(gym.Env):
             for j in range(len(self.threats)):
                 threat_pos = np.array([self.threats[j][0], self.threats[j][1]])
                 vector_to_threat = threat_pos - agent_pos
-                self.observation[-2 * (j + 1)] = vector_to_threat[0]  # x component
-                self.observation[-1 * (j + 1)] = vector_to_threat[1]  # y component
+                self.observation[-2*(j+1)] = vector_to_threat[0]  # x component
+                self.observation[-1*(j+1)] = vector_to_threat[1]  # y component
 
         for threat_idx in range(2):
             threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
@@ -938,143 +1026,8 @@ class MAISREnvVec(gym.Env):
             self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
             self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
 
-        # Observe teammate
-        if self.config['observe_teammate']:
-            teammate_id = 1 if agent_id == 0 else 0
-            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
-            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
-
-            # Calculate the correct index for teammate data
-            teammate_idx = 2 * (self.config['num_observed_targets'] + self.config['num_observed_threats'])
-
-            if self.config['observe_teammate_direction']:
-                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
-                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
-
-                if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
-                    waypoint = np.array(teammate_agent.waypoint_override)
-                    direction_vector = waypoint - teammate_pos
-                    distance = np.linalg.norm(direction_vector)
-                    teammate_heading = direction_vector / distance if distance > 0 else [0, 0]
-                else:
-                    teammate_heading = [0, 0]
-
-                self.observation[teammate_idx + 2] = teammate_heading[0]
-                self.observation[teammate_idx + 3] = teammate_heading[1]
-            else:
-                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
-                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
-
-        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
-            print(f'======= Obs check (ep {self.episode_counter}, step {self.step_count_outer + 1}) =======')
-            idx = 0
-            for i in range(self.config['num_observed_targets']):
-                print(f'  Target {i}: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
-                idx += 2
-            for i in range(self.config['num_observed_threats']):
-                print(f'  Threat {i}: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
-                idx += 2
-            if self.config['observe_teammate']:
-                print(f'  Teammate: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
-                idx += 2
-                if self.config['observe_teammate_direction']:
-                    print(f'  Teammate dir: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
+        # If no unknown targets remaining, observation stays all zeros
         return self.observation
-
-
-    def _get_safe_target_mask(self, target_positions):
-        """
-        Returns a boolean mask indicating which targets are NOT inside any threat radius
-
-        Args:
-            target_positions: numpy array of target positions (N x 2)
-
-        Returns:
-            numpy array of booleans, True if target is safe (not in threat radius)
-        """
-        num_targets = len(target_positions)
-        safe_mask = np.ones(num_targets, dtype=bool)  # Start with all targets being safe
-
-        threat_radius = self.config['threat_radius']
-
-        # Check each target against each threat
-        for target_idx in range(num_targets):
-            target_pos = target_positions[target_idx]
-
-            for threat_idx in range(len(self.threats)):
-                threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-                distance_to_threat = np.sqrt(np.sum((threat_pos - target_pos) ** 2))
-
-                # If target is inside threat radius, mark as unsafe
-                if distance_to_threat <= threat_radius:
-                    safe_mask[target_idx] = False
-                    break  # No need to check other threats for this target
-
-        return safe_mask
-
-    # def get_observation_nearest_n(self, agent_id=0):
-    #     """
-    #     State will include the following features:
-    #         For each of the N nearest unknown targets:
-    #             unit_vector_x,           # (-1 to +1) x component of unit vector to target
-    #             unit_vector_y,           # (-1 to +1) y component of unit vector to target
-    #     """
-    #
-    #     # Get N from config
-    #     N = self.config['num_observed_targets']
-    #     M = self.config['num_observed_threats']
-    #
-    #     # Initialize observation array (2 * N for x,y components of N targets)
-    #     self.observation = np.zeros(2 * (N+M), dtype=np.float32)
-    #
-    #     agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
-    #
-    #     # Get target positions and info levels
-    #     target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
-    #     target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
-    #
-    #     unknown_mask = target_info_levels < 1.0  # Create mask for unknown targets (info_level < 1.0)
-    #
-    #     if np.any(unknown_mask):
-    #         unknown_positions = target_positions[unknown_mask]
-    #         distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
-    #
-    #         # Get indices of N nearest targets (or all if fewer than N)
-    #         num_targets_to_use = min(N, len(distances))
-    #         nearest_indices = np.argsort(distances)[:num_targets_to_use]
-    #
-    #         # Fill observation with unit vectors to nearest N targets
-    #         for i in range(num_targets_to_use):
-    #             target_idx = nearest_indices[i]
-    #             target_pos = unknown_positions[target_idx]
-    #             vector_to_target = target_pos - agent_pos
-    #
-    #             distance = np.linalg.norm(vector_to_target)
-    #
-    #             if distance > 0:
-    #                 unit_vector = vector_to_target
-    #                 self.observation[i * 2] = unit_vector[0]  # x component
-    #                 self.observation[i * 2 + 1] = unit_vector[1]  # y component
-    #             else:
-    #                 # Agent is exactly at target position
-    #                 self.observation[i * 2] = 0.0
-    #                 self.observation[i * 2 + 1] = 0.0
-    #
-    #         # dx, dy vector to threat as last two elements of the observation
-    #         for j in range(len(self.threats)):
-    #             threat_pos = np.array([self.threats[j][0], self.threats[j][1]])
-    #             vector_to_threat = threat_pos - agent_pos
-    #             self.observation[-2*(j+1)] = vector_to_threat[0]  # x component
-    #             self.observation[-1*(j+1)] = vector_to_threat[1]  # y component
-    #
-    #     for threat_idx in range(2):
-    #         threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-    #         vector_to_threat = threat_pos - agent_pos
-    #         self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
-    #         self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
-    #
-    #     # If no unknown targets remaining, observation stays all zeros
-    #     return self.observation
 
     def get_observation_alltargets(self):
         """
@@ -2330,77 +2283,465 @@ class MAISREnvVec(gym.Env):
         except Exception as e:
             print(f"Error saving action history plot: {e}")
 
-    def set_difficulty(self, difficulty):
-        """Method to change difficulty level from an external method (i.e. a training loop)"""
-        self.difficulty = difficulty
-        print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
-
 
     def set_difficulty(self, difficulty):
         """Method to change difficulty level from an external method (i.e. a training loop)"""
         self.difficulty = difficulty
         print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
+
+    def set_difficulty(self, difficulty):
+        """Method to change difficulty level from an external method (i.e. a training loop)"""
+        self.difficulty = difficulty
+        print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
 
     def generate_plot_list(self):
-        """Generate list of episodes to plot - keep existing individual plot logic"""
-        if self.config['force_specific_level'] != 99:
-            self.num_levels = 1
-        elif self.config['num_fixed_levels'] != 99:
-            self.num_levels = self.config["num_fixed_levels"]
-        else:
-            self.num_levels = 7  # default
-            
+        # if self.config['use_fixed_levels']:
+        #     self.episodes_to_plot = []
+        #
+        #     # Define the specific starting episodes for combined plots
+        #     # 0-7, 14-21, 35-42, then every 100 episodes
+        #     self.episodes_to_plot = [0, 10, 14, 35]
+        #     max_episodes = 10000
+        #     for start_ep in range(0, max_episodes + 1, 25):
+        #         self.episodes_to_plot.append(start_ep)
+        #
+        #     self.episodes_to_plot.sort()
+        #     print(f"Will create combined plots for episodes starting at: {self.episodes_to_plot}")
+        #     return
+
+        #else:
+        self.num_levels = self.config["num_fixed_levels"]
         self.episodes_to_plot = []
         for j in range(self.num_levels):
             self.episodes_to_plot.extend([1+j, 2+j, 3+j, 5+j, 7+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
             self.episodes_to_plot.extend([(100 * i) + j for i in range(200)])
         self.episodes_to_plot = list(set(self.episodes_to_plot))
         self.episodes_to_plot.sort()
+        #print(f'episodes to plot: {self.episodes_to_plot}')
         return
-    
-    # def generate_plot_list(self):
-        # # if self.config['use_fixed_levels']:
-        # #     self.episodes_to_plot = []
-        # #
-        # #     # Define the specific starting episodes for combined plots
-        # #     # 0-7, 14-21, 35-42, then every 100 episodes
-        # #     self.episodes_to_plot = [0, 10, 14, 35]
-        # #     max_episodes = 10000
-        # #     for start_ep in range(0, max_episodes + 1, 25):
-        # #         self.episodes_to_plot.append(start_ep)
-        # #
-        # #     self.episodes_to_plot.sort()
-        # #     print(f"Will create combined plots for episodes starting at: {self.episodes_to_plot}")
-        # #     return
-
-        # #else:
-        # self.num_levels = self.config["num_fixed_levels"]
-        # self.episodes_to_plot = []
-        # for j in range(self.num_levels):
-            # self.episodes_to_plot.extend([1+j, 2+j, 3+j, 5+j, 7+j, 10+j, 20+j, 40+j, 50+j, 80+j, 100+j, 150+j, 200+j])
-            # self.episodes_to_plot.extend([(100 * i) + j for i in range(200)])
-        # self.episodes_to_plot = list(set(self.episodes_to_plot))
-        # self.episodes_to_plot.sort()
-        # #print(f'episodes to plot: {self.episodes_to_plot}')
-        # return
 
 
-        # base_episodes = []
-        # if self.tag == 'bc':
-            # self.episodes_to_plot = [10*i for i in range(20)]
-        # else:
-            # for i in range(self.num_levels):
-                # base_episodes.extend(
-                    # [0 + i, 2 + i, 5 + i, 10 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
-                     # 1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
-                     # 4000 + i, 5000 + i, 6000 + i, 7000 + i])
-            # for j in range(self.num_levels):
-                # base_episodes.extend([(500 + j) * i for i in range(80)])
-            # base_episodes.sort()
-            # self.episodes_to_plot = list(set(base_episodes))
-            # self.episodes_to_plot.sort()
+        base_episodes = []
+        if self.tag == 'bc':
+            self.episodes_to_plot = [10*i for i in range(20)]
+        else:
+            for i in range(self.num_levels):
+                base_episodes.extend(
+                    [0 + i, 2 + i, 5 + i, 10 + i, 50 + i, 100 + i, 200 + i, 300 + i, 400 + i, 500 + i, 800 + i,
+                     1000 + i, 1200 + i, 1400 + i, 1700 + i, 2000 + i, 2300 + i, 2400 + i, 2600 + i, 2800 + i, 3000 + i,
+                     4000 + i, 5000 + i, 6000 + i, 7000 + i])
+            for j in range(self.num_levels):
+                base_episodes.extend([(500 + j) * i for i in range(80)])
+            base_episodes.sort()
+            self.episodes_to_plot = list(set(base_episodes))
+            self.episodes_to_plot.sort()
 
+    def collect_level_data(self):
+        """Collect data for the current level to be used in combined plot"""
+        if not hasattr(self, 'combined_plot_data'):
+            self.combined_plot_data = {}
+
+        # Double-check that we should be collecting this data
+        if not self.should_save_combined_plot():
+            return
+
+        level_data = {
+            'agent_trajectory': [(pos[0], pos[1]) for pos in self.agent_location_history],
+            'teammate_trajectory': [(pos[0], pos[1]) for pos in self.teammate_location_history],
+            'action_history': [(action[0], action[1]) for action in self.action_history],
+            'targets': self.targets.copy(),
+            'threats': self.threats.copy(),
+            'threat_identified': self.threat_identified.copy(),
+            'targets_identified': self.targets_identified,
+            'final_reward': self.final_wrapper_reward,
+            'steps': self.step_count_outer,
+            'level_idx': self.level_idx
+        }
+
+        if hasattr(self, 'subpolicy_history'):
+            level_data['subpolicy_history'] = self.subpolicy_history.copy()
+
+        self.combined_plot_data[self.level_idx] = level_data
+
+    def should_save_combined_plot(self):
+        """Check if current episode is part of a 7-level sequence starting from episodes_to_plot"""
+        current_ep = self.episode_counter
+
+        # Check if we're in any 7-level sequence that starts from episodes_to_plot
+        for start_ep in self.episodes_to_plot:
+            if start_ep <= current_ep < start_ep + 7:
+                # We're in a valid 7-level sequence, but only collect if we started from the right episode
+                # Check if this sequence actually started from start_ep
+                if current_ep >= start_ep:
+                    expected_level = (current_ep - start_ep) % 7
+                    if self.level_idx == expected_level:
+                        return True
+        return False
+    # def should_save_combined_plot(self):
+    #     """Check if current episode starts a sequence of 7 level plots"""
+    #     current_ep = self.episode_counter
+    #
+    #     # Only start collecting if this episode is in our specific plot list AND we're on level 0
+    #     if current_ep in self.episodes_to_plot and self.level_idx == 0:
+    #         return True
+    #
+    #     # Continue collecting if we're already in the middle of a 7-level sequence
+    #     # but only if we started from a valid episode
+    #     if hasattr(self, 'combined_plot_data') and len(self.combined_plot_data) > 0:
+    #         # Check if we started from a valid episode (look back at when we started collecting)
+    #         if len(self.combined_plot_data) == 1:  # Just started collecting
+    #             # Get the episode when we started (current - level_idx)
+    #             start_episode = current_ep - self.level_idx
+    #             if start_episode in self.episodes_to_plot:
+    #                 return True
+    #             else:
+    #                 # We shouldn't be collecting, clear the data
+    #                 self.combined_plot_data = {}
+    #                 return False
+    #         else:
+    #             # We're in the middle of a valid sequence
+    #             return True
+    #
+    #     return False
+
+    # def save_combined_level_plots(self):
+    #     """Save a combined plot showing all 7 levels"""
+    #     try:
+    #         import matplotlib.pyplot as plt
+    #         import matplotlib.gridspec as gridspec
+    #         import matplotlib
+    #         matplotlib.use('Agg')
+    #         import datetime
+    #         import os
+    #
+    #         # Create directory if it doesn't exist
+    #         full_dir_path = f'logs/action_histories/{self.run_name}'
+    #         os.makedirs(full_dir_path, exist_ok=True)
+    #
+    #         # Create figure with subplots (3x3 grid, center plot empty)
+    #         fig = plt.figure(figsize=(18, 18))
+    #         gs = gridspec.GridSpec(2, 4, figure=fig, hspace=0.3, wspace=0.3)
+    #
+    #         # Define subplot positions for 7 levels
+    #         subplot_positions = [
+    #             (0, 0), (0, 1), (0, 2),  # Top row
+    #             (1, 0), (1, 2),  # Middle row (skip center)
+    #             (2, 0), (2, 1)  # Bottom row (2 positions)
+    #         ]
+    #
+    #         map_half_size = self.config["gameboard_size"] / 2
+    #
+    #         # Define colors for consistency
+    #         subpolicy_colors = {
+    #             0: '#2E8B57', 1: '#4169E1', 2: '#DC143C', 3: '#FF8C00',
+    #             4: '#4169E1', 5: '#4169E1', 6: '#4169E1', 7: '#9932CC', -1: '#808080'
+    #         }
+    #
+    #         for level_idx in range(7):
+    #             if level_idx not in self.combined_plot_data:
+    #                 continue
+    #
+    #             row, col = subplot_positions[level_idx]
+    #             ax = fig.add_subplot(gs[row, col])
+    #
+    #             level_data = self.combined_plot_data[level_idx]
+    #
+    #             # Set up the subplot
+    #             ax.set_xlim(-map_half_size, map_half_size)
+    #             ax.set_ylim(-map_half_size, map_half_size)
+    #             ax.set_aspect('equal')
+    #             ax.grid(True, alpha=0.3)
+    #
+    #             # Plot targets
+    #             targets = level_data['targets']
+    #             for i in range(self.config['num_targets']):
+    #                 target_x = targets[i, 3]
+    #                 target_y = targets[i, 4]
+    #                 size_factor = 1000 / self.config["gameboard_size"]
+    #                 marker_size = (100 * size_factor) if targets[i, 1] == 1 else (50 * size_factor)
+    #                 color = 'lime' if targets[i, 2] == 1.0 else 'orange'
+    #                 ax.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.9,
+    #                            marker='o', edgecolors='black')
+    #
+    #             # Plot threats
+    #             threats = level_data['threats']
+    #             threat_identified = level_data['threat_identified']
+    #             for threat_idx in range(len(threats)):
+    #                 threat_x = threats[threat_idx, 0]
+    #                 threat_y = threats[threat_idx, 1]
+    #                 threat_radius = self.config['threat_radius']
+    #                 threat_color = 'lime' if threat_identified[threat_idx] else 'gold'
+    #
+    #                 circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False,
+    #                                     color=threat_color, linewidth=2, alpha=0.7)
+    #                 ax.add_patch(circle)
+    #                 ax.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v',
+    #                            alpha=0.8, edgecolors='black')
+    #
+    #             # Plot agent trajectory with subpolicy coloring
+    #             agent_trajectory = level_data['agent_trajectory']
+    #             if agent_trajectory:
+    #                 agent_x = [pos[0] for pos in agent_trajectory]
+    #                 agent_y = [pos[1] for pos in agent_trajectory]
+    #
+    #                 # Plot trajectory line
+    #                 ax.plot(agent_x, agent_y, 'gray', alpha=0.3, linewidth=1)
+    #
+    #                 # Plot with subpolicy coloring if available
+    #                 if 'subpolicy_history' in level_data:
+    #                     subpolicy_history = level_data['subpolicy_history']
+    #                     frame_skip = self.config.get('frame_skip', 1) * self.config['action_rate']
+    #
+    #                     # Create subpolicy data aligned with trajectory
+    #                     subpolicy_data = []
+    #                     for policy in subpolicy_history:
+    #                         clean_policy = int(policy.item()) if hasattr(policy, 'item') else int(policy)
+    #                         for _ in range(frame_skip):
+    #                             if len(subpolicy_data) < len(agent_x):
+    #                                 subpolicy_data.append(clean_policy)
+    #
+    #                     # Group points by subpolicy
+    #                     subpolicy_points = {}
+    #                     for i, (x, y, policy) in enumerate(zip(agent_x, agent_y, subpolicy_data)):
+    #                         policy_key = int(policy)
+    #                         if policy_key in [4, 5, 6]:
+    #                             policy_key = 1  # Group change region policies
+    #                         if policy_key not in subpolicy_points:
+    #                             subpolicy_points[policy_key] = {'x': [], 'y': []}
+    #                         subpolicy_points[policy_key]['x'].append(x)
+    #                         subpolicy_points[policy_key]['y'].append(y)
+    #
+    #                     # Plot each subpolicy group
+    #                     for policy_key, points in subpolicy_points.items():
+    #                         color = subpolicy_colors.get(policy_key, '#808080')
+    #                         ax.scatter(points['x'], points['y'], s=8, color=color, alpha=0.8,
+    #                                    edgecolors='none')
+    #                 else:
+    #                     # Fallback coloring
+    #                     ax.scatter(agent_x, agent_y, s=8, c=range(len(agent_x)),
+    #                                cmap='Greens', alpha=0.7)
+    #
+    #                 # Add start/end markers
+    #                 ax.scatter(agent_x[0], agent_y[0], s=60, color='lime', marker='*',
+    #                            edgecolors='black', zorder=5)
+    #                 ax.scatter(agent_x[-1], agent_y[-1], s=60, color='darkgreen', marker='*',
+    #                            edgecolors='black', zorder=5)
+    #
+    #             # Plot teammate trajectory
+    #             teammate_trajectory = level_data['teammate_trajectory']
+    #             if teammate_trajectory:
+    #                 teammate_x = [pos[0] for pos in teammate_trajectory]
+    #                 teammate_y = [pos[1] for pos in teammate_trajectory]
+    #                 ax.plot(teammate_x, teammate_y, 'black', alpha=0.8, linewidth=1.5)
+    #
+    #             # Add quadrant lines
+    #             ax.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1)
+    #             ax.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1)
+    #
+    #             # Add subplot title
+    #             reward = level_data['final_reward']
+    #             targets_id = level_data['targets_identified']
+    #             steps = level_data['steps']
+    #             ax.set_title(f'Level {level_idx}\nR:{reward:.1f}, T:{targets_id}, S:{steps}',
+    #                          fontsize=10)
+    #
+    #         # Add overall title
+    #         episode_start = self.episode_counter - 6  # 7 episodes total, so start is current - 6
+    #         fig.suptitle(f'{self.tag} - Episodes {episode_start}-{self.episode_counter} (All 7 Levels)',
+    #                      fontsize=16, y=0.95)
+    #
+    #         fig.patch.set_edgecolor('black')
+    #         fig.patch.set_linewidth(8)  # Adjust thickness as needed
+    #
+    #         # Save the combined figure
+    #         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    #         filename = f'logs/action_histories/{self.run_name}/{self.tag}_combined_levels_ep{episode_start}-{self.episode_counter}.png'
+    #         plt.savefig(filename, dpi=150, bbox_inches='tight')
+    #         plt.close()
+    #
+    #         print(f"Combined level plots saved to {filename}")
+    #
+    #         # Clear the collected data
+    #         self.combined_plot_data = {}
+    #
+    #     except Exception as e:
+    #         print(f"Error saving combined level plots: {e}")
+
+    def save_combined_level_plots(self):
+        """Save a combined plot showing all 7 levels"""
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.gridspec as gridspec
+            import matplotlib
+            matplotlib.use('Agg')
+            import datetime
+            import os
+
+            # Create directory if it doesn't exist
+            full_dir_path = f'logs/action_histories/{self.run_name}'
+            os.makedirs(full_dir_path, exist_ok=True)
+
+            # Create figure with subplots (2x4 grid for 7 levels)
+            fig = plt.figure(figsize=(20, 10))  # Wider figure for 2x4 layout
+            gs = gridspec.GridSpec(2, 4, figure=fig, hspace=0.3, wspace=0.3)
+
+            # Define subplot positions for 7 levels in a 2x4 grid
+            subplot_positions = [
+                (0, 0), (0, 1), (0, 2), (0, 3),  # Top row: 4 subplots
+                (1, 0), (1, 1), (1, 2)  # Bottom row: 3 subplots (leaving (1, 3) empty)
+            ]
+
+            map_half_size = self.config["gameboard_size"] / 2
+
+            # Define colors for consistency
+            subpolicy_colors = {
+                0: '#2E8B57', 1: '#4169E1', 2: '#DC143C', 3: '#FF8C00',
+                4: '#4169E1', 5: '#4169E1', 6: '#4169E1', 7: '#9932CC', -1: '#808080'
+            }
+
+            for level_idx in range(7):
+                if level_idx not in self.combined_plot_data:
+                    continue
+
+                row, col = subplot_positions[level_idx]
+                ax = fig.add_subplot(gs[row, col])
+
+                level_data = self.combined_plot_data[level_idx]
+
+                # Set up the subplot
+                ax.set_xlim(-map_half_size, map_half_size)
+                ax.set_ylim(-map_half_size, map_half_size)
+                ax.set_aspect('equal')
+                ax.grid(True, alpha=0.3)
+
+                # Plot targets
+                targets = level_data['targets']
+                for i in range(self.config['num_targets']):
+                    target_x = targets[i, 3]
+                    target_y = targets[i, 4]
+                    size_factor = 1000 / self.config["gameboard_size"]
+                    marker_size = (100 * size_factor) if targets[i, 1] == 1 else (50 * size_factor)
+                    color = 'lime' if targets[i, 2] == 1.0 else 'orange'
+                    ax.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.9,
+                               marker='o', edgecolors='black')
+
+                # Plot threats
+                threats = level_data['threats']
+                threat_identified = level_data['threat_identified']
+                for threat_idx in range(len(threats)):
+                    threat_x = threats[threat_idx, 0]
+                    threat_y = threats[threat_idx, 1]
+                    threat_radius = self.config['threat_radius']
+                    threat_color = 'lime' if threat_identified[threat_idx] else 'gold'
+
+                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False,
+                                        color=threat_color, linewidth=2, alpha=0.7)
+                    ax.add_patch(circle)
+                    ax.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v',
+                               alpha=0.8, edgecolors='black')
+
+                # Plot agent trajectory with subpolicy coloring
+                agent_trajectory = level_data['agent_trajectory']
+                if agent_trajectory:
+                    agent_x = [pos[0] for pos in agent_trajectory]
+                    agent_y = [pos[1] for pos in agent_trajectory]
+
+                    # Plot trajectory line
+                    ax.plot(agent_x, agent_y, 'gray', alpha=0.3, linewidth=1)
+
+                    # Plot with subpolicy coloring if available
+                    if 'subpolicy_history' in level_data:
+                        subpolicy_history = level_data['subpolicy_history']
+                        frame_skip = self.config.get('frame_skip', 1) * self.config.get('action_rate', 1)
+
+                        # Create subpolicy data aligned with trajectory
+                        subpolicy_data = []
+                        for policy in subpolicy_history:
+                            clean_policy = int(policy.item()) if hasattr(policy, 'item') else int(policy)
+                            for _ in range(frame_skip):
+                                if len(subpolicy_data) < len(agent_x):
+                                    subpolicy_data.append(clean_policy)
+
+                        # Pad if needed
+                        while len(subpolicy_data) < len(agent_x):
+                            last_policy = subpolicy_data[-1] if subpolicy_data else 0
+                            subpolicy_data.append(last_policy)
+
+                        # Trim to exact length
+                        subpolicy_data = subpolicy_data[:len(agent_x)]
+
+                        # Group points by subpolicy
+                        subpolicy_points = {}
+                        for i, (x, y, policy) in enumerate(zip(agent_x, agent_y, subpolicy_data)):
+                            policy_key = int(policy)
+                            if policy_key in [4, 5, 6]:
+                                policy_key = 1  # Group change region policies
+                            if policy_key not in subpolicy_points:
+                                subpolicy_points[policy_key] = {'x': [], 'y': []}
+                            subpolicy_points[policy_key]['x'].append(x)
+                            subpolicy_points[policy_key]['y'].append(y)
+
+                        # Plot each subpolicy group
+                        for policy_key, points in subpolicy_points.items():
+                            color = subpolicy_colors.get(policy_key, '#808080')
+                            ax.scatter(points['x'], points['y'], s=8, color=color, alpha=0.8,
+                                       edgecolors='none')
+                    else:
+                        # Fallback coloring
+                        ax.scatter(agent_x, agent_y, s=8, c=range(len(agent_x)),
+                                   cmap='Greens', alpha=0.7)
+
+                    # Add start/end markers
+                    if len(agent_x) > 0:
+                        ax.scatter(agent_x[0], agent_y[0], s=60, color='lime', marker='*',
+                                   edgecolors='black', zorder=5)
+                        ax.scatter(agent_x[-1], agent_y[-1], s=60, color='darkgreen', marker='*',
+                                   edgecolors='black', zorder=5)
+
+                # Plot teammate trajectory
+                teammate_trajectory = level_data['teammate_trajectory']
+                if teammate_trajectory:
+                    teammate_x = [pos[0] for pos in teammate_trajectory]
+                    teammate_y = [pos[1] for pos in teammate_trajectory]
+                    if len(teammate_x) > 0:
+                        ax.plot(teammate_x, teammate_y, 'black', alpha=0.8, linewidth=1.5)
+
+                # Add quadrant lines
+                ax.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1)
+                ax.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1)
+
+                # Add subplot title
+                reward = level_data['final_reward']
+                targets_id = level_data['targets_identified']
+                steps = level_data['steps']
+                ax.set_title(f'Level {level_idx}\nR:{reward:.1f}, T:{targets_id}, S:{steps}',
+                             fontsize=10)
+
+            # Add overall title
+            episode_start = self.episode_counter - 6  # 7 episodes total, so start is current - 6
+            fig.suptitle(f'{self.tag} - Episodes {episode_start}-{self.episode_counter} (All 7 Levels)',
+                         fontsize=16, y=0.95)
+
+            # Add thick black border
+            fig.patch.set_edgecolor('black')
+            fig.patch.set_linewidth(8)
+
+            # Save the combined figure
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f'logs/action_histories/{self.run_name}/{self.tag}_combined_levels_ep{episode_start}-{self.episode_counter}.png'
+            plt.savefig(filename, dpi=150, bbox_inches='tight')
+            plt.close()
+
+            print(f"Combined level plots saved to {filename}")
+
+            # Clear the collected data
+            self.combined_plot_data = {}
+
+        except Exception as e:
+            print(f"Error saving combined level plots: {e}")
+            import traceback
+            traceback.print_exc()  # This will help debug any remaining issues
 
 
 

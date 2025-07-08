@@ -59,12 +59,12 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 4e5,
+	"num_timesteps": 9e5,
 	"save_freq": 2500,
 	"n_eval_episodes": 7,
 	"eval_freq": 1000,
 
-	"twoship_switch_threshold": 7,
+	"twoship_switch_threshold": 6,
 
 	"use_curriculum": false,
 	"cl_lr_decrease": 1,

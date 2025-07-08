@@ -192,8 +192,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     target_ids_list.append(info["new_target_ids"])
                 if "new_threat_ids" in info:
                     threat_ids_list.append(info["new_threat_ids"])
-                elif "threat_ids" in info:
-                    threat_ids_list.append(info["threat_ids"])
 
                 mean_reward += ep_reward / self.n_eval_episodes
                 eval_lengths.append(info["episode"]["l"])
@@ -905,40 +903,97 @@ def train_generic(
     run.finish()
 
 
+# if __name__ == "__main__":
+#     print(f'\n############################ STARTING TRAINING ############################')
+#
+#     ############## ---- SETTINGS ---- ##############
+#     load_path = None
+#     config_filename = 'configs/july1_ls_2ship.json'
+#     num_envs = multiprocessing.cpu_count()
+#     train_type = 'monolith'
+#     project_name = 'maisr-rl-lab'
+#     note = 'R3'
+#
+#     # Define hyperparameter sweep
+#     hyperparams = {
+#         'threat_potential_coeff': [0.25],
+#         'entropy_regularization': [0.02, 0.05, 0.7],
+#         'teammate_reward_scale': [0.75, 1.0, 0.5],
+#         'num_observed_threats': [2],
+#         'gamma': [0.98, 0.985, 0.99],
+#         'shaping_reward_earlyfinish': [0, 0.0025, 0.0035],
+#         'overfit_test': ["greedy_planning"]  # , "cluster_planning", "high_risk", "low_risk"
+#     }
+#
+#     config = load_env_config(config_filename)
+#     config['n_envs'] = num_envs
+#     config['config_filename'] = config_filename
+#     config['num_timesteps'] = 4e5
+#
+#     ################################################
+#
+#     # Generate all combinations of hyperparameters
+#     import itertools
+#
+#     param_names = list(hyperparams.keys())
+#     param_values = list(hyperparams.values())
+#
+#     for param_combination in itertools.product(*param_values):
+#         # Create dictionary of current hyperparameter values
+#         current_params = dict(zip(param_names, param_combination))
+#
+#         # Set fixed config values
+#         config['team_dist_shaping_coeff'] = 0
+#         config['observe_teammate_direction'] = True
+#
+#         # Apply hyperparameters to config
+#         for param_name, param_value in current_params.items():
+#             if param_name != 'overfit_test':  # Handle overfit_test separately
+#                 config[param_name] = param_value
+#
+#         # Generate identifier string from hyperparameters
+#         param_strings = []
+#         for param_name, param_value in current_params.items():
+#             # Format parameter name and value for identifier
+#             param_key = param_name.replace('_', '')  # Remove underscores
+#             param_strings.append(f'{param_key}-{param_value}')
+#
+#         temp_identifier = 'overfit-' + current_params['overfit_test'] + '_' + '_'.join(
+#             [s for s in param_strings if not s.startswith('overfittest-')])
+#
+#         # Generate run name
+#         run_name = f'{note}-{train_type}_{temp_identifier}_' + generate_run_name(config)
+#
+#         print(f'\n--- Starting training run with params: {current_params} ---')
+#         train_generic(
+#             config,
+#             run_name=run_name,
+#             use_normalize=True,
+#             use_teammate_manager=True,
+#             train_type=train_type,
+#             render=False,
+#             n_envs=num_envs,
+#             load_path=load_path,
+#             machine_name=(
+#                 'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+#             project_name=project_name,
+#             save_model=True,
+#             overfit_test=current_params['overfit_test'],
+#             save_dir=f"./trained_models/{train_type}/overfit_tests/" if current_params[
+#                                                                             'overfit_test'] is not None else f'./trained_models/{train_type}',
+#         )
+#         print(f"✓ Completed training run")
+
 if __name__ == "__main__":
     print(f'\n############################ STARTING TRAINING ############################')
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/july7_monolith_R4.5.json'
+    config_filename = 'configs/july1_ls_2ship.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'R4.5'
-
-    # Define hyperparameter sweep
-    hyperparams = {
-        "network_size": [128, 196],
-        "num_observed_targets": [4, 6],
-        #"team_spread_bonus_coeff": [0.0035], # 0.005,
-        "force_specific_level": [4, 99],
-        #"observe_teammate_direction":[True],
-        #'entropy_regularization': [0.07],
-        #"teammate_reward_scale": [0.5, 0.75],
-        #"obs_noise": [0.01],
-    }
-    overfit_tests = ["low_risk", "high_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
-
-    param_shorthand = {
-        'entropy_regularization': 'entreg',
-        'teammate_reward_scale': 'trs',
-        'team_spread_bonus_coeff': 'spreadbonus',
-        'num_observed_targets': 'obstgts',
-        'obs_noise': 'noise',
-        'network_size': 'modelsize',
-        "observe_teammate_direction":"obstmtdir",
-        "force_specific_level":"forcelvl"
-    }
+    note = 'R3'
 
     ################################################
 
@@ -946,38 +1001,44 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    import itertools
-    param_names = list(hyperparams.keys())
-    param_values = list(hyperparams.values())
+    #overfit_test = 'low_risk'
+    config['num_timesteps'] = 6e5
 
-    for param_combination in itertools.product(*param_values):
-        current_params = dict(zip(param_names, param_combination))
-        for param_name, param_value in current_params.items():
-            config[param_name] = param_value
+    for gamma in [0.99, 0.985, 0.98]:
+        for threat_potential_coeff in [0.25, 0.3]:
+            for ent_reg in [0.02, 0.04]:
+                for teammate_reward_scale in [0.75, 1.0, 0.5]:
+                    for num_observed_threats in [2]:
+                        for shaping_reward_earlyfinish in [0.0025, 0.0035]:
+                            for overfit_test in ["greedy_planning"]:#, "cluster_planning", "high_risk", "low_risk"]:
+                                config['team_dist_shaping_coeff'] = 0
+                                config['entropy_regularization'] = ent_reg
+                                config['threat_potential_coeff'] = threat_potential_coeff
+                                config['num_observed_threats'] = num_observed_threats
+                                config['observe_teammate_direction'] = True
+                                config['shaping_reward_earlyfinish'] = shaping_reward_earlyfinish
+                                config['gamma'] = gamma
+                                config['teammate_reward_scale'] = teammate_reward_scale
 
-        param_strings = []
-        for param_name, param_value in current_params.items():
-            param_key = param_shorthand[param_name]
-            param_strings.append(f'{param_key}-{param_value}')
+                                temp_identifier = f'overfit-{overfit_test}_entreg-{ent_reg}_threatpotential-{threat_potential_coeff}_gamma-{gamma}_teammatereward-{teammate_reward_scale}_earlyfinish-{shaping_reward_earlyfinish}'
 
-        for overfit_test in overfit_tests:
-            temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-            run_name = f'{note}-{train_type}_{temp_identifier}_' + generate_run_name(config)
+                                # Generate run name (To be consistent between WandB, model saving, and action history plots)
+                                run_name = f'{note}-{train_type}_{temp_identifier}_'+generate_run_name(config)
 
-            print(f'\n--- Starting training run with params: {current_params} ---')
-            train_generic(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                use_teammate_manager=True,
-                train_type = train_type,
-                render=False,
-                n_envs=num_envs,
-                load_path=load_path,
-                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name=project_name,
-                save_model = True,
-                overfit_test = overfit_test,
-                save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
-            )
-            print(f"✓ Completed training run")
+                                print(f'\n--- Starting training run  ---')
+                                train_generic(
+                                    config,
+                                    run_name=run_name,
+                                    use_normalize=True,
+                                    use_teammate_manager=True,
+                                    train_type = train_type,
+                                    render=False,
+                                    n_envs=num_envs,
+                                    load_path=load_path,
+                                    machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                                    project_name=project_name,
+                                    save_model = True,
+                                    overfit_test = overfit_test,
+                                    save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                                )
+                                print(f"✓ Completed training run")

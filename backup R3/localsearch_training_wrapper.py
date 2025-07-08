@@ -21,7 +21,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.env = env
 
         # Define observation space
-        self.obs_size = self.env.obs_size
+        self.obs_size = 2 * self.env.config['num_observed_targets'] + 2 * self.env.config['num_observed_threats']  # x,y components of unit vector
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
             shape=(self.obs_size,),
@@ -63,8 +63,6 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.steps_since_last_selection = 0
         self.current_subpolicy = None
 
-        self.env.final_wrapper_reward = 0
-
         # Reset teammate selection for new episode
         if self.teammate_manager:
             self.teammate_manager.reset_for_episode()
@@ -97,13 +95,12 @@ class MaisrLocalSearchWrapper(gym.Env):
             observation = np.clip(observation + noise, -1, 1)  # Clip to valid range
 
 
+
         # Convert base_env elements to wrapper elements if needed
         reward = base_reward
         info = base_info
         terminated = base_terminated
         truncated = base_truncated
-
-        self.env.final_wrapper_reward += reward
 
         return observation, reward, terminated, truncated, info
 
@@ -283,7 +280,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
     def set_teammate_active(self, should_activate):
         self.teammate_active = should_activate
-        self.env.teammate_active = should_activate
         return
 
     def _get_quadrant_waypoint(self, quadrant_id):
@@ -322,7 +318,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
     def get_observation_localsearch(self, agent_id):
         # return self.env.get_observation_nearest_n(agent_id)
-        return self.env.get_observation_nearest_n(agent_id)
+        return self.env.get_observation_nearest_n_safe(agent_id)
 
 
     def get_observation_changeregion(self, agent_id=0):
