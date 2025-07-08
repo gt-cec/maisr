@@ -764,15 +764,18 @@ class MAISREnvVec(gym.Env):
             print(f'TOTAL INNER STEP REWARD: {total_reward:.4f}')
             print('=== END REWARD DEBUG ===\n')
 
+        if self.num_threats_identified < self.config['max_threat_ids']:
+            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward']
+        else:
+            threat_id_reward = -3 * new_reward['threat_identification'] * self.config['threat_id_reward']
+
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
-                 (new_reward['threat_identification'] * self.config['threat_id_reward']) + \
                  (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
                  threat_potential_reward + \
                  (self.config['shaping_time_penalty']) + \
-                 proximity_penalty + spread_bonus + fail_penalty
-                 ##threat_penalty[0] - threat_penalty[1] + \
+                 proximity_penalty + spread_bonus + fail_penalty + threat_id_reward
 
         return reward
 

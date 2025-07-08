@@ -295,7 +295,7 @@ class TeammateManager:
             risk_tolerance = "low"
             spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "short"
+            planning_horizon = "long"
 
         elif self.overfit_test == "high_risk":
             #print(f'[_create_overfit_test_teammate] Creating high risk teammate')
@@ -303,7 +303,7 @@ class TeammateManager:
             risk_tolerance = "high"
             spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "short"
+            planning_horizon = "long"
 
         ###########################
 
@@ -1029,16 +1029,26 @@ class HeuristicAgent:
         """
         detections = env.num_threats_identified
 
+        should_go = False
         if self.risk_tolerance == "low":
-            return False  # Never choose gotothreat
+            should_go = False
         elif self.risk_tolerance == "medium":
-            return detections == 0
+            should_go = detections == 0
         elif self.risk_tolerance == "high":
-            return detections <= 1
+            should_go = detections <= 1
         elif self.risk_tolerance == "extreme":
-            return detections <= 1
+            should_go = detections <= 1
 
-        return False
+        # Debug logging
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+
+        #if self._debug_counter % 50 == 0:  # Log every 50 calls
+            #print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
+
+        return should_go
 
     def _apply_action_jitter(self, base_subpolicy):
         """Apply directional jitter to the chosen subpolicy"""

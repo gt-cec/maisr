@@ -1032,7 +1032,7 @@ if __name__ == "__main__":
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
-    note = 'R5L'
+    note = 'R5.5L'
 
     # Define hyperparameter sweep
     hyperparams = {
@@ -1048,7 +1048,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests = ["low_risk", "high_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
+    overfit_tests = ["high_risk", "low_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
