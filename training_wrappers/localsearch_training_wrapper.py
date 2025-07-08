@@ -106,7 +106,7 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_action
 
         ############ Stuck detection ############
-        if self.env.config['use_stuck_detection']:
+        if self.env.config['use_stuck_detection'] and self.env.episode_counter >= 500:
             current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
             self.position_history.append(current_pos.copy())
 

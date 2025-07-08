@@ -1038,7 +1038,7 @@ if __name__ == "__main__":
     hyperparams = {
         #"network_size": [128, 196],
         #"num_observed_targets": [5],
-        "entropy_decay_schedule": [True, False],
+        "use_entropy_decay_schedule": [True, False],
         "num_observed_threats":[1,2],
         "use_stuck_detection": [False, True]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
@@ -1060,7 +1060,7 @@ if __name__ == "__main__":
         'network_size': 'modelsize',
         "observe_teammate_direction":"obs-tmt-dir",
         "force_specific_level":"frclvl",
-        "entropy_decay_schedule": "entdcy",
+        "use_entropy_decay_schedule": "entdcy",
         "use_stuck_detection":"stuckdtct"
     }
 
