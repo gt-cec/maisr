@@ -49,7 +49,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
-                 log_freq=2):  # New parameter: log every N steps
+                 log_freq=2):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
@@ -68,6 +68,15 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
         self.switched_to_twoship = False
         self.twoship_switch_threshold = env_config['twoship_switch_threshold']
+
+        # Entropy decay parameters
+        self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
+        self.entropy_decay_enabled = False
+        self.entropy_decay_trigger_threshold = 0.3  # mean_target_ids_per_step threshold
+        self.entropy_decay_steps = 200000  # Decay over 200k steps
+        self.entropy_final_ratio = 0.25  # Final entropy = 25% of original
+        self.entropy_decay_start_step = None
+        self.original_entropy_coeff = None
 
         # Buffer for accumulating data between log events
         self.episode_buffer = {
@@ -107,6 +116,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     if "detections" in info:
                         self.episode_buffer['detections'].append(info["detections"])
 
+
         # Only log episode data at the specified frequency
         if should_log_episode_data and any(len(v) > 0 for v in self.episode_buffer.values()):
             log_data = {}
@@ -116,8 +126,12 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 log_data["train/mean_episode_reward"] = np.mean(self.episode_buffer['rewards'])
                 log_data["train/mean_episode_length"] = np.mean(self.episode_buffer['lengths'])
 
-            if self.episode_buffer['target_ids']: log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
-            if self.episode_buffer['detections']: log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
+            if self.episode_buffer['target_ids']:
+                log_data["train/mean_target_ids"] = np.mean(self.episode_buffer['target_ids'])
+            if self.episode_buffer['threat_ids']:
+                log_data["train/mean_threat_ids"] = np.mean(self.episode_buffer['threat_ids'])
+            if self.episode_buffer['detections']:
+                log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
             if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
@@ -169,13 +183,13 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             threat_ids_list = []
             target_ids_per_step_list = []
             mean_reward, std_reward = 0, 0
+            total_eval_reward = 0
             eval_lengths = []
 
             obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
-
                 done = False
-                ep_reward = 0
+                ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
@@ -184,33 +198,77 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
+
                     ep_reward += reward
+                    # TODO make sure this works
+                    ep_target_ids += info['new_target_ids']
+                    ep_threat_ids += info['new_threat_ids']
 
-                if "target_ids" in info:
-                    target_ids_list.append(info["target_ids"])
-                elif "new_target_ids" in info:
-                    target_ids_list.append(info["new_target_ids"])
-                if "new_threat_ids" in info:
-                    threat_ids_list.append(info["new_threat_ids"])
-                elif "threat_ids" in info:
-                    threat_ids_list.append(info["threat_ids"])
+                    final_info = info
 
-                mean_reward += ep_reward / self.n_eval_episodes
-                eval_lengths.append(info["episode"]["l"])
-                target_ids_per_step_list.append(info["target_ids"] / info["episode"]["l"])
+                ep_length = final_info["episode"]["l"]
+                target_ids_list.append(ep_target_ids)
+                threat_ids_list.append(ep_threat_ids)
 
-            #std_reward = np.std(e) if target_ids_list else 0
+                eval_lengths.append(ep_length)
+                target_ids_per_step_list.append(ep_target_ids / ep_length)
+
+                total_eval_reward += ep_reward
+
+            mean_reward = total_eval_reward / self.n_eval_episodes
 
             # Log evaluation results
             eval_metrics = {
                 "eval/mean_reward": mean_reward,
-                #"misc/std_reward": std_reward,
                 "eval/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
                 "eval/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
+
+            ######################## Entropy decay #####################################################
+            if self.use_entropy_decay_schedule:
+                current_target_ids_per_step = np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0
+
+                if not self.entropy_decay_enabled and current_target_ids_per_step >= self.entropy_decay_trigger_threshold:
+                    print(f'\n{"=" * 60}')
+                    print(f'ENTROPY DECAY TRIGGERED! (step {self.num_timesteps})')
+                    print(f'Target IDs per step ({current_target_ids_per_step:.3f}) exceeded threshold ({self.entropy_decay_trigger_threshold})')
+                    print(f'Starting entropy decay from {self.model.ent_coef} to {self.model.ent_coef * self.entropy_final_ratio} over {self.entropy_decay_steps} steps')
+                    print(f'{"=" * 60}\n')
+
+                    self.entropy_decay_enabled = True
+                    self.entropy_decay_start_step = self.num_timesteps
+                    self.original_entropy_coeff = self.model.ent_coef
+
+                    # Log the trigger
+                    eval_metrics["entropy_decay/triggered"] = True
+                    eval_metrics["entropy_decay/trigger_step"] = self.num_timesteps
+                    eval_metrics["entropy_decay/original_coeff"] = self.original_entropy_coeff
+
+                # Apply entropy decay if enabled
+                if self.entropy_decay_enabled and self.entropy_decay_start_step is not None:
+                    steps_since_trigger = self.num_timesteps - self.entropy_decay_start_step
+                    decay_progress = min(steps_since_trigger / self.entropy_decay_steps, 1.0)
+
+                    # Linear decay from original to final ratio
+                    current_ratio = 1.0 - (decay_progress * (1.0 - self.entropy_final_ratio))
+                    new_entropy_coeff = self.original_entropy_coeff * current_ratio
+
+                    # Update the model's entropy coefficient
+                    self.model.ent_coef = new_entropy_coeff
+
+                    # Log entropy decay metrics
+                    eval_metrics["entropy_decay/current_coeff"] = new_entropy_coeff
+                    eval_metrics["entropy_decay/decay_progress"] = decay_progress
+                    eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
+
+                    if decay_progress >= 1.0:
+                        eval_metrics["entropy_decay/completed"] = True
+
+            # Always log current entropy coefficient
+            eval_metrics["train/current_entropy_coeff"] = self.model.ent_coef
 
 
             #################################### Aircraft switching ####################################
@@ -307,6 +365,14 @@ class EnhancedWandbCallback_MS(BaseCallback):
         self.current_difficulty = 0
         self.above_threshold_counter = 0
 
+        # Entropy decay parameters
+        self.entropy_decay_enabled = False
+        self.entropy_decay_trigger_threshold = 0.3  # mean_target_ids_per_step threshold
+        self.entropy_decay_steps = 200000  # Decay over 200k steps
+        self.entropy_final_ratio = 0.25  # Final entropy = 25% of original
+        self.entropy_decay_start_step = None
+        self.original_entropy_coeff = None
+
         # Buffer for accumulating data between log events
         self.episode_buffer = {
             'rewards': [],
@@ -346,8 +412,8 @@ class EnhancedWandbCallback_MS(BaseCallback):
                     # Log mode selector specific metrics
                     if "threat_ids" in info:
                         self.episode_buffer['threat_ids'].append(info["threat_ids"])
-                    if "new_threat_ids" in info:
-                        self.episode_buffer['threat_ids'].append(info.get("threat_ids", 0))
+                    elif "new_threat_ids" in info:
+                        self.episode_buffer['threat_ids'].append(info["new_threat_ids"])
 
                     # Track policy switches from the wrapper
                     # Note: You'll need to add this to the wrapper's info dict
@@ -499,13 +565,57 @@ class EnhancedWandbCallback_MS(BaseCallback):
                 "eval/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty,
-                ### CLAUDE CHANGED ###
                 "eval/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
                 "eval/mean_policy_switches": np.mean(policy_switches_list) if policy_switches_list else 0,
-                ### CLAUDE CHANGED ###
             }
 
-            # Early stopping logic remains the same
+            ####################################### Entropy Decay ######################################################
+            current_target_ids_per_step = np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0
+
+            if not self.entropy_decay_enabled and current_target_ids_per_step >= self.entropy_decay_trigger_threshold:
+                print(f'\n{"=" * 60}')
+                print(f'ENTROPY DECAY TRIGGERED! (step {self.num_timesteps})')
+                print(
+                    f'Target IDs per step ({current_target_ids_per_step:.3f}) exceeded threshold ({self.entropy_decay_trigger_threshold})')
+                print(
+                    f'Starting entropy decay from {self.model.ent_coef} to {self.model.ent_coef * self.entropy_final_ratio} over {self.entropy_decay_steps} steps')
+                print(f'{"=" * 60}\n')
+
+                self.entropy_decay_enabled = True
+                self.entropy_decay_start_step = self.num_timesteps
+                self.original_entropy_coeff = self.model.ent_coef
+
+                # Log the trigger
+                eval_metrics["entropy_decay/triggered"] = True
+                eval_metrics["entropy_decay/trigger_step"] = self.num_timesteps
+                eval_metrics["entropy_decay/original_coeff"] = self.original_entropy_coeff
+
+            # Apply entropy decay if enabled
+            if self.entropy_decay_enabled and self.entropy_decay_start_step is not None:
+                steps_since_trigger = self.num_timesteps - self.entropy_decay_start_step
+                decay_progress = min(steps_since_trigger / self.entropy_decay_steps, 1.0)
+
+                # Linear decay from original to final ratio
+                current_ratio = 1.0 - (decay_progress * (1.0 - self.entropy_final_ratio))
+                new_entropy_coeff = self.original_entropy_coeff * current_ratio
+
+                # Update the model's entropy coefficient
+                self.model.ent_coef = new_entropy_coeff
+
+                # Log entropy decay metrics
+                eval_metrics["entropy_decay/current_coeff"] = new_entropy_coeff
+                eval_metrics["entropy_decay/decay_progress"] = decay_progress
+                eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
+
+                if decay_progress >= 1.0:
+                    eval_metrics["entropy_decay/completed"] = True
+
+            # Always log current entropy coefficient
+            eval_metrics["train/current_entropy_coeff"] = self.model.ent_coef
+
+            ############################################################################################################
+
+            # Early stopping logic
             current_performance = np.mean(target_ids_list) if target_ids_list else 0
             if current_performance > self.best_eval_performance:
                 self.best_eval_performance = current_performance
@@ -656,6 +766,7 @@ def train_generic(
         log_dir="./logs/",
         machine_name='machine',
         save_model=True,
+        save_checkpoints = False,
         overfit_test=None,
 
 ):
@@ -682,8 +793,8 @@ def train_generic(
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-    os.makedirs(f"{save_dir}/overfit_tests/{run_name}", exist_ok=True)
-    os.makedirs(f"./trained_models/overfit_tests/{run_name}/", exist_ok=True)
+    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
+    #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
 
@@ -803,17 +914,19 @@ def train_generic(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"trained_models/overfit_tests/{run_name}/checkpoints",
+        save_path=f"trained_models/{run_name}/checkpoints",
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
-    wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1,
-                                   model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
+    wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
     if train_type == 'mode_selector':
         enhanced_wandb_callback = EnhancedWandbCallback_MS(env_config, eval_env=eval_env, run=run, log_freq=50)
     elif train_type == 'monolith':
         enhanced_wandb_callback = EnhancedWandbCallback_Monolith(env_config, eval_env=eval_env, run=run, log_freq=50)
 
+    callbacks = [wandb_callback, enhanced_wandb_callback]
+    if save_checkpoints:
+        callbacks.append(checkpoint_callback)
     print('Callbacks created')
 
     ################################################# Setup model #################################################
@@ -847,6 +960,9 @@ def train_generic(
     print('Model instantiated')
     print(model.policy)
 
+    print(f'Initial entropy coefficient: {model.ent_coef}')
+    run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
+
     ################################################# Load checkpoint ##################################################
     if load_path:
         print(f'LOADING FROM {load_path}')
@@ -862,7 +978,7 @@ def train_generic(
 
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
-        callback=[checkpoint_callback, wandb_callback, enhanced_wandb_callback],
+        callback=callbacks,
         reset_num_timesteps=True if load_path else False  # TODO check this
     )
 
@@ -910,18 +1026,19 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/july7_monolith_R4.5.json'
+    config_filename = 'configs/Monolith_R5L_july8.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
-    project_name = 'maisr-rl-lab' #'maisr-rl' if socket.gethostname() in ['DESKTOP-3Q1FTUP', 'isye-ae-2023pc3'] else 'maisr-rl-pace'
-    note = 'R4.5'
+    project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
+    note = 'R5L'
 
     # Define hyperparameter sweep
     hyperparams = {
         "network_size": [128, 196],
         "num_observed_targets": [4, 6],
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
-        "force_specific_level": [4, 99],
+        #"force_specific_level": [99],
+        "entropy_decay_schedule":[True, False]
         #"observe_teammate_direction":[True],
         #'entropy_regularization': [0.07],
         #"teammate_reward_scale": [0.5, 0.75],
@@ -937,7 +1054,8 @@ if __name__ == "__main__":
         'obs_noise': 'noise',
         'network_size': 'modelsize',
         "observe_teammate_direction":"obstmtdir",
-        "force_specific_level":"forcelvl"
+        "force_specific_level":"forcelvl",
+        "entropy_decay_schedule": "entdecay"
     }
 
     ################################################
@@ -976,7 +1094,8 @@ if __name__ == "__main__":
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name=project_name,
-                save_model = True,
+                save_model = False,
+                save_checkpoints = False,
                 overfit_test = overfit_test,
                 save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
             )
