@@ -72,9 +72,10 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
         self.entropy_decay_enabled = False
-        self.entropy_decay_trigger_threshold = 0.3  # mean_target_ids_per_step threshold
-        self.entropy_decay_steps = 200000  # Decay over 200k steps
-        self.entropy_final_ratio = 0.25  # Final entropy = 25% of original
+        self.entropy_decay_trigger_threshold = 0.32  # mean_target_ids_per_step threshold
+        self.entropy_decay_threat_threshold = 0.4 # eval/mean_threat_ids threshold
+        self.entropy_decay_steps = 400000  # Decay over this many steps
+        self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
         self.entropy_decay_start_step = None
         self.original_entropy_coeff = None
 
@@ -230,8 +231,9 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             ######################## Entropy decay #####################################################
             if self.use_entropy_decay_schedule:
                 current_target_ids_per_step = np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0
+                current_threat_ids = np.mean(threat_ids_list) if threat_ids_list else 0
 
-                if not self.entropy_decay_enabled and current_target_ids_per_step >= self.entropy_decay_trigger_threshold:
+                if not self.entropy_decay_enabled and current_target_ids_per_step >= self.entropy_decay_trigger_threshold and current_threat_ids >= self.entropy_decay_threat_threshold:
                     print(f'\n{"=" * 60}')
                     print(f'ENTROPY DECAY TRIGGERED! (step {self.num_timesteps})')
                     print(f'Target IDs per step ({current_target_ids_per_step:.3f}) exceeded threshold ({self.entropy_decay_trigger_threshold})')
@@ -245,7 +247,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     # Log the trigger
                     eval_metrics["entropy_decay/triggered"] = True
                     eval_metrics["entropy_decay/trigger_step"] = self.num_timesteps
-                    eval_metrics["entropy_decay/original_coeff"] = self.original_entropy_coeff
+                    #eval_metrics["entropy_decay/original_coeff"] = self.original_entropy_coeff
 
                 # Apply entropy decay if enabled
                 if self.entropy_decay_enabled and self.entropy_decay_start_step is not None:
@@ -262,7 +264,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     # Log entropy decay metrics
                     eval_metrics["entropy_decay/current_coeff"] = new_entropy_coeff
                     eval_metrics["entropy_decay/decay_progress"] = decay_progress
-                    eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
+                    #eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
 
                     if decay_progress >= 1.0:
                         eval_metrics["entropy_decay/completed"] = True
@@ -934,8 +936,8 @@ def train_generic(
     policy_kwargs = dict(
         activation_fn=torch.nn.Tanh,
         net_arch=dict(
-            pi=[env_config['policy_network_size'], env_config['policy_network_size']],
-            vf=[env_config['value_network_size'], env_config['value_network_size']]
+            pi=[env_config['network_size'], env_config['network_size']],
+            vf=[env_config['network_size'], env_config['network_size']]
         ))
 
     if env_config['algo'] == 'PPO':
@@ -1034,11 +1036,13 @@ if __name__ == "__main__":
 
     # Define hyperparameter sweep
     hyperparams = {
-        "network_size": [128, 196],
-        "num_observed_targets": [4, 6],
+        #"network_size": [128, 196],
+        #"num_observed_targets": [5],
+        "entropy_decay_schedule": [True, False],
+        "num_observed_threats":[1,2],
+        "use_stuck_detection": [False, True]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
         #"force_specific_level": [99],
-        "entropy_decay_schedule":[True, False]
         #"observe_teammate_direction":[True],
         #'entropy_regularization': [0.07],
         #"teammate_reward_scale": [0.5, 0.75],
@@ -1049,13 +1053,15 @@ if __name__ == "__main__":
     param_shorthand = {
         'entropy_regularization': 'entreg',
         'teammate_reward_scale': 'trs',
-        'team_spread_bonus_coeff': 'spreadbonus',
+        'team_spread_bonus_coeff': 'spreadbns',
         'num_observed_targets': 'obstgts',
+        'num_observed_threats':'obstrts',
         'obs_noise': 'noise',
         'network_size': 'modelsize',
-        "observe_teammate_direction":"obstmtdir",
-        "force_specific_level":"forcelvl",
-        "entropy_decay_schedule": "entdecay"
+        "observe_teammate_direction":"obs-tmt-dir",
+        "force_specific_level":"frclvl",
+        "entropy_decay_schedule": "entdcy",
+        "use_stuck_detection":"stuckdtct"
     }
 
     ################################################

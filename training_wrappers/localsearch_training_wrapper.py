@@ -53,6 +53,17 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.current_teammate = None
         self.teammate_subpolicy_choice = 0
 
+        # For detecting stuck agent
+        if self.env.config['use_stuck_detection']:
+            self.position_history = []  # Track recent positions
+            self.history_length = 15  # Number of positions to track
+            self.stuck_threshold = 150  # Pixel distance threshold for being "stuck"
+            self.override_active = False
+            self.override_target_pos = None
+            self.override_arrival_threshold = 25  # Distance to target before giving control back
+            self.last_progress_step = 0
+            self.no_progress_threshold = 7  # Steps without progress before override
+
         #print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
 
 
@@ -64,6 +75,14 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.current_subpolicy = None
 
         self.env.final_wrapper_reward = 0
+
+        # Reset stuck detection variables
+        if self.env.config['use_stuck_detection']:
+            self.position_history = []
+            self.override_active = False
+            self.override_target_pos = None
+            self.last_progress_step = 0
+            self.last_targets_identified = 0
 
         # Reset teammate selection for new episode
         if self.teammate_manager:
@@ -79,13 +98,38 @@ class MaisrLocalSearchWrapper(gym.Env):
 
 
     def step(self, action: np.int32):
-        """ Apply the mode selector's action (Index of selected subpolicy)"""
+        """ Apply the monolith's action (Directional movement))"""
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
             teammate_action = self.get_teammate_action()
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_action
 
+        ############ Stuck detection ############
+        if self.env.config['use_stuck_detection']:
+            current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
+            self.position_history.append(current_pos.copy())
+
+            if len(self.position_history) > self.history_length * 2:
+                self.position_history = self.position_history[-self.history_length:]
+            self.update_progress_tracking()
+
+            # Check for stuck condition and activate override if needed
+            if not self.override_active and self.is_agent_stuck():
+                self.override_target_pos = self.get_nearest_unknown_target()
+                if self.override_target_pos is not None:
+                    self.override_active = True
+                    print(f"Agent stuck detected! Taking control - moving to target at {self.override_target_pos}")
+
+            # Use override action if active
+            if self.override_active:
+                override_action = self.get_override_action()
+                if override_action is not None:
+                    action = override_action
+                    print(f"Override action: {action} (distance to target: {np.linalg.norm(current_pos - self.override_target_pos):.1f})")
+                else: print("Override deactivated")
+
+        ####################################
 
         # Step the environment
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(action)
@@ -515,3 +559,100 @@ class MaisrLocalSearchWrapper(gym.Env):
         num_unknown_targets = np.sum(unknown_mask & same_quadrant_mask) # Count unknown targets in same quadrant
 
         return num_unknown_targets
+
+
+    ############################ Functions for stuck detection ############################
+
+    def is_agent_stuck(self, agent_id=0):
+        """Detect if agent is stuck based on position history"""
+        if len(self.position_history) < self.history_length:
+            return False
+
+        # Get current position
+        current_pos = np.array([
+            self.env.agents[self.env.aircraft_ids[agent_id]].x,
+            self.env.agents[self.env.aircraft_ids[agent_id]].y
+        ])
+
+        # Check if agent hasn't moved much in recent history
+        recent_positions = np.array(self.position_history[-self.history_length:])
+        distances_from_current = np.linalg.norm(recent_positions - current_pos, axis=1)
+
+        # If most recent positions are within stuck_threshold, agent is stuck
+        stuck_positions = np.sum(distances_from_current < self.stuck_threshold)
+        stuck_ratio = stuck_positions / len(distances_from_current)
+
+        # Also check for no progress towards targets
+        steps_since_progress = self.env.step_count_outer - self.last_progress_step
+        no_progress = steps_since_progress > self.no_progress_threshold
+
+        return stuck_ratio > 0.8 or no_progress  # 80% of positions within threshold OR no progress
+
+    def get_nearest_unknown_target(self, agent_id=0):
+        """Find the nearest unknown target position"""
+        agent_pos = np.array([
+            self.env.agents[self.env.aircraft_ids[agent_id]].x,
+            self.env.agents[self.env.aircraft_ids[agent_id]].y
+        ])
+
+        # Get target positions and info levels
+        target_positions = self.env.targets[:, 3:5]  # x,y coordinates
+        target_info_levels = self.env.targets[:, 2]  # info levels
+        unknown_mask = target_info_levels < 1.0
+
+        if not np.any(unknown_mask):
+            return None  # No unknown targets
+
+        unknown_positions = target_positions[unknown_mask]
+        distances = np.linalg.norm(unknown_positions - agent_pos, axis=1)
+        nearest_idx = np.argmin(distances)
+
+        return unknown_positions[nearest_idx]
+
+    def get_override_action(self, agent_id=0):
+        """Get action to move towards override target"""
+        if self.override_target_pos is None:
+            return None
+
+        agent_pos = np.array([
+            self.env.agents[self.env.aircraft_ids[agent_id]].x,
+            self.env.agents[self.env.aircraft_ids[agent_id]].y
+        ])
+
+        # Calculate direction to target
+        direction_vector = self.override_target_pos - agent_pos
+        distance_to_target = np.linalg.norm(direction_vector)
+
+        # Check if we've arrived at target
+        if distance_to_target < self.override_arrival_threshold:
+            self.override_active = False
+            self.override_target_pos = None
+            print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
+            return None
+
+        # Normalize direction and convert to action
+        if distance_to_target > 0:
+            unit_direction = direction_vector / distance_to_target
+
+            # Convert to discrete action (find closest direction)
+            if self.env.config['action_type'] in ['Discrete8', 'Discrete16']:
+                angle = np.arctan2(unit_direction[1], unit_direction[0])
+                # Convert to discrete action (8 or 16 directions)
+                num_directions = 8 if self.env.config['action_type'] == 'Discrete8' else 16
+                action = int(((angle + np.pi) / (2 * np.pi)) * num_directions) % num_directions
+                return action
+            else: # For continuous actions, return normalized direction
+                return unit_direction
+
+        return None
+
+    def update_progress_tracking(self):
+        """Update progress tracking for stuck detection"""
+        # Check if any new targets were identified this step
+        current_identified = self.env.targets_identified
+        if not hasattr(self, 'last_targets_identified'):
+            self.last_targets_identified = current_identified
+
+        if current_identified > self.last_targets_identified:
+            self.last_progress_step = self.env.step_count_outer
+            self.last_targets_identified = current_identified

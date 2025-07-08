@@ -15,7 +15,7 @@
 	"time_to_id": 0,
 	"prob_detect": 0,
 	"action_noise_std": 0,
-	"num_observed_targets": 4,
+	"num_observed_targets": 5,
 	"num_observed_threats": 1,
 	"threat_radius": 30,
 	"max_threat_ids": 2,
@@ -48,8 +48,7 @@
 	"verbose": false,
 	"algo": "PPO",
 	"policy_type": "MLPPolicy",
-	"policy_network_size": 128,
-	"value_network_size": 128,
+	"network_size": 128,
 	"activation_fn": "Tanh",
 	"lr": 0.001,
 	"batch_size": 1024,
@@ -64,7 +63,7 @@
 	"lr_schedule":"none",
 	"clip_range": 0.2,
 
-	"num_timesteps": 7e5,
+	"num_timesteps": 6e5,
 	"save_freq": 2500,
 	"n_eval_episodes": 7,
 	"eval_freq": 1000,
@@ -82,5 +81,7 @@
 
 	"min_target_ids_to_advance": 8,
 	"starting_difficulty": 0,
-	"max_difficulty": 2
+	"max_difficulty": 2,
+
+	"use_stuck_detection": false
 }
