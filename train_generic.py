@@ -1051,7 +1051,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests = ["noisy_actions", "stable_actions", "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", "low_risk", "high_risk",
+    overfit_tests = ["noisy_actions", "stable_actions", "low_risk", "high_risk", "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", ,
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
