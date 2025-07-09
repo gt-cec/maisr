@@ -1032,13 +1032,13 @@ if __name__ == "__main__":
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
-    note = 'R5L'
+    note = 'R5.5L'
 
     # Define hyperparameter sweep
     hyperparams = {
         #"network_size": [128, 196],
         #"num_observed_targets": [5],
-        "entropy_decay_schedule": [True, False],
+        "use_entropy_decay_schedule": [True, False],
         "num_observed_threats":[1,2],
         "use_stuck_detection": [False, True]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
@@ -1048,7 +1048,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests = ["low_risk", "high_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
+    overfit_tests = ["high_risk", "low_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1060,7 +1060,7 @@ if __name__ == "__main__":
         'network_size': 'modelsize',
         "observe_teammate_direction":"obs-tmt-dir",
         "force_specific_level":"frclvl",
-        "entropy_decay_schedule": "entdcy",
+        "use_entropy_decay_schedule": "entdcy",
         "use_stuck_detection":"stuckdtct"
     }
 

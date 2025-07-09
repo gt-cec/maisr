@@ -1,3 +1,5 @@
+import random
+
 import gymnasium as gym
 import numpy as np
 from policies.league_management import TeammateManager, TeammatePolicy
@@ -89,6 +91,7 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.teammate_manager.reset_for_episode()
             self.current_teammate = self.teammate_manager.select_random_teammate()
             print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
+            #print(f"[{self.tag}] Overfit test: {self.teammate_manager.overfit_test}")
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
         else:
@@ -106,7 +109,7 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_action
 
         ############ Stuck detection ############
-        if self.env.config['use_stuck_detection']:
+        if self.env.config['use_stuck_detection'] and self.env.episode_counter >= 500:
             current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
             self.position_history.append(current_pos.copy())
 
@@ -260,6 +263,15 @@ class MaisrLocalSearchWrapper(gym.Env):
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
             if self.teammate_subpolicy_choice == 0:  # Local search
                 direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
+
+                if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
+                    old_direction_to_move = direction_to_move
+                    noise = random.choice([-3, -2, -1, 1, 2, 3])
+                    #print(f'Noise: {noise}')
+                    #print(f'Teammate action: {direction_to_move}')
+                    direction_to_move = (direction_to_move + noise) % 16
+                    #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
+
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 1:  # Change region - NW
@@ -268,6 +280,15 @@ class MaisrLocalSearchWrapper(gym.Env):
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
+
+                if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
+                    old_waypoint_to_go = waypoint_to_go
+                    noise = random.choice([-3, -2, -1, 1, 2, 3])
+                    #print(f'Noise: {noise}')
+                    #print(f'Teammate action: {waypoint_to_go}')
+                    waypoint_to_go = (waypoint_to_go + noise) % 16
+                    #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_waypoint_to_go} + {noise} -> {waypoint_to_go})')
+
                 teammate_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
 
             elif self.teammate_subpolicy_choice == 3:  # Hold at current location
@@ -288,6 +309,15 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_action = self.env._denormalize_waypoint(waypoint_to_go)
             else:
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
+
+        # Add subpolicy noise
+        # if self.teammate_subpolicy_choice in [0, 2] and self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
+        #     old_teammate_action = teammate_action
+        #     noise = random.choice([-2, -1, 1, 2])
+        #     print(f'Noise: {noise}')
+        #     print(f'Teammate action: {teammate_action}')
+        #     teammate_action = (teammate_action + noise) % 16
+        #     print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_teammate_action} + {noise} -> {teammate_action})')
 
         else: # Fallback greedy search
             # Access teammate location

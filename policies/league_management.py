@@ -65,7 +65,7 @@ class TeammateManager:
             raise ValueError(f"balance_method must be one of {valid_balance_methods}")
 
         # Validate overfit_test parameter
-        valid_overfit_tests = [None, "low_risk", "high_risk", "no_coord", "yes_coord", "greedy_planning", "cluster_planning"]
+        valid_overfit_tests = [None, "low_risk", "high_risk", "no_coord", "yes_coord", "greedy_planning", "cluster_planning", "noisy_actions", "stable_actions"]
         if overfit_test not in valid_overfit_tests:
             raise ValueError(f"overfit_test must be one of {valid_overfit_tests}")
 
@@ -84,7 +84,7 @@ class TeammateManager:
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
-            'strategy_diverse': ["stable"]#, "noisy"] # TODO finish noisy action stab
+            'strategy_diverse': ["stable", "noisy"] # TODO finish noisy action stab
         }
         self.planning_horizon_options = {
             'baseline': ["short"],
@@ -138,7 +138,8 @@ class TeammateManager:
             prob = random.random()
             if prob < 0.25:
                 print(f'[_select_uniform_teammate] Creating selfplay teammate')
-                try: return self._create_selfplay_teammate()
+                try:
+                    return self._create_selfplay_teammate()
                 except:
                     print('Could not create selfplay, creating diverse heuristic')
                     return self._create_strategy_diverse_heuristic_teammate()
@@ -294,7 +295,7 @@ class TeammateManager:
             risk_tolerance = "low"
             spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "short"
+            planning_horizon = "long"
 
         elif self.overfit_test == "high_risk":
             #print(f'[_create_overfit_test_teammate] Creating high risk teammate')
@@ -302,7 +303,9 @@ class TeammateManager:
             risk_tolerance = "high"
             spatial_coord = "false"  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "short"
+            planning_horizon = "long"
+
+        ###########################
 
         elif self.overfit_test == "no_coord":
             #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
@@ -320,30 +323,31 @@ class TeammateManager:
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "medium"
 
-        elif self.overfit_test == "short_planning":
-            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-            mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false" # Deprecated
-            action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "short"
+        ###########################
 
-        elif self.overfit_test == "medium_planning":
-            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-            mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false" # Deprecated
-            action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "medium"
-
-        elif self.overfit_test == "long_planning":
-            # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-            mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false" # Deprecated
-            action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "long"
-
+        # elif self.overfit_test == "short_planning":
+        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+        #     mode_selector = "heuristic"
+        #     risk_tolerance = "medium"  # Default risk tolerance
+        #     spatial_coord = "false" # Deprecated
+        #     action_stability = "stable"  # Default for overfit tests
+        #     planning_horizon = "short"
+        #
+        # elif self.overfit_test == "medium_planning":
+        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+        #     mode_selector = "heuristic"
+        #     risk_tolerance = "medium"  # Default risk tolerance
+        #     spatial_coord = "false" # Deprecated
+        #     action_stability = "stable"  # Default for overfit tests
+        #     planning_horizon = "medium"
+        #
+        # elif self.overfit_test == "long_planning":
+        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
+        #     mode_selector = "heuristic"
+        #     risk_tolerance = "medium"  # Default risk tolerance
+        #     spatial_coord = "false" # Deprecated
+        #     action_stability = "stable"  # Default for overfit tests
+        #     planning_horizon = "long"
 
 
         elif self.overfit_test == "greedy_planning":
@@ -354,7 +358,6 @@ class TeammateManager:
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "greedy_planning"
 
-
         elif self.overfit_test == "cluster_planning":
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
@@ -363,7 +366,7 @@ class TeammateManager:
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = 'cluster_planning'
 
-
+        ###########################
 
         elif self.overfit_test == 'noisy_actions':
             #print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
@@ -372,6 +375,7 @@ class TeammateManager:
             spatial_coord = "false"
             planning_horizon = "short"
             action_stability = "noisy"  # Default for overfit tests
+
 
         elif self.overfit_test == 'stable_actions':
             #print(f'[_create_overfit_test_teammate] Creating stable action teammate')
@@ -420,7 +424,6 @@ class TeammateManager:
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
-            action_stability=action_stability
         )
 
         teammate = GenericTeammatePolicy(
@@ -429,7 +432,8 @@ class TeammateManager:
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
+            use_collision_avoidance=False,
+            action_stability=action_stability
         )
 
         teammate.name = f"OverfitTest_{self.overfit_test}_{mode_selector}-MS_{risk_tolerance}-risk_{planning_horizon}-planninghorizon_{action_stability}-stability"
@@ -662,7 +666,8 @@ class TeammateManager:
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
+            use_collision_avoidance=False,
+            action_stability='stable'
         )
 
         teammate.name = "Baseline_Greedy_noMS_lowrisk_nospatialcoord"
@@ -676,6 +681,7 @@ class TeammateManager:
         risk_tolerance = random.choice(self.risk_tolerance_options['vanilla'])
         spatial_coord = random.choice(self.spatial_coord_options['vanilla'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
+        action_stability = random.choice(self.action_stability_options['strategy_diverse'])
 
         if planning_horizon == 'short':
             target_search_policy = self.subpolicies.get('local_search')
@@ -704,7 +710,8 @@ class TeammateManager:
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
+            use_collision_avoidance=False,
+            action_stability=action_stability
         )
 
         teammate.name = f"Vanilla_{mode_selector}MS_norisk_nospatialcoord"
@@ -738,7 +745,7 @@ class TeammateManager:
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
-            action_stability=action_stability,
+
         )
 
         teammate = GenericTeammatePolicy(
@@ -747,7 +754,8 @@ class TeammateManager:
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
+            use_collision_avoidance=False,
+            action_stability=action_stability
         )
 
         teammate.name = f"Diverse_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial_{action_stability}stability"
@@ -880,8 +888,7 @@ class HeuristicAgent:
     def __init__(self,
                  mode_selector="heuristic",
                  risk_tolerance="medium",
-                 spatial_coord="some",
-                 action_stability="stable"):
+                 spatial_coord="some"):
         """
         Initialize the heuristic agent.
 
@@ -906,7 +913,7 @@ class HeuristicAgent:
         self.target_rich_threshold_low = 0.15  # Threshold to STOP considering quadrant target-rich
         self.currently_consider_target_rich = False  # Current state with hysteresis
 
-        self.action_stability = action_stability
+        #self.action_stability = action_stability
 
         # Action stability parameters
         self.jitter_frequency = 0.15  # 15% chance to jitter each step when noisy
@@ -918,8 +925,8 @@ class HeuristicAgent:
         valid_mode_selectors = ["none", "heuristic", "none"]
         valid_stability_levels = ["stable", "noisy"]
 
-        if action_stability not in valid_stability_levels:
-            raise ValueError(f"action_stability must be one of {valid_stability_levels}")
+        # if action_stability not in valid_stability_levels:
+        #     raise ValueError(f"action_stability must be one of {valid_stability_levels}")
         if risk_tolerance not in valid_risk_levels:
             raise ValueError(f"risk_tolerance must be one of {valid_risk_levels}")
         if spatial_coord not in valid_spatial_levels:
@@ -931,12 +938,8 @@ class HeuristicAgent:
         """Choose a subpolicy and potentially apply action jitter"""
         # Get the base subpolicy choice using existing logic
         base_subpolicy = self._choose_base_subpolicy(env, agent_id)
+        return base_subpolicy
 
-        # Apply jitter if action_stability is "noisy"
-        if self.action_stability == "noisy":
-            return self._apply_action_jitter(base_subpolicy)
-        else:
-            return base_subpolicy
 
     def _choose_base_subpolicy(self, env, agent_id=0):
         """
@@ -960,7 +963,6 @@ class HeuristicAgent:
             return 0
 
         # Check if we should choose gotothreat based on risk tolerance and detections
-        detections = env.num_threats_identified
 
         should_go_to_threat = self._should_go_to_threat(env)
         if should_go_to_threat:
@@ -1027,16 +1029,26 @@ class HeuristicAgent:
         """
         detections = env.num_threats_identified
 
+        should_go = False
         if self.risk_tolerance == "low":
-            return False  # Never choose gotothreat
+            should_go = False
         elif self.risk_tolerance == "medium":
-            return detections == 0
+            should_go = detections == 0
         elif self.risk_tolerance == "high":
-            return detections <= 1
+            should_go = detections <= 1
         elif self.risk_tolerance == "extreme":
-            return detections <= 1
+            should_go = detections <= 1
 
-        return False
+        # Debug logging
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+
+        #if self._debug_counter % 50 == 0:  # Log every 50 calls
+            #print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
+
+        return should_go
 
     def _apply_action_jitter(self, base_subpolicy):
         """Apply directional jitter to the chosen subpolicy"""
@@ -1281,11 +1293,13 @@ class GenericTeammatePolicy(TeammatePolicy):
                  change_region_subpolicy: SubPolicy,
                  mode_selector_agent: HeuristicAgent = None,
                  use_collision_avoidance: bool = False,
+                 action_stability='stable'
                  ):
 
         self.env = env
         self.mode_selector_agent = mode_selector_agent
         self.use_collision_avoidance = use_collision_avoidance
+        self.action_stability = action_stability
 
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
@@ -2250,7 +2264,8 @@ class TargetSearchLocalTSP(SubPolicy):
 
         # Predict where teammate will search and filter out those targets
         if self.spatial_coord == 'true':
-            teammate_will_visit = self._predict_teammate_targets(env, agent_id)
+            #teammate_will_visit = self._predict_teammate_targets(env, agent_id)
+            teammate_will_visit = self._predict_teammate_targets_dynamic(env, agent_id)
             filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
         else:
             filtered_targets = nearby_targets
@@ -2575,11 +2590,19 @@ class TargetSearchLocalTSP(SubPolicy):
 
         return route
 
+    def _predict_teammate_targets_dynamic(self, env, agent_id, max_targets_to_predict=6):
+        """
+        Truly dynamic prediction that simulates greedy nearest-neighbor search.
 
+        Key insight: Don't predict the N closest targets to start position.
+        Instead, simulate the teammate's actual search sequence:
+        1. Go to nearest target from current position
+        2. From that target, go to nearest remaining target
+        3. Repeat until done
 
-    def _predict_teammate_targets(self, env, agent_id):
-        """Predict which targets the teammate will likely visit based on greedy search"""
-        if env.config['num_aircraft'] < 2 or len(self.teammate_last_positions) < 2:
+        This accounts for targets becoming closer/farther as teammate moves.
+        """
+        if env.config['num_aircraft'] < 2:
             return set()
 
         teammate_id = 1 if agent_id == 0 else 0
@@ -2588,34 +2611,135 @@ class TargetSearchLocalTSP(SubPolicy):
             env.agents[env.aircraft_ids[teammate_id]].y
         ])
 
-        # Predict teammate movement direction
-        teammate_velocity = np.array([0.0, 0.0])
-        if len(self.teammate_last_positions) >= 2:
-            teammate_velocity = self.teammate_last_positions[-1] - self.teammate_last_positions[-2]
+        # Get all unknown targets
+        unknown_targets = self._get_all_unknown_targets(env)
+        if not unknown_targets:
+            return set()
 
-        # Predict teammate position in the future
-        predicted_pos = teammate_pos + teammate_velocity * self.teammate_prediction_steps
+        # Simulate greedy nearest-neighbor search sequence
+        predicted_targets = []  # Use list to maintain order
+        current_pos = teammate_pos.copy()
+        remaining_targets = [t for t in unknown_targets]  # Copy the list
 
-        # Find targets the teammate is likely to visit (closest targets to predicted position)
-        targets_teammate_will_visit = set()
+        # Simulate the search sequence
+        for step in range(max_targets_to_predict):
+            if not remaining_targets:
+                break
+
+            # Find the nearest target from current position
+            nearest_target = None
+            min_distance = float('inf')
+
+            for target in remaining_targets:
+                distance = np.linalg.norm(target['position'] - current_pos)
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_target = target
+
+            if nearest_target is None:
+                break
+
+            # Add this target to prediction
+            predicted_targets.append(nearest_target['id'])
+
+            # Update current position to this target's location
+            current_pos = nearest_target['position'].copy()
+
+            # Remove this target from remaining targets
+            remaining_targets = [t for t in remaining_targets if t['id'] != nearest_target['id']]
+
+            print(
+                f"[Prediction] Step {step + 1}: Teammate will visit target {nearest_target['id']} at {nearest_target['position']}")
+
+        print(f"[Prediction] Final sequence: {predicted_targets}")
+        return set(predicted_targets)
+
+    def _estimate_teammate_velocity(self):
+        """Estimate teammate's current velocity from position history"""
+        if len(self.teammate_last_positions) < 2:
+            return np.array([0.0, 0.0])
+
+        # Use multiple recent positions for better velocity estimation
+        if len(self.teammate_last_positions) >= 3:
+            # Average velocity over last few steps for smoothing
+            velocities = []
+            for i in range(1, min(4, len(self.teammate_last_positions))):
+                vel = self.teammate_last_positions[-i] - self.teammate_last_positions[-i - 1]
+                velocities.append(vel)
+            return np.mean(velocities, axis=0)
+        else:
+            return self.teammate_last_positions[-1] - self.teammate_last_positions[-2]
+
+    def _get_all_unknown_targets(self, env):
+        """Get all unknown targets in the environment"""
+        targets = []
         target_positions = env.targets[:env.config['num_targets'], 3:5]
         target_info_levels = env.targets[:env.config['num_targets'], 2]
 
-        teammate_target_distances = []
         for i, (pos, info_level) in enumerate(zip(target_positions, target_info_levels)):
             if info_level < 1.0:  # Unknown target
-                distance_to_predicted = np.linalg.norm(pos - predicted_pos)
-                distance_to_current = np.linalg.norm(pos - teammate_pos)
-                teammate_target_distances.append((i, min(distance_to_predicted, distance_to_current)))
+                targets.append({
+                    'id': i,
+                    'position': pos.copy(),
+                })
+        return targets
 
-        # Assume teammate will go for closest 2-3 targets
-        teammate_target_distances.sort(key=lambda x: x[1])
-        max_teammate_targets = min(3, len(teammate_target_distances))
+    def _find_nearest_target(self, current_pos, targets):
+        """Find the nearest target from current position"""
+        if not targets:
+            return None
 
-        for i in range(max_teammate_targets):
-            targets_teammate_will_visit.add(teammate_target_distances[i][0])
+        min_distance = float('inf')
+        nearest_target = None
 
-        return targets_teammate_will_visit
+        for target in targets:
+            distance = np.linalg.norm(target['position'] - current_pos)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_target = target
+
+        return nearest_target
+    #
+    #
+    # def _predict_teammate_targets(self, env, agent_id):
+    #     """Predict which targets the teammate will likely visit based on greedy search"""
+    #     if env.config['num_aircraft'] < 2 or len(self.teammate_last_positions) < 2:
+    #         return set()
+    #
+    #     teammate_id = 1 if agent_id == 0 else 0
+    #     teammate_pos = np.array([
+    #         env.agents[env.aircraft_ids[teammate_id]].x,
+    #         env.agents[env.aircraft_ids[teammate_id]].y
+    #     ])
+    #
+    #     # Predict teammate movement direction
+    #     teammate_velocity = np.array([0.0, 0.0])
+    #     if len(self.teammate_last_positions) >= 2:
+    #         teammate_velocity = self.teammate_last_positions[-1] - self.teammate_last_positions[-2]
+    #
+    #     # Predict teammate position in the future
+    #     predicted_pos = teammate_pos + teammate_velocity * self.teammate_prediction_steps
+    #
+    #     # Find targets the teammate is likely to visit (closest targets to predicted position)
+    #     targets_teammate_will_visit = set()
+    #     target_positions = env.targets[:env.config['num_targets'], 3:5]
+    #     target_info_levels = env.targets[:env.config['num_targets'], 2]
+    #
+    #     teammate_target_distances = []
+    #     for i, (pos, info_level) in enumerate(zip(target_positions, target_info_levels)):
+    #         if info_level < 1.0:  # Unknown target
+    #             distance_to_predicted = np.linalg.norm(pos - predicted_pos)
+    #             distance_to_current = np.linalg.norm(pos - teammate_pos)
+    #             teammate_target_distances.append((i, min(distance_to_predicted, distance_to_current)))
+    #
+    #     # Assume teammate will go for closest 2-3 targets
+    #     teammate_target_distances.sort(key=lambda x: x[1])
+    #     max_teammate_targets = min(8, len(teammate_target_distances))
+    #
+    #     for i in range(max_teammate_targets):
+    #         targets_teammate_will_visit.add(teammate_target_distances[i][0])
+    #
+    #     return targets_teammate_will_visit
 
     def _solve_tsp_exact(self, start_pos, targets):
         """Solve TSP exactly using brute force for small problems"""
