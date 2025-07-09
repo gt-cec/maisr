@@ -691,6 +691,7 @@ class MAISREnvVec(gym.Env):
         #         fail_penalty = -25
         #         self.just_failed = False
 
+
         # Calculate spread-out bonus between aircraft
         spread_bonus = 0
         if self.config['num_aircraft'] >= 2 and self.teammate_active:
@@ -2147,12 +2148,16 @@ class MAISREnvVec(gym.Env):
 
                 else:
                     # Fallback: color by time progression if no subpolicy history
+                    # plt.scatter(agent_x_coords, agent_y_coords, s=15, c=range(len(agent_x_coords)),
+                    #             cmap='Greens', alpha=0.7, marker='o', zorder=3)
+
                     plt.scatter(agent_x_coords, agent_y_coords, s=15, c=range(len(agent_x_coords)),
-                                cmap='Greens', alpha=0.7, marker='o', zorder=3)
+                                cmap='Greens', alpha=0.7, marker='o', zorder=3,
+                                vmin=-len(agent_x_coords) * 0.3, vmax=len(agent_x_coords))
 
             # Plot teammate trajectory
             if teammate_x_coords and teammate_y_coords:
-                plt.plot(teammate_x_coords, teammate_y_coords, 'black', alpha=0.8, linewidth=2, label='Teammate',
+                plt.plot(teammate_x_coords, teammate_y_coords, 'red', alpha=0.8, linewidth=2, label='Teammate',
                          zorder=2)
 
             # Only plot waypoint history for waypoint-based action types
@@ -2206,14 +2211,9 @@ class MAISREnvVec(gym.Env):
                 else:
                     teammate_name = "Unknown Teammate"
 
-            action_type_label = 'direct-control' if self.config['action_type'] == 'direct-control' else self.config['action_type']
-            #plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})'
-            #plt.title(plot_title)
+
             plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})\nTeammate: {teammate_name}'
             plt.title(plot_title, fontsize=10)  # Reduced font size to accommodate longer title
-
-
-
 
             # Create legend with subpolicy colors
             legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.92, 1), fontsize='small')

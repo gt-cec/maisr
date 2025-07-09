@@ -20,6 +20,75 @@ import pickle
 from collections import defaultdict
 
 
+def debug_wrapper_structure(env, use_normalize):
+    """Debug function to understand the wrapper structure and find the correct path to counters"""
+
+    print("\n=== DEBUGGING WRAPPER STRUCTURE ===")
+
+    if use_normalize:
+        print("With VecNormalize:")
+        print(f"env type: {type(env)}")
+
+        if hasattr(env, 'envs'):
+            print(f"env.envs[0] type: {type(env.envs[0])}")
+
+            if hasattr(env.envs[0], 'env'):
+                print(f"env.envs[0].env type: {type(env.envs[0].env)}")
+
+                if hasattr(env.envs[0].env, 'env'):
+                    print(f"env.envs[0].env.env type: {type(env.envs[0].env.env)}")
+
+        # Test different access paths
+        access_paths = [
+            ("env", env),
+            ("env.envs[0]", getattr(env, 'envs', [None])[0] if hasattr(env, 'envs') else None),
+            ("env.envs[0].env", getattr(getattr(env, 'envs', [None])[0], 'env', None) if hasattr(env, 'envs') and len(
+                env.envs) > 0 else None),
+            ("env.envs[0].env.env",
+             getattr(getattr(getattr(env, 'envs', [None])[0], 'env', None), 'env', None) if hasattr(env,
+                                                                                                    'envs') and len(
+                 env.envs) > 0 and hasattr(env.envs[0], 'env') else None)
+        ]
+    else:
+        print("Without VecNormalize:")
+        print(f"env type: {type(env)}")
+
+        if hasattr(env, 'env'):
+            print(f"env.env type: {type(env.env)}")
+
+            if hasattr(env.env, 'env'):
+                print(f"env.env.env type: {type(env.env.env)}")
+
+        # Test different access paths
+        access_paths = [
+            ("env", env),
+            ("env.env", getattr(env, 'env', None)),
+            ("env.env.env", getattr(getattr(env, 'env', None), 'env', None) if hasattr(env, 'env') else None)
+        ]
+
+    print("\nChecking for target/threat counters at each level:")
+    for path_name, obj in access_paths:
+        if obj is None:
+            print(f"{path_name}: None")
+            continue
+
+        has_threats = hasattr(obj, 'num_threats_identified')
+        has_targets = hasattr(obj, 'targets_identified')
+        obj_type = type(obj).__name__
+
+        print(f"{path_name} ({obj_type}): threats={has_threats}, targets={has_targets}")
+
+        if has_threats and has_targets:
+            try:
+                threat_val = getattr(obj, 'num_threats_identified')
+                target_val = getattr(obj, 'targets_identified')
+                print(f"  -> FOUND COUNTERS: threats={threat_val}, targets={target_val}")
+                return obj  # Return the object that has the counters
+            except Exception as e:
+                print(f"  -> Error accessing counters: {e}")
+
+    print("=== END DEBUGGING ===\n")
+    return None
 
 def find_model_files(base_path):
     """Find .zip and .pkl files in the specified directory"""
@@ -212,21 +281,24 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
 
     print(f"\nRunning {num_episodes} episodes for {overfit_type} agent with {behavior_type} behavior...")
 
+    #debug_wrapper_structure(env, use_normalize)
+
     for episode in range(num_episodes):
         if use_normalize:
             obs = env.reset()
         else:
             obs, info = env.reset()
         episode_reward = 0
+        raw_episode_reward = 0
 
         # Initialize tracking variables
         episode_steps = 0
-        if use_normalize:
-            initial_threat_ids = env.envs[0].env.num_threats_identified
-            initial_target_ids = env.envs[0].env.targets_identified
-        else:
-            initial_threat_ids = env.env.num_threats_identified
-            initial_target_ids = env.env.targets_identified
+        # if use_normalize:
+        #     initial_threat_ids = env.envs[0].env.num_threats_identified
+        #     initial_target_ids = env.envs[0].env.targets_identified
+        # else:
+        #     initial_threat_ids = env.env.num_threats_identified
+        #     initial_target_ids = env.env.targets_identified
 
         # Subpolicy tracking
         # subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
@@ -254,6 +326,8 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
 
         done = False
 
+        target_tracker = 0
+        threat_tracker = 0
         while not done:
             # Handle pygame events (minimal for automated testing)
             if render:
@@ -298,12 +372,29 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
             if use_normalize:
                 obses, rewards, dones, infos = env.step([action])
                 obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
+                try:
+                    env.render()
+                except:
+                    pass
+
+                raw_reward = env.envs[0].env.ep_reward
             else:
                 obs, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
+                raw_reward = reward
+                try:
+                    env.render()
+                except:
+                    pass
 
             episode_reward += reward
+            raw_episode_reward += raw_reward
             episode_steps += 1
+
+            if 'new_target_ids' in info:
+                target_tracker += info['new_target_ids']
+            if 'new_threat_ids' in info:
+                threat_tracker += info['new_threat_ids']
 
             # Track position and distance
             if use_normalize:
@@ -354,15 +445,10 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
         episode_end_time = pygame.time.get_ticks()
         episode_duration_ms = episode_end_time - episode_start_time
 
-        # Calculate final counts
-        if use_normalize:
-            final_threat_ids = env.envs[0].env.num_threats_identified
-            final_target_ids = env.envs[0].env.targets_identified
-        else:
-            final_threat_ids = env.env.num_threats_identified
-            final_target_ids = env.env.targets_identified
-        threat_ids_gained = final_threat_ids - initial_threat_ids
-        target_ids_gained = final_target_ids - initial_target_ids
+        threat_ids_gained = threat_tracker# - initial_threat_ids
+        target_ids_gained = target_tracker# - initial_target_ids
+
+        print(f'[DEBUG] In test suite, threat ids gained = {threat_ids_gained}, target_ids = {target_ids_gained}, reward = {episode_reward}')
 
         # Calculate average teammate distance
         avg_teammate_distance = 0
@@ -432,8 +518,8 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
                 'termination_reason': 'success' if env.envs[0].env.all_targets_identified else 'failed' if env.envs[0].env.failed else 'timeout',
 
                 # Environment state
-                'final_threat_count': final_threat_ids,
-                'final_target_count': final_target_ids,
+                'final_threat_count': threat_ids_gained,
+                'final_target_count': target_ids_gained,
                 'num_targets_total': env.envs[0].env.config['num_targets'],
                 'num_threats_total': env.envs[0].env.config['num_threats'],
                 'gameboard_size': env.envs[0].env.config['gameboard_size'],
@@ -494,8 +580,8 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
                 'failed' if env.env.failed else 'timeout',
 
                 # Environment state
-                'final_threat_count': final_threat_ids,
-                'final_target_count': final_target_ids,
+                'final_threat_count': threat_ids_gained,
+                'final_target_count': target_ids_gained,
                 'num_targets_total': env.env.config['num_targets'],
                 'num_threats_total': env.env.config['num_threats'],
                 'gameboard_size': env.env.config['gameboard_size'],
@@ -798,6 +884,7 @@ if __name__ == "__main__":
         clock = pygame.time.Clock()
         ctypes.windll.user32.SetProcessDPIAware()
         window_width, window_height = config['window_size'][0], config['window_size'][1]
+        config['teammate_active_at_start'] = True
         config['tick_rate'] = tick_rate
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Overfit Testing")
@@ -909,6 +996,9 @@ if __name__ == "__main__":
 
             env = DummyVecEnv([lambda: env])
             env = VecNormalize.load(norm_stats_path, env)
+            env.training = False
+            env.norm_reward = False
+
             print(f'Loaded norm stats from {norm_stats_path}')
             env.training = False
             env.norm_Reward = False

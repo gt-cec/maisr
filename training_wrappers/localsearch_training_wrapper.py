@@ -90,7 +90,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         if self.teammate_manager:
             self.teammate_manager.reset_for_episode()
             self.current_teammate = self.teammate_manager.select_random_teammate()
-            print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
+            #print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
             #print(f"[{self.tag}] Overfit test: {self.teammate_manager.overfit_test}")
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
