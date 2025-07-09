@@ -4,10 +4,11 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
+from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
 from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
-    EvadeDetection, TeammateManager, HeuristicAgent
+    EvadeDetection, TeammateManager, HeuristicAgent, TargetSearchLocalTSP
 import json
 import datetime
 import math
@@ -18,6 +19,32 @@ import os
 import pickle
 from collections import defaultdict
 
+
+
+def find_model_files(base_path):
+    """Find .zip and .pkl files in the specified directory"""
+    import glob
+
+    if not os.path.exists(base_path):
+        raise FileNotFoundError(f"Directory not found: {base_path}")
+
+    # Find .zip file (model)
+    zip_files = glob.glob(os.path.join(base_path, "*.zip"))
+    if not zip_files:
+        raise FileNotFoundError(f"No .zip model file found in {base_path}")
+    if len(zip_files) > 1:
+        print(f"Warning: Multiple .zip files found in {base_path}, using first one: {zip_files[0]}")
+    model_path = zip_files[0]
+
+    # Find .pkl file (normalization stats)
+    pkl_files = glob.glob(os.path.join(base_path, "*.pkl"))
+    if not pkl_files:
+        raise FileNotFoundError(f"No .pkl normalization stats file found in {base_path}")
+    if len(pkl_files) > 1:
+        print(f"Warning: Multiple .pkl files found in {base_path}, using first one: {pkl_files[0]}")
+    norm_stats_path = pkl_files[0]
+
+    return model_path, norm_stats_path
 
 def calculate_spatial_coverage(positions, gameboard_size):
     """Calculate what percentage of the map was visited"""
@@ -64,7 +91,9 @@ def get_counter_overfit_type(overfit_type):
         'low_risk': 'high_risk',
         'high_risk': 'low_risk',
         'nospatial': 'highspatial',
-        'highspatial': 'nospatial'
+        'highspatial': 'nospatial',
+        'noisy_actions': 'stable_actions',
+        'stable_actions': 'noisy_actions'
     }
     return counter_mapping[overfit_type]
 
@@ -74,25 +103,79 @@ def create_overfit_agent(overfit_type, subpolicies):
     if overfit_type == "low_risk":
         mode_selector = "heuristic"
         risk_tolerance = "low"
-        spatial_coord = "some"
+        spatial_coord = "false"  # Default spatial coordination
+        action_stability = "stable"  # Default for overfit tests
+        planning_horizon = "long"
 
     elif overfit_type == "high_risk":
         mode_selector = "heuristic"
         risk_tolerance = "high"
-        spatial_coord = "some"
+        spatial_coord = "false"  # Default spatial coordination
+        action_stability = "stable"  # Default for overfit tests
+        planning_horizon = "long"
 
     elif overfit_type == "nospatial":
         mode_selector = "heuristic"
         risk_tolerance = "medium"
+        planning_horizon = "short"
+        action_stability = "stable"  # Default for overfit tests
         spatial_coord = "none"
 
     elif overfit_type == "highspatial":
         mode_selector = "heuristic"
         risk_tolerance = "medium"
+        planning_horizon = "short"
+        action_stability = "stable"  # Default for overfit tests
         spatial_coord = "high"
+
+    elif overfit_type == 'noisy_actions':
+        mode_selector = "heuristic"
+        risk_tolerance = "medium"  # Default risk tolerance
+        spatial_coord = "false"
+        planning_horizon = "short"
+        action_stability = "noisy"  # Default for overfit tests
+
+    elif overfit_type == 'stable_actions':
+        mode_selector = "heuristic"
+        risk_tolerance = "medium"  # Default risk tolerance
+        spatial_coord = "false"
+        planning_horizon = "short"
+        action_stability = "stable"  # Default for overfit tests
 
     else:
         raise ValueError(f"Unknown overfit_type: {overfit_type}")
+
+    if planning_horizon == 'cluster_planning':
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=False,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method='clusters'
+        )
+    elif planning_horizon == 'greedy_planning':
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=False,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method='greedy'
+        )
+
+    elif planning_horizon == 'short':
+        target_search_policy = subpolicies.get('local_search')
+    elif planning_horizon == 'medium':
+        if spatial_coord == 'true':
+            target_search_policy = subpolicies.get('local_tsp_yescoord')
+        else:
+            target_search_policy = subpolicies.get('local_tsp_nocoord')
+    elif planning_horizon == 'long':
+        if spatial_coord == 'true':
+            target_search_policy = subpolicies.get('global_tsp_yescoord')
+        else:
+            target_search_policy = subpolicies.get('global_tsp_nocoord')
+    else:
+        raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
     heuristic_agent = HeuristicAgent(
         mode_selector=mode_selector,
@@ -100,17 +183,27 @@ def create_overfit_agent(overfit_type, subpolicies):
         spatial_coord=spatial_coord
     )
 
-    agent = GenericTeammatePolicy(
+    # agent = GenericTeammatePolicy(
+    #     env=None,
+    #     local_search_policy=subpolicies.get('local_search'),
+    #     go_to_highvalue_policy=subpolicies.get('go_to_threat'),
+    #     change_region_subpolicy=subpolicies.get('change_region'),
+    #     mode_selector_agent=heuristic_agent,
+    #     use_collision_avoidance=False
+    # )
+
+    teammate = GenericTeammatePolicy(
         env=None,
-        local_search_policy=subpolicies.get('local_search'),
+        local_search_policy=target_search_policy,
         go_to_highvalue_policy=subpolicies.get('go_to_threat'),
         change_region_subpolicy=subpolicies.get('change_region'),
         mode_selector_agent=heuristic_agent,
-        use_collision_avoidance=False
+        use_collision_avoidance=False,
+        action_stability=action_stability
     )
 
-    agent.name = f"OverfitAgent_{overfit_type}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
-    return agent
+    teammate.name = f"OverfitTeammate_{overfit_type}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
+    return teammate
 
 
 def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use_normalize):
@@ -136,15 +229,15 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
             initial_target_ids = env.env.targets_identified
 
         # Subpolicy tracking
-        subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
-        subpolicy_switches = 0
-        last_action = None
-        subpolicy_sequence = []
-
-        # Teammate tracking
-        teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
-        teammate_switches = 0
-        last_teammate_action = None
+        # subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
+        # subpolicy_switches = 0
+        # last_action = None
+        # subpolicy_sequence = []
+        #
+        # # Teammate tracking
+        # teammate_subpolicy_usage = {0: 0, 1: 0, 2: 0, 3: 0, 4:0, 5:0, 6:0, 7:0}
+        # teammate_switches = 0
+        # last_teammate_action = None
 
         # Performance tracking
         detection_events = []
@@ -179,27 +272,27 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
             action, _ = agent.predict(obs, deterministic=True)
 
             # Track subpolicy usage
-            subpolicy_usage[int(action)] += 1
-            subpolicy_sequence.append(int(action))
-            if last_action is not None and last_action != action:
-                subpolicy_switches += 1
-            last_action = action
+            # subpolicy_usage[int(action)] += 1
+            # subpolicy_sequence.append(int(action))
+            # if last_action is not None and last_action != action:
+            #     subpolicy_switches += 1
+            # last_action = action
 
-            # Track teammate behavior
-            if use_normalize:
-                if env.envs[0].env.config['num_aircraft'] == 2:
-                    ai_subpolicy_id, ai_subpolicy_name = env.envs[0].get_teammate_subpolicy_info()
-                    teammate_subpolicy_usage[ai_subpolicy_id] += 1
-                    if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-                        teammate_switches += 1
-                    last_teammate_action = ai_subpolicy_id
-            else:
-                if env.env.config['num_aircraft'] == 2:
-                    ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
-                    teammate_subpolicy_usage[ai_subpolicy_id] += 1
-                    if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-                        teammate_switches += 1
-                    last_teammate_action = ai_subpolicy_id
+            # # Track teammate behavior
+            # if use_normalize:
+            #     if env.envs[0].env.config['num_aircraft'] == 2:
+            #         ai_subpolicy_id, ai_subpolicy_name = env.envs[0].get_teammate_subpolicy_info()
+            #         teammate_subpolicy_usage[ai_subpolicy_id] += 1
+            #         if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+            #             teammate_switches += 1
+            #         last_teammate_action = ai_subpolicy_id
+            # else:
+            #     if env.env.config['num_aircraft'] == 2:
+            #         ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
+            #         teammate_subpolicy_usage[ai_subpolicy_id] += 1
+            #         if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
+            #             teammate_switches += 1
+            #         last_teammate_action = ai_subpolicy_id
 
             # Take step
             if use_normalize:
@@ -301,18 +394,18 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
                 'behavior_type': behavior_type,
 
                 # Subpolicy analytics
-                'subpolicy_usage': subpolicy_usage.copy(),
-                'subpolicy_switches': subpolicy_switches,
-                'subpolicy_percentages': {
-                    k: (v / episode_steps * 100) if episode_steps > 0 else 0
-                    for k, v in subpolicy_usage.items()
-                },
-                'subpolicy_sequence': subpolicy_sequence.copy(),
+                #'subpolicy_usage': subpolicy_usage.copy(),
+                #'subpolicy_switches': subpolicy_switches,
+                # 'subpolicy_percentages': {
+                #     k: (v / episode_steps * 100) if episode_steps > 0 else 0
+                #     for k, v in subpolicy_usage.items()
+                # },
+                # 'subpolicy_sequence': subpolicy_sequence.copy(),
 
                 # Teammate analytics
-                'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
-                'teammate_switches': teammate_switches,
-                'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+                # 'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
+                # 'teammate_switches': teammate_switches,
+                # 'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
                 'positions_visited': positions_visited,
                 'teammate_positions_visited': teammate_positions_visited,
 
@@ -362,18 +455,18 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
                 'behavior_type': behavior_type,
 
                 # Subpolicy analytics
-                'subpolicy_usage': subpolicy_usage.copy(),
-                'subpolicy_switches': subpolicy_switches,
-                'subpolicy_percentages': {
-                    k: (v / episode_steps * 100) if episode_steps > 0 else 0
-                    for k, v in subpolicy_usage.items()
-                },
-                'subpolicy_sequence': subpolicy_sequence.copy(),
+                # 'subpolicy_usage': subpolicy_usage.copy(),
+                # 'subpolicy_switches': subpolicy_switches,
+                # 'subpolicy_percentages': {
+                #     k: (v / episode_steps * 100) if episode_steps > 0 else 0
+                #     for k, v in subpolicy_usage.items()
+                # },
+                # 'subpolicy_sequence': subpolicy_sequence.copy(),
 
                 # Teammate analytics
-                'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
-                'teammate_switches': teammate_switches,
-                'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
+                # 'teammate_subpolicy_usage': teammate_subpolicy_usage.copy(),
+                # 'teammate_switches': teammate_switches,
+                # 'coordination_score': calculate_coordination_score(subpolicy_sequence, teammate_subpolicy_usage),
                 'positions_visited': positions_visited,
                 'teammate_positions_visited': teammate_positions_visited,
 
@@ -456,7 +549,7 @@ def create_comparison_plots(all_results, timestamp):
     fig, axes = plt.subplots(3, 3, figsize=(20, 16))
     fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
 
-    overfit_types = ['nospatial', 'highspatial'] # 'low_risk', 'high_risk'
+    overfit_types = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions'] # 'low_risk', 'high_risk'
     behavior_types = ['aligned', 'counter']
 
     metrics = ['reward', 'target_ids', 'avg_teammate_distance', 'steps', 'efficiency_score',
@@ -659,8 +752,9 @@ def convert_to_json_serializable(obj):
 
 
 if __name__ == "__main__":
+    print(f'Beginning main')
     # Configuration
-    config_filename = 'configs/july1_MS_overfitv10.json'
+    config_filename = 'configs/Monolith_R6H_july8.json'
     num_episodes = 50
     tick_rate = 120
     use_normalize = True
@@ -670,22 +764,29 @@ if __name__ == "__main__":
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Test configuration
-    overfit_agents = ['nospatial', 'highspatial'] # 'low_risk', 'high_risk',
+    overfit_agents = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions'] # # 'nospatial', 'highspatial'
     behavior_types = ['aligned', 'counter']
 
-    model_path_dict = {
-        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__262080_steps.zip',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__262080_steps.zip',
-        'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__262080_steps.zip',
-        'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__262080_steps.zip'
+    model_and_stats_paths = {
+        'low_risk': './R6H_saved/R6H_lowrisk',
+        'high_risk': './R6H_saved/R6H_highrisk',
+        'noisy_actions': './R6H_saved/R6H_noisy',
+        'stable_actions': './R6H_saved/R6H_stable'
     }
 
-    norm_stats_path_dict = {
-        'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__vecnormalize_262080_steps.pkl',
-        'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__vecnormalize_262080_steps.pkl',
-        'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__vecnormalize_262080_steps.pkl',
-        'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__vecnormalize_262080_steps.pkl'
-    }
+    # model_path_dict = {
+    #     'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__262080_steps.zip',
+    #     'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__262080_steps.zip',
+    #     'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__262080_steps.zip',
+    #     'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__262080_steps.zip'
+    # }
+    #
+    # norm_stats_path_dict = {
+    #     'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__vecnormalize_262080_steps.pkl',
+    #     'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__vecnormalize_262080_steps.pkl',
+    #     'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__vecnormalize_262080_steps.pkl',
+    #     'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__vecnormalize_262080_steps.pkl'
+    # }
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
@@ -722,7 +823,11 @@ if __name__ == "__main__":
     subpolicies = {
         'local_search': LocalSearch(model_path=None),
         'change_region': ChangeRegions(model_path=None),
-        'go_to_threat': GoToNearestThreat(model_path=None)
+        'go_to_threat': GoToNearestThreat(model_path=None),
+        'local_tsp_nocoord': TargetSearchLocalTSP(search_radius=200),
+        'global_tsp_nocoord': TargetSearchLocalTSP(search_radius=1000),
+        'local_tsp_yescoord': TargetSearchLocalTSP(search_radius=200, spatial_coord=True),
+        'global_tsp_yescoord': TargetSearchLocalTSP(search_radius=1000, spatial_coord=True)
     }
 
     # Storage for all results
@@ -751,7 +856,9 @@ if __name__ == "__main__":
         all_episode_data[overfit_type] = {}
 
         # Load the agent for this type
-        model_path = model_path_dict[overfit_type]
+        base_path = model_and_stats_paths[overfit_type]
+        model_path, norm_stats_path = find_model_files(base_path)
+        #model_path = model_path_dict[overfit_type]
         agent = model = PPO.load(model_path)
 
         for behavior_type in behavior_types:
@@ -766,27 +873,43 @@ if __name__ == "__main__":
             print(f"Testing Agent overfit to: {overfit_type}")
             print(f"Teammate type: {teammate_overfit_type}")
 
-            # Create environment with appropriate teammate manager
-            env = MaisrModeSelectorWrapper(
-                base_env,
-                local_search_policy=LocalSearch(model_path=localsearch_model_path, norm_stats_filepath=localsearch_normstats_path),
-                go_to_highvalue_policy=GoToNearestThreat(model_path=None),
-                change_region_subpolicy=ChangeRegions(model_path=None),
-                evade_policy=EvadeDetection(model_path=None),
-                teammate_manager=TeammateManager(
+            local_search_policy = LocalSearch()
+            go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+            change_region_subpolicy = ChangeRegions(model_path=None)
+            evade_policy = None
+
+            teammate_manager = TeammateManager(
                     league_type='vanilla',
                     balance_method='uniform',
                     selfplay_checkpoint_dir=None,
                     pretrained_teammate_dir=None,
                     subpolicies=subpolicies,
-                    overfit_test=teammate_overfit_type
-                )
+                    overfit_test=teammate_overfit_type)
+
+            # Create environment with appropriate teammate manager
+
+            env = MaisrLocalSearchWrapper(
+                base_env,
+                config['obs_noise_std_localsearch'],
+                local_search_policy,
+                go_to_highvalue_policy,
+                change_region_subpolicy,
+                evade_policy,
+                teammate_manager=teammate_manager
             )
+
+            # env = MaisrLocalSearchWrapper(
+            #     base_env,
+            #     local_search_policy=LocalSearch(model_path=localsearch_model_path, norm_stats_filepath=localsearch_normstats_path),
+            #     go_to_highvalue_policy=GoToNearestThreat(model_path=None),
+            #     change_region_subpolicy=ChangeRegions(model_path=None),
+            #     evade_policy=EvadeDetection(model_path=None),
+            #     teammate_manager=teammate_manager
+            # )
+
             env = DummyVecEnv([lambda: env])
-            env = VecNormalize.load(
-                norm_stats_path_dict[overfit_type],
-                env)
-            print(f'Loaded norm stats from {norm_stats_path_dict[overfit_type]}')
+            env = VecNormalize.load(norm_stats_path, env)
+            print(f'Loaded norm stats from {norm_stats_path}')
             env.training = False
             env.norm_Reward = False
 
