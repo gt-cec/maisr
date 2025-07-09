@@ -686,10 +686,10 @@ class MAISREnvVec(gym.Env):
         max_bonus_distance = self.config["team_max_bonus_distance"]  # Distance for maximum bonus
 
         fail_penalty = 0
-        if self.failed:
-            if self.just_failed:
-                fail_penalty = -25
-                self.just_failed = False
+        # if self.failed:
+        #     if self.just_failed:
+        #         fail_penalty = -25
+        #         self.just_failed = False
 
         # Calculate spread-out bonus between aircraft
         spread_bonus = 0
@@ -716,7 +716,7 @@ class MAISREnvVec(gym.Env):
             if distance < min_distance: # Penalty increases as aircraft get closer
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
-        if self.num_threats_identified < self.config['max_threat_ids']:
+        if self.num_threats_identified < self.config['max_threat_ids'] + 1:
             threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
         else:
             threat_potential_reward = 0#- 0.25 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
@@ -764,7 +764,7 @@ class MAISREnvVec(gym.Env):
             print(f'TOTAL INNER STEP REWARD: {total_reward:.4f}')
             print('=== END REWARD DEBUG ===\n')
 
-        if self.num_threats_identified < self.config['max_threat_ids']:
+        if self.num_threats_identified < self.config['max_threat_ids'] + 1:
             threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward']
         else:
             threat_id_reward = -3 * new_reward['threat_identification'] * self.config['threat_id_reward']

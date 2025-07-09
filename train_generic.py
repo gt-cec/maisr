@@ -1028,19 +1028,22 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/Monolith_R5L_july8.json'
+    config_filename = 'configs/Monolith_R6H_july8.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
-    note = 'R5.5L'
+    machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
+    note = 'R6' + machine[0].upper()
 
     # Define hyperparameter sweep
     hyperparams = {
         #"network_size": [128, 196],
         #"num_observed_targets": [5],
-        "use_entropy_decay_schedule": [True, False],
-        "num_observed_threats":[1,2],
-        "use_stuck_detection": [False, True]
+        #"use_entropy_decay_schedule": [True, False],
+        #"num_observed_threats":[1],
+        #"use_stuck_detection": [False, True],
+        "network_size":[128],
+        #"lr": [0.001, 0.0015]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
         #"force_specific_level": [99],
         #"observe_teammate_direction":[True],
@@ -1048,7 +1051,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests = ["high_risk", "low_risk"]  # , "greedy_planning", "cluster_planning", "high_risk", "low_risk"]:
+    overfit_tests = ["noisy_actions", "stable_actions", "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", "low_risk", "high_risk",
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1060,8 +1063,9 @@ if __name__ == "__main__":
         'network_size': 'modelsize',
         "observe_teammate_direction":"obs-tmt-dir",
         "force_specific_level":"frclvl",
-        "use_entropy_decay_schedule": "entdcy",
-        "use_stuck_detection":"stuckdtct"
+        "entropy_decay_schedule": "entdcy",
+        "use_stuck_detection":"stuckdtct",
+        "lr":"lr"
     }
 
     ################################################
@@ -1100,8 +1104,8 @@ if __name__ == "__main__":
                 load_path=load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name=project_name,
-                save_model = False,
-                save_checkpoints = False,
+                save_model = True,
+                save_checkpoints = True,
                 overfit_test = overfit_test,
                 save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
             )
