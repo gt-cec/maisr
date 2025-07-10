@@ -718,9 +718,9 @@ class MAISREnvVec(gym.Env):
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
         if self.num_threats_identified < self.config['max_threat_ids'] + 1:
-            threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+            threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
         else:
-            threat_potential_reward = 0#- 0.25 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+            threat_potential_reward = - 0.05 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
 
         # Add debugging print statements
         if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
@@ -766,7 +766,7 @@ class MAISREnvVec(gym.Env):
             print('=== END REWARD DEBUG ===\n')
 
         if self.num_threats_identified < self.config['max_threat_ids'] + 1:
-            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward']
+            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward'] * self.config['threat_reward_scaling']
         else:
             threat_id_reward = -3 * new_reward['threat_identification'] * self.config['threat_id_reward']
 
@@ -2157,7 +2157,7 @@ class MAISREnvVec(gym.Env):
 
             # Plot teammate trajectory
             if teammate_x_coords and teammate_y_coords:
-                plt.plot(teammate_x_coords, teammate_y_coords, 'red', alpha=0.8, linewidth=2, label='Teammate',
+                plt.plot(teammate_x_coords, teammate_y_coords, 'blue', alpha=0.8, linewidth=2, label='Teammate',
                          zorder=2)
 
             # Only plot waypoint history for waypoint-based action types

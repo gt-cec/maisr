@@ -74,7 +74,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.entropy_decay_enabled = False
         self.entropy_decay_trigger_threshold = 0.32  # mean_target_ids_per_step threshold
         self.entropy_decay_threat_threshold = 0.4 # eval/mean_threat_ids threshold
-        self.entropy_decay_steps = 400000  # Decay over this many steps
+        self.entropy_decay_steps = 1e6  # Decay over this many steps
         self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
         self.entropy_decay_start_step = None
         self.original_entropy_coeff = None
@@ -1028,12 +1028,12 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/Monolith_R6H_july8.json'
+    config_filename = 'configs/Monolith_R7H_july9.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
-    note = 'R6' + machine[0].upper()
+    note = 'R7' + machine[0].upper()
 
     # Define hyperparameter sweep
     hyperparams = {
@@ -1042,7 +1042,10 @@ if __name__ == "__main__":
         #"use_entropy_decay_schedule": [True, False],
         #"num_observed_threats":[1],
         #"use_stuck_detection": [False, True],
-        "network_size":[128],
+        'max_steps':[1500, 1800],
+        'threat_reward_scaling':[1,1.5],
+        'shaping_coeff_earlyfinish':[0.07]
+        #"network_size":[128],
         #"lr": [0.001, 0.0015]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
         #"force_specific_level": [99],
@@ -1051,7 +1054,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests = ["noisy_actions", "stable_actions", "low_risk", "high_risk", "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", ,
+    overfit_tests =  ["low_risk", "high_risk"] #["noisy_actions", "stable_actions", , "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", ,
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1065,7 +1068,10 @@ if __name__ == "__main__":
         "force_specific_level":"frclvl",
         "entropy_decay_schedule": "entdcy",
         "use_stuck_detection":"stuckdtct",
-        "lr":"lr"
+        "lr":"lr",
+        "max_steps":'mxstps',
+        'threat_reward_scaling':'thrtrwdscl',
+        'shaping_coeff_earlyfinish':'erlyfnsh'
     }
 
     ################################################
