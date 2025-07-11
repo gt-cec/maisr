@@ -560,7 +560,7 @@ class MAISREnvVec(gym.Env):
 
                     # Check if threat should be identified (10+ consecutive steps in range)
                     # Any aircraft can identify a threat
-                    if self.threat_timers[aircraft_idx, threat_idx] >= 10 and not self.threat_identified[threat_idx]:
+                    if self.threat_timers[aircraft_idx, threat_idx] >= self.config['time_to_id'] and not self.threat_identified[threat_idx]:
                         self.threat_identified[threat_idx] = True
                         self.num_threats_identified += 1
 
@@ -717,7 +717,7 @@ class MAISREnvVec(gym.Env):
             if distance < min_distance: # Penalty increases as aircraft get closer
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
-        if self.num_threats_identified < self.config['max_threat_ids'] + 1:
+        if self.num_threats_identified < self.config['max_threat_ids']:
             threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
         else:
             threat_potential_reward = - 0.05 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
@@ -765,7 +765,7 @@ class MAISREnvVec(gym.Env):
             print(f'TOTAL INNER STEP REWARD: {total_reward:.4f}')
             print('=== END REWARD DEBUG ===\n')
 
-        if self.num_threats_identified < self.config['max_threat_ids'] + 1:
+        if self.num_threats_identified <= self.config['max_threat_ids']:
             threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward'] * self.config['threat_reward_scaling']
         else:
             threat_id_reward = -3 * new_reward['threat_identification'] * self.config['threat_id_reward']
@@ -809,15 +809,22 @@ class MAISREnvVec(gym.Env):
 
 
         threat_positions = self.threats
-        threat_info_levels = self.threat_identified
-        unidentified_threat_mask = threat_info_levels < 1.0
+        #threat_info_levels = self.threat_identified
+        #unidentified_threat_mask = threat_info_levels == False
+        #unidentified_threat_mask = threat_info_levels < 1.0
+
+        unidentified_threat_mask = ~self.threat_identified
+        #print(f"Unidentified threat mask: {unidentified_threat_mask}")
 
         if not np.any(unidentified_threat_mask):  # No unidentified targets remaining
             nearest_threat_distance = 0
+            #print("All threats identified.")
         else:
             unidentified_threat_positions = threat_positions[unidentified_threat_mask]
             threat_distances = np.sqrt(np.sum((unidentified_threat_positions - agent_pos) ** 2, axis=1))
             nearest_threat_distance = np.min(threat_distances)
+         #   print(f"Distances to unidentified threats: {threat_distances}")
+         #   print(f"Nearest unidentified threat distance: {nearest_threat_distance}")
 
         return -nearest_target_distance, -nearest_threat_distance
 

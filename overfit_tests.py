@@ -19,77 +19,6 @@ import os
 import pickle
 from collections import defaultdict
 
-
-def debug_wrapper_structure(env, use_normalize):
-    """Debug function to understand the wrapper structure and find the correct path to counters"""
-
-    print("\n=== DEBUGGING WRAPPER STRUCTURE ===")
-
-    if use_normalize:
-        print("With VecNormalize:")
-        print(f"env type: {type(env)}")
-
-        if hasattr(env, 'envs'):
-            print(f"env.envs[0] type: {type(env.envs[0])}")
-
-            if hasattr(env.envs[0], 'env'):
-                print(f"env.envs[0].env type: {type(env.envs[0].env)}")
-
-                if hasattr(env.envs[0].env, 'env'):
-                    print(f"env.envs[0].env.env type: {type(env.envs[0].env.env)}")
-
-        # Test different access paths
-        access_paths = [
-            ("env", env),
-            ("env.envs[0]", getattr(env, 'envs', [None])[0] if hasattr(env, 'envs') else None),
-            ("env.envs[0].env", getattr(getattr(env, 'envs', [None])[0], 'env', None) if hasattr(env, 'envs') and len(
-                env.envs) > 0 else None),
-            ("env.envs[0].env.env",
-             getattr(getattr(getattr(env, 'envs', [None])[0], 'env', None), 'env', None) if hasattr(env,
-                                                                                                    'envs') and len(
-                 env.envs) > 0 and hasattr(env.envs[0], 'env') else None)
-        ]
-    else:
-        print("Without VecNormalize:")
-        print(f"env type: {type(env)}")
-
-        if hasattr(env, 'env'):
-            print(f"env.env type: {type(env.env)}")
-
-            if hasattr(env.env, 'env'):
-                print(f"env.env.env type: {type(env.env.env)}")
-
-        # Test different access paths
-        access_paths = [
-            ("env", env),
-            ("env.env", getattr(env, 'env', None)),
-            ("env.env.env", getattr(getattr(env, 'env', None), 'env', None) if hasattr(env, 'env') else None)
-        ]
-
-    print("\nChecking for target/threat counters at each level:")
-    for path_name, obj in access_paths:
-        if obj is None:
-            print(f"{path_name}: None")
-            continue
-
-        has_threats = hasattr(obj, 'num_threats_identified')
-        has_targets = hasattr(obj, 'targets_identified')
-        obj_type = type(obj).__name__
-
-        print(f"{path_name} ({obj_type}): threats={has_threats}, targets={has_targets}")
-
-        if has_threats and has_targets:
-            try:
-                threat_val = getattr(obj, 'num_threats_identified')
-                target_val = getattr(obj, 'targets_identified')
-                print(f"  -> FOUND COUNTERS: threats={threat_val}, targets={target_val}")
-                return obj  # Return the object that has the counters
-            except Exception as e:
-                print(f"  -> Error accessing counters: {e}")
-
-    print("=== END DEBUGGING ===\n")
-    return None
-
 def find_model_files(base_path):
     """Find .zip and .pkl files in the specified directory"""
     import glob
@@ -166,113 +95,113 @@ def get_counter_overfit_type(overfit_type):
     }
     return counter_mapping[overfit_type]
 
-
-def create_overfit_agent(overfit_type, subpolicies):
-    """Create an overfit agent with specific configuration"""
-    if overfit_type == "low_risk":
-        mode_selector = "heuristic"
-        risk_tolerance = "low"
-        spatial_coord = "false"  # Default spatial coordination
-        action_stability = "stable"  # Default for overfit tests
-        planning_horizon = "long"
-
-    elif overfit_type == "high_risk":
-        mode_selector = "heuristic"
-        risk_tolerance = "high"
-        spatial_coord = "false"  # Default spatial coordination
-        action_stability = "stable"  # Default for overfit tests
-        planning_horizon = "long"
-
-    elif overfit_type == "nospatial":
-        mode_selector = "heuristic"
-        risk_tolerance = "medium"
-        planning_horizon = "short"
-        action_stability = "stable"  # Default for overfit tests
-        spatial_coord = "none"
-
-    elif overfit_type == "highspatial":
-        mode_selector = "heuristic"
-        risk_tolerance = "medium"
-        planning_horizon = "short"
-        action_stability = "stable"  # Default for overfit tests
-        spatial_coord = "high"
-
-    elif overfit_type == 'noisy_actions':
-        mode_selector = "heuristic"
-        risk_tolerance = "medium"  # Default risk tolerance
-        spatial_coord = "false"
-        planning_horizon = "short"
-        action_stability = "noisy"  # Default for overfit tests
-
-    elif overfit_type == 'stable_actions':
-        mode_selector = "heuristic"
-        risk_tolerance = "medium"  # Default risk tolerance
-        spatial_coord = "false"
-        planning_horizon = "short"
-        action_stability = "stable"  # Default for overfit tests
-
-    else:
-        raise ValueError(f"Unknown overfit_type: {overfit_type}")
-
-    if planning_horizon == 'cluster_planning':
-        target_search_policy = TargetSearchLocalTSP(
-            search_radius=1000,
-            spatial_coord=False,
-            model_path=None,
-            norm_stats_filepath=None,
-            search_method='clusters'
-        )
-    elif planning_horizon == 'greedy_planning':
-        target_search_policy = TargetSearchLocalTSP(
-            search_radius=1000,
-            spatial_coord=False,
-            model_path=None,
-            norm_stats_filepath=None,
-            search_method='greedy'
-        )
-
-    elif planning_horizon == 'short':
-        target_search_policy = subpolicies.get('local_search')
-    elif planning_horizon == 'medium':
-        if spatial_coord == 'true':
-            target_search_policy = subpolicies.get('local_tsp_yescoord')
-        else:
-            target_search_policy = subpolicies.get('local_tsp_nocoord')
-    elif planning_horizon == 'long':
-        if spatial_coord == 'true':
-            target_search_policy = subpolicies.get('global_tsp_yescoord')
-        else:
-            target_search_policy = subpolicies.get('global_tsp_nocoord')
-    else:
-        raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
-
-    heuristic_agent = HeuristicAgent(
-        mode_selector=mode_selector,
-        risk_tolerance=risk_tolerance,
-        spatial_coord=spatial_coord
-    )
-
-    # agent = GenericTeammatePolicy(
-    #     env=None,
-    #     local_search_policy=subpolicies.get('local_search'),
-    #     go_to_highvalue_policy=subpolicies.get('go_to_threat'),
-    #     change_region_subpolicy=subpolicies.get('change_region'),
-    #     mode_selector_agent=heuristic_agent,
-    #     use_collision_avoidance=False
-    # )
-
-    teammate = GenericTeammatePolicy(
-        env=None,
-        local_search_policy=target_search_policy,
-        go_to_highvalue_policy=subpolicies.get('go_to_threat'),
-        change_region_subpolicy=subpolicies.get('change_region'),
-        mode_selector_agent=heuristic_agent,
-        use_collision_avoidance=False,
-        action_stability=action_stability
-    )
-
-    teammate.name = f"OverfitTeammate_{overfit_type}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
-    return teammate
+#
+# def create_overfit_agent(overfit_type, subpolicies):
+#     """Create an overfit agent with specific configuration"""
+#     if overfit_type == "low_risk":
+#         mode_selector = "heuristic"
+#         risk_tolerance = "low"
+#         spatial_coord = "false"  # Default spatial coordination
+#         action_stability = "stable"  # Default for overfit tests
+#         planning_horizon = "long"
+#
+#     elif overfit_type == "high_risk":
+#         mode_selector = "heuristic"
+#         risk_tolerance = "high"
+#         spatial_coord = "false"  # Default spatial coordination
+#         action_stability = "stable"  # Default for overfit tests
+#         planning_horizon = "long"
+#
+#     elif overfit_type == "nospatial":
+#         mode_selector = "heuristic"
+#         risk_tolerance = "medium"
+#         planning_horizon = "short"
+#         action_stability = "stable"  # Default for overfit tests
+#         spatial_coord = "none"
+#
+#     elif overfit_type == "highspatial":
+#         mode_selector = "heuristic"
+#         risk_tolerance = "medium"
+#         planning_horizon = "short"
+#         action_stability = "stable"  # Default for overfit tests
+#         spatial_coord = "high"
+#
+#     elif overfit_type == 'noisy_actions':
+#         mode_selector = "heuristic"
+#         risk_tolerance = "medium"  # Default risk tolerance
+#         spatial_coord = "false"
+#         planning_horizon = "short"
+#         action_stability = "noisy"  # Default for overfit tests
+#
+#     elif overfit_type == 'stable_actions':
+#         mode_selector = "heuristic"
+#         risk_tolerance = "medium"  # Default risk tolerance
+#         spatial_coord = "false"
+#         planning_horizon = "short"
+#         action_stability = "stable"  # Default for overfit tests
+#
+#     else:
+#         raise ValueError(f"Unknown overfit_type: {overfit_type}")
+#
+#     if planning_horizon == 'cluster_planning':
+#         target_search_policy = TargetSearchLocalTSP(
+#             search_radius=1000,
+#             spatial_coord=False,
+#             model_path=None,
+#             norm_stats_filepath=None,
+#             search_method='clusters'
+#         )
+#     elif planning_horizon == 'greedy_planning':
+#         target_search_policy = TargetSearchLocalTSP(
+#             search_radius=1000,
+#             spatial_coord=False,
+#             model_path=None,
+#             norm_stats_filepath=None,
+#             search_method='greedy'
+#         )
+#
+#     elif planning_horizon == 'short':
+#         target_search_policy = subpolicies.get('local_search')
+#     elif planning_horizon == 'medium':
+#         if spatial_coord == 'true':
+#             target_search_policy = subpolicies.get('local_tsp_yescoord')
+#         else:
+#             target_search_policy = subpolicies.get('local_tsp_nocoord')
+#     elif planning_horizon == 'long':
+#         if spatial_coord == 'true':
+#             target_search_policy = subpolicies.get('global_tsp_yescoord')
+#         else:
+#             target_search_policy = subpolicies.get('global_tsp_nocoord')
+#     else:
+#         raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+#
+#     heuristic_agent = HeuristicAgent(
+#         mode_selector=mode_selector,
+#         risk_tolerance=risk_tolerance,
+#         spatial_coord=spatial_coord
+#     )
+#
+#     # agent = GenericTeammatePolicy(
+#     #     env=None,
+#     #     local_search_policy=subpolicies.get('local_search'),
+#     #     go_to_highvalue_policy=subpolicies.get('go_to_threat'),
+#     #     change_region_subpolicy=subpolicies.get('change_region'),
+#     #     mode_selector_agent=heuristic_agent,
+#     #     use_collision_avoidance=False
+#     # )
+#
+#     teammate = GenericTeammatePolicy(
+#         env=None,
+#         local_search_policy=target_search_policy,
+#         go_to_highvalue_policy=subpolicies.get('go_to_threat'),
+#         change_region_subpolicy=subpolicies.get('change_region'),
+#         mode_selector_agent=heuristic_agent,
+#         use_collision_avoidance=False,
+#         action_stability=action_stability
+#     )
+#
+#     teammate.name = f"OverfitTeammate_{overfit_type}_{mode_selector}MS_{risk_tolerance}risk_{spatial_coord}spatial"
+#     return teammate
 
 
 def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use_normalize):
@@ -281,7 +210,6 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
 
     print(f"\nRunning {num_episodes} episodes for {overfit_type} agent with {behavior_type} behavior...")
 
-    #debug_wrapper_structure(env, use_normalize)
 
     for episode in range(num_episodes):
         if use_normalize:
@@ -345,35 +273,13 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
             # Get action from agent
             action, _ = agent.predict(obs, deterministic=True)
 
-            # Track subpolicy usage
-            # subpolicy_usage[int(action)] += 1
-            # subpolicy_sequence.append(int(action))
-            # if last_action is not None and last_action != action:
-            #     subpolicy_switches += 1
-            # last_action = action
-
-            # # Track teammate behavior
-            # if use_normalize:
-            #     if env.envs[0].env.config['num_aircraft'] == 2:
-            #         ai_subpolicy_id, ai_subpolicy_name = env.envs[0].get_teammate_subpolicy_info()
-            #         teammate_subpolicy_usage[ai_subpolicy_id] += 1
-            #         if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-            #             teammate_switches += 1
-            #         last_teammate_action = ai_subpolicy_id
-            # else:
-            #     if env.env.config['num_aircraft'] == 2:
-            #         ai_subpolicy_id, ai_subpolicy_name = env.get_teammate_subpolicy_info()
-            #         teammate_subpolicy_usage[ai_subpolicy_id] += 1
-            #         if last_teammate_action is not None and last_teammate_action != ai_subpolicy_id:
-            #             teammate_switches += 1
-            #         last_teammate_action = ai_subpolicy_id
-
             # Take step
             if use_normalize:
                 obses, rewards, dones, infos = env.step([action])
                 obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
                 try:
                     env.render()
+                    #pygame.time.wait(200)
                 except:
                     pass
 
@@ -384,6 +290,7 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
                 raw_reward = reward
                 try:
                     env.render()
+                    #pygame.time.wait(200)
                 except:
                     pass
 
@@ -448,7 +355,7 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
         threat_ids_gained = threat_tracker# - initial_threat_ids
         target_ids_gained = target_tracker# - initial_target_ids
 
-        print(f'[DEBUG] In test suite, threat ids gained = {threat_ids_gained}, target_ids = {target_ids_gained}, reward = {episode_reward}')
+        #print(f'[DEBUG] In test suite, threat ids gained = {threat_ids_gained}, target_ids = {target_ids_gained}, reward = {episode_reward}')
 
         # Calculate average teammate distance
         avg_teammate_distance = 0
@@ -628,15 +535,15 @@ def calculate_summary_statistics(episode_data):
     }
 
 
-def create_comparison_plots(all_results, timestamp):
+def create_comparison_plots(all_results, timestamp, overfit_types):
     """Create comparison plots for all overfit agents and behaviors"""
 
     # Create figure with subplots
     fig, axes = plt.subplots(3, 3, figsize=(20, 16))
     fig.suptitle('Overfit Agent Performance: Aligned vs Counter Behavior', fontsize=16)
 
-    overfit_types = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions'] # 'low_risk', 'high_risk'
-    behavior_types = ['aligned', 'counter']
+    #overfit_types = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions'] # 'low_risk', 'high_risk'
+    behavior_types = ['aligned', 'counter', 'average']
 
     metrics = ['reward', 'target_ids', 'avg_teammate_distance', 'steps', 'efficiency_score',
                'spatial_coverage', 'success_rate', 'threat_ids']
@@ -644,15 +551,19 @@ def create_comparison_plots(all_results, timestamp):
     # Plot 1: Reward comparison
     ax = axes[0, 0]
     x_pos = np.arange(len(overfit_types))
-    width = 0.35
+    width = 0.25
 
     aligned_rewards = [all_results[ot]['aligned']['reward']['mean'] for ot in overfit_types]
     counter_rewards = [all_results[ot]['counter']['reward']['mean'] for ot in overfit_types]
+    average_rewards = [all_results[ot]['average']['reward']['mean'] for ot in overfit_types]
+
     aligned_stds = [all_results[ot]['aligned']['reward']['std'] for ot in overfit_types]
     counter_stds = [all_results[ot]['counter']['reward']['std'] for ot in overfit_types]
+    average_stds = [all_results[ot]['average']['reward']['std'] for ot in overfit_types]
 
-    ax.bar(x_pos - width / 2, aligned_rewards, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_rewards, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos - width, aligned_rewards, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos, counter_rewards, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos + width, average_rewards, width, label='Average', yerr=average_stds, capsize=5)
     ax.set_xlabel('Agent Type')
     ax.set_ylabel('Mean Reward')
     ax.set_title('Reward Comparison')
@@ -665,11 +576,15 @@ def create_comparison_plots(all_results, timestamp):
     ax = axes[0, 1]
     aligned_targets = [all_results[ot]['aligned']['target_ids']['mean'] for ot in overfit_types]
     counter_targets = [all_results[ot]['counter']['target_ids']['mean'] for ot in overfit_types]
+    average_targets = [all_results[ot]['average']['target_ids']['mean'] for ot in overfit_types]
+
     aligned_stds = [all_results[ot]['aligned']['target_ids']['std'] for ot in overfit_types]
     counter_stds = [all_results[ot]['counter']['target_ids']['std'] for ot in overfit_types]
+    average_stds = [all_results[ot]['average']['target_ids']['std'] for ot in overfit_types]
 
-    ax.bar(x_pos - width / 2, aligned_targets, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_targets, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos - width, aligned_targets, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos, counter_targets, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos + width, average_targets, width, label='Average', yerr=average_stds, capsize=5)
     ax.set_xlabel('Agent Type')
     ax.set_ylabel('Mean Target IDs')
     ax.set_title('Target IDs Comparison')
@@ -682,11 +597,15 @@ def create_comparison_plots(all_results, timestamp):
     ax = axes[0, 2]
     aligned_distances = [all_results[ot]['aligned']['avg_teammate_distance']['mean'] for ot in overfit_types]
     counter_distances = [all_results[ot]['counter']['avg_teammate_distance']['mean'] for ot in overfit_types]
+    average_distances = [all_results[ot]['average']['avg_teammate_distance']['mean'] for ot in overfit_types]
+
     aligned_stds = [all_results[ot]['aligned']['avg_teammate_distance']['std'] for ot in overfit_types]
     counter_stds = [all_results[ot]['counter']['avg_teammate_distance']['std'] for ot in overfit_types]
+    average_stds = [all_results[ot]['average']['avg_teammate_distance']['std'] for ot in overfit_types]
 
-    ax.bar(x_pos - width / 2, aligned_distances, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_distances, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos - width, aligned_distances, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos, counter_distances, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos + width, average_distances, width, label='Average', yerr=average_stds, capsize=5)
     ax.set_xlabel('Agent Type')
     ax.set_ylabel('Mean Teammate Distance')
     ax.set_title('Teammate Distance Comparison')
@@ -697,53 +616,53 @@ def create_comparison_plots(all_results, timestamp):
 
     # Plot 4: Success rate comparison
     ax = axes[1, 0]
-    aligned_success = [all_results[ot]['aligned']['success_rate'] for ot in overfit_types]
-    counter_success = [all_results[ot]['counter']['success_rate'] for ot in overfit_types]
-
-    ax.bar(x_pos - width / 2, aligned_success, width, label='Aligned')
-    ax.bar(x_pos + width / 2, counter_success, width, label='Counter')
-    ax.set_xlabel('Agent Type')
-    ax.set_ylabel('Success Rate')
-    ax.set_title('Success Rate Comparison')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(overfit_types, rotation=45)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(0, 1)
+    # aligned_success = [all_results[ot]['aligned']['success_rate'] for ot in overfit_types]
+    # counter_success = [all_results[ot]['counter']['success_rate'] for ot in overfit_types]
+    #
+    # ax.bar(x_pos - width / 2, aligned_success, width, label='Aligned')
+    # ax.bar(x_pos + width / 2, counter_success, width, label='Counter')
+    # ax.set_xlabel('Agent Type')
+    # ax.set_ylabel('Success Rate')
+    # ax.set_title('Success Rate Comparison')
+    # ax.set_xticks(x_pos)
+    # ax.set_xticklabels(overfit_types, rotation=45)
+    # ax.legend()
+    # ax.grid(True, alpha=0.3)
+    # ax.set_ylim(0, 1)
 
     # Plot 5: Efficiency comparison
     ax = axes[1, 1]
-    aligned_efficiency = [all_results[ot]['aligned']['efficiency_score']['mean'] for ot in overfit_types]
-    counter_efficiency = [all_results[ot]['counter']['efficiency_score']['mean'] for ot in overfit_types]
-    aligned_stds = [all_results[ot]['aligned']['efficiency_score']['std'] for ot in overfit_types]
-    counter_stds = [all_results[ot]['counter']['efficiency_score']['std'] for ot in overfit_types]
-
-    ax.bar(x_pos - width / 2, aligned_efficiency, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_efficiency, width, label='Counter', yerr=counter_stds, capsize=5)
-    ax.set_xlabel('Agent Type')
-    ax.set_ylabel('Mean Efficiency Score')
-    ax.set_title('Efficiency Comparison')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(overfit_types, rotation=45)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    # aligned_efficiency = [all_results[ot]['aligned']['efficiency_score']['mean'] for ot in overfit_types]
+    # counter_efficiency = [all_results[ot]['counter']['efficiency_score']['mean'] for ot in overfit_types]
+    # aligned_stds = [all_results[ot]['aligned']['efficiency_score']['std'] for ot in overfit_types]
+    # counter_stds = [all_results[ot]['counter']['efficiency_score']['std'] for ot in overfit_types]
+    #
+    # ax.bar(x_pos - width / 2, aligned_efficiency, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    # ax.bar(x_pos + width / 2, counter_efficiency, width, label='Counter', yerr=counter_stds, capsize=5)
+    # ax.set_xlabel('Agent Type')
+    # ax.set_ylabel('Mean Efficiency Score')
+    # ax.set_title('Efficiency Comparison')
+    # ax.set_xticks(x_pos)
+    # ax.set_xticklabels(overfit_types, rotation=45)
+    # ax.legend()
+    # ax.grid(True, alpha=0.3)
 
     # Plot 6: Steps comparison
     ax = axes[1, 2]
-    aligned_steps = [all_results[ot]['aligned']['steps']['mean'] for ot in overfit_types]
-    counter_steps = [all_results[ot]['counter']['steps']['mean'] for ot in overfit_types]
-    aligned_stds = [all_results[ot]['aligned']['steps']['std'] for ot in overfit_types]
-    counter_stds = [all_results[ot]['counter']['steps']['std'] for ot in overfit_types]
-
-    ax.bar(x_pos - width / 2, aligned_steps, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_steps, width, label='Counter', yerr=counter_stds, capsize=5)
-    ax.set_xlabel('Agent Type')
-    ax.set_ylabel('Mean Steps')
-    ax.set_title('Steps Comparison')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(overfit_types, rotation=45)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    # aligned_steps = [all_results[ot]['aligned']['steps']['mean'] for ot in overfit_types]
+    # counter_steps = [all_results[ot]['counter']['steps']['mean'] for ot in overfit_types]
+    # aligned_stds = [all_results[ot]['aligned']['steps']['std'] for ot in overfit_types]
+    # counter_stds = [all_results[ot]['counter']['steps']['std'] for ot in overfit_types]
+    #
+    # ax.bar(x_pos - width / 2, aligned_steps, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    # ax.bar(x_pos + width / 2, counter_steps, width, label='Counter', yerr=counter_stds, capsize=5)
+    # ax.set_xlabel('Agent Type')
+    # ax.set_ylabel('Mean Steps')
+    # ax.set_title('Steps Comparison')
+    # ax.set_xticks(x_pos)
+    # ax.set_xticklabels(overfit_types, rotation=45)
+    # ax.legend()
+    # ax.grid(True, alpha=0.3)
 
     # Plot 7: Performance difference (Aligned - Counter)
     ax = axes[2, 0]
@@ -762,41 +681,47 @@ def create_comparison_plots(all_results, timestamp):
 
     # Plot 8: Spatial coverage comparison
     ax = axes[2, 1]
-    aligned_coverage = [all_results[ot]['aligned']['spatial_coverage']['mean'] for ot in overfit_types]
-    counter_coverage = [all_results[ot]['counter']['spatial_coverage']['mean'] for ot in overfit_types]
-    aligned_stds = [all_results[ot]['aligned']['spatial_coverage']['std'] for ot in overfit_types]
-    counter_stds = [all_results[ot]['counter']['spatial_coverage']['std'] for ot in overfit_types]
-
-    ax.bar(x_pos - width / 2, aligned_coverage, width, label='Aligned', yerr=aligned_stds, capsize=5)
-    ax.bar(x_pos + width / 2, counter_coverage, width, label='Counter', yerr=counter_stds, capsize=5)
-    ax.set_xlabel('Agent Type')
-    ax.set_ylabel('Mean Spatial Coverage (%)')
-    ax.set_title('Spatial Coverage Comparison')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(overfit_types, rotation=45)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+    # aligned_coverage = [all_results[ot]['aligned']['spatial_coverage']['mean'] for ot in overfit_types]
+    # counter_coverage = [all_results[ot]['counter']['spatial_coverage']['mean'] for ot in overfit_types]
+    # aligned_stds = [all_results[ot]['aligned']['spatial_coverage']['std'] for ot in overfit_types]
+    # counter_stds = [all_results[ot]['counter']['spatial_coverage']['std'] for ot in overfit_types]
+    #
+    # ax.bar(x_pos - width / 2, aligned_coverage, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    # ax.bar(x_pos + width / 2, counter_coverage, width, label='Counter', yerr=counter_stds, capsize=5)
+    # ax.set_xlabel('Agent Type')
+    # ax.set_ylabel('Mean Spatial Coverage (%)')
+    # ax.set_title('Spatial Coverage Comparison')
+    # ax.set_xticks(x_pos)
+    # ax.set_xticklabels(overfit_types, rotation=45)
+    # ax.legend()
+    # ax.grid(True, alpha=0.3)
 
     # Plot 9: Combined effectiveness score
     ax = axes[2, 2]
     # Calculate combined score: (reward * target_ids * success_rate) / steps
     aligned_combined = []
     counter_combined = []
+    average_combined = []
 
     for ot in overfit_types:
         aligned_score = (all_results[ot]['aligned']['reward']['mean'] *
                          all_results[ot]['aligned']['target_ids']['mean'] *
-                         all_results[ot]['aligned']['success_rate']) / max(all_results[ot]['aligned']['steps']['mean'],
-                                                                           1)
+                         all_results[ot]['aligned']['success_rate']) / max(all_results[ot]['aligned']['steps']['mean'], 1)
         counter_score = (all_results[ot]['counter']['reward']['mean'] *
                          all_results[ot]['counter']['target_ids']['mean'] *
-                         all_results[ot]['counter']['success_rate']) / max(all_results[ot]['counter']['steps']['mean'],
-                                                                           1)
+                         all_results[ot]['counter']['success_rate']) / max(all_results[ot]['counter']['steps']['mean'], 1)
+
+        average_score = (all_results[ot]['average']['reward']['mean'] *
+                         all_results[ot]['average']['target_ids']['mean'] *
+                         all_results[ot]['average']['success_rate']) / max(all_results[ot]['average']['steps']['mean'],1)
+
         aligned_combined.append(aligned_score)
         counter_combined.append(counter_score)
+        average_combined.append(average_score)
 
-    ax.bar(x_pos - width / 2, aligned_combined, width, label='Aligned')
-    ax.bar(x_pos + width / 2, counter_combined, width, label='Counter')
+    ax.bar(x_pos - width / 3, aligned_combined, width, label='Aligned')
+    ax.bar(x_pos + width / 3, counter_combined, width, label='Counter')
+    ax.bar(x_pos + width / 3, average_combined, width, label='Average')
     ax.set_xlabel('Agent Type')
     ax.set_ylabel('Combined Effectiveness Score')
     ax.set_title('Overall Effectiveness Comparison')
@@ -840,42 +765,32 @@ def convert_to_json_serializable(obj):
 if __name__ == "__main__":
     print(f'Beginning main')
     # Configuration
-    config_filename = 'configs/Monolith_R6H_july8.json'
-    num_episodes = 50
+    config_filename = 'configs/Monolith_R8H_july10.json'
+    num_episodes = 10
     tick_rate = 120
     use_normalize = True
-    render = False
+    render = True
 
     localsearch_model_path = None
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Test configuration
-    overfit_agents = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions'] # # 'nospatial', 'highspatial'
-    behavior_types = ['aligned', 'counter']
+    overfit_types = ['low_risk']#, 'high_risk', 'noisy_actions', 'stable_actions'] # # 'nospatial', 'highspatial'
+    behavior_types = ['average','aligned', 'counter']
 
     model_and_stats_paths = {
-        'low_risk': './R6H_saved/R6H_lowrisk',
-        'high_risk': './R6H_saved/R6H_highrisk',
-        'noisy_actions': './R6H_saved/R6H_noisy',
-        'stable_actions': './R6H_saved/R6H_stable'
+        'low_risk': './R8H_saved/R8H_lowrisk',
+        #'high_risk': './R6H_saved/R6H_highrisk',
+        #'noisy_actions': './R6H_saved/R6H_noisy',
+        #'stable_actions': './R6H_saved/R6H_stable'
     }
-
-    # model_path_dict = {
-    #     'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__262080_steps.zip',
-    #     'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__262080_steps.zip',
-    #     'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__262080_steps.zip',
-    #     'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__262080_steps.zip'
-    # }
-    #
-    # norm_stats_path_dict = {
-    #     'low_risk': './trained_models/overfit_tests/modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_low_risk_shaping_ratio1_0630_1910__vecnormalize_262080_steps.pkl',
-    #     'high_risk': './trained_models/overfit_tests/modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_high_risk_shaping_ratio1_0630_1609__vecnormalize_262080_steps.pkl',
-    #     'nospatial': './trained_models/overfit_tests/modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_nospatial_shaping_ratio1_0630_2212__vecnormalize_262080_steps.pkl',
-    #     'highspatial': './trained_models/overfit_tests/modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114_/checkpoints/maisr_checkpoint_modeselector_OverfitV9_highspatial_shaping_ratio1_0701_0114__vecnormalize_262080_steps.pkl'
-    # }
 
     config = load_env_config(config_filename)
     print(f'LOADED CONFIG {config_filename}')
+
+    #config['use_stuck_detection'] = True
+    config['teammate_active_at_start'] = True
+    config['tick_rate'] = tick_rate
 
     # Initialize pygame
     if render:
@@ -884,8 +799,6 @@ if __name__ == "__main__":
         clock = pygame.time.Clock()
         ctypes.windll.user32.SetProcessDPIAware()
         window_width, window_height = config['window_size'][0], config['window_size'][1]
-        config['teammate_active_at_start'] = True
-        config['tick_rate'] = tick_rate
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Overfit Testing")
 
@@ -928,13 +841,13 @@ if __name__ == "__main__":
     print("=" * 80)
     print("STARTING OVERFIT AGENT TESTING")
     print("=" * 80)
-    print(f"Testing {len(overfit_agents)} agent types with {len(behavior_types)} behavior types")
+    print(f"Testing {len(overfit_types)} agent types with {len(behavior_types)} behavior types")
     print(f"Episodes per configuration: {num_episodes}")
-    print(f"Total episodes: {len(overfit_agents) * len(behavior_types) * num_episodes}")
+    print(f"Total episodes: {len(overfit_types) * len(behavior_types) * num_episodes}")
 
 
     # Main testing loop
-    for overfit_type in overfit_agents:
+    for overfit_type in overfit_types:
         print(f"\n{'=' * 60}")
         print(f"TESTING AGENT TYPE: {overfit_type.upper()}")
         print(f"{'=' * 60}")
@@ -954,8 +867,10 @@ if __name__ == "__main__":
             # Set up teammate manager based on behavior type
             if behavior_type == 'aligned':
                 teammate_overfit_type = overfit_type
-            else:  # counter
+            elif behavior_type == 'counter':  # counter
                 teammate_overfit_type = get_counter_overfit_type(overfit_type)
+            else:
+                teammate_overfit_type = None
 
             print(f"Testing Agent overfit to: {overfit_type}")
             print(f"Teammate type: {teammate_overfit_type}")
@@ -966,7 +881,7 @@ if __name__ == "__main__":
             evade_policy = None
 
             teammate_manager = TeammateManager(
-                    league_type='vanilla',
+                    league_type='strategy_diverse',
                     balance_method='uniform',
                     selfplay_checkpoint_dir=None,
                     pretrained_teammate_dir=None,
@@ -1036,12 +951,13 @@ if __name__ == "__main__":
     # Create comprehensive comparison report
     print(f"\n=== COMPREHENSIVE COMPARISON REPORT ===")
 
-    for overfit_type in overfit_agents:
+    for overfit_type in overfit_types:
         print(f"\n{overfit_type.upper()} AGENT ANALYSIS:")
         print(f"{'-' * 40}")
 
         aligned_stats = all_results[overfit_type]['aligned']
         counter_stats = all_results[overfit_type]['counter']
+        counter_stats = all_results[overfit_type]['average']
 
         # Calculate differences (aligned - counter)
         reward_diff = aligned_stats['reward']['mean'] - counter_stats['reward']['mean']
@@ -1108,7 +1024,7 @@ if __name__ == "__main__":
         print(f"Saved as pickle instead: {pickle_filename}")
 
     # Create and save comparison plots
-    create_comparison_plots(all_results, timestamp)
+    create_comparison_plots(all_results, timestamp, overfit_types)
 
     # Generate final summary table
     print(f"\n=== FINAL PERFORMANCE SUMMARY TABLE ===")
@@ -1116,7 +1032,7 @@ if __name__ == "__main__":
         f"{'Agent Type':<12} | {'Behavior':<8} | {'Reward':<8} | {'Targets':<7} | {'Success%':<8} | {'Efficiency':<10}")
     print(f"{'-' * 12} | {'-' * 8} | {'-' * 8} | {'-' * 7} | {'-' * 8} | {'-' * 10}")
 
-    for overfit_type in overfit_agents:
+    for overfit_type in overfit_types:
         for behavior_type in behavior_types:
             stats = all_results[overfit_type][behavior_type]
             print(f"{overfit_type:<12} | {behavior_type:<8} | {stats['reward']['mean']:<8.2f} | "
@@ -1133,7 +1049,7 @@ if __name__ == "__main__":
     target_advantages = []
     success_advantages = []
 
-    for overfit_type in overfit_agents:
+    for overfit_type in overfit_types:
         reward_adv = all_results[overfit_type]['aligned']['reward']['mean'] - \
                      all_results[overfit_type]['counter']['reward']['mean']
         target_adv = all_results[overfit_type]['aligned']['target_ids']['mean'] - \
@@ -1151,7 +1067,7 @@ if __name__ == "__main__":
     best_configs = []
     worst_configs = []
 
-    for overfit_type in overfit_agents:
+    for overfit_type in overfit_types:
         for behavior_type in behavior_types:
             config_name = f"{overfit_type}_{behavior_type}"
             combined_score = (all_results[overfit_type][behavior_type]['reward']['mean'] +
@@ -1174,6 +1090,6 @@ if __name__ == "__main__":
     print(f"{'=' * 80}")
     print(f"Results saved to: ./logs/overfit_tests/")
     print(f"Timestamp: {timestamp}")
-    print(f"Total episodes run: {len(overfit_agents) * len(behavior_types) * num_episodes}")
+    print(f"Total episodes run: {len(overfit_types) * len(behavior_types) * num_episodes}")
 
     pygame.quit()

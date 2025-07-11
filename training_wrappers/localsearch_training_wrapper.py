@@ -64,7 +64,7 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.override_target_pos = None
             self.override_arrival_threshold = 25  # Distance to target before giving control back
             self.last_progress_step = 0
-            self.no_progress_threshold = 7  # Steps without progress before override
+            self.no_progress_threshold = 4  # Steps without progress before override
 
         #print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
 
@@ -103,13 +103,15 @@ class MaisrLocalSearchWrapper(gym.Env):
     def step(self, action: np.int32):
         """ Apply the monolith's action (Directional movement))"""
 
+        #print(f'Default agent action is {action}')
+
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
             teammate_action = self.get_teammate_action()
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_action
 
         ############ Stuck detection ############
-        if self.env.config['use_stuck_detection'] and self.env.episode_counter >= 500:
+        if self.env.config['use_stuck_detection']:# and self.env.episode_counter >= 500:
             current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
             self.position_history.append(current_pos.copy())
 
@@ -267,9 +269,12 @@ class MaisrLocalSearchWrapper(gym.Env):
                 if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
                     old_direction_to_move = direction_to_move
                     noise = random.choice([-3, -2, -1, 1, 2, 3])
-                    #print(f'Noise: {noise}')
-                    #print(f'Teammate action: {direction_to_move}')
-                    direction_to_move = (direction_to_move + noise) % 16
+                    if isinstance(direction_to_move, tuple):
+                        direction_to_move = direction_to_move[0]
+                    try:
+                        direction_to_move = (direction_to_move + noise) % 16
+                    except:
+                        print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
                     #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
 
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
@@ -660,21 +665,96 @@ class MaisrLocalSearchWrapper(gym.Env):
             print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
             return None
 
-        # Normalize direction and convert to action
         if distance_to_target > 0:
+            # Normalize direction vector
             unit_direction = direction_vector / distance_to_target
 
-            # Convert to discrete action (find closest direction)
-            if self.env.config['action_type'] in ['Discrete8', 'Discrete16']:
-                angle = np.arctan2(unit_direction[1], unit_direction[0])
-                # Convert to discrete action (8 or 16 directions)
-                num_directions = 8 if self.env.config['action_type'] == 'Discrete8' else 16
-                action = int(((angle + np.pi) / (2 * np.pi)) * num_directions) % num_directions
-                return action
-            else: # For continuous actions, return normalized direction
-                return unit_direction
+            # Your environment's direction mapping:
+            # 0: (0, 1)   # North
+            # 1: (0.383, 0.924)  # NNE
+            # 2: (0.707, 0.707)  # NE
+            # 3: (0.924, 0.383)  # ENE
+            # 4: (1, 0)   # East
+            # etc.
+
+            # Calculate angle from positive x-axis (standard math convention)
+            angle = np.arctan2(unit_direction[1], unit_direction[0])
+
+            # Convert to environment's convention where:
+            # - Action 0 points North (0, 1) = 90° in standard math
+            # - Action 4 points East (1, 0) = 0° in standard math
+            # So we need to map: math_angle to env_action
+
+            # Environment action 0 = 90° math angle
+            # Environment action 4 = 0° math angle
+            # Environment rotates clockwise from North
+
+            # Convert math angle to environment angle
+            # Rotate by 90° and reverse direction (clockwise vs counterclockwise)
+            env_angle = (np.pi / 2 - angle) % (2 * np.pi)
+
+            # Convert to discrete action (16 directions)
+            action = int(env_angle / (2 * np.pi / 16)) % 16
+
+            # print(f"Override debug:")
+            # print(f"  Agent pos: {agent_pos}")
+            # print(f"  Target pos: {self.override_target_pos}")
+            # print(f"  Direction vector: {direction_vector}")
+            # print(f"  Unit direction: {unit_direction}")
+            # print(f"  Math angle: {angle:.3f} rad ({np.degrees(angle):.1f}°)")
+            # print(f"  Env angle: {env_angle:.3f} rad ({np.degrees(env_angle):.1f}°)")
+            # print(f"  Selected action: {action}")
+
+            # Let's also verify what this action should do
+            direction_map = {
+                0: (0, 1), 1: (0.383, 0.924), 2: (0.707, 0.707), 3: (0.924, 0.383),
+                4: (1, 0), 5: (0.924, -0.383), 6: (0.707, -0.707), 7: (0.383, -0.924),
+                8: (0, -1), 9: (-0.383, -0.924), 10: (-0.707, -0.707), 11: (-0.924, -0.383),
+                12: (-1, 0), 13: (-0.924, 0.383), 14: (-0.707, 0.707), 15: (-0.383, 0.924)
+            }
+            expected_direction = direction_map.get(action, (0, 0))
+            print(f"  Expected movement direction: {expected_direction}")
+
+            return action
 
         return None
+
+    # def get_override_action(self, agent_id=0):
+    #     """Get action to move towards override target"""
+    #     if self.override_target_pos is None:
+    #         return None
+    #
+    #     agent_pos = np.array([
+    #         self.env.agents[self.env.aircraft_ids[agent_id]].x,
+    #         self.env.agents[self.env.aircraft_ids[agent_id]].y
+    #     ])
+    #
+    #     # Calculate direction to target
+    #     direction_vector = self.override_target_pos - agent_pos
+    #     distance_to_target = np.linalg.norm(direction_vector)
+    #
+    #     # Check if we've arrived at target
+    #     if distance_to_target < self.override_arrival_threshold:
+    #         self.override_active = False
+    #         self.override_target_pos = None
+    #         print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
+    #         return None
+    #
+    #     # Normalize direction and convert to action
+    #     if distance_to_target > 0:
+    #         unit_direction = direction_vector / distance_to_target
+    #
+    #         # Convert to discrete action (find closest direction)
+    #         if self.env.config['action_type'] in ['Discrete8', 'Discrete16']:
+    #             angle = np.arctan2(unit_direction[1], unit_direction[0])
+    #             # Convert to discrete action (8 or 16 directions)
+    #             num_directions = 8 if self.env.config['action_type'] == 'Discrete8' else 16
+    #             action = int(((angle + np.pi) / (2 * np.pi)) * num_directions) % num_directions
+    #             return action
+    #         else: # For continuous actions, return normalized direction
+    #             return unit_direction
+    #
+    #     return None
 
     def update_progress_tracking(self):
         """Update progress tracking for stuck detection"""

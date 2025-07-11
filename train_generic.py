@@ -73,8 +73,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
         self.entropy_decay_enabled = False
         self.entropy_decay_trigger_threshold = 0.32  # mean_target_ids_per_step threshold
-        self.entropy_decay_threat_threshold = 0.4 # eval/mean_threat_ids threshold
-        self.entropy_decay_steps = 1e6  # Decay over this many steps
+        self.entropy_decay_threat_threshold = 1.0 # eval/mean_threat_ids threshold
+        self.entropy_decay_steps = env_config['entropy_decay_steps'] # Decay over this many steps
         self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
         self.entropy_decay_start_step = None
         self.original_entropy_coeff = None
@@ -800,13 +800,22 @@ def train_generic(
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
 
-    run = wandb.init(
-        project=project_name,
-        name=run_name+f'{machine_name}_{n_envs}envs',
-        config=env_config,
-        sync_tensorboard=True,
-        monitor_gym=True,
-    )
+    init_successful = False
+    while not init_successful:
+        try:
+            run = wandb.init(
+                project=project_name,
+                name=run_name+f'{machine_name}_{n_envs}envs',
+                config=env_config,
+                sync_tensorboard=True,
+                monitor_gym=True,
+            )
+            init_successful = True
+        except:
+            init_successful = False
+        if init_successful:
+            break
+
     run.log_code(".")
 
     ################################################ Initialize envs ################################################
@@ -1028,12 +1037,12 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/Monolith_R7H_july9.json'
+    config_filename = 'configs/Monolith_R8H_july10.json'
     num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
-    note = 'R7' + machine[0].upper()
+    note = 'R8' + machine[0].upper()
 
     # Define hyperparameter sweep
     hyperparams = {
@@ -1042,9 +1051,10 @@ if __name__ == "__main__":
         #"use_entropy_decay_schedule": [True, False],
         #"num_observed_threats":[1],
         #"use_stuck_detection": [False, True],
-        'max_steps':[1500, 1800],
-        'threat_reward_scaling':[1,1.5],
-        'shaping_coeff_earlyfinish':[0.07]
+        'max_steps':[1700],
+        'entropy_decay_steps':[1.5e6]
+        #'threat_reward_scaling':[1,1.5],
+        #'shaping_coeff_earlyfinish':[0.07]
         #"network_size":[128],
         #"lr": [0.001, 0.0015]
         #"team_spread_bonus_coeff": [0.0035], # 0.005,
@@ -1054,7 +1064,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests =  ["low_risk", "high_risk"] #["noisy_actions", "stable_actions", , "no_coord", "yes_coord"] #  "greedy_planning", "cluster_planning", ,
+    overfit_tests =  ["noisy_actions", "stable_actions", "no_coord", "yes_coord"] # "high_risk" ["low_risk"] #[] #  "greedy_planning", "cluster_planning", ,
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1071,7 +1081,8 @@ if __name__ == "__main__":
         "lr":"lr",
         "max_steps":'mxstps',
         'threat_reward_scaling':'thrtrwdscl',
-        'shaping_coeff_earlyfinish':'erlyfnsh'
+        'shaping_coeff_earlyfinish':'erlyfnsh',
+        'entropy_decay_steps':'entdcystps'
     }
 
     ################################################

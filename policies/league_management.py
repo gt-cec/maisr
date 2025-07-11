@@ -76,20 +76,20 @@ class TeammateManager:
         self.risk_tolerance_options = {
             'baseline': ["none"],
             "vanilla": ["none"],
-            "strategy_diverse": ["low", "medium", "high", "extreme"]}
+            "strategy_diverse": ["low", "medium", "high"]}
         self.spatial_coord_options = {
-            'baseline': ["false"],
-            "vanilla": ["false"],
-            "strategy_diverse": ["false", "true"]}
+            'baseline': [False],
+            "vanilla": [False],
+            "strategy_diverse": [False, True]}
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
-            'strategy_diverse': ["stable", "noisy"] # TODO finish noisy action stab
+            'strategy_diverse': ["stable", "noisy"]
         }
         self.planning_horizon_options = {
-            'baseline': ["short"],
-            'vanilla': ["short"],
-            'strategy_diverse': ["short", "medium", "long"]
+            'baseline': ["greedy"],
+            'vanilla': ["greedy"],
+            'strategy_diverse': ["greedy", "clusters"]
         }
 
         print(f"\nTeammateManager initialized with league_type: {league_type}, balance_method: {balance_method}")
@@ -134,6 +134,8 @@ class TeammateManager:
                 return self._create_pretrained_rl_teammate()
 
         elif self.league_type == "strategy_diverse":
+
+            return self._create_strategy_diverse_heuristic_teammate() # TEMP
 
             prob = random.random()
             if prob < 0.25:
@@ -293,17 +295,17 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating low risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "low"
-            spatial_coord = "false"  # Default spatial coordination
+            spatial_coord = False  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "long"
+            planning_horizon = "greedy"
 
         elif self.overfit_test == "high_risk":
             #print(f'[_create_overfit_test_teammate] Creating high risk teammate')
             mode_selector = "heuristic"
             risk_tolerance = "high"
-            spatial_coord = "false"  # Default spatial coordination
+            spatial_coord = False  # Default spatial coordination
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "long"
+            planning_horizon = "greedy"
 
         ###########################
 
@@ -311,69 +313,40 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false"
+            spatial_coord = False
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "medium"
+            planning_horizon = "greedy"
 
         elif self.overfit_test == "yes_coord":
             #print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "true"
+            spatial_coord = True
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "medium"
-
-        ###########################
-
-        # elif self.overfit_test == "short_planning":
-        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-        #     mode_selector = "heuristic"
-        #     risk_tolerance = "medium"  # Default risk tolerance
-        #     spatial_coord = "false" # Deprecated
-        #     action_stability = "stable"  # Default for overfit tests
-        #     planning_horizon = "short"
-        #
-        # elif self.overfit_test == "medium_planning":
-        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-        #     mode_selector = "heuristic"
-        #     risk_tolerance = "medium"  # Default risk tolerance
-        #     spatial_coord = "false" # Deprecated
-        #     action_stability = "stable"  # Default for overfit tests
-        #     planning_horizon = "medium"
-        #
-        # elif self.overfit_test == "long_planning":
-        #     # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
-        #     mode_selector = "heuristic"
-        #     risk_tolerance = "medium"  # Default risk tolerance
-        #     spatial_coord = "false" # Deprecated
-        #     action_stability = "stable"  # Default for overfit tests
-        #     planning_horizon = "long"
-
+            planning_horizon = "greedy"
 
         elif self.overfit_test == "greedy_planning":
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "low"  # Default risk tolerance
-            spatial_coord = "false"  # Deprecated
+            spatial_coord = False
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = "greedy_planning"
+            planning_horizon = "greedy"
 
         elif self.overfit_test == "cluster_planning":
             # print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
             risk_tolerance = "low"  # Default risk tolerance
-            spatial_coord = "false"  # Deprecated
+            spatial_coord = False
             action_stability = "stable"  # Default for overfit tests
-            planning_horizon = 'cluster_planning'
-
-        ###########################
+            planning_horizon = 'clusters'
 
         elif self.overfit_test == 'noisy_actions':
             #print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false"
-            planning_horizon = "short"
+            spatial_coord = False
+            planning_horizon = "greedy"
             action_stability = "noisy"  # Default for overfit tests
 
 
@@ -381,44 +354,52 @@ class TeammateManager:
             #print(f'[_create_overfit_test_teammate] Creating stable action teammate')
             mode_selector = "heuristic"
             risk_tolerance = "medium"  # Default risk tolerance
-            spatial_coord = "false"
-            planning_horizon = "short"
+            spatial_coord = False
+            planning_horizon = "greedy"
             action_stability = "stable"  # Default for overfit tests
 
         else:
             raise ValueError(f"Unknown overfit_test value: {self.overfit_test}")
 
-        if planning_horizon == 'cluster_planning':
-            target_search_policy = TargetSearchLocalTSP(
-                search_radius=1000,
-                spatial_coord=False,
-                model_path=None,
-                norm_stats_filepath=None,
-                search_method='clusters'
-            )
-        elif planning_horizon == 'greedy_planning':
-            target_search_policy = TargetSearchLocalTSP(
-                search_radius=1000,
-                spatial_coord=False,
-                model_path=None,
-                norm_stats_filepath=None,
-                search_method='greedy'
-            )
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=spatial_coord,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method=planning_horizon
+        )
 
-        elif planning_horizon == 'short':
-            target_search_policy = self.subpolicies.get('local_search')
-        elif planning_horizon == 'medium':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        elif planning_horizon == 'long':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        else:
-            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+        # if planning_horizon == 'cluster_planning':
+        #     target_search_policy = TargetSearchLocalTSP(
+        #         search_radius=1000,
+        #         spatial_coord=spatial_coord,
+        #         model_path=None,
+        #         norm_stats_filepath=None,
+        #         search_method='clusters'
+        #     )
+        # elif planning_horizon == 'greedy_planning':
+        #     target_search_policy = TargetSearchLocalTSP(
+        #         search_radius=1000,
+        #         spatial_coord=spatial_coord,
+        #         model_path=None,
+        #         norm_stats_filepath=None,
+        #         search_method='greedy'
+        #     )
+
+        # elif planning_horizon == 'short':
+        #     target_search_policy = self.subpolicies.get('local_search')
+        # elif planning_horizon == 'medium':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        # elif planning_horizon == 'long':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        # else:
+        #     raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
@@ -637,38 +618,63 @@ class TeammateManager:
         mode_selector = random.choice(self.mode_selector_options['baseline'])
         risk_tolerance = random.choice(self.risk_tolerance_options['baseline'])
         spatial_coord = random.choice(self.spatial_coord_options['baseline'])
-        planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
+        planning_horizon = random.choice(self.planning_horizon_options['baseline'])
+        action_stability = random.choice(self.action_stability_options['baseline'])
 
-        if planning_horizon == 'short':
-            target_search_policy = self.subpolicies.get('local_search')
-        elif planning_horizon == 'medium':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        elif planning_horizon == 'long':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        else:
-            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+        # if planning_horizon == 'short':
+        #     target_search_policy = self.subpolicies.get('local_search')
+        # elif planning_horizon == 'medium':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        # elif planning_horizon == 'long':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        # else:
+        #     raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=spatial_coord,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method=planning_horizon
+        )
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord
+            spatial_coord=spatial_coord,
         )
 
         teammate = GenericTeammatePolicy(
-            env=None,  # Will be set later if needed
-            local_search_policy=self.subpolicies.get(target_search_policy),
+            env=None,
+            local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
             use_collision_avoidance=False,
-            action_stability='stable'
+            action_stability=action_stability
         )
+
+        # heuristic_agent = HeuristicAgent(
+        #     mode_selector=mode_selector,
+        #     risk_tolerance=risk_tolerance,
+        #     spatial_coord=spatial_coord
+        # )
+        #
+        # teammate = GenericTeammatePolicy(
+        #     env=None,  # Will be set later if needed
+        #     local_search_policy=self.subpolicies.get(target_search_policy),
+        #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+        #     change_region_subpolicy=self.subpolicies.get('change_region'),
+        #     mode_selector_agent=heuristic_agent,
+        #     use_collision_avoidance=False,
+        #     action_stability='stable'
+        # )
 
         teammate.name = "Baseline_Greedy_noMS_lowrisk_nospatialcoord"
         self.current_teammate = teammate
@@ -683,30 +689,38 @@ class TeammateManager:
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
         action_stability = random.choice(self.action_stability_options['strategy_diverse'])
 
-        if planning_horizon == 'short':
-            target_search_policy = self.subpolicies.get('local_search')
-        elif planning_horizon == 'medium':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        elif planning_horizon == 'long':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        else:
-            raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+        # if planning_horizon == 'short':
+        #     target_search_policy = self.subpolicies.get('local_search')
+        # elif planning_horizon == 'medium':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        # elif planning_horizon == 'long':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        # else:
+        #     raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=spatial_coord,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method=planning_horizon
+        )
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord
+            spatial_coord=spatial_coord,
         )
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get(target_search_policy),
+            local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -727,30 +741,37 @@ class TeammateManager:
         action_stability = random.choice(self.action_stability_options['strategy_diverse'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
 
-        if planning_horizon == 'short':
-            target_search_policy = self.subpolicies.get('local_search')
-        elif planning_horizon == 'medium':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        elif planning_horizon == 'long':
-            if spatial_coord == 'true':
-                target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-            else:
-                target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        else: raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+        # if planning_horizon == 'short':
+        #     target_search_policy = self.subpolicies.get('local_search')
+        # elif planning_horizon == 'medium':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
+        # elif planning_horizon == 'long':
+        #     if spatial_coord == 'true':
+        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
+        #     else:
+        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
+        # else: raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
+
+        target_search_policy = TargetSearchLocalTSP(
+            search_radius=1000,
+            spatial_coord=spatial_coord,
+            model_path=None,
+            norm_stats_filepath=None,
+            search_method=planning_horizon
+        )
 
         heuristic_agent = HeuristicAgent(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
-
         )
 
         teammate = GenericTeammatePolicy(
             env=None,
-            local_search_policy=self.subpolicies.get(target_search_policy),
+            local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
             mode_selector_agent=heuristic_agent,
@@ -888,7 +909,7 @@ class HeuristicAgent:
     def __init__(self,
                  mode_selector="heuristic",
                  risk_tolerance="medium",
-                 spatial_coord="some"):
+                 spatial_coord=False):
         """
         Initialize the heuristic agent.
 
@@ -921,9 +942,9 @@ class HeuristicAgent:
 
         # Validate configuration
         valid_risk_levels = ["low", "medium", "high", "extreme", "none"]
-        valid_spatial_levels = ["false", "true"]
+        valid_spatial_levels = [False, True]
         valid_mode_selectors = ["none", "heuristic", "none"]
-        valid_stability_levels = ["stable", "noisy"]
+        #valid_stability_levels = ["stable", "noisy"]
 
         # if action_stability not in valid_stability_levels:
         #     raise ValueError(f"action_stability must be one of {valid_stability_levels}")
@@ -994,16 +1015,16 @@ class HeuristicAgent:
             choice = 0  # Force localsearch if changeregion is in cooldown
             reason = "changeregion_in_cooldown"
         else:
-            # Add debugging for the search strategy choice
-            if self.spatial_coord == "none":
-                reason = "spatial_coord=none"
-            elif self.spatial_coord == "some":
-                reason = f"spatial_coord=some, target_rich_hysteresis={self.currently_consider_target_rich}"
-            elif self.spatial_coord == "high":
-                same_quadrant = self._agents_in_same_quadrant(env, agent_id)
-                reason = f"spatial_coord=high, same_quadrant={same_quadrant}"
-            else:
-                reason = "default"
+            # # Add debugging for the search strategy choice
+            # if self.spatial_coord == "none":
+            #     reason = "spatial_coord=none"
+            # elif self.spatial_coord == "some":
+            #     reason = f"spatial_coord=some, target_rich_hysteresis={self.currently_consider_target_rich}"
+            # elif self.spatial_coord == "high":
+            #     same_quadrant = self._agents_in_same_quadrant(env, agent_id)
+            #     reason = f"spatial_coord=high, same_quadrant={same_quadrant}"
+            #else:
+            reason = "default"
 
         # Start cooldown if switching away from changeregion
         if self.last_subpolicy in [1,4,5,6] and choice != self.last_subpolicy:
@@ -1081,7 +1102,7 @@ class HeuristicAgent:
 
     def _choose_search_strategy(self, env, agent_id):
         """Choose between local search and specific quadrant goto policies"""
-        if self.spatial_coord == "false":
+        if self.spatial_coord == False:
             return 0  # Always choose localsearch
 
         # elif self.spatial_coord == "some":
@@ -2263,7 +2284,7 @@ class TargetSearchLocalTSP(SubPolicy):
             return
 
         # Predict where teammate will search and filter out those targets
-        if self.spatial_coord == 'true':
+        if self.spatial_coord == True:
             #teammate_will_visit = self._predict_teammate_targets(env, agent_id)
             teammate_will_visit = self._predict_teammate_targets_dynamic(env, agent_id)
             filtered_targets = [t for t in nearby_targets if t['id'] not in teammate_will_visit]
@@ -2648,10 +2669,9 @@ class TargetSearchLocalTSP(SubPolicy):
             # Remove this target from remaining targets
             remaining_targets = [t for t in remaining_targets if t['id'] != nearest_target['id']]
 
-            print(
-                f"[Prediction] Step {step + 1}: Teammate will visit target {nearest_target['id']} at {nearest_target['position']}")
+            #print(f"[Prediction] Step {step + 1}: Teammate will visit target {nearest_target['id']} at {nearest_target['position']}")
 
-        print(f"[Prediction] Final sequence: {predicted_targets}")
+        #print(f"[Prediction] Final sequence: {predicted_targets}")
         return set(predicted_targets)
 
     def _estimate_teammate_velocity(self):
