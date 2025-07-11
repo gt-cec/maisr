@@ -152,6 +152,13 @@ class MaisrLocalSearchWrapper(gym.Env):
         terminated = base_terminated
         truncated = base_truncated
 
+        if terminated or truncated:
+            info["teammate_name"] = self.teammate_manager.current_teammate.name if (
+                    self.teammate_manager and
+                    self.teammate_manager.current_teammate and
+                    hasattr(self.teammate_manager.current_teammate, 'name')
+            ) else "No_Teammate"
+
         self.env.final_wrapper_reward += reward
 
         return observation, reward, terminated, truncated, info
