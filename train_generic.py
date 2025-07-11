@@ -812,6 +812,7 @@ def train_generic(
             )
             init_successful = True
         except:
+            print('WandB init failed, ret')
             init_successful = False
         if init_successful:
             break
@@ -1064,7 +1065,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests =  ["noisy_actions", "stable_actions", "no_coord", "yes_coord"] # "high_risk" ["low_risk"] #[] #  "greedy_planning", "cluster_planning", ,
+    overfit_tests =  ["noisy_actions", "yes_coord"] # "no_coord" "stable_actions" "high_risk" ["low_risk"] #[] #  "greedy_planning", "cluster_planning", ,
 
     param_shorthand = {
         'entropy_regularization': 'entreg',

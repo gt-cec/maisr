@@ -72,7 +72,7 @@ class TeammateManager:
         self.mode_selector_options = {
             'baseline': ["none"],
             'vanilla': ["none", "heuristic"],
-            'strategy_diverse': ["none", "heuristic"]}
+            'strategy_diverse': ["heuristic"]}
         self.risk_tolerance_options = {
             'baseline': ["none"],
             "vanilla": ["none"],
@@ -312,7 +312,7 @@ class TeammateManager:
         elif self.overfit_test == "no_coord":
             #print(f'[_create_overfit_test_teammate] Creating no spatial coordination teammate')
             mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
+            risk_tolerance = "low"  # Default risk tolerance
             spatial_coord = False
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "greedy"
@@ -320,7 +320,7 @@ class TeammateManager:
         elif self.overfit_test == "yes_coord":
             #print(f'[_create_overfit_test_teammate] Creating high spatial coordination teammate')
             mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
+            risk_tolerance = "low"  # Default risk tolerance
             spatial_coord = True
             action_stability = "stable"  # Default for overfit tests
             planning_horizon = "greedy"
@@ -353,7 +353,7 @@ class TeammateManager:
         elif self.overfit_test == 'stable_actions':
             #print(f'[_create_overfit_test_teammate] Creating stable action teammate')
             mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
+            risk_tolerance = "low"  # Default risk tolerance
             spatial_coord = False
             planning_horizon = "greedy"
             action_stability = "stable"  # Default for overfit tests
