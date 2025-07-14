@@ -999,6 +999,9 @@ def train_generic(
     print('Model instantiated')
     print(model.policy)
 
+    if teammate_manager is not None:
+        teammate_manager.set_current_model(model)
+
     print(f'Initial entropy coefficient: {model.ent_coef}')
     run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
 
@@ -1079,8 +1082,9 @@ if __name__ == "__main__":
         #"use_entropy_decay_schedule": [True, False],
         #"num_observed_threats":[1],
         #"use_stuck_detection": [False, True],
-        'max_steps':[1700],
-        'entropy_decay_steps':[1.5e6]
+        #'max_steps':[1500],
+        #'entropy_decay_steps':[1.5e6],
+        'seed': [99, 21],
         #'threat_reward_scaling':[1,1.5],
         #'shaping_coeff_earlyfinish':[0.07]
         #"network_size":[128],
@@ -1092,7 +1096,7 @@ if __name__ == "__main__":
         #"teammate_reward_scale": [0.5, 0.75],
         #"obs_noise": [0.01],
     }
-    overfit_tests =  ["noisy_actions", "yes_coord"] # "no_coord" "stable_actions" "high_risk" ["low_risk"] #[] #  "greedy_planning", "cluster_planning", ,
+    overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"] # "no_coord"  [] #[] #  "greedy_planning", "cluster_planning", , "stable_actions"
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1110,7 +1114,8 @@ if __name__ == "__main__":
         "max_steps":'mxstps',
         'threat_reward_scaling':'thrtrwdscl',
         'shaping_coeff_earlyfinish':'erlyfnsh',
-        'entropy_decay_steps':'entdcystps'
+        'entropy_decay_steps':'entdcystps',
+        'seed':'seed'
     }
 
     ################################################

@@ -35,7 +35,8 @@ class TeammatePolicy(ABC):
 class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
-    def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, subpolicies=None, overfit_test = None):
+    def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir,
+                 subpolicies=None, overfit_test = None, current_model = None):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -49,6 +50,8 @@ class TeammateManager:
         self.subpolicies = subpolicies or {}
         self.balance_method = balance_method
         self.current_teammate = None
+        self.current_model = current_model
+
         self.episode_count = 0
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
@@ -113,7 +116,9 @@ class TeammateManager:
     def _select_uniform_teammate(self):
         """Original uniform random selection method"""
 
-        if self.league_type == "baseline":
+        if self.league_type == "selfplay":
+            return self._create_selfplay_teammate()
+        elif self.league_type == "baseline":
             return self._create_baseline_teammate()
 
         elif self.league_type == "vanilla":
@@ -188,6 +193,7 @@ class TeammateManager:
         else:
             raise ValueError(f"teammate_type must be 'selfplay' or 'pretrained', got {teammate_type}")
 
+
         # Validation checks
         if checkpoint_dir is None:
             print(f"Warning: No {teammate_type}_checkpoint_dir specified, falling back to baseline teammate")
@@ -213,10 +219,13 @@ class TeammateManager:
         # Remove duplicates and sort by modification time (newest first)
         all_checkpoints = list(set(all_checkpoints))
         if not all_checkpoints:
-            print(f"Warning: No {teammate_type} files found in {checkpoint_dir}, falling back to baseline")
-            teammate = self._create_baseline_teammate()
-            teammate.name = f"{fallback_prefix}_NoCheckpoints_Fallback"
-            return teammate
+            if teammate_type == "selfplay":
+                return self._create_current_teammate_copy()
+            else:
+                print(f"Warning: No {teammate_type} files found in {checkpoint_dir}, falling back to baseline")
+                teammate = self._create_baseline_teammate()
+                teammate.name = f"{fallback_prefix}_NoCheckpoints_Fallback"
+                return teammate
 
         all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
 
@@ -344,7 +353,7 @@ class TeammateManager:
         elif self.overfit_test == 'noisy_actions':
             #print(f'[_create_overfit_test_teammate] Creating noisy action teammate')
             mode_selector = "heuristic"
-            risk_tolerance = "medium"  # Default risk tolerance
+            risk_tolerance = "low"  # Default risk tolerance
             spatial_coord = False
             planning_horizon = "greedy"
             action_stability = "noisy"  # Default for overfit tests
@@ -452,6 +461,34 @@ class TeammateManager:
         print(f"[TeammateManager] No normalization stats found for {teammate_type} checkpoint {checkpoint_path}")
         return None
 
+
+    def set_current_model(self, model):
+        """Update the reference to the current model during training"""
+        self.current_model = model
+
+
+    def _create_current_teammate_copy(self):
+        """Create a copy of the current teammate for self-play when no checkpoints exist yet."""
+        print("[TeammateManager] No selfplay checkpoints found, creating copy of current teammate")
+
+        if self.current_model is not None:
+            print("[TeammateManager] Using current model for teammate copy")
+            current_teammate = RLTeammatePolicy(
+                model=self.current_model,  # Use the current model directly
+                env=None,
+                local_search_policy=self.subpolicies.get('local_search'),
+                go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
+                change_region_subpolicy=self.subpolicies.get('change_region'),
+            )
+            current_teammate.name = "SelfPlay_CurrentModelCopy"
+            self.current_teammate = current_teammate
+            return current_teammate
+        else:
+            print("[TeammateManager] No current model available, creating baseline teammate")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "SelfPlay_BaselineCopy_NoCurrentModel"
+            self.current_teammate = teammate
+            return teammate
 
     # def _create_selfplay_teammate(self):
     #     """

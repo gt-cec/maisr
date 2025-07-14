@@ -88,8 +88,10 @@ def get_counter_overfit_type(overfit_type):
     counter_mapping = {
         'low_risk': 'high_risk',
         'high_risk': 'low_risk',
-        'nospatial': 'highspatial',
-        'highspatial': 'nospatial',
+        'no_coord': 'yes_coord',
+        'yes_coord': 'no_coord',
+        #'nospatial': 'highspatial',
+        #'highspatial': 'nospatial',
         'noisy_actions': 'stable_actions',
         'stable_actions': 'noisy_actions'
     }
@@ -614,8 +616,26 @@ def create_comparison_plots(all_results, timestamp, overfit_types):
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # Plot 4: Success rate comparison
+    # Plot 4: Threat IDs comparison
     ax = axes[1, 0]
+    aligned_threats = [all_results[ot]['aligned']['threat_ids']['mean'] for ot in overfit_types]
+    counter_threats = [all_results[ot]['counter']['threat_ids']['mean'] for ot in overfit_types]
+    average_threats = [all_results[ot]['average']['threat_ids']['mean'] for ot in overfit_types]
+
+    aligned_stds = [all_results[ot]['aligned']['threat_ids']['std'] for ot in overfit_types]
+    counter_stds = [all_results[ot]['counter']['threat_ids']['std'] for ot in overfit_types]
+    average_stds = [all_results[ot]['average']['threat_ids']['std'] for ot in overfit_types]
+
+    ax.bar(x_pos - width, aligned_threats, width, label='Aligned', yerr=aligned_stds, capsize=5)
+    ax.bar(x_pos, counter_threats, width, label='Counter', yerr=counter_stds, capsize=5)
+    ax.bar(x_pos + width, average_threats, width, label='Average', yerr=average_stds, capsize=5)
+    ax.set_xlabel('Agent Type')
+    ax.set_ylabel('Mean Threat IDs')
+    ax.set_title('Threat IDs Comparison')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(overfit_types, rotation=45)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
     # aligned_success = [all_results[ot]['aligned']['success_rate'] for ot in overfit_types]
     # counter_success = [all_results[ot]['counter']['success_rate'] for ot in overfit_types]
     #
@@ -766,7 +786,7 @@ if __name__ == "__main__":
     print(f'Beginning main')
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    num_episodes = 10
+    num_episodes = 50
     tick_rate = 120
     use_normalize = True
     render = True
@@ -775,14 +795,16 @@ if __name__ == "__main__":
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Test configuration
-    overfit_types = ['low_risk']#, 'high_risk', 'noisy_actions', 'stable_actions'] # # 'nospatial', 'highspatial'
+    overfit_types = ['low_risk', 'high_risk', 'noisy_actions', 'stable_actions', 'no_coord', 'yes_coord'] # # 'nospatial', 'highspatial'
     behavior_types = ['average','aligned', 'counter']
 
     model_and_stats_paths = {
-        'low_risk': './R8H_saved/R8H_lowrisk',
-        #'high_risk': './R6H_saved/R6H_highrisk',
-        #'noisy_actions': './R6H_saved/R6H_noisy',
-        #'stable_actions': './R6H_saved/R6H_stable'
+        'low_risk': './R8H_2/low_risk',
+        'high_risk': './R8H_2/high_risk',
+        'noisy_actions': './R8H_2/noisy_actions',
+        'stable_actions': './R8H_2/stable_actions',
+        'no_coord': './R8H_2/no_coord',
+        'yes_coord': './R8H_2/yes_coord',
     }
 
     config = load_env_config(config_filename)
