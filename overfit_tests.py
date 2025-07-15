@@ -258,6 +258,7 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
 
         target_tracker = 0
         threat_tracker = 0
+        step_count = 0
         while not done:
             # Handle pygame events (minimal for automated testing)
             if render:
@@ -279,6 +280,8 @@ def run_episode_batch(env, agent, num_episodes, overfit_type, behavior_type, use
             if use_normalize:
                 obses, rewards, dones, infos = env.step([action])
                 obs, reward, done, info = obses[0], rewards[0], dones[0], infos[0]
+                reward = reward * (0.99 ** step_count)
+                step_count += 1
                 try:
                     env.render()
                     #pygame.time.wait(200)
@@ -787,9 +790,11 @@ if __name__ == "__main__":
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
     num_episodes = 50
-    tick_rate = 120
+    tick_rate = 60
     use_normalize = True
     render = True
+    time_multiplier = 10
+
 
     localsearch_model_path = None
     localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
@@ -813,6 +818,8 @@ if __name__ == "__main__":
     #config['use_stuck_detection'] = True
     config['teammate_active_at_start'] = True
     config['tick_rate'] = tick_rate
+    config['game_speed'] = config['game_speed'] / time_multiplier
+    config['max_steps'] = config['max_steps'] * time_multiplier
 
     # Initialize pygame
     if render:

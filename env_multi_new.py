@@ -70,6 +70,10 @@ class MAISREnvVec(gym.Env):
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
         elif self.config['action_type'] == 'Discrete16':
             self.action_space = gym.spaces.Discrete(16)  # 16 directions
+        elif self.config['action_type'] == 'target_index':
+            #total_entities = self.config['num_targets'] + self.config['num_threats']
+            total_observed_entities = self.config['num_observed_targets'] + self.config['num_observed_threats']
+            self.action_space = gym.spaces.Discrete(total_observed_entities)
         elif self.config['action_type'] == 'continuous-normalized':
             self.action_space = gym.spaces.Box(
                 low=np.array([-1, -1], dtype=np.float32),
@@ -516,10 +520,16 @@ class MAISREnvVec(gym.Env):
             if len(action) == 2:
                 waypoint = self._denormalize_waypoint(action)
             else:
-                waypoint = self._direction_to_waypoint(action)
+                #waypoint = self._direction_to_waypoint(action)
+                if self.config['action_type'] == 'target_index':
+                    waypoint = self._index_to_waypoint(int(action[0]))
+                else:
+                    waypoint = self._direction_to_waypoint(action)
         else:
-            # Handle scalar actions (int, np.int32, np.int64, etc.)
-            waypoint = self._direction_to_waypoint(action)
+            if self.config['action_type'] == 'target_index':
+                waypoint = self._index_to_waypoint(int(action))
+            else:
+                waypoint = self._direction_to_waypoint(action)
 
 
         self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
@@ -1627,7 +1637,7 @@ class MAISREnvVec(gym.Env):
 
     def check_valid_config(self):
         valid_obs_types = ['absolute', 'pixel', 'absolute-1target', 'nearest']
-        valid_action_types = ['Discrete8', 'Discrete16', 'continuous-normalized']  # 'continuous_normalized
+        valid_action_types = ['Discrete8', 'Discrete16', 'continuous-normalized', 'target_index']  # 'continuous_normalized
         valid_render_modes = ['headless', 'human', 'rgb_array']
 
         if self.config['obs_type'] not in valid_obs_types:
@@ -1810,7 +1820,40 @@ class MAISREnvVec(gym.Env):
         print(f'HOSTILE/unknown/FRIENDLY: {hostile} {unknown} {friendly}')
         return hostile, friendly, unknown
 
-    
+    def _index_to_waypoint(self, index, agent_id=0):
+        """
+        Convert target/threat index to XY waypoint coordinates.
+        Args:
+            index (int): Index of target/threat to move to
+                        0 to num_targets-1: targets
+                        num_targets to num_targets+num_threats-1: threats
+            agent_id (int): ID of the agent requesting the waypoint
+        Returns:
+            tuple: (x, y) waypoint coordinates
+        """
+        total_targets = self.config['num_targets']
+        total_threats = self.config['num_threats']
+        total_entities = total_targets + total_threats
+
+        # Validate index
+        if index < 0 or index >= total_entities:
+            # Fallback to current position if invalid index
+            current_x = self.agents[self.aircraft_ids[agent_id]].x
+            current_y = self.agents[self.aircraft_ids[agent_id]].y
+            return (float(current_x), float(current_y))
+
+        if index < total_targets:
+            # Target index
+            target_x = self.targets[index, 3]  # x coordinate
+            target_y = self.targets[index, 4]  # y coordinate
+            return (float(target_x), float(target_y))
+        else:
+            # Threat index
+            threat_idx = index - total_targets
+            threat_x = self.threats[threat_idx, 0]  # x coordinate
+            threat_y = self.threats[threat_idx, 1]  # y coordinate
+            return (float(threat_x), float(threat_y))
+
     def _direction_to_waypoint(self, action, agent_id=0):
         """
         Args:

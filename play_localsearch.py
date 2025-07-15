@@ -18,7 +18,7 @@ from utility.data_logging import load_env_config
 if __name__ == "__main__":
 
     use_normalize = True
-    config = load_env_config('configs/old configs/june15.json')
+    config = load_env_config(config_filename = 'configs/Monolith_R8H_july10.json')
 
     pygame.display.init()
     pygame.font.init()

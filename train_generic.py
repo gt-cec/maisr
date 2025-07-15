@@ -1073,7 +1073,7 @@ if __name__ == "__main__":
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
-    note = 'R8' + machine[0].upper()
+    note = 'index_1' + machine[0].upper()
 
     # Define hyperparameter sweep
     hyperparams = {
@@ -1123,6 +1123,7 @@ if __name__ == "__main__":
     config = load_env_config(config_filename)
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
+    config['action_type'] = 'target_index'
 
     import itertools
     param_names = list(hyperparams.keys())

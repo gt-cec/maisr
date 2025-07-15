@@ -30,7 +30,17 @@ class MaisrLocalSearchWrapper(gym.Env):
             dtype=np.float32)
 
         # Action space: 3 possible sub-policies to choose from
-        self.action_space = gym.spaces.Discrete(16)
+        #self.action_space = gym.spaces.Discrete(16)
+        if self.env.config['action_type'] == 'target_index':
+            # Total selectable entities: targets + threats
+            total_entities = self.env.config['num_targets'] + self.env.config['num_threats']
+            self.action_space = gym.spaces.Discrete(total_entities)
+        elif self.env.config['action_type'] == 'Discrete8':
+            self.action_space = gym.spaces.Discrete(8)  # 8 directions
+        elif self.env.config['action_type'] == 'Discrete16':
+            self.action_space = gym.spaces.Discrete(16)  # 16 directions
+        else:
+            self.action_space = gym.spaces.Discrete(16)  # Default to 16 directions
         self.action_rate = 1
 
         self.render_mode = self.env.render_mode
@@ -54,6 +64,8 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         self.current_teammate = None
         self.teammate_subpolicy_choice = 0
+
+
 
         # For detecting stuck agent
         if self.env.config['use_stuck_detection']:
@@ -103,7 +115,12 @@ class MaisrLocalSearchWrapper(gym.Env):
     def step(self, action: np.int32):
         """ Apply the monolith's action (Directional movement))"""
 
-        #print(f'Default agent action is {action}')
+        if self.env.config['action_type'] == 'target_index':
+            # Action is already an index, pass it through
+            processed_action = action
+        else:
+            # For directional actions, keep existing logic
+            processed_action = action
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:

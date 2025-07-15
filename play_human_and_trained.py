@@ -5,6 +5,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
+from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
 from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch,
@@ -185,7 +186,7 @@ def draw_status_info(window, font, episode, step_count, episode_reward, controll
 
 def main():
     # Configuration
-    config_filename = 'configs/june23_poc1_2ship.json'
+    config_filename = 'configs/Monolith_R8H_july10.json'
     num_episodes = 5
     tick_rate = 120
 
@@ -236,7 +237,7 @@ def main():
     pretrained_teammate = create_pretrained_teammate(pretrained_teammate_model_path, subpolicies)
 
     # Create wrapped environment
-    env = MaisrModeSelectorWrapper(
+    env = MaisrLocalSearchWrapper(
         base_env,
         local_search_policy=subpolicies['local_search'],
         go_to_highvalue_policy=subpolicies['go_to_threat'],
