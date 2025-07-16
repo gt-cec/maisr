@@ -60,7 +60,7 @@
 	"ppo_update_steps": 512,
 	"entropy_regularization": 0.07,
 	"use_entropy_decay_schedule": true,
-	"entropy_decay_steps": 1.5e6,
+	"entropy_decay_steps": 1.2e6,
 	"vf_coef":0.5,
 	"n_epochs":10,
 	"lr_schedule":"none",

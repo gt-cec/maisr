@@ -13,7 +13,9 @@ from utility.data_logging import load_env_config
 from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch,
                                         ChangeRegions, GoToNearestThreat, EvadeDetection,
                                         TeammateManager, RLTeammatePolicy)
-
+from rl_data_logger import ExperimentDataLogger
+from instructional_screens import ScreenManager, WorkloadSurveyScreen
+import webbrowser
 
 class HumanSubpolicyController:
     """Handles human input for subpolicy selection via keyboard and mouse clicks"""
@@ -188,12 +190,17 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
 
 
 def run_single_episode(env, human_controller, config, config_index, total_configs, current_agent_name, window, font,
-                       clock, tick_rate):
+                       clock, tick_rate, data_logger):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
     print(f"Agent: {current_agent_name}")
     print(f"{'=' * 50}")
+
+    # Parse agent and level from config
+    agent_letter = config[0]
+    level_number = int(config[1:])
+    data_logger.start_episode(config, agent_letter, level_number)
 
     obs = env.reset()[0]
     episode_reward = 0
@@ -237,6 +244,18 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         # Take step in environment
         obs, reward, terminated, truncated, info = env.step(human_action)
 
+        # Log timestep data
+        data_logger.log_timestep(
+            env=env,
+            human_controller=human_controller,
+            human_action=human_action,
+            rl_action=rl_subpolicy_id,  # Use subpolicy ID as action for RL agent
+            reward=reward,
+            terminated=terminated,
+            truncated=truncated,
+            info=info
+        )
+
         episode_reward += reward
         done = terminated or truncated
         step_count += 1
@@ -269,6 +288,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
                   f"Human subpolicy = {agent0_subpolicy_name}, "
                   f"AI subpolicy = {agent1_subpolicy_name}")
 
+    # End episode logging
+    episode_summary = data_logger.end_episode(env, info)
+
     print(f"\nConfig {config} Complete!")
     print(f"Final Reward: {episode_reward:.2f}")
     print(f"Steps Taken: {step_count}")
@@ -276,6 +298,25 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     print(f"Detections: {info.get('detections', 0)}")
 
     return False, episode_reward, step_count  # False = don't quit experiment
+
+
+def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = None):
+    """Launch survey URL in default browser
+    Args:
+        level_id: Int, 0 to num_levels
+        agent_type: Str ('fcp', 'self_play', 'strategy_diverse')
+        subject_id: int
+
+    """
+    try:
+        full_url = url + '?subject_id=' + str(subject_id) + '&scenario_number=' + str(level_id) + '&agent_type=' + str(agent_type)
+        print(f"Opening survey URL: {full_url}")
+
+        webbrowser.open_new_tab(full_url)
+        return True
+    except Exception as e:
+        print(f"Error opening survey URL: {e}")
+        return False
 
 
 def main():
@@ -292,11 +333,12 @@ def main():
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
     tick_rate = 60
+    survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
     # Define RL agent model paths - UPDATE THESE AS NEEDED
     agent_models = {
-        'A': './trained_models/agent_A_model.zip',  # Replace with actual path
-        'B': './trained_models/agent_B_model.zip',  # Replace with actual path
+        'A': './trained_models/agent_A_model.zip',  # Replace with actual path TODO
+        'B': './trained_models/agent_B_model.zip',  # Replace with actual path TODO
     }
 
     # Define subpolicy model paths
@@ -354,6 +396,8 @@ def main():
     experiment_results = []
     current_agents = {}
 
+    data_logger = ExperimentDataLogger(args.subject_id)
+
     try:
         # Main experiment loop
         for config_index, current_config in enumerate(config_list):
@@ -403,7 +447,7 @@ def main():
             # Run the episode
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(config_list),
-                current_agent.name, window, font, clock, tick_rate
+                current_agent.name, window, font, clock, tick_rate, data_logger
             )
 
             # Store results
@@ -420,6 +464,43 @@ def main():
             # Clean up environment
             env.close()
 
+            # Launch survey URL after each episode
+            print(f"\nEpisode {current_config} completed!")
+            # Show workload survey screen
+            survey_screen = WorkloadSurveyScreen(
+                episode_config=current_config,
+                window_width=window_width,
+                window_height=window_height
+            )
+
+            survey_result = screen_manager.show_screen(survey_screen)
+            #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
+
+            if survey_result["action"] == "exit":
+                print("Experiment terminated by user")
+                break
+            elif survey_result["action"] == "continue":
+                # Log the survey data
+                survey_data = survey_result.get("survey_data", {})
+                print(f"Survey responses for {current_config}: {survey_data['responses']}")
+
+                # Add survey data to your data logger
+                if hasattr(data_logger, 'log_survey_data'):
+                    data_logger.log_survey_data(survey_data)
+                else:
+                    # Fallback: save to file or print
+                    print(f"Survey data: {survey_data}")
+
+            # if survey_launched:
+            #     print("Please complete the feedback survey that opened in your browser.")
+            #     print("Press ENTER when you've finished the survey to continue...")
+            #     input()  # Wait for user to press Enter
+            # else:
+            #     print("Survey URL could not be opened automatically.")
+            #     print(f"Please manually visit: {survey_url}")
+            #     print("Press ENTER when you've finished the survey to continue...")
+            #     input()
+
             # Check if user wants to quit
             if should_quit:
                 print("Experiment terminated by user")
@@ -434,6 +515,9 @@ def main():
         print("\nExperiment interrupted by user")
 
     finally:
+        data_logger.save_session_data()
+        session_summary = data_logger.get_session_summary()
+
         # Print experiment summary
         print(f"\n{'=' * 60}")
         print("EXPERIMENT SUMMARY")
@@ -452,6 +536,26 @@ def main():
                 print(f"  {result['config']}: Reward = {result['reward']:.2f}, "
                       f"Steps = {result['steps']}")
 
+        # Print session summary from data logger
+        if session_summary:
+            print(f"\nSession Statistics:")
+            print(f"  Total episodes: {session_summary['total_episodes']}")
+            print(f"  Total session duration: {session_summary['total_session_duration']:.2f} seconds")
+            print(f"  Average episode duration: {session_summary['average_episode_duration']:.2f} seconds")
+            print(f"  Success rate: {session_summary['success_rate']:.2%}")
+            print(f"  Total targets identified: {session_summary['total_targets_identified']}")
+            print(f"  Total threats identified: {session_summary['total_threats_identified']}")
+
+            if 'agent_performance' in session_summary:
+                print(f"\nAgent Performance:")
+                for agent, performance in session_summary['agent_performance'].items():
+                    print(f"  Agent {agent}:")
+                    print(f"    Episodes: {performance['episodes']}")
+                    print(f"    Average reward: {performance['average_reward']:.2f}")
+                    print(f"    Success rate: {performance['success_rate']:.2%}")
+                    print(f"    Average targets identified: {performance['average_targets_identified']:.1f}")
+
+        print(f"\nData saved to: {data_logger.output_dir}/subject_{args.subject_id}/")
         pygame.quit()
 
 

@@ -1073,7 +1073,7 @@ if __name__ == "__main__":
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
-    note = 'index_1' + machine[0].upper()
+    note = 'index_1' + machine[0].upper() # R8H
 
     # Define hyperparameter sweep
     hyperparams = {
@@ -1084,7 +1084,7 @@ if __name__ == "__main__":
         #"use_stuck_detection": [False, True],
         #'max_steps':[1500],
         #'entropy_decay_steps':[1.5e6],
-        'seed': [99, 21],
+        'seed': [21],
         #'threat_reward_scaling':[1,1.5],
         #'shaping_coeff_earlyfinish':[0.07]
         #"network_size":[128],

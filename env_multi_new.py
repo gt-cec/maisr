@@ -71,7 +71,6 @@ class MAISREnvVec(gym.Env):
         elif self.config['action_type'] == 'Discrete16':
             self.action_space = gym.spaces.Discrete(16)  # 16 directions
         elif self.config['action_type'] == 'target_index':
-            #total_entities = self.config['num_targets'] + self.config['num_threats']
             total_observed_entities = self.config['num_observed_targets'] + self.config['num_observed_threats']
             self.action_space = gym.spaces.Discrete(total_observed_entities)
         elif self.config['action_type'] == 'continuous-normalized':
@@ -1130,6 +1129,44 @@ class MAISREnvVec(gym.Env):
 
         return self.observation
 
+    def _get_unidentified_entities(self, agent_id=0):
+        """
+        Get lists of unidentified targets and threats, sorted by distance from agent.
+        Returns indices into the original targets/threats arrays.
+        """
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        # Get unidentified targets
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+        unknown_target_mask = target_info_levels < 1.0
+
+        unidentified_targets = []
+        if np.any(unknown_target_mask):
+            unknown_positions = target_positions[unknown_target_mask]
+            unknown_indices = np.where(unknown_target_mask)[0]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+
+            # Sort by distance and get original indices
+            sorted_indices = np.argsort(distances)
+            unidentified_targets = unknown_indices[sorted_indices].tolist()
+
+        # Get unidentified threats
+        unidentified_threats = []
+        if hasattr(self, 'threat_identified'):
+            unidentified_threat_mask = ~self.threat_identified
+            if np.any(unidentified_threat_mask):
+                threat_positions = self.threats[unidentified_threat_mask]
+                threat_indices = np.where(unidentified_threat_mask)[0]
+                distances = np.sqrt(np.sum((threat_positions - agent_pos) ** 2, axis=1))
+
+                # Sort by distance and get original indices
+                sorted_indices = np.argsort(distances)
+                unidentified_threats = threat_indices[sorted_indices].tolist()
+
+        return unidentified_targets, unidentified_threats
+
+
     def _render_game_to_surface_enhanced(self, surface):
         """
         Render game elements to a pygame surface with enhanced target visibility for pixel observations.
@@ -1823,36 +1860,54 @@ class MAISREnvVec(gym.Env):
     def _index_to_waypoint(self, index, agent_id=0):
         """
         Convert target/threat index to XY waypoint coordinates.
+        Now only allows selection of unidentified targets/threats.
         Args:
-            index (int): Index of target/threat to move to
-                        0 to num_targets-1: targets
-                        num_targets to num_targets+num_threats-1: threats
+            index (int): Index into available unidentified entities
+                        0 to num_observed_targets-1: unidentified targets (by distance)
+                        num_observed_targets to num_observed_targets+num_observed_threats-1: unidentified threats (by distance)
             agent_id (int): ID of the agent requesting the waypoint
         Returns:
             tuple: (x, y) waypoint coordinates
         """
-        total_targets = self.config['num_targets']
-        total_threats = self.config['num_threats']
-        total_entities = total_targets + total_threats
+        num_observed_targets = self.config['num_observed_targets']
+        num_observed_threats = self.config['num_observed_threats']
+
+        # Get current unidentified entities sorted by distance
+        unidentified_targets, unidentified_threats = self._get_unidentified_entities(agent_id)
 
         # Validate index
-        if index < 0 or index >= total_entities:
+        total_observed = num_observed_targets + num_observed_threats
+        if index < 0 or index >= total_observed:
             # Fallback to current position if invalid index
             current_x = self.agents[self.aircraft_ids[agent_id]].x
             current_y = self.agents[self.aircraft_ids[agent_id]].y
             return (float(current_x), float(current_y))
 
-        if index < total_targets:
-            # Target index
-            target_x = self.targets[index, 3]  # x coordinate
-            target_y = self.targets[index, 4]  # y coordinate
-            return (float(target_x), float(target_y))
+        if index < num_observed_targets:
+            # Target index - select from unidentified targets
+            if index < len(unidentified_targets):
+                target_idx = unidentified_targets[index]
+                target_x = self.targets[target_idx, 3]  # x coordinate
+                target_y = self.targets[target_idx, 4]  # y coordinate
+                return (float(target_x), float(target_y))
+            else:
+                # Not enough unidentified targets, fallback to current position
+                current_x = self.agents[self.aircraft_ids[agent_id]].x
+                current_y = self.agents[self.aircraft_ids[agent_id]].y
+                return (float(current_x), float(current_y))
         else:
-            # Threat index
-            threat_idx = index - total_targets
-            threat_x = self.threats[threat_idx, 0]  # x coordinate
-            threat_y = self.threats[threat_idx, 1]  # y coordinate
-            return (float(threat_x), float(threat_y))
+            # Threat index - select from unidentified threats
+            threat_action_idx = index - num_observed_targets
+            if threat_action_idx < len(unidentified_threats):
+                threat_idx = unidentified_threats[threat_action_idx]
+                threat_x = self.threats[threat_idx, 0]  # x coordinate
+                threat_y = self.threats[threat_idx, 1]  # y coordinate
+                return (float(threat_x), float(threat_y))
+            else:
+                # Not enough unidentified threats, fallback to current position
+                current_x = self.agents[self.aircraft_ids[agent_id]].x
+                current_y = self.agents[self.aircraft_ids[agent_id]].y
+                return (float(current_x), float(current_y))
 
     def _direction_to_waypoint(self, action, agent_id=0):
         """
