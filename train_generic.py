@@ -9,7 +9,7 @@ import numpy as np
 import multiprocessing
 import socket
 import torch
-
+import argparse
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3 import PPO, SAC
@@ -1064,6 +1064,12 @@ def train_generic(
 
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='Training script')
+    parser.add_argument('--version', required=True, choices=['overfit', 'index_test'], help='Version type to run (overfit or index_test)')
+    args = parser.parse_args()
+    version = args.version
+
     print(f'\n############################ STARTING TRAINING ############################')
 
     ############## ---- SETTINGS ---- ##############
@@ -1076,54 +1082,61 @@ if __name__ == "__main__":
     note = 'index_1' + machine[0].upper() # R8H
 
     # Define hyperparameter sweep
-    hyperparams = {
-        #"network_size": [128, 196],
-        #"num_observed_targets": [5],
-        #"use_entropy_decay_schedule": [True, False],
-        #"num_observed_threats":[1],
-        #"use_stuck_detection": [False, True],
-        #'max_steps':[1500],
-        #'entropy_decay_steps':[1.5e6],
-        'seed': [21],
-        #'threat_reward_scaling':[1,1.5],
-        #'shaping_coeff_earlyfinish':[0.07]
-        #"network_size":[128],
-        #"lr": [0.001, 0.0015]
-        #"team_spread_bonus_coeff": [0.0035], # 0.005,
-        #"force_specific_level": [99],
-        #"observe_teammate_direction":[True],
-        #'entropy_regularization': [0.07],
-        #"teammate_reward_scale": [0.5, 0.75],
-        #"obs_noise": [0.01],
-    }
-    overfit_tests =  ["low_risk"] #["low_risk", "noisy_actions", "high_risk", "yes_coord"] # "no_coord"  [] #[] #  "greedy_planning", "cluster_planning", , "stable_actions"
+
+    config = load_env_config(config_filename)
+
+    if version == 'overfit':
+        hyperparams = {
+            #"network_size": [128, 196],
+            #"num_observed_targets": [5],
+            #"use_entropy_decay_schedule": [True, False],
+            #"num_observed_threats":[1],
+            #"use_stuck_detection": [False, True],
+            #'max_steps':[1500],
+            #'entropy_decay_steps':[1.5e6],
+            'seed': [21],
+            #'threat_reward_scaling':[1,1.5],
+            #'shaping_coeff_earlyfinish':[0.07]
+            #"network_size":[128],
+            #"lr": [0.001, 0.0015]
+            #"team_spread_bonus_coeff": [0.0035], # 0.005,
+            #"force_specific_level": [99],
+            #"observe_teammate_direction":[True],
+            #'entropy_regularization': [0.07],
+            #"teammate_reward_scale": [0.5, 0.75],
+            #"obs_noise": [0.01],
+        }
+        overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
+    elif version == 'index_test':
+        hyperparams = {'seed':42}
+        overfit_tests = [None]
+        config['action_type'] = 'target_index'
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
         'teammate_reward_scale': 'trs',
         'team_spread_bonus_coeff': 'spreadbns',
         'num_observed_targets': 'obstgts',
-        'num_observed_threats':'obstrts',
+        'num_observed_threats': 'obstrts',
         'obs_noise': 'noise',
         'network_size': 'modelsize',
-        "observe_teammate_direction":"obs-tmt-dir",
-        "force_specific_level":"frclvl",
+        "observe_teammate_direction": "obs-tmt-dir",
+        "force_specific_level": "frclvl",
         "entropy_decay_schedule": "entdcy",
-        "use_stuck_detection":"stuckdtct",
-        "lr":"lr",
-        "max_steps":'mxstps',
-        'threat_reward_scaling':'thrtrwdscl',
-        'shaping_coeff_earlyfinish':'erlyfnsh',
-        'entropy_decay_steps':'entdcystps',
-        'seed':'seed'
+        "use_stuck_detection": "stuckdtct",
+        "lr": "lr",
+        "max_steps": 'mxstps',
+        'threat_reward_scaling': 'thrtrwdscl',
+        'shaping_coeff_earlyfinish': 'erlyfnsh',
+        'entropy_decay_steps': 'entdcystps',
+        'seed': 'seed'
     }
 
     ################################################
 
-    config = load_env_config(config_filename)
+
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
-    config['action_type'] = 'target_index'
 
     import itertools
     param_names = list(hyperparams.keys())
@@ -1140,7 +1153,10 @@ if __name__ == "__main__":
             param_strings.append(f'{param_key}-{param_value}')
 
         for overfit_test in overfit_tests:
-            temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+            if overfit_test is not None:
+                temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+            else:
+                temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
             run_name = f'{note}-{train_type}_{temp_identifier}_' + generate_run_name(config)
 
             print(f'\n--- Starting training run with params: {current_params} ---')
