@@ -73,7 +73,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
         self.entropy_decay_enabled = False
-        self.entropy_decay_trigger_threshold = 0.29  # mean_target_ids_per_step threshold
+        self.entropy_decay_trigger_threshold = 0.15  # mean_target_ids_per_step threshold
         self.entropy_decay_threat_threshold = 1.0 # eval/mean_threat_ids threshold
         self.entropy_decay_steps = env_config['entropy_decay_steps'] # Decay over this many steps
         self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
@@ -141,27 +141,28 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             if self.episode_buffer['detections']:
                 log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            if self.episode_buffer['teammate_names']:
-                from collections import Counter
-                teammate_counts = Counter(self.episode_buffer['teammate_names'])
-                total_episodes = len(self.episode_buffer['teammate_names'])
+            if env_config['league_type'] is not "selfplay":
+                if self.episode_buffer['teammate_names']:
+                    from collections import Counter
+                    teammate_counts = Counter(self.episode_buffer['teammate_names'])
+                    total_episodes = len(self.episode_buffer['teammate_names'])
 
-                # Create a bar chart data structure for WandB
-                teammate_freq_data = []
-                for teammate_name, count in teammate_counts.items():
-                    teammate_freq_data.append([teammate_name, count, count / total_episodes])
+                    # Create a bar chart data structure for WandB
+                    teammate_freq_data = []
+                    for teammate_name, count in teammate_counts.items():
+                        teammate_freq_data.append([teammate_name, count, count / total_episodes])
 
-                # Log as a table that WandB can convert to a bar chart
-                log_data["train/teammate_frequency_table"] = wandb.Table(
-                    data=teammate_freq_data,
-                    columns=["teammate_name", "count", "frequency"]
-                )
+                    # Log as a table that WandB can convert to a bar chart
+                    log_data["train/teammate_frequency_table"] = wandb.Table(
+                        data=teammate_freq_data,
+                        columns=["teammate_name", "count", "frequency"]
+                    )
 
-                # Also log individual frequencies for easier tracking
-                for teammate_name, count in teammate_counts.items():
-                    # Clean the name for WandB (replace special characters)
-                    clean_name = teammate_name.replace("/", "_").replace(" ", "_")
-                    log_data[f"train/teammate_freq_{clean_name}"] = count / total_episodes
+                    # Also log individual frequencies for easier tracking
+                    for teammate_name, count in teammate_counts.items():
+                        # Clean the name for WandB (replace special characters)
+                        clean_name = teammate_name.replace("/", "_").replace(" ", "_")
+                        log_data[f"train/teammate_freq_{clean_name}"] = count / total_episodes
 
             if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
