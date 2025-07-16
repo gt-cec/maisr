@@ -502,7 +502,7 @@ def main():
             # Brief pause between episodes (unless it's the last one)
             if config_index < len(config_list) - 1:
                 print("Next episode starting in 2 seconds...")
-                pygame.time.wait(2000)
+                pygame.time.wait(1000)
 
     except KeyboardInterrupt:
         print("\nExperiment interrupted by user")

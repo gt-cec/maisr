@@ -257,9 +257,6 @@ class TeammateManager:
                   (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
             model = PPO.load(selected_checkpoint)
 
-            # Look for corresponding normalization stats file
-            #norm_stats_path = self._find_normalization_stats(selected_checkpoint, teammate_type)
-
 
             # Create RL teammate policy using the loaded model
             rl_teammate = RLTeammatePolicy(
@@ -936,44 +933,43 @@ class RLTeammatePolicy(TeammatePolicy):
 
     def _normalize_observation(self, observation):
         """Apply normalization to observation if stats are available"""
-        # Prefer live stats over file stats
+        # Prefer live stats over file stats (this is the key!)
         if self.live_obs_rms is not None:
             try:
                 obs_mean = self.live_obs_rms.mean
                 obs_var = self.live_obs_rms.var
-                normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
-                return normalized_obs
+                epsilon = 1e-8  # Same as VecNormalize default
+                clip_obs = 10.0  # Same as VecNormalize default
+
+                # Apply the EXACT same normalization formula as VecNormalize
+                normalized_obs = np.clip(
+                    (observation - obs_mean) / np.sqrt(obs_var + epsilon),
+                    -clip_obs,
+                    clip_obs
+                )
+                return normalized_obs.astype(np.float32)  # Same dtype as VecNormalize
             except Exception as e:
                 print(f"[RLTeammatePolicy] Error using live normalization: {e}")
 
-        # Fallback to file-based stats
+        # Fallback to file-based stats if live stats fail
         if self.norm_stats is not None:
             try:
                 obs_mean = self.norm_stats['obs_mean']
                 obs_var = self.norm_stats['obs_var']
-                normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
-                return normalized_obs
+                epsilon = 1e-8
+                clip_obs = 10.0
+
+                normalized_obs = np.clip(
+                    (observation - obs_mean) / np.sqrt(obs_var + epsilon),
+                    -clip_obs,
+                    clip_obs
+                )
+                return normalized_obs.astype(np.float32)
             except Exception as e:
                 print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
 
-        # No normalization available
+        # No normalization available - return as-is
         return observation
-
-    # def _normalize_observation(self, observation):
-    #     """Apply normalization to observation if stats are available"""
-    #     if self.norm_stats is None:
-    #         return observation
-    #
-    #     try:
-    #         obs_mean = self.norm_stats['obs_mean']
-    #         obs_var = self.norm_stats['obs_var']
-    #
-    #         # Apply normalization: (obs - mean) / sqrt(var + epsilon)
-    #         normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
-    #         return normalized_obs
-    #     except Exception as e:
-    #         print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
-    #         return observation
 
     def reset(self):
         """Reset any internal state"""
@@ -1423,6 +1419,10 @@ class GenericTeammatePolicy(TeammatePolicy):
 
         # Default name
         self.name = "Generic_Teammate"
+
+    def _normalize_observation(self, observation):
+        """Passthrough"""
+        return observation
 
     def choose_subpolicy(self, observation, current_subpolicy):
         """Choose subpolicy using the embedded HeuristicAgent"""

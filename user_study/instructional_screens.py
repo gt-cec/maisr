@@ -776,7 +776,7 @@ class GameInstructionScreen(InstructionalScreen):
 
             # Draw checkmark or continue symbol
             arrow_font = pygame.font.SysFont('Arial', 36, bold=True)
-            arrow_surface = arrow_font.render('✓', True, (255, 255, 255))
+            arrow_surface = arrow_font.render('→', True, (255, 255, 255))
             arrow_rect = arrow_surface.get_rect(center=self.next_button_rect.center)
             window.blit(arrow_surface, arrow_rect)
         else:

@@ -124,9 +124,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
-            #if self.env.config['league_type'] == 'selfplay': # TODO cleanup
-                #self.teammate_action, _ = self.get_teammate_action()
-            #else:
             self.teammate_action = self.get_teammate_action()
             #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
             if isinstance(self.teammate_action, np.ndarray):
@@ -287,12 +284,25 @@ class MaisrLocalSearchWrapper(gym.Env):
 
     def get_teammate_action(self):
         if self.teammate_manager or self.teammate_policy:
-            if self.env.config['league_type'] == 'selfplay': # TODO clean up
-                teammate_obs = self.env.get_observation_nearest_n(1)
-            else:
-                teammate_obs = self.get_observation(1)
 
-            if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None: self.current_teammate.env = self.env
+            if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None:
+                self.current_teammate.env = self.env
+
+            # Get teammate observation (and normalize it)
+            if self.env.config['league_type'] == 'selfplay': # TODO clean up
+                teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
+                if hasattr(self.current_teammate, 'model'):
+                    direction_to_move = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+                else:
+                    teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
+                    direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
+
+                teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
+                return teammate_action
+
+            else:
+                teammate_obs = self.current_teammate._normalize_observation(self.get_observation(1))
+                # TODO finish
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
 

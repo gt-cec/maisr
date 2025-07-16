@@ -206,17 +206,25 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
             print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
 
-            if hasattr(self.model.get_env(), 'obs_rms'):
-                self.eval_env.obs_rms = self.model.get_env().obs_rms
-                self.eval_env.ret_rms = self.model.get_env().ret_rms
+            # Check if the training env is a VecNormalize wrapper
+            training_env = self.model.get_env()
+            if hasattr(training_env, 'obs_rms') and hasattr(training_env, 'ret_rms'):
+                # Training env is VecNormalize, sync stats to eval env
+                if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
+                    self.eval_env.obs_rms = training_env.obs_rms
+                    self.eval_env.ret_rms = training_env.ret_rms
+                    print(f"[Callback] Synced normalization stats from training to eval env")
 
-                if self.teammate_manager is not None:
-                    print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
-                    self.teammate_manager.set_normalization_stats(
-                        self.model.get_env().obs_rms,
-                        self.model.get_env().ret_rms
-                    )
-
+                    if self.teammate_manager is not None:
+                        print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
+                        self.teammate_manager.set_normalization_stats(
+                            training_env.obs_rms,
+                            training_env.ret_rms
+                        )
+                else:
+                    print(f"[Callback] Warning: Training env has normalization but eval env doesn't")
+            else:
+                print(f"[Callback] No normalization detected in training environment")
             target_ids_list = []
             threat_ids_list = []
             target_ids_per_step_list = []
@@ -552,9 +560,6 @@ class EnhancedWandbCallback_MS(BaseCallback):
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
             print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
 
-            if hasattr(self.model.get_env(), 'obs_rms'):
-                self.eval_env.obs_rms = self.model.get_env().obs_rms
-                self.eval_env.ret_rms = self.model.get_env().ret_rms
 
             target_ids_list = []
             target_ids_per_step_list = []
