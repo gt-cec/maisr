@@ -422,6 +422,13 @@ class TeammateManager:
         self.current_teammate = teammate
         return teammate
 
+    def get_current_teammate_checkpoint_info(self):
+        """Get checkpoint information for the current teammate"""
+        if (self.current_teammate and
+                hasattr(self.current_teammate, 'name') and
+                'SelfPlay' in self.current_teammate.name):
+            return self.current_teammate.name
+        return None
 
     def _find_normalization_stats(self, checkpoint_path, teammate_type):
         """

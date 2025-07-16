@@ -180,6 +180,12 @@ class MaisrLocalSearchWrapper(gym.Env):
                     hasattr(self.teammate_manager.current_teammate, 'name')
             ) else "No_Teammate"
 
+            # Pass teammate info directly to environment for plotting
+            if self.teammate_manager and self.teammate_manager.current_teammate:
+                self.env.teammate_name = self.teammate_manager.current_teammate.name
+            else:
+                self.env.teammate_name = "No_Teammate"
+
         self.env.final_wrapper_reward += reward
 
         return observation, reward, terminated, truncated, info

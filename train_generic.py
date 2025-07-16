@@ -52,6 +52,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
                  log_freq=2, teammate_manager=None):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
+        self.config = env_config
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
@@ -141,7 +142,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             if self.episode_buffer['detections']:
                 log_data["train/mean_detections"] = np.mean(self.episode_buffer['detections'])
 
-            if env_config['league_type'] is not "selfplay":
+            if self.config['league_type'] != "selfplay":
                 if self.episode_buffer['teammate_names']:
                     from collections import Counter
                     teammate_counts = Counter(self.episode_buffer['teammate_names'])

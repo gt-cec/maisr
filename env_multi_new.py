@@ -671,6 +671,9 @@ class MAISREnvVec(gym.Env):
         if self.terminated or self.truncated:
             print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps\n\n')
 
+            if "teammate_checkpoint" in info:
+                self.teammate_checkpoint_info = info["teammate_checkpoint"]
+
             # Check if we should collect data for combined plotting
             # if self.should_save_combined_plot():
             #     print(f"[DEBUG] Collecting data for combined plot - episode {self.episode_counter}, level {self.level_idx}")
@@ -2307,6 +2310,8 @@ class MAISREnvVec(gym.Env):
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
             teammate_name = "No Teammate"
+            checkpoint_info = ""
+
             if hasattr(self, 'config') and self.config.get('num_aircraft', 1) >= 2:
                 # Try to get teammate name from the wrapper (if using teammate manager)
                 if hasattr(self, 'teammate_name'):
@@ -2316,9 +2321,12 @@ class MAISREnvVec(gym.Env):
                 else:
                     teammate_name = "Unknown Teammate"
 
+                # Add checkpoint info if available
+                if hasattr(self, 'teammate_checkpoint_info') and self.teammate_checkpoint_info:
+                    checkpoint_info = f"\nCheckpoint: {self.teammate_checkpoint_info}"
 
-            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})\nTeammate: {teammate_name}'
-            plt.title(plot_title, fontsize=10)  # Reduced font size to accommodate longer title
+            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})\nTeammate: {teammate_name}{checkpoint_info}'
+            plt.title(plot_title, fontsize=10)
 
             # Create legend with subpolicy colors
             legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.92, 1), fontsize='small')
