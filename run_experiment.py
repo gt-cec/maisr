@@ -8,14 +8,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch,
-                                        ChangeRegions, GoToNearestThreat, EvadeDetection,
-                                        TeammateManager, RLTeammatePolicy)
+from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
-from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
-    InstructionSeriesManager
+from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, InstructionSeriesManager
 import webbrowser
 
 class HumanSubpolicyController:
@@ -148,8 +144,7 @@ def draw_instructions(window, font):
         y_offset += 25
 
 
-def draw_status_info(window, font, current_config, config_index, total_configs, step_count, episode_reward, controller,
-                     ):
+def draw_status_info(window, font, current_config, config_index, total_configs, step_count, episode_reward, controller):
     """Draw current status information"""
     subpolicy_names = ["Local Search", "Goto NW", "Go to Threat", "Hold", "Goto NE", "Goto SE", "Goto SW"]
     current_mode = "Custom Waypoint" if controller.use_custom_waypoint else subpolicy_names[
@@ -170,8 +165,7 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
         y_offset += 25
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font,
-                       clock, tick_rate, data_logger):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
@@ -356,16 +350,6 @@ def main():
     # Create font for instructions
     font = pygame.font.SysFont(None, 24)
 
-    # Initialize subpolicies
-    # subpolicies = {
-    #     'local_search': LocalSearch(
-    #         model_path=localsearch_model_path,
-    #         norm_stats_filepath=localsearch_normstats_path if localsearch_model_path else None
-    #     ),
-    #     'change_region': ChangeRegions(model_path=None),
-    #     'go_to_threat': GoToNearestThreat(model_path=None)
-    # }
-
     # Store results
     experiment_results = []
     current_agents = {}
@@ -382,7 +366,9 @@ def main():
             clock,
             map_image_path="user_study/img/map_image.png",  # Update these paths
             sensor_image_path="user_study/img/sensor_image.png",  # to your actual
-            hvt_image_path="user_study/img/threat_image.png"  # image files
+            hvt_image_path="user_study/img/threat_image.png",  # image files
+            human_image_path="user_study/img/human_aircraft.png",
+            teammate_image_path="user_study/img/teammates_image.png"
         )
 
         instruction_result = instruction_manager.run_instruction_series()
@@ -403,11 +389,6 @@ def main():
             # Load the appropriate RL agent if not already loaded
             if agent_letter not in current_agents:
                 current_agents[agent_letter] = PPO.load(agent_models[agent_letter])
-                # current_agents[agent_letter] = create_rl_teammate(
-                #     agent_models[agent_letter],
-                #     #subpolicies,
-                #     f"Agent_{agent_letter}"
-                # )
 
             current_agent_name = current_agents[agent_letter]
 
@@ -434,8 +415,6 @@ def main():
                 teammate_policy=None,
                 obs_noise_std=0.0
             )
-
-
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)

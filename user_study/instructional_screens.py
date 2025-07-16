@@ -906,13 +906,26 @@ class Instruct2Screen(GameInstructionScreen):
 class Instruct3Screen(GameInstructionScreen):
     """Player aircraft control introduction"""
 
+    def __init__(self, image_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_path = image_path
+        self.image = None
+        try:
+            self.image = pygame.image.load(image_path)
+            self.image = pygame.transform.scale(self.image, (200, 200))
+        except pygame.error:
+            print(f"Could not load image: {image_path}")
+
     def draw_content(self, window: pygame.Surface) -> None:
+
         # Top text at (100, 100)
         text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
         window.blit(text_surface, (100, 100))
 
         # Blue circle at (500, 200) with radius 50px
-        pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
+        image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
+        window.blit(self.image, image_rect)
+        #pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
 
         # Bottom text at (50, 500)
         bottom_text = ["You control your aircraft by clicking on the map where you want to fly.",
@@ -929,6 +942,16 @@ class Instruct3Screen(GameInstructionScreen):
 class Instruct4Screen(GameInstructionScreen):
     """AI teammate introduction"""
 
+    def __init__(self, image_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_path = image_path
+        self.image = None
+        try:
+            self.image = pygame.image.load(image_path)
+            self.image = pygame.transform.scale(self.image, (750, 200))
+        except pygame.error:
+            print(f"Could not load image: {image_path}")
+
     def draw_content(self, window: pygame.Surface) -> None:
         # Top text at (100, 100)
 
@@ -943,18 +966,19 @@ class Instruct4Screen(GameInstructionScreen):
             y_pos += 35
 
         # Red circle at (500, 200) with radius 50px (AI teammate)
-        pygame.draw.circle(window, (255, 50, 50), (250, 350), 50)
-        pygame.draw.circle(window, (255, 50, 50), (400, 350), 50)
-        pygame.draw.circle(window, (255, 50, 50), (550, 350), 50)
+        image_rect = self.image.get_rect(center=(self.window_width // 2, 350))
+        window.blit(self.image, image_rect)
+        #pygame.draw.circle(window, (255, 50, 50), (250, 350), 50)
+        #pygame.draw.circle(window, (255, 50, 50), (400, 350), 50)
+        #pygame.draw.circle(window, (255, 50, 50), (550, 350), 50)
 
         # Bottom text at (50, 500)
-        bottom_text = ["You CANNOT control your teammate. They will autonomously",
-                       "",
+        bottom_text = ["",
+                       "You CANNOT control your teammate. They will autonomously",
                        "fly around the map to help you identify targets.",
                        "",
                        "",
                        "They may follow different strategies and may or may not coordinate",
-                       "",
                        "with you depending on what they learned in their training."]
 
         y_pos = 500
@@ -1094,7 +1118,6 @@ class Instruct7Screen(GameInstructionScreen):
             "",
             "",
             "We are developing AI teammates that can adapt to humans.",
-            "",
             "Your responses help us identify which techniques are most effective!"
         ]
 
@@ -1106,7 +1129,9 @@ class InstructionSeriesManager:
 
     def __init__(self, window: pygame.Surface, clock: pygame.time.Clock,
                  map_image_path: str = None, sensor_image_path: str = None,
-                 hvt_image_path: str = None):
+                 hvt_image_path: str = None,
+                 human_image_path: str = None,
+                 teammate_image_path: str = None):
         self.window = window
         self.clock = clock
         self.screen_manager = ScreenManager(window, clock)
@@ -1115,8 +1140,8 @@ class InstructionSeriesManager:
         self.screens = [
             Instruct1Screen(1, 7, window.get_width(), window.get_height()),
             Instruct2Screen(map_image_path or "map_image.jpg", 2, 7, window.get_width(), window.get_height()),
-            Instruct3Screen(3, 7, window.get_width(), window.get_height()),
-            Instruct4Screen(4, 7, window.get_width(), window.get_height()),
+            Instruct3Screen(human_image_path, 3, 7, window.get_width(), window.get_height()),
+            Instruct4Screen(teammate_image_path, 4, 7, window.get_width(), window.get_height()),
             Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 7, window.get_width(), window.get_height()),
             Instruct6Screen(hvt_image_path or "hvt_image.jpg", 6, 7, window.get_width(), window.get_height()),
             Instruct7Screen(7, 7, window.get_width(), window.get_height())
