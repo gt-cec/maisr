@@ -732,7 +732,7 @@ class MAISREnvVec(gym.Env):
             threat_potential_reward = - 0.05 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
 
         # Add debugging print statements
-        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
+        if False and self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
             print(f'\n=== REWARD DEBUG (Ep {self.episode_counter}, Step {self.step_count_outer}) ===')
 
             # Target ID rewards
@@ -985,7 +985,7 @@ class MAISREnvVec(gym.Env):
                 self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
                 self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
 
-        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
+        if False and self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
             print(f'======= Obs check (ep {self.episode_counter}, step {self.step_count_outer + 1}) =======')
             idx = 0
             for i in range(self.config['num_observed_targets']):

@@ -124,8 +124,15 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
-            teammate_action = self.get_teammate_action()
-            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = teammate_action
+            #if self.env.config['league_type'] == 'selfplay': # TODO cleanup
+                #self.teammate_action, _ = self.get_teammate_action()
+            #else:
+            self.teammate_action = self.get_teammate_action()
+            #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
+            if isinstance(self.teammate_action, np.ndarray):
+                self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
+                #print(f'converted teammate action to tuple: {self.teammate_action}')
+            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
 
         ############ Stuck detection ############
         if self.env.config['use_stuck_detection']:# and self.env.episode_counter >= 500:
@@ -280,7 +287,10 @@ class MaisrLocalSearchWrapper(gym.Env):
 
     def get_teammate_action(self):
         if self.teammate_manager or self.teammate_policy:
-            teammate_obs = self.get_observation(1)
+            if self.env.config['league_type'] == 'selfplay': # TODO clean up
+                teammate_obs = self.env.get_observation_nearest_n(1)
+            else:
+                teammate_obs = self.get_observation(1)
 
             if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None: self.current_teammate.env = self.env
 
@@ -290,16 +300,17 @@ class MaisrLocalSearchWrapper(gym.Env):
             if self.teammate_subpolicy_choice == 0:  # Local search
                 direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
 
-                if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
-                    old_direction_to_move = direction_to_move
-                    noise = random.choice([-3, -2, -1, 1, 2, 3])
-                    if isinstance(direction_to_move, tuple):
-                        direction_to_move = direction_to_move[0]
-                    try:
-                        direction_to_move = (direction_to_move + noise) % 16
-                    except:
-                        print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
-                    #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
+                if hasattr(self.current_teammate, 'action_stability'):
+                    if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
+                        old_direction_to_move = direction_to_move
+                        noise = random.choice([-3, -2, -1, 1, 2, 3])
+                        if isinstance(direction_to_move, tuple):
+                            direction_to_move = direction_to_move[0]
+                        try:
+                            direction_to_move = (direction_to_move + noise) % 16
+                        except:
+                            print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
+                        #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
 
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
@@ -310,13 +321,14 @@ class MaisrLocalSearchWrapper(gym.Env):
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
                 waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
 
-                if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
-                    old_waypoint_to_go = waypoint_to_go
-                    noise = random.choice([-3, -2, -1, 1, 2, 3])
-                    #print(f'Noise: {noise}')
-                    #print(f'Teammate action: {waypoint_to_go}')
-                    waypoint_to_go = (waypoint_to_go + noise) % 16
-                    #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_waypoint_to_go} + {noise} -> {waypoint_to_go})')
+                if hasattr(self.current_teammate, 'action_stability'):
+                    if self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
+                        old_waypoint_to_go = waypoint_to_go
+                        noise = random.choice([-3, -2, -1, 1, 2, 3])
+                        #print(f'Noise: {noise}')
+                        #print(f'Teammate action: {waypoint_to_go}')
+                        waypoint_to_go = (waypoint_to_go + noise) % 16
+                        #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_waypoint_to_go} + {noise} -> {waypoint_to_go})')
 
                 teammate_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
 

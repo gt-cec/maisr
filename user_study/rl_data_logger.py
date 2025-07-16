@@ -16,14 +16,12 @@ class TimestepData:
     human_position: Tuple[float, float]
     human_observation: List[float]
     human_action: int
-    human_subpolicy: int
     human_custom_waypoint: Optional[Tuple[float, float]]
 
     # RL agent data (agent 1)
-    rl_position: Tuple[float, float]
-    rl_observation: List[float]
-    rl_action: int
-    rl_subpolicy: int
+    agent_position: Tuple[float, float]
+    agent_observation: List[float]
+    agent_action: int
 
     # Environment state
     reward: float
@@ -75,8 +73,6 @@ class EpisodeSummary:
     mission_success: bool
 
     # Behavioral metrics
-    human_subpolicy_distribution: Dict[int, int]
-    human_custom_waypoint_usage: int
     average_reward_per_timestep: float
 
 
@@ -146,7 +142,7 @@ class ExperimentDataLogger:
 
         print(f"Started logging episode: {config} (Agent {agent_type}, Level {level})")
 
-    def log_timestep(self, env, human_controller, human_action: int, rl_action: int,
+    def log_timestep(self, env, human_controller, human_action, agent_action,
                      reward: float, terminated: bool, truncated: bool, info: Dict):
         """Log data for a single timestep"""
 
@@ -164,19 +160,16 @@ class ExperimentDataLogger:
             human_obs_list = list(human_obs)
 
         # Extract RL agent data (agent 1)
-        rl_agent = env.env.agents[env.env.aircraft_ids[1]]
-        rl_position = (float(rl_agent.x), float(rl_agent.y))
+        agent_agent = env.env.agents[env.env.aircraft_ids[1]]
+        agent_position = (float(agent_agent.x), float(agent_agent.y))
 
         # Get RL agent observation
-        rl_obs = env.get_observation(agent_id=1)
-        if hasattr(rl_obs, 'tolist'):
-            rl_obs_list = rl_obs.tolist()
+        agent_obs = env.get_observation(agent_id=1)
+        if hasattr(agent_obs, 'tolist'):
+            agent_obs_list = agent_obs.tolist()
         else:
-            rl_obs_list = list(rl_obs)
+            agent_obs_list = list(agent_obs)
 
-        # Get subpolicy information
-        human_subpolicy = human_controller.current_subpolicy
-        rl_subpolicy_id, _ = env.get_teammate_subpolicy_info()
 
         # Extract environment state
         target_positions = [(float(t[3]), float(t[4])) for t in env.env.targets]
@@ -190,13 +183,11 @@ class ExperimentDataLogger:
             human_position=human_position,
             human_observation=human_obs_list,
             human_action=human_action,
-            human_subpolicy=human_subpolicy,
             human_custom_waypoint=tuple(
                 human_controller.custom_waypoint) if human_controller.custom_waypoint is not None else None,
-            rl_position=rl_position,
-            rl_observation=rl_obs_list,
-            rl_action=rl_action,
-            rl_subpolicy=rl_subpolicy_id,
+            agent_position=agent_position,
+            agent_observation=agent_obs_list,
+            agent_action=agent_action,
             reward=float(reward),
             cumulative_reward=float(self.cumulative_reward),
             terminated=terminated,
@@ -238,16 +229,6 @@ class ExperimentDataLogger:
         episode_end_time = datetime.now()
         episode_duration = (episode_end_time - self.episode_start_time).total_seconds()
 
-        # Calculate behavioral metrics
-        human_subpolicy_counts = {}
-        human_custom_waypoint_usage = 0
-
-        for timestep_data in self.current_episode_data['timesteps']:
-            subpolicy = timestep_data['human_subpolicy']
-            human_subpolicy_counts[subpolicy] = human_subpolicy_counts.get(subpolicy, 0) + 1
-
-            if timestep_data['human_custom_waypoint'] is not None:
-                human_custom_waypoint_usage += 1
 
         # Create episode summary
         summary = EpisodeSummary(
@@ -266,8 +247,6 @@ class ExperimentDataLogger:
             all_targets_identified=bool(env.env.all_targets_identified),
             all_threats_identified=bool(env.env.all_threats_identified),
             mission_success=bool(env.env.all_targets_identified and env.env.all_threats_identified),
-            human_subpolicy_distribution=human_subpolicy_counts,
-            human_custom_waypoint_usage=human_custom_waypoint_usage,
             average_reward_per_timestep=float(self.cumulative_reward / max(1, self.current_timestep))
         )
 
@@ -290,23 +269,110 @@ class ExperimentDataLogger:
         config_safe = summary.config.replace('/', '_')
         timestamp = self.episode_start_time.strftime("%Y%m%d_%H%M%S")
 
+        def convert_ndarrays(obj, path=""):
+            """Recursively convert numpy arrays to lists and log their locations"""
+            if isinstance(obj, np.ndarray):
+                print(f"Found ndarray at {path}: shape={obj.shape}, dtype={obj.dtype}")
+                return obj.tolist()
+            elif isinstance(obj, dict):
+                return {k: convert_ndarrays(v, f"{path}.{k}") for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_ndarrays(item, f"{path}[{i}]") for i, item in enumerate(obj)]
+            elif isinstance(obj, tuple):
+                return tuple(convert_ndarrays(item, f"{path}[{i}]") for i, item in enumerate(obj))
+            else:
+                return obj
+
+        # Convert any numpy arrays in episode data
+        episode_data_clean = convert_ndarrays(self.current_episode_data, "episode_data")
+
         # Save detailed timestep data
         timestep_filename = f"timesteps_{config_safe}_{timestamp}.json"
         timestep_path = os.path.join(self.timestep_dir, timestep_filename)
 
-        with open(timestep_path, 'w') as f:
-            json.dump(self.current_episode_data, f, indent=2)
+        try:
+            with open(timestep_path, 'w') as f:
+                json.dump(episode_data_clean, f, indent=2)
+            print(f"  Timesteps: {timestep_path}")
+        except TypeError as e:
+            print(f"Error saving timestep data: {e}")
+            # Additional debugging - check for remaining non-serializable objects
+            self._debug_json_serialization(episode_data_clean, "episode_data")
+
+        # Convert any numpy arrays in summary data
+        summary_dict = asdict(summary)
+        summary_clean = convert_ndarrays(summary_dict, "summary")
 
         # Save episode summary
         summary_filename = f"summary_{config_safe}_{timestamp}.json"
         summary_path = os.path.join(self.summary_dir, summary_filename)
 
-        with open(summary_path, 'w') as f:
-            json.dump(asdict(summary), f, indent=2)
+        try:
+            with open(summary_path, 'w') as f:
+                json.dump(summary_clean, f, indent=2)
+            print(f"  Summary: {summary_path}")
+        except TypeError as e:
+            print(f"Error saving summary data: {e}")
+            # Additional debugging - check for remaining non-serializable objects
+            self._debug_json_serialization(summary_clean, "summary")
 
         print(f"Episode data saved:")
-        print(f"  Timesteps: {timestep_path}")
-        print(f"  Summary: {summary_path}")
+
+    def _debug_json_serialization(self, obj, path=""):
+        """Debug helper to identify non-JSON-serializable objects"""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                try:
+                    json.dumps(v)
+                except TypeError:
+                    print(f"Non-serializable object at {path}.{k}: {type(v)} = {v}")
+                    if hasattr(v, '__dict__'):
+                        print(f"  Object attributes: {list(v.__dict__.keys())}")
+                    self._debug_json_serialization(v, f"{path}.{k}")
+        elif isinstance(obj, (list, tuple)):
+            for i, item in enumerate(obj):
+                try:
+                    json.dumps(item)
+                except TypeError:
+                    print(f"Non-serializable object at {path}[{i}]: {type(item)} = {item}")
+                    if hasattr(item, '__dict__'):
+                        print(f"  Object attributes: {list(item.__dict__.keys())}")
+                    self._debug_json_serialization(item, f"{path}[{i}]")
+        else:
+            try:
+                json.dumps(obj)
+            except TypeError:
+                print(f"Non-serializable object at {path}: {type(obj)} = {obj}")
+                if hasattr(obj, '__dict__'):
+                    print(f"  Object attributes: {list(obj.__dict__.keys())}")
+                # Check if it's a numpy type
+                if hasattr(obj, 'dtype'):
+                    print(f"  Numpy dtype: {obj.dtype}")
+                if hasattr(obj, 'shape'):
+                    print(f"  Numpy shape: {obj.shape}")
+
+    # def _save_episode_data(self, summary: EpisodeSummary):
+    #     """Save episode data to files"""
+    #     config_safe = summary.config.replace('/', '_')
+    #     timestamp = self.episode_start_time.strftime("%Y%m%d_%H%M%S")
+    #
+    #     # Save detailed timestep data
+    #     timestep_filename = f"timesteps_{config_safe}_{timestamp}.json"
+    #     timestep_path = os.path.join(self.timestep_dir, timestep_filename)
+    #
+    #     with open(timestep_path, 'w') as f:
+    #         json.dump(self.current_episode_data, f, indent=2)
+    #
+    #     # Save episode summary
+    #     summary_filename = f"summary_{config_safe}_{timestamp}.json"
+    #     summary_path = os.path.join(self.summary_dir, summary_filename)
+    #
+    #     with open(summary_path, 'w') as f:
+    #         json.dump(asdict(summary), f, indent=2)
+    #
+    #     print(f"Episode data saved:")
+    #     print(f"  Timesteps: {timestep_path}")
+    #     print(f"  Summary: {summary_path}")
 
     def save_session_data(self):
         """Save complete session data"""
@@ -351,7 +417,6 @@ class ExperimentDataLogger:
                 for episode in self.session_data['episodes']:
                     # Convert complex fields to strings for CSV
                     episode_copy = episode.copy()
-                    episode_copy['human_subpolicy_distribution'] = str(episode_copy['human_subpolicy_distribution'])
                     writer.writerow(episode_copy)
 
             print(f"Session summary CSV saved: {csv_path}")
@@ -409,6 +474,20 @@ class ExperimentDataLogger:
 
         print(f"Logged survey data for {survey_data['episode_config']}")
 
+    def log_teammate_survey_data(self, survey_data: Dict) -> None:
+        """Log teammate preference survey data"""
+        if not hasattr(self, 'teammate_survey_responses'):
+            self.teammate_survey_responses = []
+
+        self.teammate_survey_responses.append({
+            'survey_type': survey_data['survey_type'],
+            'preferred_overall': survey_data['responses']['preferred_overall'],
+            'performed_better': survey_data['responses']['performed_better'],
+            'adapted_better': survey_data['responses']['adapted_better'],
+            'timestamp': survey_data['timestamp']
+        })
+
+        print(f"Logged teammate preference survey data")
 
 def load_episode_data(filepath: str) -> Dict[str, Any]:
     """Utility function to load episode data from file"""
@@ -430,22 +509,13 @@ def analyze_timestep_data(timestep_data: List[Dict]) -> Dict[str, Any]:
     analysis = {
         'total_timesteps': len(timestep_data),
         'reward_progression': [step['cumulative_reward'] for step in timestep_data],
-        'human_subpolicy_usage': {},
-        'rl_subpolicy_usage': {},
         'position_trajectories': {
             'human': [(step['human_position'][0], step['human_position'][1]) for step in timestep_data],
-            'rl': [(step['rl_position'][0], step['rl_position'][1]) for step in timestep_data]
+            'rl': [(step['agent_position'][0], step['agent_position'][1]) for step in timestep_data]
         },
         'custom_waypoint_timesteps': [i for i, step in enumerate(timestep_data) if
                                       step['human_custom_waypoint'] is not None]
     }
 
-    # Count subpolicy usage
-    for step in timestep_data:
-        human_sub = step['human_subpolicy']
-        rl_sub = step['rl_subpolicy']
-
-        analysis['human_subpolicy_usage'][human_sub] = analysis['human_subpolicy_usage'].get(human_sub, 0) + 1
-        analysis['rl_subpolicy_usage'][rl_sub] = analysis['rl_subpolicy_usage'].get(rl_sub, 0) + 1
 
     return analysis

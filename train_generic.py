@@ -3,6 +3,7 @@ import warnings
 import pygame
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
+warnings.filterwarnings("ignore", message="RuntimeWarning: Your system is avx2 capable but pygame was not built with support for it")
 import gymnasium as gym
 import os
 import numpy as np
@@ -49,7 +50,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
-                 log_freq=2):
+                 log_freq=2, teammate_manager=None):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
@@ -95,6 +96,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.performance_crash_threshold = 20  # Number of consecutive poor evals before stopping
         self.performance_crash_ratio = 0.4  # Performance must drop below 50% of best
         self.should_stop_training = False
+
+        self.teammate_manager = teammate_manager
 
     def _on_step(self):
         # Only log on the specified frequency
@@ -206,6 +209,13 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             if hasattr(self.model.get_env(), 'obs_rms'):
                 self.eval_env.obs_rms = self.model.get_env().obs_rms
                 self.eval_env.ret_rms = self.model.get_env().ret_rms
+
+                if self.teammate_manager is not None:
+                    print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
+                    self.teammate_manager.set_normalization_stats(
+                        self.model.get_env().obs_rms,
+                        self.model.get_env().ret_rms
+                    )
 
             target_ids_list = []
             threat_ids_list = []
@@ -826,6 +836,7 @@ def train_generic(
     #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
+    os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
 
     init_successful = False
     while not init_successful:
@@ -865,6 +876,12 @@ def train_generic(
 
     def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
+
+            if rank != 0:
+                import sys
+                import os
+                sys.stdout = open(os.devnull, 'w')
+
             base_env = MAISREnvVec( # Create base environment
                 config=env_config,
                 render_mode='headless',
@@ -959,9 +976,21 @@ def train_generic(
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
     if train_type == 'mode_selector':
-        enhanced_wandb_callback = EnhancedWandbCallback_MS(env_config, eval_env=eval_env, run=run, log_freq=50)
+        enhanced_wandb_callback = EnhancedWandbCallback_MS(
+            env_config,
+            eval_env=eval_env,
+            run=run,
+            log_freq=50,
+            #teammate_manager=teammate_manager  # ADD THIS
+        )
     elif train_type == 'monolith':
-        enhanced_wandb_callback = EnhancedWandbCallback_Monolith(env_config, eval_env=eval_env, run=run, log_freq=50)
+        enhanced_wandb_callback = EnhancedWandbCallback_Monolith(
+            env_config,
+            eval_env=eval_env,
+            run=run,
+            log_freq=50,
+            teammate_manager=teammate_manager
+        )
 
     callbacks = [wandb_callback, enhanced_wandb_callback]
     if save_checkpoints:
@@ -1001,6 +1030,8 @@ def train_generic(
 
     if teammate_manager is not None:
         teammate_manager.set_current_model(model)
+        if use_normalize and hasattr(env, 'obs_rms'):
+            teammate_manager.set_normalization_stats(env.obs_rms, env.ret_rms)
 
     print(f'Initial entropy coefficient: {model.ent_coef}')
     run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
@@ -1066,7 +1097,7 @@ def train_generic(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Training script')
-    parser.add_argument('--version', required=True, choices=['overfit', 'index_test'], help='Version type to run (overfit or index_test)')
+    parser.add_argument('--version', required=True, help='Version type to run')
     args = parser.parse_args()
     version = args.version
 
@@ -1079,13 +1110,14 @@ if __name__ == "__main__":
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
-    note = 'index_1' + machine[0].upper() # R8H
+    #note = 'index_1' + machine[0].upper() # R8H
 
     # Define hyperparameter sweep
 
     config = load_env_config(config_filename)
 
     if version == 'overfit':
+        note = 'overfit' + machine[0].upper()
         hyperparams = {
             #"network_size": [128, 196],
             #"num_observed_targets": [5],
@@ -1108,9 +1140,24 @@ if __name__ == "__main__":
         }
         overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
     elif version == 'index_test':
+        note = 'index_1' + machine[0].upper()
         hyperparams = {'seed':42}
         overfit_tests = [None]
         config['action_type'] = 'target_index'
+
+    elif version == 'pretrained_agents':
+        note = 'pretrain' + machine[0].upper()
+        config['num_timesteps'] = 2.5e6
+        config['league_type'] = 'selfplay'
+        config['teammate_active_at_start'] = True # TODO REMOVE
+        project_name = 'maisr-rl-teammates'
+        overfit_tests = [None]
+
+        hyperparams = {
+            'seed': [42],
+            'threat_reward_scaling':[1, 1.3],
+            "teammate_reward_scale": [0.75, 1.0],
+        }
 
     param_shorthand = {
         'entropy_regularization': 'entreg',

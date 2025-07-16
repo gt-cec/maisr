@@ -58,7 +58,7 @@ class TeammateManager:
         self.pretrained_teammate_dir = pretrained_teammate_dir
 
         # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse"]
+        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay"]
         if league_type not in valid_league_types:
             raise ValueError(f"league_type must be one of {valid_league_types}")
 
@@ -200,8 +200,7 @@ class TeammateManager:
             raise ValueError
 
         if not os.path.exists(checkpoint_dir):
-            print(
-                f"Warning: {teammate_type.title()} directory {checkpoint_dir} does not exist, falling back to baseline")
+            print(f"Warning: {teammate_type.title()} directory {checkpoint_dir} does not exist, falling back to baseline")
             raise ValueError
 
         # Find all checkpoint files
@@ -259,7 +258,7 @@ class TeammateManager:
             model = PPO.load(selected_checkpoint)
 
             # Look for corresponding normalization stats file
-            norm_stats_path = self._find_normalization_stats(selected_checkpoint, teammate_type)
+            #norm_stats_path = self._find_normalization_stats(selected_checkpoint, teammate_type)
 
 
             # Create RL teammate policy using the loaded model
@@ -269,16 +268,12 @@ class TeammateManager:
                 local_search_policy=self.subpolicies.get('local_search'),
                 go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
                 change_region_subpolicy=self.subpolicies.get('change_region'),
-                norm_stats_path=norm_stats_path  # Add this parameter
+                norm_stats_path=None
             )
-            # Create RL teammate policy using the loaded model
-            # rl_teammate = RLTeammatePolicy(
-            #     model=model,
-            #     env=None,
-            #     local_search_policy=self.subpolicies.get('local_search'),
-            #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-            #     change_region_subpolicy=self.subpolicies.get('change_region'),
-            # )
+
+            # Pass current normalization stats if available
+            if hasattr(self, 'obs_rms') and hasattr(self, 'ret_rms'):
+                rl_teammate.set_live_normalization_stats(self.obs_rms, self.ret_rms)
 
             # Set name based on type
             checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
@@ -461,6 +456,16 @@ class TeammateManager:
         print(f"[TeammateManager] No normalization stats found for {teammate_type} checkpoint {checkpoint_path}")
         return None
 
+    def set_normalization_stats(self, obs_rms, ret_rms):
+        """Store normalization stats to pass to teammates"""
+        self.obs_rms = obs_rms
+        self.ret_rms = ret_rms
+
+        if (hasattr(self, 'current_teammate') and
+                self.current_teammate is not None and
+                hasattr(self.current_teammate, 'set_live_normalization_stats')):
+            #print(f"[TeammateManager] Updating existing teammate {self.current_teammate.name} with new stats")
+            self.current_teammate.set_live_normalization_stats(obs_rms, ret_rms)
 
     def set_current_model(self, model):
         """Update the reference to the current model during training"""
@@ -480,6 +485,11 @@ class TeammateManager:
                 go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
                 change_region_subpolicy=self.subpolicies.get('change_region'),
             )
+
+            # Pass live normalization stats if available
+            if hasattr(self, 'obs_rms') and hasattr(self, 'ret_rms'):
+                current_teammate.set_live_normalization_stats(self.obs_rms, self.ret_rms)
+
             current_teammate.name = "SelfPlay_CurrentModelCopy"
             self.current_teammate = current_teammate
             return current_teammate
@@ -877,6 +887,20 @@ class RLTeammatePolicy(TeammatePolicy):
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
 
+        # Initialize normalization stats
+        self.norm_stats = None
+        self.live_obs_rms = None  # For live stats from training env
+        self.live_ret_rms = None
+
+        # Try to load from file first
+        if norm_stats_path and os.path.exists(norm_stats_path):
+            try:
+                self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
+                print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
+            except Exception as e:
+                print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
+                self.norm_stats = None
+
         # Default name
         self.name = "RL_Teammate"
 
@@ -904,21 +928,52 @@ class RLTeammatePolicy(TeammatePolicy):
             #print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
             return 0  # Fallback to local search
 
+    def set_live_normalization_stats(self, obs_rms, ret_rms):
+        """Set live normalization stats from the training environment"""
+        self.live_obs_rms = obs_rms
+        self.live_ret_rms = ret_rms
+        print(f"[RLTeammatePolicy] Received live normalization stats")
+
     def _normalize_observation(self, observation):
         """Apply normalization to observation if stats are available"""
-        if self.norm_stats is None:
-            return observation
+        # Prefer live stats over file stats
+        if self.live_obs_rms is not None:
+            try:
+                obs_mean = self.live_obs_rms.mean
+                obs_var = self.live_obs_rms.var
+                normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
+                return normalized_obs
+            except Exception as e:
+                print(f"[RLTeammatePolicy] Error using live normalization: {e}")
 
-        try:
-            obs_mean = self.norm_stats['obs_mean']
-            obs_var = self.norm_stats['obs_var']
+        # Fallback to file-based stats
+        if self.norm_stats is not None:
+            try:
+                obs_mean = self.norm_stats['obs_mean']
+                obs_var = self.norm_stats['obs_var']
+                normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
+                return normalized_obs
+            except Exception as e:
+                print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
 
-            # Apply normalization: (obs - mean) / sqrt(var + epsilon)
-            normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
-            return normalized_obs
-        except Exception as e:
-            print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
-            return observation
+        # No normalization available
+        return observation
+
+    # def _normalize_observation(self, observation):
+    #     """Apply normalization to observation if stats are available"""
+    #     if self.norm_stats is None:
+    #         return observation
+    #
+    #     try:
+    #         obs_mean = self.norm_stats['obs_mean']
+    #         obs_var = self.norm_stats['obs_var']
+    #
+    #         # Apply normalization: (obs - mean) / sqrt(var + epsilon)
+    #         normalized_obs = (observation - obs_mean) / np.sqrt(obs_var + 1e-8)
+    #         return normalized_obs
+    #     except Exception as e:
+    #         print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
+    #         return observation
 
     def reset(self):
         """Reset any internal state"""

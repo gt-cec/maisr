@@ -13,8 +13,9 @@ from utility.data_logging import load_env_config
 from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch,
                                         ChangeRegions, GoToNearestThreat, EvadeDetection,
                                         TeammateManager, RLTeammatePolicy)
-from rl_data_logger import ExperimentDataLogger
-from instructional_screens import ScreenManager, WorkloadSurveyScreen
+from user_study.rl_data_logger import ExperimentDataLogger
+from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
+    InstructionSeriesManager
 import webbrowser
 
 class HumanSubpolicyController:
@@ -50,7 +51,8 @@ class HumanSubpolicyController:
             game_y = click_y - map_half_size
 
             # Store the waypoint for custom control
-            self.custom_waypoint = np.array([game_x / map_half_size, game_y / map_half_size], dtype=np.float32)
+            #self.custom_waypoint = np.array([game_x / map_half_size, game_y / map_half_size], dtype=np.float32)
+            self.custom_waypoint = np.array([game_x, game_y], dtype=np.float32)
             print(f'Custom waypoint = {self.custom_waypoint}')
             self.env.human_custom_waypoint = self.custom_waypoint
             self.use_custom_waypoint = True
@@ -101,7 +103,7 @@ class HumanSubpolicyController:
         return self.custom_waypoint
 
 
-def create_rl_teammate(model_path, subpolicies, agent_name):
+def create_rl_teammate(model_path, agent_name):
     """Create an RL teammate from a model file"""
     try:
         print(f"Loading {agent_name} model from: {model_path}")
@@ -110,9 +112,9 @@ def create_rl_teammate(model_path, subpolicies, agent_name):
         teammate = RLTeammatePolicy(
             model=model,
             env=None,
-            local_search_policy=subpolicies['local_search'],
-            go_to_highvalue_policy=subpolicies['go_to_threat'],
-            change_region_subpolicy=subpolicies['change_region'],
+            local_search_policy=None, #subpolicies['local_search'],
+            go_to_highvalue_policy=None, #subpolicies['go_to_threat'],
+            change_region_subpolicy=None, #subpolicies['change_region'],
             use_collision_avoidance=False
         )
 
@@ -122,27 +124,6 @@ def create_rl_teammate(model_path, subpolicies, agent_name):
 
     except Exception as e:
         print(f"Error loading {agent_name} model: {e}")
-        print("Falling back to heuristic teammate")
-
-        # Fallback to heuristic teammate
-        from policies.league_management import HeuristicAgent
-        heuristic_agent = HeuristicAgent(
-            mode_selector="heuristic",
-            risk_tolerance="medium",
-            spatial_coord="some"
-        )
-
-        teammate = GenericTeammatePolicy(
-            env=None,
-            local_search_policy=subpolicies['local_search'],
-            go_to_highvalue_policy=subpolicies['go_to_threat'],
-            change_region_subpolicy=subpolicies['change_region'],
-            mode_selector_agent=heuristic_agent,
-            use_collision_avoidance=False
-        )
-
-        teammate.name = f"Heuristic_Fallback_{agent_name}"
-        return teammate
 
 
 def draw_instructions(window, font):
@@ -168,7 +149,7 @@ def draw_instructions(window, font):
 
 
 def draw_status_info(window, font, current_config, config_index, total_configs, step_count, episode_reward, controller,
-                     current_agent_name):
+                     ):
     """Draw current status information"""
     subpolicy_names = ["Local Search", "Goto NW", "Go to Threat", "Hold", "Goto NE", "Goto SE", "Goto SW"]
     current_mode = "Custom Waypoint" if controller.use_custom_waypoint else subpolicy_names[
@@ -176,7 +157,7 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
 
     status_info = [
         f"Config: {current_config} ({config_index + 1}/{total_configs})",
-        f"Current Agent: {current_agent_name}",
+        #f"Current Agent: {current_agent_name}",
         f"Step: {step_count}",
         f"Reward: {episode_reward:.2f}",
         f"Control Mode: {current_mode}",
@@ -189,12 +170,12 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
         y_offset += 25
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, current_agent_name, window, font,
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font,
                        clock, tick_rate, data_logger):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
-    print(f"Agent: {current_agent_name}")
+    print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
 
     # Parse agent and level from config
@@ -203,12 +184,14 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     data_logger.start_episode(config, agent_letter, level_number)
 
     obs = env.reset()[0]
+    print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
     step_count = 0
     done = False
     paused = False
 
     while not done:
+        map_half_size = env.env.config['gameboard_size']
         current_time = pygame.time.get_ticks()
 
         # Handle pygame events
@@ -232,24 +215,30 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             pygame.time.wait(50)
             continue
 
-        # Get human action (subpolicy selection)
+        # Get human action
         human_action = human_controller.get_current_action()
-
-        # Override waypoint if human is in custom waypoint mode
+        #print(f'[Experiment loop] Human action is {human_action}')
         if human_controller.should_override_waypoint():
             custom_waypoint = human_controller.get_custom_waypoint()
-            # Set the waypoint override for agent 0 before stepping
-            env.env.agents[env.env.aircraft_ids[0]].waypoint_override = tuple(custom_waypoint)
+            custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
+            #scaled_waypoint = (custom_waypoint[0]*map_half_size, custom_waypoint[1]*map_half_size)
+            env.env.agents[env.env.aircraft_ids[1]].waypoint_override = custom_waypoint #tuple(custom_waypoint)
+            print(f'[Experiment loop] Setting human waypoint to {custom_waypoint}')
+
+
+        # Get agent action
+        agent_action, _ = agent_model.predict(obs, deterministic=True)
+        #print(f'[Experiment loop] Agent chose action {agent_action}')
 
         # Take step in environment
-        obs, reward, terminated, truncated, info = env.step(human_action)
+        obs, reward, terminated, truncated, info = env.step(agent_action)
 
         # Log timestep data
         data_logger.log_timestep(
             env=env,
             human_controller=human_controller,
             human_action=human_action,
-            rl_action=rl_subpolicy_id,  # Use subpolicy ID as action for RL agent
+            agent_action=agent_action,
             reward=reward,
             terminated=terminated,
             truncated=truncated,
@@ -265,17 +254,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Draw additional UI elements
         draw_instructions(window, font)
-        draw_status_info(window, font, config, config_index, total_configs, step_count,
-                         episode_reward, human_controller, current_agent_name)
-
-        # Draw subpolicy indicators
-        agent0_subpolicy_id, agent0_subpolicy_name = env.get_current_subpolicy_info()
-        agent1_subpolicy_id, agent1_subpolicy_name = env.get_teammate_subpolicy_info()
-
-        env.env.render_subpolicy_indicators(
-            agent0_subpolicy_id, agent0_subpolicy_name,
-            agent1_subpolicy_id, agent1_subpolicy_name
-        )
+        draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
         # Update display
         pygame.display.flip()
@@ -284,9 +263,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Print periodic status
         if step_count % 50 == 0:
-            print(f"Step {step_count}: Reward = {episode_reward:.2f}, "
-                  f"Human subpolicy = {agent0_subpolicy_name}, "
-                  f"AI subpolicy = {agent1_subpolicy_name}")
+            print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
 
     # End episode logging
     episode_summary = data_logger.end_episode(env, info)
@@ -327,23 +304,19 @@ def main():
                         help='Starting level index (default: 0)')
     args = parser.parse_args()
 
-    print(f"Subject ID: {args.subject_id}")
+    print(f"\n \n Subject ID: {args.subject_id}")
     print(f"Starting from level: {args.start_level}")
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 60
-    survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
+    tick_rate = 20
+    #survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
     # Define RL agent model paths - UPDATE THESE AS NEEDED
     agent_models = {
-        'A': './trained_models/agent_A_model.zip',  # Replace with actual path TODO
-        'B': './trained_models/agent_B_model.zip',  # Replace with actual path TODO
+        'A': './user_study/saved_agents/test_agent_a.zip',  # Replace with actual path TODO
+        'B': './user_study/saved_agents/test_agent_b.zip',  # Replace with actual path TODO
     }
-
-    # Define subpolicy model paths
-    localsearch_model_path = None  # Use heuristic
-    localsearch_normstats_path = 'trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envslocal_search_norm_stats.npy'
 
     # Create experiment configuration list (agent + level combinations)
     # 7 rounds each with 2 agents = 14 total configurations
@@ -367,6 +340,7 @@ def main():
     # Load configuration
     config = load_env_config(config_filename)
     config['tick_rate'] = tick_rate
+    config['num_observed_targets'] = 4 # TODO TEMP
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
@@ -375,7 +349,7 @@ def main():
     clock = pygame.time.Clock()
     ctypes.windll.user32.SetProcessDPIAware()
 
-    window_width, window_height = config['window_size'][0] + 500, config['window_size'][1]
+    window_width, window_height = config['window_size'][0], config['window_size'][1]
     window = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption(f"MAISR User Study - Subject {args.subject_id}")
 
@@ -383,25 +357,43 @@ def main():
     font = pygame.font.SysFont(None, 24)
 
     # Initialize subpolicies
-    subpolicies = {
-        'local_search': LocalSearch(
-            model_path=localsearch_model_path,
-            norm_stats_filepath=localsearch_normstats_path if localsearch_model_path else None
-        ),
-        'change_region': ChangeRegions(model_path=None),
-        'go_to_threat': GoToNearestThreat(model_path=None)
-    }
+    # subpolicies = {
+    #     'local_search': LocalSearch(
+    #         model_path=localsearch_model_path,
+    #         norm_stats_filepath=localsearch_normstats_path if localsearch_model_path else None
+    #     ),
+    #     'change_region': ChangeRegions(model_path=None),
+    #     'go_to_threat': GoToNearestThreat(model_path=None)
+    # }
 
     # Store results
     experiment_results = []
     current_agents = {}
 
     data_logger = ExperimentDataLogger(args.subject_id)
+    screen_manager = ScreenManager(window, clock)
 
+    # Main experiment loop
     try:
-        # Main experiment loop
+        # Show instruction screens at the beginning
+        print("Starting instruction screens...")
+        instruction_manager = InstructionSeriesManager(
+            window,
+            clock,
+            map_image_path="user_study/img/map_image.png",  # Update these paths
+            sensor_image_path="user_study/img/sensor_image.png",  # to your actual
+            hvt_image_path="user_study/img/threat_image.png"  # image files
+        )
+
+        instruction_result = instruction_manager.run_instruction_series()
+
+        if instruction_result["action"] == "exit":
+            print("User exited during instructions")
+            return
+
+        print("Instructions completed. Starting experiment...")
+
         for config_index, current_config in enumerate(config_list):
-            # Parse agent and level from config string
             agent_letter = current_config[0]  # 'A' or 'B'
             level_number = int(current_config[1:])  # Level number
 
@@ -410,13 +402,14 @@ def main():
 
             # Load the appropriate RL agent if not already loaded
             if agent_letter not in current_agents:
-                current_agents[agent_letter] = create_rl_teammate(
-                    agent_models[agent_letter],
-                    subpolicies,
-                    f"Agent_{agent_letter}"
-                )
+                current_agents[agent_letter] = PPO.load(agent_models[agent_letter])
+                # current_agents[agent_letter] = create_rl_teammate(
+                #     agent_models[agent_letter],
+                #     #subpolicies,
+                #     f"Agent_{agent_letter}"
+                # )
 
-            current_agent = current_agents[agent_letter]
+            current_agent_name = current_agents[agent_letter]
 
             # Create base environment with the specific level
             base_env = MAISREnvVec(
@@ -434,12 +427,15 @@ def main():
             # Create wrapped environment with current agent
             env = MaisrLocalSearchWrapper(
                 base_env,
-                local_search_policy=subpolicies['local_search'],
-                go_to_highvalue_policy=subpolicies['go_to_threat'],
-                change_region_subpolicy=subpolicies['change_region'],
-                evade_policy=EvadeDetection(model_path=None),
-                teammate_policy=current_agent
+                local_search_policy=None,#subpolicies['local_search'],
+                go_to_highvalue_policy=None,#subpolicies['go_to_threat'],
+                change_region_subpolicy=None,#subpolicies['change_region'],
+                evade_policy=None,#EvadeDetection(model_path=None),
+                teammate_policy=None,
+                obs_noise_std=0.0
             )
+
+
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
@@ -447,7 +443,7 @@ def main():
             # Run the episode
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(config_list),
-                current_agent.name, window, font, clock, tick_rate, data_logger
+                current_agent_name, window, font, clock, tick_rate, data_logger
             )
 
             # Store results
@@ -466,22 +462,17 @@ def main():
 
             # Launch survey URL after each episode
             print(f"\nEpisode {current_config} completed!")
-            # Show workload survey screen
-            survey_screen = WorkloadSurveyScreen(
-                episode_config=current_config,
-                window_width=window_width,
-                window_height=window_height
-            )
 
-            survey_result = screen_manager.show_screen(survey_screen)
+            workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+            workload_survey_result = screen_manager.show_screen(workload_survey_screen)
             #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
 
-            if survey_result["action"] == "exit":
+            if workload_survey_result["action"] == "exit":
                 print("Experiment terminated by user")
                 break
-            elif survey_result["action"] == "continue":
+            elif workload_survey_result["action"] == "continue":
                 # Log the survey data
-                survey_data = survey_result.get("survey_data", {})
+                survey_data = workload_survey_result.get("survey_data", {})
                 print(f"Survey responses for {current_config}: {survey_data['responses']}")
 
                 # Add survey data to your data logger
@@ -491,15 +482,17 @@ def main():
                     # Fallback: save to file or print
                     print(f"Survey data: {survey_data}")
 
-            # if survey_launched:
-            #     print("Please complete the feedback survey that opened in your browser.")
-            #     print("Press ENTER when you've finished the survey to continue...")
-            #     input()  # Wait for user to press Enter
-            # else:
-            #     print("Survey URL could not be opened automatically.")
-            #     print(f"Please manually visit: {survey_url}")
-            #     print("Press ENTER when you've finished the survey to continue...")
-            #     input()
+            # Show the teammate preference survey
+            if config_index % 2 == 0:
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height)
+                teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
+
+                if teammate_compare_result["action"] == "continue":
+                    survey_data = teammate_compare_result["survey_data"]
+                    data_logger.log_teammate_survey_data(survey_data)
+                elif teammate_compare_result["action"] == "exit":
+                    # Handle exit
+                    pass
 
             # Check if user wants to quit
             if should_quit:

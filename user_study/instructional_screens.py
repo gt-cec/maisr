@@ -15,7 +15,7 @@ class ScreenType(Enum):
 class InstructionalScreen:
     """Base class for instructional screens"""
 
-    def __init__(self, window_width: int = 1500, window_height: int = 1200):
+    def __init__(self, window_width: int = 1000, window_height: int = 1100):
         self.window_width = window_width
         self.window_height = window_height
         self.background_color = (30, 30, 30)  # Dark gray
@@ -258,8 +258,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.bar_width = 600
         self.bar_height = 50
         self.segment_width = self.bar_width // 7
-        self.bar_start_x = (self.window_width - self.bar_width) // 2
-        self.bar_spacing = 80
+        self.bar_start_x = 250#(self.window_width - self.bar_width) // 2
+        self.bar_spacing = 120
         self.first_bar_y = 200
 
         # Colors
@@ -273,9 +273,9 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Please rate your workload in the last round:"
+        title = "Please rate your workload in the last round"
         if self.episode_config:
-            title = f"Please rate your workload in the last round: ({self.episode_config})"
+            title = f"Please rate your workload in the last round"
         self.draw_text_centered(window, title, 120, self.font_large)
 
         # Draw rating bars
@@ -335,7 +335,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
             arrow_text = "→"
             button_color = self.selected_color
             text_color = self.text_color
-            instruction_text = "Click arrow or press ENTER to continue"
+            instruction_text = "Click the arrows or press ENTER to continue"
         else:
             # Draw disabled continue button
             arrow_text = "→"
@@ -448,6 +448,212 @@ class WorkloadSurveyScreen(InstructionalScreen):
         pass
 
 
+class TeammatePreferenceSurveyScreen(InstructionalScreen):
+    """Survey screen for teammate preference questions with clickable icons"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Survey questions
+        self.questions = [
+            "Which teammate did you prefer overall?",
+            "Which teammate performed better?",
+            "Which teammate adapted to\nyour strategy more effectively?"
+        ]
+
+        # User responses (None = not answered, 'green' or 'purple' for selection)
+        self.responses = {i: None for i in range(len(self.questions))}
+
+        # Visual properties
+        self.icon_size = 80
+        self.icon_spacing = 200
+        self.question_spacing = 160
+        self.first_question_y = 200
+
+        # Colors
+        self.unselected_color = (180, 180, 180)
+        self.green_color = (76, 175, 80)
+        self.purple_color = (156, 39, 176)
+        self.selected_bg_color = (220, 220, 220)
+        self.icon_bg_color = (200, 200, 200)
+
+        # Continue button
+        self.continue_button_size = 80
+        self.continue_button_pos = (self.window_width - 120, self.window_height - 120)
+
+        # Mouse interaction
+        self.hover_icon = None  # (question_index, icon_type)
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Title
+        title = "Answer each question below by clicking the icon."
+        self.draw_text_centered(window, title, 120, self.font_large)
+
+        # Draw each question with teammate icons
+        for i, question in enumerate(self.questions):
+            self.draw_question_with_icons(window, i, question)
+
+        # Draw continue button
+        self.draw_continue_button(window)
+
+    def draw_question_with_icons(self, window: pygame.Surface, question_index: int, question_text: str) -> None:
+        """Draw a question with two teammate icon options"""
+        y_pos = self.first_question_y + (question_index * self.question_spacing)
+
+        # Draw question text (handle multi-line)
+        lines = question_text.split('\n')
+        if len(lines) > 1:
+            # Multi-line question
+            for line_idx, line in enumerate(lines):
+                line_y = y_pos - 30 + (line_idx * 30)
+                self.draw_text_centered(window, line, line_y, self.font_medium)
+        else:
+            # Single line question
+            self.draw_text_centered(window, question_text, y_pos, self.font_medium)
+
+        # Calculate icon positions
+        center_x = self.window_width // 2
+        green_icon_x = center_x - self.icon_spacing // 2
+        purple_icon_x = center_x + self.icon_spacing // 2
+        icon_y = y_pos + 60
+
+        # Draw green teammate icon
+        self.draw_teammate_icon(window, green_icon_x, icon_y, 'green',
+                                question_index, self.responses[question_index] == 'green')
+
+        # Draw purple teammate icon
+        self.draw_teammate_icon(window, purple_icon_x, icon_y, 'purple',
+                                question_index, self.responses[question_index] == 'purple')
+
+    def draw_teammate_icon(self, window: pygame.Surface, x: int, y: int, icon_type: str,
+                           question_index: int, is_selected: bool) -> None:
+        """Draw a teammate icon with proper styling"""
+        # Icon rectangle
+        icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2,
+                                self.icon_size, self.icon_size)
+
+        # Background color
+        if is_selected:
+            bg_color = self.selected_bg_color
+        else:
+            bg_color = self.icon_bg_color
+
+        # Draw rounded rectangle background
+        pygame.draw.rect(window, bg_color, icon_rect, border_radius=10)
+        pygame.draw.rect(window, (100, 100, 100), icon_rect, 3, border_radius=10)
+
+        # Draw the teammate symbol (T in a circle)
+        circle_radius = 25
+        circle_center = (x, y)
+
+        # Circle color based on type and selection
+        if icon_type == 'green':
+            circle_color = self.green_color if is_selected else self.unselected_color
+        else:  # purple
+            circle_color = self.purple_color if is_selected else self.unselected_color
+
+        # Draw circle
+        pygame.draw.circle(window, circle_color, circle_center, circle_radius)
+
+        # Draw T symbol
+        t_color = (255, 255, 255) if is_selected else (150, 150, 150)
+        t_font = pygame.font.SysFont('Arial', 24, bold=True)
+        t_surface = t_font.render('T', True, t_color)
+        t_rect = t_surface.get_rect(center=circle_center)
+        window.blit(t_surface, t_rect)
+
+        # Store rect for click detection
+        if not hasattr(self, 'icon_rects'):
+            self.icon_rects = {}
+        self.icon_rects[(question_index, icon_type)] = icon_rect
+
+    def draw_continue_button(self, window: pygame.Surface) -> None:
+        """Draw the continue arrow button"""
+        all_answered = all(response is not None for response in self.responses.values())
+
+        # Button rectangle
+        button_rect = pygame.Rect(self.continue_button_pos[0] - self.continue_button_size // 2,
+                                  self.continue_button_pos[1] - self.continue_button_size // 2,
+                                  self.continue_button_size, self.continue_button_size)
+
+        # Colors based on state
+        if all_answered:
+            bg_color = (100, 150, 255)
+            arrow_color = (255, 255, 255)
+        else:
+            bg_color = (100, 100, 100)
+            arrow_color = (150, 150, 150)
+
+        # Draw button background
+        pygame.draw.rect(window, bg_color, button_rect, border_radius=10)
+        pygame.draw.rect(window, (200, 200, 200), button_rect, 3, border_radius=10)
+
+        # Draw arrow symbol
+        arrow_font = pygame.font.SysFont('Arial', 36, bold=True)
+        arrow_surface = arrow_font.render('→', True, arrow_color)
+        arrow_rect = arrow_surface.get_rect(center=button_rect.center)
+        window.blit(arrow_surface, arrow_rect)
+
+        # Store button rect for click detection
+        self.continue_button_rect = button_rect if all_answered else None
+
+    def handle_event(self, event: pygame.event.Event) -> Dict:
+        """Handle mouse clicks and keyboard input"""
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left click
+                clicked_result = self.handle_mouse_click(event.pos)
+                if clicked_result:
+                    return clicked_result
+
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                if self.all_questions_answered():
+                    return {"action": "continue", "survey_data": self.get_survey_data()}
+            elif event.key == pygame.K_ESCAPE:
+                return {"action": "exit"}
+
+        return {"action": "none"}
+
+    def handle_mouse_click(self, mouse_pos: tuple) -> Optional[Dict]:
+        """Handle mouse clicks on icons and continue button"""
+        # Check continue button click
+        if (hasattr(self, 'continue_button_rect') and
+                self.continue_button_rect and
+                self.continue_button_rect.collidepoint(mouse_pos)):
+            if self.all_questions_answered():
+                return {"action": "continue", "survey_data": self.get_survey_data()}
+
+        # Check icon clicks
+        if hasattr(self, 'icon_rects'):
+            for (question_index, icon_type), icon_rect in self.icon_rects.items():
+                if icon_rect.collidepoint(mouse_pos):
+                    # Update response
+                    self.responses[question_index] = icon_type
+                    print(f"Selected {icon_type} teammate for question {question_index + 1}")
+                    break
+
+        return None
+
+    def all_questions_answered(self) -> bool:
+        """Check if all questions have been answered"""
+        return all(response is not None for response in self.responses.values())
+
+    def get_survey_data(self) -> Dict:
+        """Get the survey responses in a structured format"""
+        return {
+            "survey_type": "teammate_preference",
+            "responses": {
+                "preferred_overall": self.responses[0],
+                "performed_better": self.responses[1],
+                "adapted_better": self.responses[2]
+            },
+            "timestamp": pygame.time.get_ticks()
+        }
+
+    def draw_navigation_hints(self, window: pygame.Surface) -> None:
+        """Override to show custom navigation hints"""
+        # Navigation hints are drawn in draw_continue_button instead
+        pass
 
 class FinalSummaryScreen(InstructionalScreen):
     """Final screen shown after all episodes"""
@@ -488,6 +694,482 @@ class FinalSummaryScreen(InstructionalScreen):
         ]
 
         self.draw_text_block(window, thank_you, 350, self.font_medium, 35)
+
+
+class GameInstructionScreen(InstructionalScreen):
+    """Base class for game instruction screens with navigation"""
+
+    def __init__(self, screen_number: int, total_screens: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.screen_number = screen_number
+        self.total_screens = total_screens
+
+        # Arrow button properties
+        self.arrow_button_size = 60
+        self.arrow_button_margin = 30
+        self.arrow_color = (100, 150, 255)
+        self.arrow_hover_color = (120, 170, 255)
+        self.arrow_disabled_color = (100, 100, 100)
+
+        # Mouse hover state
+        self.hover_next = False
+        self.hover_prev = False
+
+    def draw_navigation_hints(self, window: pygame.Surface) -> None:
+        """Draw navigation arrows and hints"""
+        # Draw arrow buttons
+        self.draw_arrow_buttons(window)
+
+        # Draw text hint
+        if self.screen_number < self.total_screens:
+            hint_text = "Click the arrows or use arrow keys to continue"
+        else:
+            hint_text = "Click the arrows or use arrow keys to continue"
+
+        hint_surface = self.font_medium.render(hint_text, True, (150, 150, 150))
+        hint_rect = hint_surface.get_rect(center=(self.window_width // 2, self.window_height - 100))
+        window.blit(hint_surface, hint_rect)
+
+    def draw_arrow_buttons(self, window: pygame.Surface) -> None:
+        """Draw clickable arrow buttons"""
+        button_y = self.window_height - 120
+
+        # Previous arrow (left)
+        if self.screen_number > 1:
+            prev_button_x = self.arrow_button_margin
+            prev_color = self.arrow_hover_color if self.hover_prev else self.arrow_color
+            self.prev_button_rect = pygame.Rect(prev_button_x, button_y, self.arrow_button_size, self.arrow_button_size)
+
+            pygame.draw.rect(window, prev_color, self.prev_button_rect, border_radius=10)
+            pygame.draw.rect(window, (200, 200, 200), self.prev_button_rect, 3, border_radius=10)
+
+            # Draw left arrow
+            arrow_font = pygame.font.SysFont('Arial', 36, bold=True)
+            arrow_surface = arrow_font.render('←', True, (255, 255, 255))
+            arrow_rect = arrow_surface.get_rect(center=self.prev_button_rect.center)
+            window.blit(arrow_surface, arrow_rect)
+        else:
+            self.prev_button_rect = None
+
+        # Next arrow (right)
+        if self.screen_number < self.total_screens:
+            next_button_x = self.window_width - self.arrow_button_margin - self.arrow_button_size
+            next_color = self.arrow_hover_color if self.hover_next else self.arrow_color
+            self.next_button_rect = pygame.Rect(next_button_x, button_y, self.arrow_button_size, self.arrow_button_size)
+
+            pygame.draw.rect(window, next_color, self.next_button_rect, border_radius=10)
+            pygame.draw.rect(window, (200, 200, 200), self.next_button_rect, 3, border_radius=10)
+
+            # Draw right arrow
+            arrow_font = pygame.font.SysFont('Arial', 36, bold=True)
+            arrow_surface = arrow_font.render('→', True, (255, 255, 255))
+            arrow_rect = arrow_surface.get_rect(center=self.next_button_rect.center)
+            window.blit(arrow_surface, arrow_rect)
+        elif self.screen_number == self.total_screens:
+            # Continue button on final screen
+            next_button_x = self.window_width - self.arrow_button_margin - self.arrow_button_size
+            next_color = self.arrow_hover_color if self.hover_next else self.arrow_color
+            self.next_button_rect = pygame.Rect(next_button_x, button_y, self.arrow_button_size, self.arrow_button_size)
+
+            pygame.draw.rect(window, next_color, self.next_button_rect, border_radius=10)
+            pygame.draw.rect(window, (200, 200, 200), self.next_button_rect, 3, border_radius=10)
+
+            # Draw checkmark or continue symbol
+            arrow_font = pygame.font.SysFont('Arial', 36, bold=True)
+            arrow_surface = arrow_font.render('✓', True, (255, 255, 255))
+            arrow_rect = arrow_surface.get_rect(center=self.next_button_rect.center)
+            window.blit(arrow_surface, arrow_rect)
+        else:
+            self.next_button_rect = None
+
+    def handle_event(self, event: pygame.event.Event) -> Dict:
+        """Handle navigation between screens"""
+        if event.type == pygame.MOUSEMOTION:
+            self.handle_mouse_hover(event.pos)
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left click
+                clicked_result = self.handle_mouse_click(event.pos)
+                if clicked_result:
+                    return clicked_result
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RIGHT and self.screen_number < self.total_screens:
+                return {"action": "next"}
+            elif event.key == pygame.K_LEFT and self.screen_number > 1:
+                return {"action": "previous"}
+            elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                return {"action": "continue"}
+            elif event.key == pygame.K_ESCAPE:
+                return {"action": "exit"}
+        return {"action": "none"}
+
+    def handle_mouse_hover(self, mouse_pos: tuple) -> None:
+        """Update hover state based on mouse position"""
+        self.hover_prev = False
+        self.hover_next = False
+
+        if hasattr(self, 'prev_button_rect') and self.prev_button_rect and self.prev_button_rect.collidepoint(
+                mouse_pos):
+            self.hover_prev = True
+        elif hasattr(self, 'next_button_rect') and self.next_button_rect and self.next_button_rect.collidepoint(
+                mouse_pos):
+            self.hover_next = True
+
+    def handle_mouse_click(self, mouse_pos: tuple) -> Optional[Dict]:
+        """Handle mouse clicks on arrow buttons"""
+        if hasattr(self, 'prev_button_rect') and self.prev_button_rect and self.prev_button_rect.collidepoint(
+                mouse_pos):
+            return {"action": "previous"}
+        elif hasattr(self, 'next_button_rect') and self.next_button_rect and self.next_button_rect.collidepoint(
+                mouse_pos):
+            if self.screen_number < self.total_screens:
+                return {"action": "next"}
+            else:
+                return {"action": "continue"}
+        return None
+
+
+class Instruct1Screen(GameInstructionScreen):
+    """Welcome screen"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        body_text = ["Welcome to our study!",
+                     "",
+                     "",
+                     "Today you will play a 2-dimensional video game.",
+                     "",
+                     "",
+                     "You will work alongside AI teammates that are",
+                     "trained using reinforcement learning."]
+
+        self.draw_text_block(window, body_text, 250, self.font_large, 40)
+
+
+class Instruct2Screen(GameInstructionScreen):
+    """Map introduction screen"""
+
+    def __init__(self, image_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_path = image_path
+        self.image = None
+        try:
+            self.image = pygame.image.load(image_path)
+            self.image = pygame.transform.scale(self.image, (700, 700))
+        except pygame.error:
+            print(f"Could not load image: {image_path}")
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Top text at position (100, 50)
+        text = "In this game, you will control a 2D aircraft to fly around a map like the one below:"
+
+        # Wrap text to fit within window
+        words = text.split()
+        lines = []
+        current_line = []
+        max_width = self.window_width - 150  # Leave margins
+
+        for word in words:
+            test_line = ' '.join(current_line + [word])
+            text_width = self.font_large.size(test_line)[0]
+
+            if text_width <= max_width:
+                current_line.append(word)
+            else:
+                if current_line:
+                    lines.append(' '.join(current_line))
+                current_line = [word]
+
+        if current_line:
+            lines.append(' '.join(current_line))
+
+        # Draw text lines
+        y_pos = 100
+        for line in lines:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+        # Draw image centered at 500x500 if available
+        if self.image:
+            image_rect = self.image.get_rect(center=(self.window_width // 2, 50 + self.window_width // 2))
+            window.blit(self.image, image_rect)
+        else:
+            # Draw placeholder rectangle
+            placeholder_rect = pygame.Rect(250, 150, 500, 500)
+            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
+            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
+            placeholder_text = "Map Image (500x500)"
+            text_surface = self.font_medium.render(placeholder_text, True, self.text_color)
+            text_rect = text_surface.get_rect(center=placeholder_rect.center)
+            window.blit(text_surface, text_rect)
+
+
+class Instruct3Screen(GameInstructionScreen):
+    """Player aircraft control introduction"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Top text at (100, 100)
+        text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
+        window.blit(text_surface, (100, 100))
+
+        # Blue circle at (500, 200) with radius 50px
+        pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
+
+        # Bottom text at (50, 500)
+        bottom_text = ["You control your aircraft by clicking on the map where you want to fly.",
+                       "",
+                       "The aircraft will automatically fly to the point you clicked."]
+
+        y_pos = 500
+        for line in bottom_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+
+class Instruct4Screen(GameInstructionScreen):
+    """AI teammate introduction"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Top text at (100, 100)
+
+        top_text = ["You will work alongside a series of AI teammates.",
+                    "",
+                    "You will have one teammate per level."]
+
+        y_pos = 100
+        for line in top_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+        # Red circle at (500, 200) with radius 50px (AI teammate)
+        pygame.draw.circle(window, (255, 50, 50), (250, 350), 50)
+        pygame.draw.circle(window, (255, 50, 50), (400, 350), 50)
+        pygame.draw.circle(window, (255, 50, 50), (550, 350), 50)
+
+        # Bottom text at (50, 500)
+        bottom_text = ["You CANNOT control your teammate. They will autonomously",
+                       "",
+                       "fly around the map to help you identify targets.",
+                       "",
+                       "",
+                       "They may follow different strategies and may or may not coordinate",
+                       "",
+                       "with you depending on what they learned in their training."]
+
+        y_pos = 500
+        for line in bottom_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+
+class Instruct5Screen(GameInstructionScreen):
+    """Regular targets explanation"""
+
+    def __init__(self, sensor_image_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sensor_image_path = sensor_image_path
+        self.sensor_image = None
+        try:
+            self.sensor_image = pygame.image.load(sensor_image_path)
+            # Scale to width 600px while maintaining aspect ratio
+            original_size = self.sensor_image.get_size()
+            scale_factor = 600 / original_size[0]
+            new_height = int(original_size[1] * scale_factor)
+            self.sensor_image = pygame.transform.scale(self.sensor_image, (600, new_height))
+        except pygame.error:
+            print(f"Could not load image: {sensor_image_path}")
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Top text at (50, 500) - but this seems wrong based on the description
+        # I'll interpret this as the main instruction text
+        text_surface = self.font_large.render("You earn points by identifying targets on the map.", True,
+                                               self.text_color)
+        window.blit(text_surface, (100, 100))
+
+        # Gold circle at (100, 200) with radius 10px
+        pygame.draw.circle(window, (255, 215, 0), (100, 200), 15)
+
+        # Text at (150, 200)
+        text_surface = self.font_large.render("Regular targets are worth 1 point.", True, self.text_color)
+        window.blit(text_surface, (150, 175))
+
+        # Text at (100, 300)
+        instruction_text = ["To identify a target, you must fly close enough that your sensor",
+                            "range overlaps the target."]
+        y_pos = 450
+        for line in instruction_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+        # Sensor image centered at (500, 650) with width 600px
+        if self.sensor_image:
+            image_rect = self.sensor_image.get_rect(center=(500, 650))
+            window.blit(self.sensor_image, image_rect)
+        else:
+            # Placeholder
+            placeholder_rect = pygame.Rect(200, 575, 600, 150)
+            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
+            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
+            placeholder_text = "Sensor Range Image (600px wide)"
+            text_surface = self.font_large.render(placeholder_text, True, self.text_color)
+            text_rect = text_surface.get_rect(center=placeholder_rect.center)
+            window.blit(text_surface, text_rect)
+
+
+class Instruct6Screen(GameInstructionScreen):
+    """High-value targets explanation"""
+
+    def __init__(self, hvt_image_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hvt_image_path = hvt_image_path
+        self.hvt_image = None
+        try:
+            self.hvt_image = pygame.image.load(hvt_image_path)
+            # Scale to width 600px while maintaining aspect ratio
+            original_size = self.hvt_image.get_size()
+            scale_factor = 600 / original_size[0]
+            new_height = int(original_size[1] * scale_factor)
+            self.hvt_image = pygame.transform.scale(self.hvt_image, (600, new_height))
+        except pygame.error:
+            print(f"Could not load image: {hvt_image_path}")
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        # Gold circle at (100, 200) with radius 50px
+        pygame.draw.circle(window, (255, 215, 0), (150, 200), 50)
+
+        # Text at (250, 200)
+        text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
+        window.blit(text_surface, (250, 175))
+
+        # Text at (250, 350) - wrap text
+        warning_text = ["High-value targets have a chance to detect you if you fly",
+                        "within identification range. Each detection reduces your",
+                        "score by 15 points."]
+        y_pos = 350
+        for line in warning_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+        # HVT image centered at (500, 650) with width 600px
+        if self.hvt_image:
+            image_rect = self.hvt_image.get_rect(center=(500, 650))
+            window.blit(self.hvt_image, image_rect)
+        else:
+            # Placeholder
+            placeholder_rect = pygame.Rect(200, 575, 600, 150)
+            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
+            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
+            placeholder_text = "HVT Detection Image (600px wide)"
+            text_surface = self.font_large.render(placeholder_text, True, self.text_color)
+            text_rect = text_surface.get_rect(center=placeholder_rect.center)
+            window.blit(text_surface, text_rect)
+
+        # Bottom text at (100, 700)
+        bottom_text = ["To be successful, you will need to weigh the risks and rewards",
+                       "of identifying high-value targets."]
+
+        y_pos = 850
+        for line in bottom_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+
+class Instruct7Screen(GameInstructionScreen):
+    """Final instructions screen"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        instruction_text = [
+            "You will complete a total of 14 rounds in the game.",
+            "",
+            "Each round will take about 90 seconds.",
+            "",
+            "",
+            "After each round, you will answer a few surveys about your workload",
+            "and your impressions of the teammate you just worked with.",
+            "",
+            "",
+            "We are developing AI teammates that can adapt to humans.",
+            "",
+            "Your responses help us identify which techniques are most effective!"
+        ]
+
+        self.draw_text_block(window, instruction_text, 300, self.font_large, 40)
+
+
+class InstructionSeriesManager:
+    """Manages the series of instruction screens"""
+
+    def __init__(self, window: pygame.Surface, clock: pygame.time.Clock,
+                 map_image_path: str = None, sensor_image_path: str = None,
+                 hvt_image_path: str = None):
+        self.window = window
+        self.clock = clock
+        self.screen_manager = ScreenManager(window, clock)
+
+        # Create all instruction screens
+        self.screens = [
+            Instruct1Screen(1, 7, window.get_width(), window.get_height()),
+            Instruct2Screen(map_image_path or "map_image.jpg", 2, 7, window.get_width(), window.get_height()),
+            Instruct3Screen(3, 7, window.get_width(), window.get_height()),
+            Instruct4Screen(4, 7, window.get_width(), window.get_height()),
+            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 7, window.get_width(), window.get_height()),
+            Instruct6Screen(hvt_image_path or "hvt_image.jpg", 6, 7, window.get_width(), window.get_height()),
+            Instruct7Screen(7, 7, window.get_width(), window.get_height())
+        ]
+
+        self.current_screen_index = 0
+
+    def run_instruction_series(self) -> Dict:
+        """Run through all instruction screens with proper event handling"""
+        while 0 <= self.current_screen_index < len(self.screens):
+            current_screen = self.screens[self.current_screen_index]
+
+            # Run the screen manually to ensure proper event handling
+            running = True
+            result = {"action": "none"}
+
+            while running:
+                dt = self.screen_manager.clock.tick(60)
+
+                # Handle events
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        result = {"action": "exit"}
+                        running = False
+                    else:
+                        event_result = current_screen.handle_event(event)
+                        if event_result["action"] != "none":
+                            result = event_result
+                            running = False
+
+                # Update screen (for hover effects)
+                current_screen.update(dt)
+
+                # Render
+                current_screen.render(self.screen_manager.window)
+                pygame.display.flip()
+
+            # Process the result
+            if result["action"] == "next":
+                self.current_screen_index += 1
+            elif result["action"] == "previous":
+                self.current_screen_index -= 1
+            elif result["action"] == "continue":
+                if self.current_screen_index == len(self.screens) - 1:
+                    # Last screen, finish instructions
+                    return {"action": "complete"}
+                else:
+                    # Continue to next screen
+                    self.current_screen_index += 1
+            elif result["action"] == "exit":
+                return {"action": "exit"}
+
+        return {"action": "complete"}
 
 
 class ScreenManager:
