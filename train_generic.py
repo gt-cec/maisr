@@ -213,10 +213,10 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
                     self.eval_env.obs_rms = training_env.obs_rms
                     self.eval_env.ret_rms = training_env.ret_rms
-                    print(f"[Callback] Synced normalization stats from training to eval env")
+                    #print(f"[Callback] Synced normalization stats from training to eval env")
 
                     if self.teammate_manager is not None:
-                        print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
+                        #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
                         self.teammate_manager.set_normalization_stats(
                             training_env.obs_rms,
                             training_env.ret_rms
@@ -1154,7 +1154,7 @@ if __name__ == "__main__":
         note = 'pretrain' + machine[0].upper()
         config['num_timesteps'] = 2.5e6
         config['league_type'] = 'selfplay'
-        config['teammate_active_at_start'] = True # TODO REMOVE
+        #config['teammate_active_at_start'] = True # TODO REMOVE
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 

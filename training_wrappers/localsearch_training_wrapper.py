@@ -290,9 +290,12 @@ class MaisrLocalSearchWrapper(gym.Env):
 
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] == 'selfplay': # TODO clean up
-                teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
+
+                # If using a selfplay model
                 if hasattr(self.current_teammate, 'model'):
+                    teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
                     direction_to_move = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+
                 else:
                     teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
                     direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)

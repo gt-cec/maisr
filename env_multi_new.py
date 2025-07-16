@@ -669,7 +669,7 @@ class MAISREnvVec(gym.Env):
         info['failed'] = getattr(self, 'failed', False)
 
         if self.terminated or self.truncated:
-            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps')
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps\n\n')
 
             # Check if we should collect data for combined plotting
             # if self.should_save_combined_plot():

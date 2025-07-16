@@ -929,7 +929,7 @@ class RLTeammatePolicy(TeammatePolicy):
         """Set live normalization stats from the training environment"""
         self.live_obs_rms = obs_rms
         self.live_ret_rms = ret_rms
-        print(f"[RLTeammatePolicy] Received live normalization stats")
+        #print(f"[RLTeammatePolicy] Received live normalization stats")
 
     def _normalize_observation(self, observation):
         """Apply normalization to observation if stats are available"""
