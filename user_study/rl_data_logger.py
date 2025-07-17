@@ -270,10 +270,12 @@ class ExperimentDataLogger:
         timestamp = self.episode_start_time.strftime("%Y%m%d_%H%M%S")
 
         def convert_ndarrays(obj, path=""):
-            """Recursively convert numpy arrays to lists and log their locations"""
+            """Recursively convert numpy types (arrays, scalars) to JSON-serializable types"""
             if isinstance(obj, np.ndarray):
-                print(f"Found ndarray at {path}: shape={obj.shape}, dtype={obj.dtype}")
+                #print(f"Found ndarray at {path}: shape={obj.shape}, dtype={obj.dtype}")
                 return obj.tolist()
+            elif isinstance(obj, (np.generic,)):  # Handle scalar types like np.float32, np.int64, etc.
+                return obj.item()
             elif isinstance(obj, dict):
                 return {k: convert_ndarrays(v, f"{path}.{k}") for k, v in obj.items()}
             elif isinstance(obj, list):

@@ -1,11 +1,12 @@
-import argparse
-import ctypes
+#import argparse
+#import ctypes
 import pygame
+import asyncio
 import numpy as np
 import random
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-import gymnasium as gym
+#import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.data_logging import load_env_config
@@ -49,12 +50,12 @@ class HumanSubpolicyController:
             # Store the waypoint for custom control
             #self.custom_waypoint = np.array([game_x / map_half_size, game_y / map_half_size], dtype=np.float32)
             self.custom_waypoint = np.array([game_x, game_y], dtype=np.float32)
-            #print(f'Custom waypoint = {self.custom_waypoint}')
-            self.env.human_custom_waypoint = (float(self.custom_waypoint[0]),float(self.custom_waypoint[1]))
+            print(f'Custom waypoint = {self.custom_waypoint}')
+            self.env.human_custom_waypoint = self.custom_waypoint
             self.use_custom_waypoint = True
 
-            #print(f"Human clicked at screen ({click_x}, {click_y}) -> game waypoint ({game_x:.1f}, {game_y:.1f})")
-            #print("Switched to custom waypoint mode")
+            print(f"Human clicked at screen ({click_x}, {click_y}) -> game waypoint ({game_x:.1f}, {game_y:.1f})")
+            print("Switched to custom waypoint mode")
             return True
 
         return False
@@ -177,10 +178,6 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     level_number = int(config[1:])
     data_logger.start_episode(config, agent_letter, level_number)
 
-    # Agent action rate (to speed up processing)
-    play_action_rate = 5
-    last_agent_action = None
-
     obs = env.reset()[0]
     print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
@@ -221,18 +218,14 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
             #scaled_waypoint = (custom_waypoint[0]*map_half_size, custom_waypoint[1]*map_half_size)
             env.env.agents[env.env.aircraft_ids[1]].waypoint_override = custom_waypoint #tuple(custom_waypoint)
-            #print(f'[Experiment loop] Setting human waypoint to {custom_waypoint}')
+            print(f'[Experiment loop] Setting human waypoint to {custom_waypoint}')
 
 
         # Get agent action
-        if last_agent_action is None or step_count % play_action_rate == 0:
-            agent_action, _ = agent_model.predict(obs, deterministic=True)
-        else:
-            agent_action = last_agent_action
+        agent_action, _ = agent_model.predict(obs, deterministic=True)
         #print(f'[Experiment loop] Agent chose action {agent_action}')
 
         # Take step in environment
-        #for _ in range(play_action_rate):
         obs, reward, terminated, truncated, info = env.step(agent_action)
 
         # Log timestep data
@@ -255,17 +248,18 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         env.render()
 
         # Draw additional UI elements
-        #draw_instructions(window, font)
+        draw_instructions(window, font)
         draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
         # Update display
         pygame.display.flip()
         pygame.time.wait(50)
         clock.tick(tick_rate)
+        await asyncio.sleep(0)
 
         # Print periodic status
-        #if step_count % 50 == 0:
-            #print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
+        if step_count % 50 == 0:
+            print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
 
     # End episode logging
     episode_summary = data_logger.end_episode(env, info)
@@ -298,22 +292,15 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
-    parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
-    parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
-    #parser.add_argument('--skip', type=int, default=0, help='')
-    args = parser.parse_args()
-
-    print(f"\n \n Subject ID: {args.subject_id}")
-    print(f"Starting from level: {args.start_level}")
-
-    #skip_instruction = args.skip == 1
+async def main():
+    subject_id = 99
+    start_level = 0
+    print(f"\n \n Subject ID: {subject_id}")
+    print(f"Starting from level: {start_level}")
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 60
+    tick_rate = 20
     #survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
     # Define RL agent model paths - UPDATE THESE AS NEEDED
@@ -334,32 +321,28 @@ def main():
     print(f"Randomized configuration order: {config_list}")
 
     # If start_level is specified, start from that index
-    if args.start_level > 0:
-        if args.start_level >= len(config_list):
-            print(f"Error: start_level {args.start_level} is >= total configs {len(config_list)}")
+    if start_level > 0:
+        if start_level >= len(config_list):
+            print(f"Error: start_level {start_level} is >= total configs {len(config_list)}")
             return
-        config_list = config_list[args.start_level:]
-        print(f"Starting from level {args.start_level}: {config_list}")
+        config_list = config_list[start_level:]
+        print(f"Starting from level {start_level}: {config_list}")
 
     # Load configuration
-    time_factor = 20
     config = load_env_config(config_filename)
     config['tick_rate'] = tick_rate
-    config['num_observed_targets'] = 4 # TODO TEMP - Will need to remove this for real runs because will break the model.
-    config['game_speed'] /= time_factor
-    config['max_steps'] *= time_factor
-    config['use_stuck_detection'] = True
+    config['num_observed_targets'] = 4 # TODO TEMP
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
-    ctypes.windll.user32.SetProcessDPIAware()
+    #ctypes.windll.user32.SetProcessDPIAware()
 
     window_width, window_height = config['window_size'][0], config['window_size'][1]
     window = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption(f"MAISR User Study - Subject {args.subject_id}")
+    pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
     # Create font for instructions
     font = pygame.font.SysFont(None, 24)
@@ -368,7 +351,7 @@ def main():
     experiment_results = []
     current_agents = {}
 
-    data_logger = ExperimentDataLogger(args.subject_id)
+    data_logger = ExperimentDataLogger(subject_id)
     screen_manager = ScreenManager(window, clock)
 
     # Main experiment loop
@@ -385,7 +368,6 @@ def main():
             teammate_image_path="user_study/img/teammates_image.png"
         )
 
-        #if not args.skip_instruction:
         instruction_result = instruction_manager.run_instruction_series()
 
         if instruction_result["action"] == "exit":
@@ -397,16 +379,6 @@ def main():
         for config_index, current_config in enumerate(config_list):
             agent_letter = current_config[0]  # 'A' or 'B'
             level_number = int(current_config[1:])  # Level number
-            if agent_letter == 'A':
-                if level_number % 2 == 0: # Even levels
-                    agent_appearance = 'purple'
-                else: # Odd levels
-                    agent_appearance = 'red'
-            else: # Agent B
-                if level_number % 2 == 0: # Even levels
-                    agent_appearance = 'brown'
-                else: # Odd levels
-                    agent_appearance = 'green'
 
             print(f"\nPreparing for config: {current_config}")
             print(f"Agent: {agent_letter}, Level: {level_number}")
@@ -423,9 +395,8 @@ def main():
                 clock=clock,
                 window=window,
                 render_mode='human',
-                run_name=f'user_study_subject_{args.subject_id}',
-                tag=f'subject_{args.subject_id}_config_{current_config}',
-                agent_appearance = agent_appearance
+                run_name=f'user_study_subject_{subject_id}',
+                tag=f'subject_{subject_id}_config_{current_config}',
             )
 
             # Set the specific level for this episode
@@ -458,13 +429,14 @@ def main():
                 'level': level_number,
                 'reward': episode_reward,
                 'steps': step_count,
-                'config_index': config_index + args.start_level
+                'config_index': config_index + start_level
             }
             experiment_results.append(result)
 
             # Clean up environment
             env.close()
 
+            # Launch survey URL after each episode
             print(f"\nEpisode {current_config} completed!")
 
             workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
@@ -506,7 +478,7 @@ def main():
             # Brief pause between episodes (unless it's the last one)
             if config_index < len(config_list) - 1:
                 print("Next episode starting in 2 seconds...")
-                pygame.time.wait(100)
+                pygame.time.wait(1000)
 
     except KeyboardInterrupt:
         print("\nExperiment interrupted by user")
@@ -519,7 +491,7 @@ def main():
         print(f"\n{'=' * 60}")
         print("EXPERIMENT SUMMARY")
         print(f"{'=' * 60}")
-        print(f"Subject ID: {args.subject_id}")
+        print(f"Subject ID: {subject_id}")
         print(f"Completed configurations: {len(experiment_results)}")
 
         if experiment_results:
@@ -552,9 +524,10 @@ def main():
                     print(f"    Success rate: {performance['success_rate']:.2%}")
                     print(f"    Average targets identified: {performance['average_targets_identified']:.1f}")
 
-        print(f"\nData saved to: {data_logger.output_dir}/subject_{args.subject_id}/")
+        print(f"\nData saved to: {data_logger.output_dir}/subject_{subject_id}/")
         pygame.quit()
 
 
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+    #main()
+asyncio.run(main())

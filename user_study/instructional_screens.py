@@ -1,3 +1,5 @@
+import math
+
 import pygame
 import sys
 from typing import Dict, List, Optional, Callable
@@ -16,14 +18,19 @@ class InstructionalScreen:
     """Base class for instructional screens"""
 
     def __init__(self, window_width: int = 1000, window_height: int = 1100):
+
+        font_path = 'AcPlus_IBM_VGA_8x16.ttf'
+        #font_size = 16
+        #font = pygame.font.Font(font_path, font_size)
+
         self.window_width = window_width
         self.window_height = window_height
-        self.background_color = (30, 30, 30)  # Dark gray
+        self.background_color = (0,0,0) #(30, 30, 30)  # Dark gray
         self.text_color = (255, 255, 255)  # White
         self.highlight_color = (100, 150, 255)  # Light blue
-        self.font_large = pygame.font.SysFont('Arial', 36, bold=True)
-        self.font_medium = pygame.font.SysFont('Arial', 24)
-        self.font_small = pygame.font.SysFont('Arial', 18)
+        self.font_large = pygame.font.Font(font_path, 36) #pygame.font.SysFont('Arial', 36, bold=True)
+        self.font_medium = pygame.font.Font(font_path, 24)# pygame.font.SysFont('Arial', 24)
+        self.font_small = pygame.font.Font(font_path, 18) #pygame.font.SysFont('Arial', 18)
 
         # Input state
         self.text_input = ""
@@ -319,7 +326,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
             # Draw segment number
             number_text = str(segment + 1)
-            number_surface = self.font_small.render(number_text, True, self.text_color)
+            number_surface = self.font_medium.render(number_text, True, self.text_color)
             number_rect = number_surface.get_rect(center=segment_rect.center)
             window.blit(number_surface, number_rect)
 
@@ -359,8 +366,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
         window.blit(arrow_surface, arrow_rect)
 
         # Draw instruction text
-        instruction_surface = self.font_small.render(instruction_text, True, text_color)
-        instruction_rect = instruction_surface.get_rect(center=(self.window_width // 2, continue_y + 100))
+        instruction_surface = self.font_medium.render(instruction_text, True, text_color)
+        instruction_rect = instruction_surface.get_rect(center=(self.window_width // 2, continue_y - 0))
         window.blit(instruction_surface, instruction_rect)
 
         # Store button rect for click detection
@@ -458,7 +465,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         self.questions = [
             "Which teammate did you prefer overall?",
             "Which teammate performed better?",
-            "Which teammate adapted to\nyour strategy more effectively?"
+            "Which teammate was better at\nadapting to your strategy?"
         ]
 
         # User responses (None = not answered, 'green' or 'purple' for selection)
@@ -475,7 +482,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         self.green_color = (76, 175, 80)
         self.purple_color = (156, 39, 176)
         self.selected_bg_color = (220, 220, 220)
-        self.icon_bg_color = (200, 200, 200)
+        self.icon_bg_color = (150, 150, 150)
 
         # Continue button
         self.continue_button_size = 80
@@ -506,16 +513,16 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
             # Multi-line question
             for line_idx, line in enumerate(lines):
                 line_y = y_pos - 30 + (line_idx * 30)
-                self.draw_text_centered(window, line, line_y, self.font_medium)
+                self.draw_text_centered(window, line, line_y, self.font_large)
         else:
             # Single line question
-            self.draw_text_centered(window, question_text, y_pos, self.font_medium)
+            self.draw_text_centered(window, question_text, y_pos, self.font_large)
 
         # Calculate icon positions
         center_x = self.window_width // 2
         green_icon_x = center_x - self.icon_spacing // 2
         purple_icon_x = center_x + self.icon_spacing // 2
-        icon_y = y_pos + 60
+        icon_y = y_pos + 50
 
         # Draw green teammate icon
         self.draw_teammate_icon(window, green_icon_x, icon_y, 'green',
@@ -527,45 +534,67 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
     def draw_teammate_icon(self, window: pygame.Surface, x: int, y: int, icon_type: str,
                            question_index: int, is_selected: bool) -> None:
-        """Draw a teammate icon with proper styling"""
-        # Icon rectangle
-        icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2,
-                                self.icon_size, self.icon_size)
+        """Draw a teammate icon as a rotated and scaled-up mini aircraft rendering"""
 
-        # Background color
-        if is_selected:
-            bg_color = self.selected_bg_color
+        # Dummy env-like constants (scaled up 25%)
+        scale = 1.2
+        NOSE = 10 * scale
+        TAIL = 25 * scale
+        WING = 18 * scale
+        TAIL_WIDTH = 7 * scale
+        LINE_WIDTH = 5
+
+        # 90 degrees counterclockwise = π/2
+        direction = -math.pi / 2
+
+        # Colors
+        if icon_type == 'green':
+            color = (76*1.2, 175*1.2, 80*1.2)
+        elif icon_type == 'purple':
+            color = (156, 39, 176)
         else:
-            bg_color = self.icon_bg_color
+            color = (180, 180, 180)
 
-        # Draw rounded rectangle background
+        # Draw background box
+        icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2, self.icon_size, self.icon_size)
+        bg_color = self.selected_bg_color if is_selected else self.icon_bg_color
         pygame.draw.rect(window, bg_color, icon_rect, border_radius=10)
         pygame.draw.rect(window, (100, 100, 100), icon_rect, 3, border_radius=10)
 
-        # Draw the teammate symbol (T in a circle)
-        circle_radius = 25
-        circle_center = (x, y)
+        # Aircraft points
+        nose = (x + math.cos(direction) * NOSE, y + math.sin(direction) * NOSE)
+        tail = (x - math.cos(direction) * TAIL, y - math.sin(direction) * TAIL)
+        left_wing = (x - math.cos(direction - math.pi / 2) * WING,
+                     y - math.sin(direction - math.pi / 2) * WING)
+        right_wing = (x + math.cos(direction - math.pi / 2) * WING,
+                      y + math.sin(direction - math.pi / 2) * WING)
+        left_tail = (tail[0] - math.cos(direction - math.pi / 2) * TAIL_WIDTH,
+                     tail[1] - math.sin(direction - math.pi / 2) * TAIL_WIDTH)
+        right_tail = (tail[0] + math.cos(direction - math.pi / 2) * TAIL_WIDTH,
+                      tail[1] + math.sin(direction - math.pi / 2) * TAIL_WIDTH)
 
-        # Circle color based on type and selection
-        if icon_type == 'green':
-            circle_color = self.green_color if is_selected else self.unselected_color
-        else:  # purple
-            circle_color = self.purple_color if is_selected else self.unselected_color
+        # Draw aircraft shape
+        pygame.draw.line(window, color, tail, nose, LINE_WIDTH)
+        pygame.draw.line(window, color, left_tail, right_tail, LINE_WIDTH)
+        pygame.draw.line(window, color, left_wing, right_wing, LINE_WIDTH)
 
-        # Draw circle
-        pygame.draw.circle(window, circle_color, circle_center, circle_radius)
+        # Appearance-specific markings
+        if icon_type == 'purple':
+            size = WING/1.5
+            rect = pygame.Rect(0, 0, size, size)
+            rect.center = (x, y)
+            pygame.draw.rect(window, color, rect)
+        elif icon_type == 'green':
+            for pt in [left_wing, right_wing]:
+                end = (pt[0] + math.cos(direction) * 5,
+                       pt[1] + math.sin(direction) * 5)
+                pygame.draw.line(window, color, pt, end, LINE_WIDTH)
 
-        # Draw T symbol
-        t_color = (255, 255, 255) if is_selected else (150, 150, 150)
-        t_font = pygame.font.SysFont('Arial', 24, bold=True)
-        t_surface = t_font.render('T', True, t_color)
-        t_rect = t_surface.get_rect(center=circle_center)
-        window.blit(t_surface, t_rect)
-
-        # Store rect for click detection
+        # Store for click detection
         if not hasattr(self, 'icon_rects'):
             self.icon_rects = {}
         self.icon_rects[(question_index, icon_type)] = icon_rect
+
 
     def draw_continue_button(self, window: pygame.Surface) -> None:
         """Draw the continue arrow button"""
@@ -727,7 +756,7 @@ class GameInstructionScreen(InstructionalScreen):
             hint_text = "Click the arrows or use arrow keys to continue"
 
         hint_surface = self.font_medium.render(hint_text, True, (150, 150, 150))
-        hint_rect = hint_surface.get_rect(center=(self.window_width // 2, self.window_height - 100))
+        hint_rect = hint_surface.get_rect(center=(self.window_width // 2, self.window_height - 75))
         window.blit(hint_surface, hint_rect)
 
     def draw_arrow_buttons(self, window: pygame.Surface) -> None:
@@ -792,7 +821,7 @@ class GameInstructionScreen(InstructionalScreen):
                 if clicked_result:
                     return clicked_result
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RIGHT and self.screen_number < self.total_screens:
+            if event.key == pygame.K_RIGHT and self.screen_number < self.total_screens + 1:
                 return {"action": "next"}
             elif event.key == pygame.K_LEFT and self.screen_number > 1:
                 return {"action": "previous"}
@@ -853,7 +882,7 @@ class Instruct2Screen(GameInstructionScreen):
         self.image = None
         try:
             self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (700, 700))
+            self.image = pygame.transform.scale(self.image, (600, 600))
         except pygame.error:
             print(f"Could not load image: {image_path}")
 
@@ -865,7 +894,7 @@ class Instruct2Screen(GameInstructionScreen):
         words = text.split()
         lines = []
         current_line = []
-        max_width = self.window_width - 150  # Leave margins
+        max_width = self.window_width - 200  # Leave margins
 
         for word in words:
             test_line = ' '.join(current_line + [word])
@@ -882,7 +911,7 @@ class Instruct2Screen(GameInstructionScreen):
             lines.append(' '.join(current_line))
 
         # Draw text lines
-        y_pos = 100
+        y_pos = 150
         for line in lines:
             text_surface = self.font_large.render(line, True, self.text_color)
             window.blit(text_surface, (100, y_pos))
@@ -920,7 +949,7 @@ class Instruct3Screen(GameInstructionScreen):
 
         # Top text at (100, 100)
         text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
-        window.blit(text_surface, (100, 100))
+        window.blit(text_surface, (100, 150))
 
         # Blue circle at (500, 200) with radius 50px
         image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
@@ -928,7 +957,8 @@ class Instruct3Screen(GameInstructionScreen):
         #pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
 
         # Bottom text at (50, 500)
-        bottom_text = ["You control your aircraft by clicking on the map where you want to fly.",
+        bottom_text = ["You control your aircraft by clicking on the map where you",
+                       "want to fly.",
                        "",
                        "The aircraft will automatically fly to the point you clicked."]
 
@@ -948,7 +978,7 @@ class Instruct4Screen(GameInstructionScreen):
         self.image = None
         try:
             self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (750, 200))
+            self.image = pygame.transform.scale(self.image, (855, 200))
         except pygame.error:
             print(f"Could not load image: {image_path}")
 
@@ -974,12 +1004,13 @@ class Instruct4Screen(GameInstructionScreen):
 
         # Bottom text at (50, 500)
         bottom_text = ["",
-                       "You CANNOT control your teammate. They will autonomously",
-                       "fly around the map to help you identify targets.",
+                       "Your teammate will autonomously fly around",
+                       "the map to help you identify targets.",
                        "",
                        "",
-                       "They may follow different strategies and may or may not coordinate",
-                       "with you depending on what they learned in their training."]
+                       "They may follow different strategies and may or may not",
+                       "coordinate with you depending on what they learned in ",
+                       "their training."]
 
         y_pos = 500
         for line in bottom_text:
@@ -1006,23 +1037,31 @@ class Instruct5Screen(GameInstructionScreen):
             print(f"Could not load image: {sensor_image_path}")
 
     def draw_content(self, window: pygame.Surface) -> None:
-        # Top text at (50, 500) - but this seems wrong based on the description
-        # I'll interpret this as the main instruction text
-        text_surface = self.font_large.render("You earn points by identifying targets on the map.", True,
-                                               self.text_color)
-        window.blit(text_surface, (100, 100))
+
+        top_text = ["You earn points by identifying targets on the map. Each",
+                    "Level has 15 regular targets and 4 high-value targets. "
+                    ]
+
+        y_pos = 100
+        for line in top_text:
+            text_surface = self.font_large.render(line, True, self.text_color)
+            window.blit(text_surface, (100, y_pos))
+            y_pos += 35
+
+        #text_surface = self.font_large.render("You earn points by identifying targets on the map.", True,self.text_color)
+        #window.blit(text_surface, (100, 100))
 
         # Gold circle at (100, 200) with radius 10px
-        pygame.draw.circle(window, (255, 215, 0), (100, 200), 15)
+        pygame.draw.circle(window, (255, 215, 0), (125, 330), 15)
 
         # Text at (150, 200)
         text_surface = self.font_large.render("Regular targets are worth 1 point.", True, self.text_color)
-        window.blit(text_surface, (150, 175))
+        window.blit(text_surface, (175, 310))
 
         # Text at (100, 300)
-        instruction_text = ["To identify a target, you must fly close enough that your sensor",
-                            "range overlaps the target."]
-        y_pos = 450
+        instruction_text = ["To identify a target, you must fly close enough that",
+                            "your sensor range overlaps the target."]
+        y_pos = 400
         for line in instruction_text:
             text_surface = self.font_large.render(line, True, self.text_color)
             window.blit(text_surface, (100, y_pos))
@@ -1030,7 +1069,7 @@ class Instruct5Screen(GameInstructionScreen):
 
         # Sensor image centered at (500, 650) with width 600px
         if self.sensor_image:
-            image_rect = self.sensor_image.get_rect(center=(500, 650))
+            image_rect = self.sensor_image.get_rect(center=(500, 625))
             window.blit(self.sensor_image, image_rect)
         else:
             # Placeholder
@@ -1062,16 +1101,16 @@ class Instruct6Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Gold circle at (100, 200) with radius 50px
-        pygame.draw.circle(window, (255, 215, 0), (150, 200), 50)
+        pygame.draw.circle(window, (255, 215, 0), (200, 200), 50)
 
         # Text at (250, 200)
         text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
-        window.blit(text_surface, (250, 175))
+        window.blit(text_surface, (300, 175))
 
         # Text at (250, 350) - wrap text
-        warning_text = ["High-value targets have a chance to detect you if you fly",
-                        "within identification range. Each detection reduces your",
-                        "score by 15 points."]
+        warning_text = ["High-value targets might detect you if you fly",
+                        "within identification range. Each detection",
+                        "reduces your score by 15 points."]
         y_pos = 350
         for line in warning_text:
             text_surface = self.font_large.render(line, True, self.text_color)
@@ -1113,12 +1152,14 @@ class Instruct7Screen(GameInstructionScreen):
             "Each round will take about 90 seconds.",
             "",
             "",
-            "After each round, you will answer a few surveys about your workload",
-            "and your impressions of the teammate you just worked with.",
+            "After each round, you will answer a few questions about",
+            "your workload and your impressions of the teammate",
+            "you just worked with.",
             "",
             "",
             "We are developing AI teammates that can adapt to humans.",
-            "Your responses help us identify which techniques are most effective!"
+            "Your responses help us identify which techniques",
+            "are most effective!"
         ]
 
         self.draw_text_block(window, instruction_text, 300, self.font_large, 40)

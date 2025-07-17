@@ -70,6 +70,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
         self.switched_to_twoship = False
         self.twoship_switch_threshold = env_config['twoship_switch_threshold']
+        self.twoship_switch_reward_threshold = 23
 
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
@@ -323,11 +324,12 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             #################################### Aircraft switching ####################################
             print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
             if (not self.switched_to_twoship) and target_ids_list:
-                avg_target_ids = np.mean(target_ids_list)
-                if avg_target_ids > self.twoship_switch_threshold:
+                #avg_target_ids = np.mean(target_ids_list)
+                #if avg_target_ids > self.twoship_switch_threshold:
+                if mean_reward > self.twoship_switch_reward_threshold:
                     print(f'\n{"=" * 80}')
                     print(f'AIRCRAFT SWITCHING TRIGGERED! (step {self.num_timesteps})')
-                    print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
+                    #print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
                     print(f'Switching from 1 aircraft to 2 aircraft...')
                     print(f'{"=" * 80}\n')
 
@@ -1146,6 +1148,34 @@ if __name__ == "__main__":
             #"obs_noise": [0.01],
         }
         overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
+
+    elif version == 'strategy_diverse_tests':
+        note = 'strategy_1' + machine[0].upper()
+        config['num_timesteps'] = 3e6
+        project_name = 'maisr-rl-exp2'
+        hyperparams = {
+            # "network_size": [128, 196],
+            # "num_observed_targets": [5],
+            # "use_entropy_decay_schedule": [True, False],
+            # "num_observed_threats":[1],
+            # "use_stuck_detection": [False, True],
+            'max_steps':[1500, 1700],
+            # 'entropy_decay_steps':[1.5e6],
+            'seed': [21],
+            'threat_reward_scaling':[1.25],
+            # 'shaping_coeff_earlyfinish':[0.07]
+            # "network_size":[128],
+            # "lr": [0.001, 0.0015]
+            # "team_spread_bonus_coeff": [0.0035], # 0.005,
+            # "force_specific_level": [99],
+            # "observe_teammate_direction":[True],
+            'entropy_regularization': [0.08],
+            "teammate_reward_scale": [0.75],
+            # "obs_noise": [0.01],
+        }
+        overfit_tests = [None]
+        config['league_type'] = 'strategy_diverse'
+
     elif version == 'index_test':
         note = 'index_1' + machine[0].upper()
         hyperparams = {'seed':42}

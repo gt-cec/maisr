@@ -69,14 +69,22 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # For detecting stuck agent
         if self.env.config['use_stuck_detection']:
+
+            self.recent_actions = []
+            self.action_history_length = 10  # Can be tuned
+            self.oscillation_threshold = 3.5  # Max average difference before declaring stuck
+
             self.position_history = []  # Track recent positions
-            self.history_length = 15  # Number of positions to track
-            self.stuck_threshold = 150  # Pixel distance threshold for being "stuck"
+            self.history_length = 10  # Number of positions to track
+            self.stuck_threshold = 4  # Pixel distance threshold for being "stuck"
             self.override_active = False
             self.override_target_pos = None
-            self.override_arrival_threshold = 25  # Distance to target before giving control back
+            self.override_arrival_threshold = 150  # Distance to target before giving control back
             self.last_progress_step = 0
-            self.no_progress_threshold = 4  # Steps without progress before override
+            self.no_progress_threshold = 20  # Steps without progress before override
+
+            self.override_step_counter = 0  # Track override steps
+            self.max_override_steps = 20  # Run override for 5 steps
 
         #print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
 
@@ -92,11 +100,16 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Reset stuck detection variables
         if self.env.config['use_stuck_detection']:
+
+            self.recent_actions = []
+
             self.position_history = []
             self.override_active = False
             self.override_target_pos = None
             self.last_progress_step = 0
             self.last_targets_identified = 0
+
+            self.override_step_counter = 0
 
         # Reset teammate selection for new episode
         if self.teammate_manager:
@@ -132,6 +145,12 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
 
         ############ Stuck detection ############
+
+        if self.env.config['use_stuck_detection']:
+            self.recent_actions.append(action)
+            if len(self.recent_actions) > self.action_history_length:
+                self.recent_actions.pop(0)
+
         if self.env.config['use_stuck_detection']:# and self.env.episode_counter >= 500:
             current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
             self.position_history.append(current_pos.copy())
@@ -141,19 +160,31 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.update_progress_tracking()
 
             # Check for stuck condition and activate override if needed
+            #self.is_agent_stuck()
             if not self.override_active and self.is_agent_stuck():
                 self.override_target_pos = self.get_nearest_unknown_target()
                 if self.override_target_pos is not None:
                     self.override_active = True
-                    print(f"Agent stuck detected! Taking control - moving to target at {self.override_target_pos}")
+                    #print(f"Agent stuck detected! Taking control - moving to target at {self.override_target_pos}")
 
             # Use override action if active
             if self.override_active:
                 override_action = self.get_override_action()
+
                 if override_action is not None:
                     action = override_action
-                    print(f"Override action: {action} (distance to target: {np.linalg.norm(current_pos - self.override_target_pos):.1f})")
-                else: print("Override deactivated")
+                    self.override_step_counter += 1
+                    if self.override_step_counter >= self.max_override_steps:
+                        print("Override deactivated after 5 steps.")
+                        self.override_active = False
+                        self.override_target_pos = None
+                        self.override_step_counter = 0
+
+                #
+                # if override_action is not None:
+                #     action = override_action
+                #     print(f"Override action: {action} (distance to target: {np.linalg.norm(current_pos - self.override_target_pos):.1f})")
+                # else: print("Override deactivated")
 
         ####################################
 
@@ -165,7 +196,6 @@ class MaisrLocalSearchWrapper(gym.Env):
         if self.obs_noise_std > 0:
             noise = np.random.normal(0, self.obs_noise_std, observation.shape)
             observation = np.clip(observation + noise, -1, 1)  # Clip to valid range
-
 
         # Convert base_env elements to wrapper elements if needed
         reward = base_reward
@@ -654,11 +684,24 @@ class MaisrLocalSearchWrapper(gym.Env):
     ############################ Functions for stuck detection ############################
 
     def is_agent_stuck(self, agent_id=0):
-        """Detect if agent is stuck based on position history"""
-        if len(self.position_history) < self.history_length:
+        if len(self.recent_actions) < self.action_history_length:
             return False
 
-        # Get current position
+        # Compute pairwise action differences in circular space
+        diffs = []
+        for i in range(len(self.recent_actions) - 1):
+            a1 = self.recent_actions[i]
+            a2 = self.recent_actions[i + 1]
+            # Circular distance: min steps around the 16-direction circle
+            diff = min(abs(a1 - a2), 16 - abs(a1 - a2))
+            diffs.append(diff)
+
+        avg_diff = sum(diffs) / len(diffs)
+
+        condition_1 = avg_diff > self.oscillation_threshold
+        if condition_1: print('[STUCK DETECTION] Oscillating actions detected')
+
+        # Condition 2: No forward progress
         current_pos = np.array([
             self.env.agents[self.env.aircraft_ids[agent_id]].x,
             self.env.agents[self.env.aircraft_ids[agent_id]].y
@@ -671,12 +714,18 @@ class MaisrLocalSearchWrapper(gym.Env):
         # If most recent positions are within stuck_threshold, agent is stuck
         stuck_positions = np.sum(distances_from_current < self.stuck_threshold)
         stuck_ratio = stuck_positions / len(distances_from_current)
+        condition_3 = stuck_ratio > 0.8
+        if condition_3: print('[STUCK DETECTION] Stuck ratio exceeded')
 
         # Also check for no progress towards targets
-        steps_since_progress = self.env.step_count_outer - self.last_progress_step
-        no_progress = steps_since_progress > self.no_progress_threshold
+        # steps_since_progress = self.env.step_count_outer - self.last_progress_step
+        # condition_2 = steps_since_progress > self.no_progress_threshold
+        # if condition_2: print('[STUCK DETECTION] No progress detected')
 
-        return stuck_ratio > 0.8 or no_progress  # 80% of positions within threshold OR no progress
+        #print(f"[DEBUG] avg_diff={avg_diff:.2f}, stuck_ratio={stuck_ratio:.2f}, steps_since_progress=")
+
+        return condition_1 or condition_3 # condition_2
+
 
     def get_nearest_unknown_target(self, agent_id=0):
         """Find the nearest unknown target position"""
@@ -714,11 +763,11 @@ class MaisrLocalSearchWrapper(gym.Env):
         distance_to_target = np.linalg.norm(direction_vector)
 
         # Check if we've arrived at target
-        if distance_to_target < self.override_arrival_threshold:
-            self.override_active = False
-            self.override_target_pos = None
-            print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
-            return None
+        # if distance_to_target < self.override_arrival_threshold:
+        #     self.override_active = False
+        #     self.override_target_pos = None
+        #     print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
+        #     return None
 
         if distance_to_target > 0:
             # Normalize direction vector
@@ -768,7 +817,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                 12: (-1, 0), 13: (-0.924, 0.383), 14: (-0.707, 0.707), 15: (-0.383, 0.924)
             }
             expected_direction = direction_map.get(action, (0, 0))
-            print(f"  Expected movement direction: {expected_direction}")
+            #print(f"  Expected movement direction: {expected_direction}")
 
             return action
 

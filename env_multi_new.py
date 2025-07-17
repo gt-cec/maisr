@@ -18,12 +18,15 @@ class MAISREnvVec(gym.Env):
                  tag='none',
                  run_name='no name',
                  seed=None,
-                 subject_id='999', user_group='99', round_number='99'):
+                 subject_id='999', user_group='99', round_number='99',
+                 agent_appearance=None):
 
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
         self.run_name = run_name # For logging
+
+        self.agent_appearance = agent_appearance
 
         self.use_buttons = False
         self.teammate_active = self.config['teammate_active_at_start']
@@ -389,7 +392,10 @@ class MAISREnvVec(gym.Env):
 
         ############################################# Create the aircraft ##############################################
         for i in range(self.config['num_aircraft']):
-            agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
+            #agents.Aircraft(self, 0, max_health=10,color=self.AIRCRAFT_COLORS[i],speed=self.config['game_speed']*self.config['agent_speed'])
+            appearance = self.agent_appearance if i == 0 else None
+            agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game_speed'] * self.config['agent_speed'], appearance=appearance)
+
             self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
 
         if self.config['num_aircraft'] == 2: # TODO delete
@@ -780,7 +786,7 @@ class MAISREnvVec(gym.Env):
         if self.num_threats_identified <= self.config['max_threat_ids']:
             threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward'] * self.config['threat_reward_scaling']
         else:
-            threat_id_reward = -3 * new_reward['threat_identification'] * self.config['threat_id_reward']
+            threat_id_reward = -1.5 * new_reward['threat_identification'] * self.config['threat_id_reward']
 
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
@@ -2441,7 +2447,7 @@ class MAISREnvVec(gym.Env):
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
-            print(f"Action history plot saved to {filename}")
+            print(f"Action history plot saved to ...{filename[-10:-1]}")
         except ImportError as e:
             print(f"Could not save action history plot: {e}")
         except Exception as e:

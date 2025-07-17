@@ -1,6 +1,6 @@
 {
 	"notes": "1 target, agent observes vector to nearest target",
-	"window_size": [1100,1100],
+	"window_size": [1000,1100],
 	"tick_rate": 10,
 	"time_limit": 245,
 	"game_speed": 0.7,
@@ -30,7 +30,7 @@
 
 	"base_env_target_id_reward": 1,
 	"teammate_reward_scale": 0.75,
-	"threat_id_reward": 9,
+	"threat_id_reward": 11,
 	"shaping_decay_rate":1,
 	"target_potential_coeff": 0.05,
 	"threat_potential_coeff": 0.25,
@@ -67,7 +67,7 @@
 	"clip_range": 0.2,
 
 	"num_timesteps": 1.5e6,
-	"save_freq": 2500,
+	"save_freq": 12500,
 	"n_eval_episodes": 7,
 	"eval_freq": 1000,
 
