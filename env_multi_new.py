@@ -1939,7 +1939,15 @@ class MAISREnvVec(gym.Env):
         #if action.ndim < 2:
         if isinstance(action, tuple):
             action = action[0]
-        action = int(action)
+        try:
+            action = int(action)
+        except Exception as e:
+            print(e)
+            if hasattr(self, 'current_teammate') and hasattr(self.current_teammate, 'name'):
+                teammate_name = self.current_teammate.name
+            else:
+                teammate_name = "None"
+            print(f'Action was {action} (type {type(action)}, agent {agent_id}, teammate is {teammate_name})')
 
         direction_map = {
             0: (0, 1),  # North (0°)
@@ -1964,6 +1972,7 @@ class MAISREnvVec(gym.Env):
         current_y = self.agents[self.aircraft_ids[agent_id]].y
 
         dx_norm, dy_norm = direction_map[action]
+        #print('reached direction map')
 
         # Calculate waypoint at fixed distance in chosen direction
         waypoint_distance = 50
@@ -2457,7 +2466,7 @@ class MAISREnvVec(gym.Env):
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
-            print(f"Action history plot saved to ...{filename[-10:-1]}")
+            print(f"Action history plot saved to ...{filename[-20:]}")
         except ImportError as e:
             print(f"Could not save action history plot: {e}")
         except Exception as e:

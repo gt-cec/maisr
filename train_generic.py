@@ -1,5 +1,6 @@
 import ctypes
 import warnings
+
 import pygame
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
@@ -155,7 +156,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                         teammate_freq_data.append([teammate_name, count, count / total_episodes])
 
                     # Log as a table that WandB can convert to a bar chart
-                    log_data["train/teammate_frequency_table"] = wandb.Table(
+                    log_data["teammate_frequencies/teammate_frequency_table"] = wandb.Table(
                         data=teammate_freq_data,
                         columns=["teammate_name", "count", "frequency"]
                     )
@@ -164,7 +165,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     for teammate_name, count in teammate_counts.items():
                         # Clean the name for WandB (replace special characters)
                         clean_name = teammate_name.replace("/", "_").replace(" ", "_")
-                        log_data[f"train/teammate_freq_{clean_name}"] = count / total_episodes
+                        log_data[f"teammate_frequencies/teammate_freq_{clean_name}"] = count / total_episodes
 
             if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
@@ -242,6 +243,12 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
+                    #action = action[0]
+
+                    # if isinstance(action, np.ndarray) and action.ndim > 0 and action.shape[0] > 1:
+                    #     print(f"[Eval] Warning: Got vector action {action}, using first element for eval")
+                    #     action = action[0]
+
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
@@ -249,7 +256,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     done = dones[0]
 
                     ep_reward += reward
-                    # TODO make sure this works
                     ep_target_ids += info['new_target_ids']
                     ep_threat_ids += info['new_threat_ids']
 
@@ -810,6 +816,7 @@ def train_generic(
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
+        vecnorm_load_path=None,
         render=False,
         log_dir="./logs/",
         machine_name='machine',
@@ -828,6 +835,9 @@ def train_generic(
     6. Loads a prior checkpoint if provided
     7. Runs PPO training and saves checkpoints and the final model
     """
+
+    #if vecnorm_load_path is None and load_path is not None:
+        #raise ValueError('Provided model path without vecnorm stats')
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
@@ -941,7 +951,15 @@ def train_generic(
 
     # SB3 wrappers for main env
     env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-    if use_normalize: env = VecNormalize(env)
+    if use_normalize:
+        if vecnorm_load_path is not None:
+            env = VecNormalize.load(vecnorm_load_path, venv=env)
+            env.training = True
+            env.norm_reward = True
+        else:
+            env = VecNormalize(env)
+            env.training = True
+            env.norm_reward = True
 
 
     # Create and wrap eval environment
@@ -970,7 +988,12 @@ def train_generic(
     eval_env = DummyVecEnv([lambda: eval_env])
 
     if use_normalize:
-        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        if vecnorm_load_path is not None:
+            eval_env = VecNormalize.load(vecnorm_load_path, venv=eval_env)
+            eval_env.norm_reward = False
+            eval_env.training = False
+        else:
+            eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
         eval_env.obs_rms = env.obs_rms
         eval_env.ret_rms = env.ret_rms
 
@@ -1048,7 +1071,8 @@ def train_generic(
     ################################################# Load checkpoint ##################################################
     if load_path:
         print(f'LOADING FROM {load_path}')
-        model = model.__class__.load(load_path, env=env)
+        #model = model.__class__.load(load_path, env=env)
+        model = PPO.load(load_path, env=env)
     else: print('No checkpoint provided, training new model')
 
 
@@ -1058,10 +1082,12 @@ def train_generic(
     run.log({"curriculum/difficulty_level": 0}, step=0)
     print(f'Starting with difficulty level {0}')
 
+
+
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
         callback=callbacks,
-        reset_num_timesteps=True if load_path else False  # TODO check this
+        reset_num_timesteps=False if load_path else True  # TODO check this
     )
 
     # Save normalization stats for deployment
@@ -1150,8 +1176,8 @@ if __name__ == "__main__":
         overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
 
     elif version == 'strategy_diverse_tests':
-        note = 'strategy_1' + machine[0].upper()
-        config['num_timesteps'] = 3e6
+        note = 'strategy_2' + machine[0].upper()
+        config['num_timesteps'] = 5e6
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1159,14 +1185,14 @@ if __name__ == "__main__":
             # "use_entropy_decay_schedule": [True, False],
             # "num_observed_threats":[1],
             # "use_stuck_detection": [False, True],
-            'max_steps':[1500, 1700],
+            'max_steps':[1500],
             # 'entropy_decay_steps':[1.5e6],
             'seed': [21],
             'threat_reward_scaling':[1.25],
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            # "team_spread_bonus_coeff": [0.0035], # 0.005,
+            "team_spread_bonus_coeff": [0.002], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.08],
@@ -1175,6 +1201,9 @@ if __name__ == "__main__":
         }
         overfit_tests = [None]
         config['league_type'] = 'strategy_diverse'
+        load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__3000192_steps.zip'
+        vecnorm_load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__vecnormalize_3000192_steps.pkl'
+        config['teammate_active_at_start'] = True
 
     elif version == 'index_test':
         note = 'index_1' + machine[0].upper()
@@ -1253,6 +1282,7 @@ if __name__ == "__main__":
                 render=False,
                 n_envs=num_envs,
                 load_path=load_path,
+                vecnorm_load_path=vecnorm_load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name=project_name,
                 save_model = True,
