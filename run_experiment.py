@@ -4,7 +4,6 @@ import pygame
 import numpy as np
 import random
 
-from pygame.examples.sprite_texture import running
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
@@ -40,20 +39,20 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_na
             clock=clock,
             window=window,
             render_mode='human',
-            #run_name=f'user_study_subject_{args.subject_id}',
-            tag=f'subject_{subject_id}_0',
+            run_name=f'user_study_subj{subject_id}',
+            tag=f'userstudy_0',
             agent_appearance=agent_appearance,
             running_experiment=True
         )
 
         wrapped_env = MaisrLocalSearchWrapper(
             base_env,
+            config['obs_noise_std_localsearch'],
             local_search_policy=None,  # subpolicies['local_search'],
             go_to_highvalue_policy=None,  # subpolicies['go_to_threat'],
             change_region_subpolicy=None,  # subpolicies['change_region'],
             evade_policy=None,  # EvadeDetection(model_path=None),
             teammate_policy=None,
-            obs_noise_std=0.0
         )
 
         #wrapped_env = Monitor(wrapped_env)
@@ -61,11 +60,6 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_na
         return wrapped_env
 
     return _init
-
-
-
-
-
 
 
 class HumanSubpolicyController:
@@ -244,7 +238,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
         window.blit(text_surface, (x_start + i * spacing, y_pos))
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
@@ -257,7 +251,6 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     data_logger.start_episode(config, agent_letter, level_number)
 
     # Agent action rate (to speed up processing)
-    play_action_rate = 5
     last_agent_action = None
 
     #obs = env.reset()[0]
@@ -302,10 +295,13 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]].waypoint_override = custom_waypoint
 
         # Get agent action
-        if last_agent_action is None or step_count % play_action_rate == 0:
+        #agent_action, _ = agent_model.predict(obs, deterministic=True)
+        if last_agent_action is None or step_count % time_factor == 0:
             agent_action, _ = agent_model.predict(obs, deterministic=True)
         else:
             agent_action = last_agent_action
+
+        last_agent_action = agent_action
 
         # Take step in environment
         #obs, reward, terminated, truncated, info = env.step(agent_action)
@@ -416,17 +412,22 @@ def main():
     print(f"\n \n Subject ID: {args.subject_id}")
     print(f"Starting from level: {args.start_level}")
 
-    #skip_instruction = args.skip == 1
-
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
     tick_rate = 30
-    #survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
-    # Define RL agent model paths - UPDATE THESE AS NEEDED
+    agent_a_name = 'selfplay_trained_jul18'
+    agent_b_name = 'strategy_trained_jul18'
+
+    # Define RL agent model paths
     agent_models = {
-        'A': './user_study/saved_agents/test_agent_a.zip',  # Replace with actual path TODO
-        'B': './user_study/saved_agents/test_agent_b.zip',  # Replace with actual path TODO
+        'A': f'./user_study/saved_agents/{agent_a_name}_model.zip',
+        'B': f'./user_study/saved_agents/{agent_b_name}_model.zip',
+    }
+
+    vecnorm_paths = {
+        'A': f'./user_study/saved_agents/{agent_a_name}_vecnormalize.pkl',
+        'B': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
 
     # Create experiment configuration list (agent + level combinations)
@@ -449,13 +450,12 @@ def main():
         print(f"Starting from level {args.start_level}: {config_list}")
 
     # Load configuration
-    time_factor = 20
+    time_factor = 10 #20
     config = load_env_config(config_filename)
     config['tick_rate'] = tick_rate
-    #config['num_observed_targets'] = 4 # TODO TEMP - Will need to remove this for real runs because will break the model.
     config['game_speed'] /= time_factor
-    config['max_steps'] *= time_factor
-    config['use_stuck_detection'] = True
+    config['max_steps'] *= (1700/1500) * time_factor
+    config['use_stuck_detection'] = False
     config['prob_detect'] = 0.0003
     print(f'LOADED CONFIG {config_filename}')
 
@@ -509,15 +509,15 @@ def main():
             agent_letter = current_config[0]  # 'A' or 'B'
             level_number = int(current_config[1:])  # Level number
             if agent_letter == 'A':
-                if level_number % 2 == 0: # Even levels
-                    agent_appearance = 'purple'
-                else: # Odd levels
-                    agent_appearance = 'red'
+                #if level_number % 2 == 0: # Even levels
+                agent_appearance = 'purple'
+                # else: # Odd levels
+                #     agent_appearance = 'red'
             else: # Agent B
-                if level_number % 2 == 0: # Even levels
-                    agent_appearance = 'brown'
-                else: # Odd levels
-                    agent_appearance = 'green'
+                # if level_number % 2 == 0: # Even levels
+                #     agent_appearance = 'brown'
+                # else: # Odd levels
+                agent_appearance = 'green'
 
             print(f"\nPreparing for config: {current_config}")
             print(f"Agent: {agent_letter}, Level: {level_number}")
@@ -526,8 +526,13 @@ def main():
 
             env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
             env = DummyVecEnv(env_fns)
-            vecnorm_path = f'./user_study/saved_agents/test_agent_{agent_letter}_vecnormalize.pkl'
+            #vecnorm_path = f'./user_study/saved_agents/test_agent_{agent_letter}_vecnormalize.pkl'
+            vecnorm_path = vecnorm_paths[agent_letter]
+            print(f'Loaded vecnorm stats from {vecnorm_path}')
             env = load_vecnormalize_wrapper(vecnorm_path, env)
+
+            print(f"VecNormalize obs_rms mean: {env.obs_rms.mean}")
+            print(f"VecNormalize obs_rms var: {env.obs_rms.var}")
 
             # # Create base environment with the specific level
             # base_env = MAISREnvVec(
@@ -570,7 +575,7 @@ def main():
 
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(config_list),
-                current_agent_name, window, font, clock, tick_rate, data_logger
+                current_agent_name, window, font, clock, tick_rate, data_logger, time_factor
             )
 
             # profiler.disable()

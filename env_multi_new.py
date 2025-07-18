@@ -689,7 +689,7 @@ class MAISREnvVec(gym.Env):
             #     self.collect_level_data()
 
             # Keep individual plots for specific episodes if needed
-            if self.tag in ['eval', 'train_mp0', 'bc'] and self.episode_counter in self.episodes_to_plot:
+            if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0"] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
 
             if self.render_mode == 'human':
