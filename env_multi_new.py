@@ -19,12 +19,14 @@ class MAISREnvVec(gym.Env):
                  run_name='no name',
                  seed=None,
                  subject_id='999', user_group='99', round_number='99',
-                 agent_appearance=None):
+                 agent_appearance=None,
+                 running_experiment = False):
 
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
         self.run_name = run_name # For logging
+        self.running_experiment = running_experiment
 
         self.agent_appearance = agent_appearance
 
@@ -698,6 +700,9 @@ class MAISREnvVec(gym.Env):
 
     def get_reward(self, new_reward, target_potential_gain, threat_potential_gain):
 
+        if self.running_experiment:
+            return 0
+
         teammate_target_ids = new_reward['teammate_target_ids']
         agent_target_ids = new_reward['regular val target id'] + new_reward['regular val target id'] - teammate_target_ids
 
@@ -804,6 +809,8 @@ class MAISREnvVec(gym.Env):
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
         """
+        if self.running_experiment:
+            return 0, 0
 
         # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
@@ -1563,7 +1570,9 @@ class MAISREnvVec(gym.Env):
             #self._render_game_complete() TODO temp removed
 
         pygame.display.update()
-        if self.render_mode == 'human': self.clock.tick(self.config['tick_rate'])
+        if self.render_mode == 'human':
+            #self.clock.tick(self.config['tick_rate'])
+            self.clock.tick_busy_loop(self.config['tick_rate'])
 
     def close(self):
         if self.render_mode == 'human' and pygame.get_init():

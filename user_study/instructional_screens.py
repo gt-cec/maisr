@@ -1,10 +1,11 @@
 import math
 
+import numpy as np
 import pygame
 import sys
 from typing import Dict, List, Optional, Callable
 from enum import Enum
-
+import cv2
 
 class ScreenType(Enum):
     """Types of instructional screens"""
@@ -875,63 +876,115 @@ class Instruct1Screen(GameInstructionScreen):
 
         self.draw_text_block(window, body_text, 250, self.font_large, 40)
 
-
 class Instruct2Screen(GameInstructionScreen):
-    """Map introduction screen"""
+    """Map introduction screen with looping video"""
 
-    def __init__(self, image_path: str, *args, **kwargs):
+    def __init__(self, video_path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.image_path = image_path
-        self.image = None
-        try:
-            self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (600, 600))
-        except pygame.error:
-            print(f"Could not load image: {image_path}")
+        self.video_path = video_path
+        self.cap = cv2.VideoCapture(video_path)
+        if not self.cap.isOpened():
+            print(f"Error opening video file: {video_path}")
+        self.last_frame_time = pygame.time.get_ticks()
+        self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
+
+        self.current_frame = None  # Store last loaded frame surface
+
+    def get_next_video_frame(self):
+        if not self.cap.isOpened():
+            return None
+
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_frame_time >= self.frame_interval:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop video
+                ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (600, 600))
+                frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+                self.current_frame = frame_surface
+                self.last_frame_time = current_time
+
+        return self.current_frame
 
     def draw_content(self, window: pygame.Surface) -> None:
-        # Top text at position (100, 50)
-        text = "In this game, you will control a 2D aircraft to fly around a map like the one below:"
-
-        # Wrap text to fit within window
-        words = text.split()
-        lines = []
-        current_line = []
-        max_width = self.window_width - 225  # Leave margins
-
-        for word in words:
-            test_line = ' '.join(current_line + [word])
-            text_width = self.font_large.size(test_line)[0]
-
-            if text_width <= max_width:
-                current_line.append(word)
-            else:
-                if current_line:
-                    lines.append(' '.join(current_line))
-                current_line = [word]
-
-        if current_line:
-            lines.append(' '.join(current_line))
-
-        # Draw text lines
+        # Draw text
+        lines = [
+            "In this game, you will control a 2D aircraft",
+            "to fly around a map like the one below:"
+        ]
         y_pos = 150
         for line in lines:
             self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
+            y_pos += 40
 
-        # Draw image centered at 500x500 if available
-        if self.image:
-            image_rect = self.image.get_rect(center=(self.window_width // 2, 50 + self.window_width // 2))
-            window.blit(self.image, image_rect)
+        # Draw video frame
+        frame_surface = self.get_next_video_frame()
+        if frame_surface:
+            rect = frame_surface.get_rect(center=(self.window_width // 2, 500))
+            window.blit(frame_surface, rect)
         else:
-            # Draw placeholder rectangle
-            placeholder_rect = pygame.Rect(250, 150, 500, 500)
-            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
-            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
-            placeholder_text = "Map Image (500x500)"
-            text_surface = self.font_medium.render(placeholder_text, True, self.text_color)
-            text_rect = text_surface.get_rect(center=placeholder_rect.center)
-            window.blit(text_surface, text_rect)
+            # Fallback placeholder
+            pygame.draw.rect(window, (100, 100, 100), (200, 250, 600, 600))
+
+# class Instruct2Screen(GameInstructionScreen):
+#     """Map introduction screen"""
+#
+#     def __init__(self, image_path: str, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.image_path = image_path
+#         self.image = None
+#         try:
+#             self.image = pygame.image.load(image_path)
+#             self.image = pygame.transform.scale(self.image, (600, 600))
+#         except pygame.error:
+#             print(f"Could not load image: {image_path}")
+#
+#     def draw_content(self, window: pygame.Surface) -> None:
+#         # Top text at position (100, 50)
+#         text = "In this game, you will control a 2D aircraft to fly around a map like the one below:"
+#
+#         # Wrap text to fit within window
+#         words = text.split()
+#         lines = []
+#         current_line = []
+#         max_width = self.window_width - 225  # Leave margins
+#
+#         for word in words:
+#             test_line = ' '.join(current_line + [word])
+#             text_width = self.font_large.size(test_line)[0]
+#
+#             if text_width <= max_width:
+#                 current_line.append(word)
+#             else:
+#                 if current_line:
+#                     lines.append(' '.join(current_line))
+#                 current_line = [word]
+#
+#         if current_line:
+#             lines.append(' '.join(current_line))
+#
+#         # Draw text lines
+#         y_pos = 150
+#         for line in lines:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 35
+#
+#         # Draw image centered at 500x500 if available
+#         if self.image:
+#             image_rect = self.image.get_rect(center=(self.window_width // 2, 50 + self.window_width // 2))
+#             window.blit(self.image, image_rect)
+#         else:
+#             # Draw placeholder rectangle
+#             placeholder_rect = pygame.Rect(250, 150, 500, 500)
+#             pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
+#             pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
+#             placeholder_text = "Map Image (500x500)"
+#             text_surface = self.font_medium.render(placeholder_text, True, self.text_color)
+#             text_rect = text_surface.get_rect(center=placeholder_rect.center)
+#             window.blit(text_surface, text_rect)
 
 
 class Instruct3Screen(GameInstructionScreen):
@@ -1168,7 +1221,7 @@ class InstructionSeriesManager:
     """Manages the series of instruction screens"""
 
     def __init__(self, window: pygame.Surface, clock: pygame.time.Clock,
-                 map_image_path: str = None, sensor_image_path: str = None,
+                 video_path: str = None, sensor_image_path: str = None,
                  hvt_image_path: str = None,
                  human_image_path: str = None,
                  teammate_image_path: str = None):
@@ -1179,7 +1232,8 @@ class InstructionSeriesManager:
         # Create all instruction screens
         self.screens = [
             Instruct1Screen(1, 7, window.get_width(), window.get_height()),
-            Instruct2Screen(map_image_path or "map_image.jpg", 2, 7, window.get_width(), window.get_height()),
+            #Instruct2Screen(map_image_path or "map_image.jpg", 2, 7, window.get_width(), window.get_height()),
+            Instruct2Screen(video_path, 2, 7, window.get_width(), window.get_height()),
             Instruct3Screen(human_image_path, 3, 7, window.get_width(), window.get_height()),
             Instruct4Screen(teammate_image_path, 4, 7, window.get_width(), window.get_height()),
             Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 7, window.get_width(), window.get_height()),

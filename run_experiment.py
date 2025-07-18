@@ -3,6 +3,8 @@ import ctypes
 import pygame
 import numpy as np
 import random
+
+from pygame.examples.sprite_texture import running
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
@@ -13,6 +15,11 @@ from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalS
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, InstructionSeriesManager
 import webbrowser
+
+# import cProfile
+# import pstats
+# import io
+
 
 class HumanSubpolicyController:
     """Handles human input for subpolicy selection via keyboard and mouse clicks"""
@@ -300,7 +307,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        pygame.time.wait(50)
+        #pygame.time.wait(50)
         clock.tick(tick_rate)
 
         # Print periodic status
@@ -353,7 +360,7 @@ def main():
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 60
+    tick_rate = 30
     #survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
     # Define RL agent model paths - UPDATE THESE AS NEEDED
@@ -389,7 +396,7 @@ def main():
     config['game_speed'] /= time_factor
     config['max_steps'] *= time_factor
     config['use_stuck_detection'] = True
-    config['prob_detect'] = 0.03
+    config['prob_detect'] = 0.0003
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
@@ -420,7 +427,8 @@ def main():
             instruction_manager = InstructionSeriesManager(
                 window,
                 clock,
-                map_image_path="user_study/img/map_image.png",
+                #map_image_path="user_study/img/map_image.png",
+                video_path = "user_study/img/game_video.mp4",
                 sensor_image_path="user_study/img/sensor_image.png",
                 hvt_image_path="user_study/img/threat_image.png",
                 human_image_path="user_study/img/human_aircraft.png",
@@ -467,7 +475,8 @@ def main():
                 render_mode='human',
                 run_name=f'user_study_subject_{args.subject_id}',
                 tag=f'subject_{args.subject_id}_config_{current_config}',
-                agent_appearance = agent_appearance
+                agent_appearance = agent_appearance,
+                running_experiment=True
             )
 
             # Set the specific level for this episode
@@ -488,10 +497,20 @@ def main():
             human_controller = HumanSubpolicyController(env)
 
             # Run the episode
+            # profiler = cProfile.Profile()
+            # profiler.enable()
+
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(config_list),
                 current_agent_name, window, font, clock, tick_rate, data_logger
             )
+
+            # profiler.disable()
+            # s = io.StringIO()
+            # sortby = 'cumulative'
+            # ps = pstats.Stats(profiler, stream=s).sort_stats(sortby)
+            # ps.print_stats(30)  # Show top 30 most expensive calls
+            # print(s.getvalue())
 
             # Store results
             result = {
