@@ -67,7 +67,7 @@
 	"clip_range": 0.2,
 
 	"num_timesteps": 1.5e6,
-	"save_freq": 25000,
+	"save_freq": 2500,
 	"n_eval_episodes": 7,
 	"eval_freq": 1000,
 

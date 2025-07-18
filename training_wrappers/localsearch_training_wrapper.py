@@ -112,11 +112,19 @@ class MaisrLocalSearchWrapper(gym.Env):
             self.override_step_counter = 0
 
         # Reset teammate selection for new episode
+
         if self.teammate_manager:
+            # Update the teammate manager with the current model before selecting a teammate
+            #self.teammate_manager.set_current_model(self.env.model)
+
             self.teammate_manager.reset_for_episode()
             self.current_teammate = self.teammate_manager.select_random_teammate()
-            #print(f"Selected teammate: {self.current_teammate.name if self.current_teammate else 'None'}")
-            #print(f"[{self.tag}] Overfit test: {self.teammate_manager.overfit_test}")
+
+
+        # if self.teammate_manager:
+        #     self.teammate_manager.reset_for_episode()
+        #     self.current_teammate = self.teammate_manager.select_random_teammate()
+
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
         else:

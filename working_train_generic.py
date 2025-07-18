@@ -1,6 +1,5 @@
 import ctypes
 import warnings
-
 import pygame
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
@@ -23,7 +22,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
+from league_management_working import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
 from utility.data_logging import load_env_config
 
 
@@ -39,41 +38,6 @@ def generate_run_name(config):
     run_name = f"{timestamp}_" + "_".join(components)
     return run_name
 
-def stitch_saved_eval_plots(run_name, step, max_eps=10):
-    import matplotlib.pyplot as plt
-    import os
-    from PIL import Image
-
-    folder = f"logs/action_histories/{run_name}"
-    images = []
-
-    # Try loading eval_ep{0...N}.png
-    for i in range(max_eps):
-        path = os.path.join(folder, f"eval_ep{i}.png")
-        if os.path.exists(path):
-            images.append(Image.open(path))
-        else:
-            break
-
-    if not images:
-        print("[Stitcher] No images found to stitch.")
-        return
-
-    fig, axs = plt.subplots(len(images), 1, figsize=(6, 5 * len(images)))
-
-    if len(images) == 1:
-        axs = [axs]
-
-    for img, ax in zip(images, axs):
-        ax.imshow(img)
-        ax.axis('off')
-
-    os.makedirs(folder, exist_ok=True)
-    outpath = os.path.join(folder, f"combinedeval_step{step}.png")
-    plt.tight_layout()
-    plt.savefig(outpath)
-    plt.close()
-    print(f"[Stitcher] Saved combined plot to {outpath}")
 
 
 class EnhancedWandbCallback_Monolith(BaseCallback):
@@ -106,7 +70,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
         self.switched_to_twoship = False
         self.twoship_switch_threshold = env_config['twoship_switch_threshold']
-        self.twoship_switch_reward_threshold = 23
 
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
@@ -191,7 +154,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                         teammate_freq_data.append([teammate_name, count, count / total_episodes])
 
                     # Log as a table that WandB can convert to a bar chart
-                    log_data["teammate_frequencies/teammate_frequency_table"] = wandb.Table(
+                    log_data["train/teammate_frequency_table"] = wandb.Table(
                         data=teammate_freq_data,
                         columns=["teammate_name", "count", "frequency"]
                     )
@@ -200,7 +163,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     for teammate_name, count in teammate_counts.items():
                         # Clean the name for WandB (replace special characters)
                         clean_name = teammate_name.replace("/", "_").replace(" ", "_")
-                        log_data[f"teammate_frequencies/teammate_freq_{clean_name}"] = count / total_episodes
+                        log_data[f"train/teammate_freq_{clean_name}"] = count / total_episodes
 
             if log_data: # Log the aggregated data
                 self.run.log(log_data, step=self.num_timesteps // self.model.get_env().num_envs)
@@ -252,7 +215,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
                     self.eval_env.obs_rms = training_env.obs_rms
                     self.eval_env.ret_rms = training_env.ret_rms
-                    print(f"[Callback] Synced normalization stats from training to eval env")
+                    #print(f"[Callback] Synced normalization stats from training to eval env")
 
                     if self.teammate_manager is not None:
                         #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
@@ -270,7 +233,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             mean_reward, std_reward = 0, 0
             total_eval_reward = 0
             eval_lengths = []
-            eval_episode_data_list = []
 
             obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
@@ -279,12 +241,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
                 while not done:
                     action, other = self.model.predict(obs, deterministic=True)
-                    #action = action[0]
-
-                    # if isinstance(action, np.ndarray) and action.ndim > 0 and action.shape[0] > 1:
-                    #     print(f"[Eval] Warning: Got vector action {action}, using first element for eval")
-                    #     action = action[0]
-
                     obses, rewards, dones, infos = self.eval_env.step([action])
                     obs = obses[0]
                     reward = rewards[0]
@@ -292,18 +248,11 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     done = dones[0]
 
                     ep_reward += reward
+                    # TODO make sure this works
                     ep_target_ids += info['new_target_ids']
                     ep_threat_ids += info['new_threat_ids']
 
                     final_info = info
-                #
-                # if hasattr(self.eval_env, 'envs'): base_env = self.eval_env.envs[0].env.env
-                # else: base_env = self.eval_env.env.env
-                # try:
-                #     episode_data = base_env.get_action_history_data()
-                #     eval_episode_data_list.append(episode_data)
-                # except (
-                #         Exception) as e: print(f'[Eval] Failed to get episode data for plotting: {e}')
 
                 ep_length = final_info["episode"]["l"]
                 target_ids_list.append(ep_target_ids)
@@ -313,11 +262,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 target_ids_per_step_list.append(ep_target_ids / ep_length)
 
                 total_eval_reward += ep_reward
-
-            try:
-                stitch_saved_eval_plots(run_name=self.run.name, step=self.num_timesteps)
-            except Exception as e:
-                print(f"[Eval] Failed to stitch eval plots: {e}")
 
             mean_reward = total_eval_reward / self.n_eval_episodes
 
@@ -379,12 +323,11 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             #################################### Aircraft switching ####################################
             print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
             if (not self.switched_to_twoship) and target_ids_list:
-                #avg_target_ids = np.mean(target_ids_list)
-                #if avg_target_ids > self.twoship_switch_threshold:
-                if mean_reward > self.twoship_switch_reward_threshold:
+                avg_target_ids = np.mean(target_ids_list)
+                if avg_target_ids > self.twoship_switch_threshold:
                     print(f'\n{"=" * 80}')
                     print(f'AIRCRAFT SWITCHING TRIGGERED! (step {self.num_timesteps})')
-                    #print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
+                    print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
                     print(f'Switching from 1 aircraft to 2 aircraft...')
                     print(f'{"=" * 80}\n')
 
@@ -865,7 +808,6 @@ def train_generic(
         run_name='norunname',
         save_dir="./trained_models/",
         load_path=None,
-        vecnorm_load_path=None,
         render=False,
         log_dir="./logs/",
         machine_name='machine',
@@ -884,9 +826,6 @@ def train_generic(
     6. Loads a prior checkpoint if provided
     7. Runs PPO training and saves checkpoints and the final model
     """
-
-    #if vecnorm_load_path is None and load_path is not None:
-        #raise ValueError('Provided model path without vecnorm stats')
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
@@ -1000,19 +939,11 @@ def train_generic(
 
     # SB3 wrappers for main env
     env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-    if use_normalize:
-        if vecnorm_load_path is not None:
-            env = VecNormalize.load(vecnorm_load_path, venv=env)
-            env.training = True
-            env.norm_reward = True
-        else:
-            env = VecNormalize(env)
-            env.training = True
-            env.norm_reward = True
+    if use_normalize: env = VecNormalize(env)
 
 
     # Create and wrap eval environment
-    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name)
+    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name,)
     if train_type == 'mode_selector':
         eval_env = MaisrModeSelectorWrapper(
                     base_eval_env,
@@ -1037,12 +968,7 @@ def train_generic(
     eval_env = DummyVecEnv([lambda: eval_env])
 
     if use_normalize:
-        if vecnorm_load_path is not None:
-            eval_env = VecNormalize.load(vecnorm_load_path, venv=eval_env)
-            eval_env.norm_reward = False
-            eval_env.training = False
-        else:
-            eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
+        eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
         eval_env.obs_rms = env.obs_rms
         eval_env.ret_rms = env.ret_rms
 
@@ -1120,9 +1046,9 @@ def train_generic(
     ################################################# Load checkpoint ##################################################
     if load_path:
         print(f'LOADING FROM {load_path}')
-        #model = model.__class__.load(load_path, env=env)
-        model = PPO.load(load_path, env=env)
+        model = model.__class__.load(load_path, env=env)
     else: print('No checkpoint provided, training new model')
+
 
     print('##################################### Beginning agent training... #######################################\n')
 
@@ -1133,7 +1059,7 @@ def train_generic(
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
         callback=callbacks,
-        reset_num_timesteps=False if load_path else True  # TODO check this
+        reset_num_timesteps=True if load_path else False  # TODO check this
     )
 
     # Save normalization stats for deployment
@@ -1179,7 +1105,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
-    parser.add_argument('--testing', action='store_true', help='')
     args = parser.parse_args()
     version = args.version
 
@@ -1188,7 +1113,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     load_path = None
     config_filename = 'configs/Monolith_R8H_july10.json'
-    num_envs = 2 if args.testing else multiprocessing.cpu_count()
+    num_envs = multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
@@ -1197,8 +1122,6 @@ if __name__ == "__main__":
     # Define hyperparameter sweep
 
     config = load_env_config(config_filename)
-    if args.testing:
-        config["eval_freq"] = 50
 
     if version == 'overfit':
         note = 'overfit' + machine[0].upper()
@@ -1223,37 +1146,6 @@ if __name__ == "__main__":
             #"obs_noise": [0.01],
         }
         overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
-
-    elif version == 'strategy_diverse_tests':
-        note = 'strategy_2' + machine[0].upper()
-        config['num_timesteps'] = 5e6
-        project_name = 'maisr-rl-exp2'
-        hyperparams = {
-            # "network_size": [128, 196],
-            # "num_observed_targets": [5],
-            # "use_entropy_decay_schedule": [True, False],
-            # "num_observed_threats":[1],
-            # "use_stuck_detection": [False, True],
-            'max_steps':[1500],
-            # 'entropy_decay_steps':[1.5e6],
-            'seed': [21],
-            'threat_reward_scaling':[1.25],
-            # 'shaping_coeff_earlyfinish':[0.07]
-            # "network_size":[128],
-            # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.002], # 0.005,
-            # "force_specific_level": [99],
-            # "observe_teammate_direction":[True],
-            'entropy_regularization': [0.08],
-            "teammate_reward_scale": [0.75],
-            # "obs_noise": [0.01],
-        }
-        overfit_tests = [None]
-        config['league_type'] = 'strategy_diverse'
-        load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__3000192_steps.zip'
-        vecnorm_load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__vecnormalize_3000192_steps.pkl'
-        config['teammate_active_at_start'] = True
-
     elif version == 'index_test':
         note = 'index_1' + machine[0].upper()
         hyperparams = {'seed':42}
@@ -1262,18 +1154,16 @@ if __name__ == "__main__":
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
-        config['num_timesteps'] = 2.5e6
+        config['num_timesteps'] = 4e6
         config['league_type'] = 'selfplay'
-        config['teammate_active_at_start'] = True
-        load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
-        vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
+        #config['teammate_active_at_start'] = True # TODO REMOVE
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 
         hyperparams = {
-            'seed': [42],
+            'seed': [42, 21, 99, 0],
             'threat_reward_scaling':[1.3],
-            "teammate_reward_scale": [0.75],
+            "teammate_reward_scale": [0.75, 1.0],
         }
 
     param_shorthand = {
@@ -1333,7 +1223,6 @@ if __name__ == "__main__":
                 render=False,
                 n_envs=num_envs,
                 load_path=load_path,
-                vecnorm_load_path=vecnorm_load_path,
                 machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
                 project_name=project_name,
                 save_model = True,
