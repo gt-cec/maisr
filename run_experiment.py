@@ -164,6 +164,31 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
         window.blit(text_surface, (1050, y_offset))
         y_offset += 25
 
+def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections, step_count, max_steps):
+    """Draw regular target, high-value target, step count, and detections"""
+    regular_targets = targets_identified
+    high_value_targets = threats_identified
+    detections = detections
+
+    # Set total counts
+    total_regular_targets = 15
+    total_high_value_targets = 4
+
+    bottom_texts = [
+        f"Regular targets: {regular_targets}/{total_regular_targets}",
+        f"High-value targets: {high_value_targets}/{total_high_value_targets}",
+        f"Steps: {step_count}/{max_steps}",
+        f"Detections: {detections}"
+    ]
+
+    x_start = 50
+    y_pos = 1060  # Just above the progress bar
+    spacing = 1000/4
+
+    for i, text in enumerate(bottom_texts):
+        text_surface = font.render(text, True, (0, 0, 0))
+        window.blit(text_surface, (x_start + i * spacing, y_pos))
+
 
 def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger):
     """Run a single episode of the experiment"""
@@ -258,6 +283,21 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         #draw_instructions(window, font)
         draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
+        # Draw progress bar at bottom of screen
+        progress_bar_y_start = 1000
+        progress_bar_height = 50
+        progress_bar_margin = 10
+        segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
+        segment_height = progress_bar_height - 2 * progress_bar_margin
+
+        for i in range(total_configs):
+            x = progress_bar_margin + i * segment_width
+            y = progress_bar_y_start + progress_bar_margin
+            color = (0, 255, 0) if i < config_index else (100, 100, 100)
+            pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
+
+        draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
+
         # Update display
         pygame.display.flip()
         pygame.time.wait(50)
@@ -303,7 +343,7 @@ def main():
     parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
     parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
     parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
-    #parser.add_argument('--skip', type=int, default=0, help='')
+    parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
     args = parser.parse_args()
 
     print(f"\n \n Subject ID: {args.subject_id}")
@@ -349,6 +389,7 @@ def main():
     config['game_speed'] /= time_factor
     config['max_steps'] *= time_factor
     config['use_stuck_detection'] = True
+    config['prob_detect'] = 0.03
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
@@ -362,7 +403,8 @@ def main():
     pygame.display.set_caption(f"MAISR User Study - Subject {args.subject_id}")
 
     # Create font for instructions
-    font = pygame.font.SysFont(None, 24)
+    #font = pygame.font.SysFont(None, 24)
+    font = pygame.font.Font('AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
 
     # Store results
     experiment_results = []
@@ -373,26 +415,26 @@ def main():
 
     # Main experiment loop
     try:
-        # Show instruction screens at the beginning
-        print("Starting instruction screens...")
-        instruction_manager = InstructionSeriesManager(
-            window,
-            clock,
-            map_image_path="user_study/img/map_image.png",  # Update these paths
-            sensor_image_path="user_study/img/sensor_image.png",  # to your actual
-            hvt_image_path="user_study/img/threat_image.png",  # image files
-            human_image_path="user_study/img/human_aircraft.png",
-            teammate_image_path="user_study/img/teammates_image.png"
-        )
+        if not args.skip:
+            print("Starting instruction screens...")
+            instruction_manager = InstructionSeriesManager(
+                window,
+                clock,
+                map_image_path="user_study/img/map_image.png",
+                sensor_image_path="user_study/img/sensor_image.png",
+                hvt_image_path="user_study/img/threat_image.png",
+                human_image_path="user_study/img/human_aircraft.png",
+                teammate_image_path="user_study/img/teammates_image.png"
+            )
+            instruction_result = instruction_manager.run_instruction_series()
 
-        #if not args.skip_instruction:
-        instruction_result = instruction_manager.run_instruction_series()
+            if instruction_result["action"] == "exit":
+                print("User exited during instructions")
+                return
+        else:
+            print("Skipping instructional screens...")
 
-        if instruction_result["action"] == "exit":
-            print("User exited during instructions")
-            return
-
-        print("Instructions completed. Starting experiment...")
+        last_agent_appearance = None
 
         for config_index, current_config in enumerate(config_list):
             agent_letter = current_config[0]  # 'A' or 'B'
@@ -487,8 +529,8 @@ def main():
                     print(f"Survey data: {survey_data}")
 
             # Show the teammate preference survey
-            if config_index % 2 == 0:
-                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height)
+            if config_index > 0 and config_index % 2 == 0:
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
 
                 if teammate_compare_result["action"] == "continue":
@@ -497,6 +539,9 @@ def main():
                 elif teammate_compare_result["action"] == "exit":
                     # Handle exit
                     pass
+
+            #
+            last_agent_appearance = agent_appearance
 
             # Check if user wants to quit
             if should_quit:

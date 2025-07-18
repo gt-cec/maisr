@@ -458,7 +458,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
 class TeammatePreferenceSurveyScreen(InstructionalScreen):
     """Survey screen for teammate preference questions with clickable icons"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, agent_appearance=None, last_agent_appearance=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Survey questions
@@ -490,6 +490,9 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
         # Mouse interaction
         self.hover_icon = None  # (question_index, icon_type)
+
+        self.agent_appearance = agent_appearance
+        self.last_agent_appearance = last_agent_appearance if last_agent_appearance is not None else 'green'
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
@@ -525,12 +528,12 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         icon_y = y_pos + 50
 
         # Draw green teammate icon
-        self.draw_teammate_icon(window, green_icon_x, icon_y, 'green',
-                                question_index, self.responses[question_index] == 'green')
+        #self.draw_teammate_icon(window, green_icon_x, icon_y, 'green', question_index, self.responses[question_index] == 'green')
+        self.draw_teammate_icon(window, green_icon_x, icon_y, self.agent_appearance, question_index, self.responses[question_index] == self.agent_appearance)
 
         # Draw purple teammate icon
-        self.draw_teammate_icon(window, purple_icon_x, icon_y, 'purple',
-                                question_index, self.responses[question_index] == 'purple')
+        #self.draw_teammate_icon(window, purple_icon_x, icon_y, 'purple', question_index, self.responses[question_index] == 'purple')
+        self.draw_teammate_icon(window, purple_icon_x, icon_y, self.last_agent_appearance, question_index,self.responses[question_index] == self.last_agent_appearance)
 
     def draw_teammate_icon(self, window: pygame.Surface, x: int, y: int, icon_type: str,
                            question_index: int, is_selected: bool) -> None:
@@ -548,12 +551,12 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         direction = -math.pi / 2
 
         # Colors
-        if icon_type == 'green':
-            color = (76*1.2, 175*1.2, 80*1.2)
-        elif icon_type == 'purple':
-            color = (156, 39, 176)
-        else:
-            color = (180, 180, 180)
+        if icon_type == 'green': color = (76, 175, 80)
+        elif icon_type == 'purple': color = (156, 39, 176)
+        elif icon_type == 'red': color = (225, 25, 25)
+        elif icon_type == 'brown': color = (150, 75, 0)
+        else: color = (180, 180, 180)
+
 
         # Draw background box
         icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2, self.icon_size, self.icon_size)
@@ -756,7 +759,7 @@ class GameInstructionScreen(InstructionalScreen):
             hint_text = "Click the arrows or use arrow keys to continue"
 
         hint_surface = self.font_medium.render(hint_text, True, (150, 150, 150))
-        hint_rect = hint_surface.get_rect(center=(self.window_width // 2, self.window_height - 75))
+        hint_rect = hint_surface.get_rect(center=(self.window_width // 2, self.window_height - 90))
         window.blit(hint_surface, hint_rect)
 
     def draw_arrow_buttons(self, window: pygame.Surface) -> None:
@@ -894,7 +897,7 @@ class Instruct2Screen(GameInstructionScreen):
         words = text.split()
         lines = []
         current_line = []
-        max_width = self.window_width - 200  # Leave margins
+        max_width = self.window_width - 225  # Leave margins
 
         for word in words:
             test_line = ' '.join(current_line + [word])
@@ -913,8 +916,7 @@ class Instruct2Screen(GameInstructionScreen):
         # Draw text lines
         y_pos = 150
         for line in lines:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
         # Draw image centered at 500x500 if available
@@ -948,8 +950,9 @@ class Instruct3Screen(GameInstructionScreen):
     def draw_content(self, window: pygame.Surface) -> None:
 
         # Top text at (100, 100)
-        text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
-        window.blit(text_surface, (100, 150))
+        #text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
+        #window.blit(text_surface, (100, 150))
+        self.draw_text_centered(window, "You control the BLUE aircraft.", 150, self.font_large)
 
         # Blue circle at (500, 200) with radius 50px
         image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
@@ -957,15 +960,16 @@ class Instruct3Screen(GameInstructionScreen):
         #pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
 
         # Bottom text at (50, 500)
-        bottom_text = ["You control your aircraft by clicking on the map where you",
-                       "want to fly.",
+        bottom_text = ["You control your aircraft by clicking",
+                       "on the map where you want to fly.",
                        "",
-                       "The aircraft will automatically fly to the point you clicked."]
+                       "",
+                       "The aircraft will automatically",
+                       "fly to the point you clicked."]
 
         y_pos = 500
         for line in bottom_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
 
@@ -978,21 +982,19 @@ class Instruct4Screen(GameInstructionScreen):
         self.image = None
         try:
             self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (855, 200))
+            self.image = pygame.transform.scale(self.image, (855*.8, 200*.8))
         except pygame.error:
             print(f"Could not load image: {image_path}")
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Top text at (100, 100)
 
-        top_text = ["You will work alongside a series of AI teammates.",
-                    "",
-                    "You will have one teammate per level."]
+        top_text = ["In each level, you will work alongside",
+                    "an AI teammate selected from a pool."]
 
-        y_pos = 100
+        y_pos = 150
         for line in top_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
         # Red circle at (500, 200) with radius 50px (AI teammate)
@@ -1008,14 +1010,12 @@ class Instruct4Screen(GameInstructionScreen):
                        "the map to help you identify targets.",
                        "",
                        "",
-                       "They may follow different strategies and may or may not",
-                       "coordinate with you depending on what they learned in ",
-                       "their training."]
+                       "They may follow different strategies depending",
+                       "on what they learned in their training."]
 
         y_pos = 500
         for line in bottom_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
 
@@ -1038,38 +1038,38 @@ class Instruct5Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
 
-        top_text = ["You earn points by identifying targets on the map. Each",
-                    "Level has 15 regular targets and 4 high-value targets. "
+        top_text = ["You earn points by identifying targets",
+                    "on the map. Each level has 15 regular",
+                    "targets and 4 high-value targets."
                     ]
 
-        y_pos = 100
+        y_pos = 150
         for line in top_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
         #text_surface = self.font_large.render("You earn points by identifying targets on the map.", True,self.text_color)
         #window.blit(text_surface, (100, 100))
 
         # Gold circle at (100, 200) with radius 10px
-        pygame.draw.circle(window, (255, 215, 0), (125, 330), 15)
+        pygame.draw.circle(window, (255, 215, 0), (200, 330), 15)
 
         # Text at (150, 200)
         text_surface = self.font_large.render("Regular targets are worth 1 point.", True, self.text_color)
-        window.blit(text_surface, (175, 310))
+        window.blit(text_surface, (250, 310))
 
         # Text at (100, 300)
-        instruction_text = ["To identify a target, you must fly close enough that",
-                            "your sensor range overlaps the target."]
-        y_pos = 400
+        instruction_text = ["To identify a target, you must",
+                            "fly close enough that your",
+                            "sensor overlaps the target."]
+        y_pos = 450
         for line in instruction_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
         # Sensor image centered at (500, 650) with width 600px
         if self.sensor_image:
-            image_rect = self.sensor_image.get_rect(center=(500, 625))
+            image_rect = self.sensor_image.get_rect(center=(500, 700))
             window.blit(self.sensor_image, image_rect)
         else:
             # Placeholder
@@ -1105,7 +1105,8 @@ class Instruct6Screen(GameInstructionScreen):
 
         # Text at (250, 200)
         text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
-        window.blit(text_surface, (300, 175))
+        window.blit(text_surface, (300, 200))
+        #self.draw_text_centered(window, "High-value targets are worth 9 points.", 175, self.font_large)
 
         # Text at (250, 350) - wrap text
         warning_text = ["High-value targets might detect you if you fly",
@@ -1113,8 +1114,7 @@ class Instruct6Screen(GameInstructionScreen):
                         "reduces your score by 15 points."]
         y_pos = 350
         for line in warning_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
         # HVT image centered at (500, 650) with width 600px
@@ -1132,13 +1132,12 @@ class Instruct6Screen(GameInstructionScreen):
             window.blit(text_surface, text_rect)
 
         # Bottom text at (100, 700)
-        bottom_text = ["To be successful, you will need to weigh the risks and rewards",
-                       "of identifying high-value targets."]
+        bottom_text = ["To be successful, you will need to weigh the risks",
+                       "and rewards of identifying high-value targets."]
 
         y_pos = 850
         for line in bottom_text:
-            text_surface = self.font_large.render(line, True, self.text_color)
-            window.blit(text_surface, (100, y_pos))
+            self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
 
@@ -1152,14 +1151,14 @@ class Instruct7Screen(GameInstructionScreen):
             "Each round will take about 90 seconds.",
             "",
             "",
-            "After each round, you will answer a few questions about",
-            "your workload and your impressions of the teammate",
-            "you just worked with.",
+            "After each round, you will answer a few",
+            "questions about your workload and your impressions",
+            "of the teammate you just worked with.",
             "",
             "",
-            "We are developing AI teammates that can adapt to humans.",
-            "Your responses help us identify which techniques",
-            "are most effective!"
+            "We are developing AI teammates that can adapt",
+            "to humans. Your responses help us identify",
+            "which techniques are most effective!"
         ]
 
         self.draw_text_block(window, instruction_text, 300, self.font_large, 40)

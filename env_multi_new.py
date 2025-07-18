@@ -622,11 +622,12 @@ class MAISREnvVec(gym.Env):
                     })
 
                 # Handle aircraft being detected by high value targets
-                # if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
-                #     if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
-                #         self.detections += 1
-                #         new_reward['detections'] += 1
-                #         info["detections"] = self.detections
+                if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
+                    if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
+                        self.detections += 1
+                        self.damage_flash_start = pygame.time.get_ticks()
+                        #new_reward['detections'] += 1
+                        info["detections"] = self.detections
 
         self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
         self.all_threats_identified = np.all(self.threat_identified == 1.0)
@@ -1262,12 +1263,12 @@ class MAISREnvVec(gym.Env):
         # gameboard background
         self.window.fill((255, 255, 255))  # white background
         self.__render_box__(1, (0, 0, 0), 3)  # outer box
-        pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
-        pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
+        #pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
+        #pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
 
         current_time = pygame.time.get_ticks()
 
-        # Draw the aircraft (# TODO UPDATE FOR -1,+1 grid)
+        # Draw the aircraft
         for agent in self.agents:
             agent.draw(self.window)
 
