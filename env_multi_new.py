@@ -2543,9 +2543,6 @@ class MAISREnvVec(gym.Env):
             # self.episodes_to_plot = list(set(base_episodes))
             # self.episodes_to_plot.sort()
 
-
-
-
     def set_subpolicy_history(self, subpolicy_history):
         """Method to receive subpolicy history from wrapper"""
         self.subpolicy_history = subpolicy_history

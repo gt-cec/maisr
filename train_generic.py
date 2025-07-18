@@ -39,6 +39,41 @@ def generate_run_name(config):
     run_name = f"{timestamp}_" + "_".join(components)
     return run_name
 
+def stitch_saved_eval_plots(run_name, step, max_eps=10):
+    import matplotlib.pyplot as plt
+    import os
+    from PIL import Image
+
+    folder = f"logs/action_histories/{run_name}"
+    images = []
+
+    # Try loading eval_ep{0...N}.png
+    for i in range(max_eps):
+        path = os.path.join(folder, f"eval_ep{i}.png")
+        if os.path.exists(path):
+            images.append(Image.open(path))
+        else:
+            break
+
+    if not images:
+        print("[Stitcher] No images found to stitch.")
+        return
+
+    fig, axs = plt.subplots(len(images), 1, figsize=(6, 5 * len(images)))
+
+    if len(images) == 1:
+        axs = [axs]
+
+    for img, ax in zip(images, axs):
+        ax.imshow(img)
+        ax.axis('off')
+
+    os.makedirs(folder, exist_ok=True)
+    outpath = os.path.join(folder, f"combinedeval_step{step}.png")
+    plt.tight_layout()
+    plt.savefig(outpath)
+    plt.close()
+    print(f"[Stitcher] Saved combined plot to {outpath}")
 
 
 class EnhancedWandbCallback_Monolith(BaseCallback):
@@ -235,6 +270,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             mean_reward, std_reward = 0, 0
             total_eval_reward = 0
             eval_lengths = []
+            eval_episode_data_list = []
 
             obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
@@ -260,6 +296,14 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     ep_threat_ids += info['new_threat_ids']
 
                     final_info = info
+                #
+                # if hasattr(self.eval_env, 'envs'): base_env = self.eval_env.envs[0].env.env
+                # else: base_env = self.eval_env.env.env
+                # try:
+                #     episode_data = base_env.get_action_history_data()
+                #     eval_episode_data_list.append(episode_data)
+                # except (
+                #         Exception) as e: print(f'[Eval] Failed to get episode data for plotting: {e}')
 
                 ep_length = final_info["episode"]["l"]
                 target_ids_list.append(ep_target_ids)
@@ -269,6 +313,11 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 target_ids_per_step_list.append(ep_target_ids / ep_length)
 
                 total_eval_reward += ep_reward
+
+            try:
+                stitch_saved_eval_plots(run_name=self.run.name, step=self.num_timesteps)
+            except Exception as e:
+                print(f"[Eval] Failed to stitch eval plots: {e}")
 
             mean_reward = total_eval_reward / self.n_eval_episodes
 
@@ -1133,6 +1182,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
+    parser.add_argument('--testing', action='store_true', help='')
     args = parser.parse_args()
     version = args.version
 
@@ -1141,7 +1191,7 @@ if __name__ == "__main__":
     ############## ---- SETTINGS ---- ##############
     load_path = None
     config_filename = 'configs/Monolith_R8H_july10.json'
-    num_envs = multiprocessing.cpu_count()
+    num_envs = 2 if args.testing else multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
@@ -1150,6 +1200,8 @@ if __name__ == "__main__":
     # Define hyperparameter sweep
 
     config = load_env_config(config_filename)
+    if args.testing:
+        config["eval_freq"] = 50
 
     if version == 'overfit':
         note = 'overfit' + machine[0].upper()
@@ -1215,14 +1267,16 @@ if __name__ == "__main__":
         note = 'pretrain' + machine[0].upper()
         config['num_timesteps'] = 2.5e6
         config['league_type'] = 'selfplay'
-        #config['teammate_active_at_start'] = True # TODO REMOVE
+        config['teammate_active_at_start'] = True
+        load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
+        vecnorm_load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 
         hyperparams = {
             'seed': [42],
-            'threat_reward_scaling':[1, 1.3],
-            "teammate_reward_scale": [0.75, 1.0],
+            'threat_reward_scaling':[1.3],
+            "teammate_reward_scale": [0.75],
         }
 
     param_shorthand = {
