@@ -149,22 +149,22 @@ class ExperimentDataLogger:
         self.cumulative_reward += reward
 
         # Extract human agent data (agent 0)
-        human_agent = env.env.agents[env.env.aircraft_ids[0]]
+        human_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[0]]
         human_position = (float(human_agent.x), float(human_agent.y))
 
         # Get human observation
-        human_obs = env.get_observation(agent_id=0)
+        human_obs = env.envs[0].get_observation(agent_id=0)
         if hasattr(human_obs, 'tolist'):
             human_obs_list = human_obs.tolist()
         else:
             human_obs_list = list(human_obs)
 
         # Extract RL agent data (agent 1)
-        agent_agent = env.env.agents[env.env.aircraft_ids[1]]
+        agent_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]]
         agent_position = (float(agent_agent.x), float(agent_agent.y))
 
         # Get RL agent observation
-        agent_obs = env.get_observation(agent_id=1)
+        agent_obs = env.envs[0].get_observation(agent_id=1)
         if hasattr(agent_obs, 'tolist'):
             agent_obs_list = agent_obs.tolist()
         else:
@@ -172,10 +172,10 @@ class ExperimentDataLogger:
 
 
         # Extract environment state
-        target_positions = [(float(t[3]), float(t[4])) for t in env.env.targets]
-        target_info_levels = [float(t[2]) for t in env.env.targets]
-        threat_positions = [(float(t[0]), float(t[1])) for t in env.env.threats]
-        threat_identified = [bool(t) for t in env.env.threat_identified]
+        target_positions = [(float(t[3]), float(t[4])) for t in env.envs[0].env.targets]
+        target_info_levels = [float(t[2]) for t in env.envs[0].env.targets]
+        threat_positions = [(float(t[0]), float(t[1])) for t in env.envs[0].env.threats]
+        threat_identified = [bool(t) for t in env.envs[0].env.threat_identified]
 
         # Create timestep data
         timestep_data = TimestepData(
@@ -196,9 +196,9 @@ class ExperimentDataLogger:
             target_info_levels=target_info_levels,
             threat_positions=threat_positions,
             threat_identified=threat_identified,
-            targets_identified_total=int(env.env.targets_identified),
-            threats_identified_total=int(env.env.num_threats_identified),
-            detections=int(env.env.detections)
+            targets_identified_total=int(env.envs[0].env.targets_identified),
+            threats_identified_total=int(env.envs[0].env.num_threats_identified),
+            detections=int(env.envs[0].env.detections)
         )
 
         self.current_episode_data['timesteps'].append(asdict(timestep_data))
@@ -240,13 +240,13 @@ class ExperimentDataLogger:
             episode_end_time=episode_end_time.isoformat(),
             episode_duration_seconds=episode_duration,
             total_reward=float(self.cumulative_reward),
-            final_targets_identified=int(env.env.targets_identified),
-            final_threats_identified=int(env.env.num_threats_identified),
-            total_detections=int(env.env.detections),
+            final_targets_identified=int(env.envs[0].env.targets_identified),
+            final_threats_identified=int(env.envs[0].env.num_threats_identified),
+            total_detections=int(env.envs[0].env.detections),
             total_timesteps=self.current_timestep,
-            all_targets_identified=bool(env.env.all_targets_identified),
-            all_threats_identified=bool(env.env.all_threats_identified),
-            mission_success=bool(env.env.all_targets_identified and env.env.all_threats_identified),
+            all_targets_identified=bool(env.envs[0].env.all_targets_identified),
+            all_threats_identified=bool(env.envs[0].env.all_threats_identified),
+            mission_success=bool(env.envs[0].env.all_targets_identified and env.envs[0].env.all_threats_identified),
             average_reward_per_timestep=float(self.cumulative_reward / max(1, self.current_timestep))
         )
 

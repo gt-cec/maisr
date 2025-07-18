@@ -10,6 +10,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
+from utility.config import subject_id
 from utility.data_logging import load_env_config
 from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
@@ -19,6 +20,52 @@ import webbrowser
 # import cProfile
 # import pstats
 # import io
+
+from stable_baselines3.common.vec_env import VecNormalize
+
+def load_vecnormalize_wrapper(vecnorm_path, env):
+    """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
+    print(f"Loading VecNormalize stats from: {vecnorm_path}")
+
+    vec_normalize = VecNormalize.load(vecnorm_path, venv=env)
+    vec_normalize.training = False  # Disable further normalization updates
+    vec_normalize.norm_reward = False
+    return vec_normalize
+
+
+def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_name='no_name'):
+    def _init():
+        base_env = MAISREnvVec(
+            config=config,
+            clock=clock,
+            window=window,
+            render_mode='human',
+            #run_name=f'user_study_subject_{args.subject_id}',
+            tag=f'subject_{subject_id}_0',
+            agent_appearance=agent_appearance,
+            running_experiment=True
+        )
+
+        wrapped_env = MaisrLocalSearchWrapper(
+            base_env,
+            local_search_policy=None,  # subpolicies['local_search'],
+            go_to_highvalue_policy=None,  # subpolicies['go_to_threat'],
+            change_region_subpolicy=None,  # subpolicies['change_region'],
+            evade_policy=None,  # EvadeDetection(model_path=None),
+            teammate_policy=None,
+            obs_noise_std=0.0
+        )
+
+        #wrapped_env = Monitor(wrapped_env)
+        wrapped_env.reset()
+        return wrapped_env
+
+    return _init
+
+
+
+
+
 
 
 class HumanSubpolicyController:
@@ -44,7 +91,7 @@ class HumanSubpolicyController:
 
         # Get click position relative to game board
         click_x, click_y = mouse_pos
-        gameboard_size = self.env.env.config['gameboard_size']
+        gameboard_size = self.env.envs[0].env.config['gameboard_size']
 
         # Check if click is within gameboard bounds
         if 0 <= click_x <= gameboard_size and 0 <= click_y <= gameboard_size:
@@ -106,27 +153,27 @@ class HumanSubpolicyController:
         return self.custom_waypoint
 
 
-def create_rl_teammate(model_path, agent_name):
-    """Create an RL teammate from a model file"""
-    try:
-        print(f"Loading {agent_name} model from: {model_path}")
-        model = PPO.load(model_path)
-
-        teammate = RLTeammatePolicy(
-            model=model,
-            env=None,
-            local_search_policy=None, #subpolicies['local_search'],
-            go_to_highvalue_policy=None, #subpolicies['go_to_threat'],
-            change_region_subpolicy=None, #subpolicies['change_region'],
-            use_collision_avoidance=False
-        )
-
-        teammate.name = agent_name
-        print(f"Successfully loaded RL teammate: {teammate.name}")
-        return teammate
-
-    except Exception as e:
-        print(f"Error loading {agent_name} model: {e}")
+# def create_rl_teammate(model_path, agent_name):
+#     """Create an RL teammate from a model file"""
+#     try:
+#         print(f"Loading {agent_name} model from: {model_path}")
+#         model = PPO.load(model_path)
+#
+#         teammate = RLTeammatePolicy(
+#             model=model,
+#             env=None,
+#             local_search_policy=None, #subpolicies['local_search'],
+#             go_to_highvalue_policy=None, #subpolicies['go_to_threat'],
+#             change_region_subpolicy=None, #subpolicies['change_region'],
+#             use_collision_avoidance=False
+#         )
+#
+#         teammate.name = agent_name
+#         print(f"Successfully loaded RL teammate: {teammate.name}")
+#         return teammate
+#
+#     except Exception as e:
+#         print(f"Error loading {agent_name} model: {e}")
 
 
 def draw_instructions(window, font):
@@ -213,7 +260,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     play_action_rate = 5
     last_agent_action = None
 
-    obs = env.reset()[0]
+    #obs = env.reset()[0]
+    obs = env.reset()
     print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
     step_count = 0
@@ -221,7 +269,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     paused = False
 
     while not done:
-        map_half_size = env.env.config['gameboard_size']
+        map_half_size = env.envs[0].env.config['gameboard_size']
         current_time = pygame.time.get_ticks()
 
         # Handle pygame events
@@ -247,25 +295,25 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Get human action
         human_action = human_controller.get_current_action()
-        #print(f'[Experiment loop] Human action is {human_action}')
         if human_controller.should_override_waypoint():
             custom_waypoint = human_controller.get_custom_waypoint()
             custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
-            #scaled_waypoint = (custom_waypoint[0]*map_half_size, custom_waypoint[1]*map_half_size)
-            env.env.agents[env.env.aircraft_ids[1]].waypoint_override = custom_waypoint #tuple(custom_waypoint)
-            #print(f'[Experiment loop] Setting human waypoint to {custom_waypoint}')
-
+            #env.env.agents[env.env.aircraft_ids[1]].waypoint_override = custom_waypoint #tuple(custom_waypoint)
+            env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]].waypoint_override = custom_waypoint
 
         # Get agent action
         if last_agent_action is None or step_count % play_action_rate == 0:
             agent_action, _ = agent_model.predict(obs, deterministic=True)
         else:
             agent_action = last_agent_action
-        #print(f'[Experiment loop] Agent chose action {agent_action}')
 
         # Take step in environment
-        #for _ in range(play_action_rate):
-        obs, reward, terminated, truncated, info = env.step(agent_action)
+        #obs, reward, terminated, truncated, info = env.step(agent_action)
+        obses, rewards, dones, infos = env.step([agent_action])
+        obs = obses[0]
+        reward = rewards[0]
+        info = infos[0]
+        done = dones[0]
 
         # Log timestep data
         data_logger.log_timestep(
@@ -274,13 +322,23 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             human_action=human_action,
             agent_action=agent_action,
             reward=reward,
-            terminated=terminated,
-            truncated=truncated,
+            terminated=done,
+            truncated=False,
             info=info
         )
+        # data_logger.log_timestep(
+        #     env=env,
+        #     human_controller=human_controller,
+        #     human_action=human_action,
+        #     agent_action=agent_action,
+        #     reward=reward,
+        #     terminated=terminated,
+        #     truncated=truncated,
+        #     info=info
+        # )
 
         episode_reward += reward
-        done = terminated or truncated
+        #done = terminated or truncated
         step_count += 1
 
         # Render the environment
@@ -303,7 +361,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             color = (0, 255, 0) if i < config_index else (100, 100, 100)
             pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
 
-        draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
+        #draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
+        base_env = env.envs[0].env
+        draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
 
         # Update display
         pygame.display.flip()
@@ -392,7 +452,7 @@ def main():
     time_factor = 20
     config = load_env_config(config_filename)
     config['tick_rate'] = tick_rate
-    config['num_observed_targets'] = 4 # TODO TEMP - Will need to remove this for real runs because will break the model.
+    #config['num_observed_targets'] = 4 # TODO TEMP - Will need to remove this for real runs because will break the model.
     config['game_speed'] /= time_factor
     config['max_steps'] *= time_factor
     config['use_stuck_detection'] = True
@@ -400,10 +460,11 @@ def main():
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
+    ctypes.windll.user32.SetProcessDPIAware()
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
-    ctypes.windll.user32.SetProcessDPIAware()
+
 
     window_width, window_height = config['window_size'][0], config['window_size'][1]
     window = pygame.display.set_mode((window_width, window_height))
@@ -461,37 +522,44 @@ def main():
             print(f"\nPreparing for config: {current_config}")
             print(f"Agent: {agent_letter}, Level: {level_number}")
 
-            # Load the appropriate RL agent if not already loaded
-            if agent_letter not in current_agents:
-                current_agents[agent_letter] = PPO.load(agent_models[agent_letter])
+            config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
 
-            current_agent_name = current_agents[agent_letter]
+            env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
+            env = DummyVecEnv(env_fns)
+            vecnorm_path = f'./user_study/saved_agents/test_agent_{agent_letter}_vecnormalize.pkl'
+            env = load_vecnormalize_wrapper(vecnorm_path, env)
 
-            # Create base environment with the specific level
-            base_env = MAISREnvVec(
-                config=config,
-                clock=clock,
-                window=window,
-                render_mode='human',
-                run_name=f'user_study_subject_{args.subject_id}',
-                tag=f'subject_{args.subject_id}_config_{current_config}',
-                agent_appearance = agent_appearance,
-                running_experiment=True
-            )
+            # # Create base environment with the specific level
+            # base_env = MAISREnvVec(
+            #     config=config,
+            #     clock=clock,
+            #     window=window,
+            #     render_mode='human',
+            #     run_name=f'user_study_subject_{args.subject_id}',
+            #     tag=f'subject_{args.subject_id}_config_{current_config}',
+            #     agent_appearance = agent_appearance,
+            #     running_experiment=True
+            # )
 
             # Set the specific level for this episode
-            base_env.config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
+            #base_env.config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
 
             # Create wrapped environment with current agent
-            env = MaisrLocalSearchWrapper(
-                base_env,
-                local_search_policy=None,#subpolicies['local_search'],
-                go_to_highvalue_policy=None,#subpolicies['go_to_threat'],
-                change_region_subpolicy=None,#subpolicies['change_region'],
-                evade_policy=None,#EvadeDetection(model_path=None),
-                teammate_policy=None,
-                obs_noise_std=0.0
-            )
+            # env = MaisrLocalSearchWrapper(
+            #     base_env,
+            #     local_search_policy=None,#subpolicies['local_search'],
+            #     go_to_highvalue_policy=None,#subpolicies['go_to_threat'],
+            #     change_region_subpolicy=None,#subpolicies['change_region'],
+            #     evade_policy=None,#EvadeDetection(model_path=None),
+            #     teammate_policy=None,
+            #     obs_noise_std=0.0
+            # )
+
+            # Load the appropriate agent
+            if agent_letter not in current_agents:
+                # current_agents[agent_letter] = PPO.load(agent_models[agent_letter])
+                current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
+            current_agent_name = current_agents[agent_letter]
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
