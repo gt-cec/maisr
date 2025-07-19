@@ -377,8 +377,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             if run_type == 'solo':
                 agent_action = 8
             else:
-                #agent_action, _ = agent_model.predict(obs, deterministic=True)
-                raise NotImplementedError
+                agent_action, _ = agent_model.predict(obs, deterministic=True)
+                #raise NotImplementedError
         else:
             agent_action = last_agent_action
 
