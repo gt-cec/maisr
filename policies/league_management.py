@@ -79,7 +79,7 @@ class TeammateManager:
         self.risk_tolerance_options = {
             'baseline': ["none"],
             "vanilla": ["none"],
-            "strategy_diverse": ["low", "medium", "high"]}
+            "strategy_diverse": ["low", "medium", "high", "max_greedy"]}
         self.spatial_coord_options = {
             'baseline': [False],
             "vanilla": [False],
@@ -87,7 +87,7 @@ class TeammateManager:
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
-            'strategy_diverse': ["stable", "noisy"]
+            'strategy_diverse': ["stable", "noisy", "very_noisy"]
         }
         self.planning_horizon_options = {
             'baseline': ["greedy"],
@@ -1039,7 +1039,7 @@ class HeuristicAgent:
         self.jitter_steps = [2, -2]  # Jitter by ±1 direction step
 
         # Validate configuration
-        valid_risk_levels = ["low", "medium", "high", "extreme", "none"]
+        valid_risk_levels = ["low", "medium", "high", "extreme", "none", "max_greedy"]
         valid_spatial_levels = [False, True]
         valid_mode_selectors = ["none", "heuristic", "none"]
         #valid_stability_levels = ["stable", "noisy"]
@@ -1074,6 +1074,36 @@ class HeuristicAgent:
         # Update cooldowns
         if self.changeregion_cooldown > 0:
             self.changeregion_cooldown -= 1
+
+
+        if self.risk_tolerance == "max_greedy":
+            # Decide whether closest unknown target or threat is closer
+            agent = env.agents[env.aircraft_ids[agent_id]]
+            agent_pos = np.array([agent.x, agent.y])
+
+            # Get unknown targets and threats
+            unknown_targets = env.targets[env.targets[:, 2] < 1.0, 3:5]  # shape (n,2)
+            unknown_threats = env.threats[env.threats[:, 2] < 1.0, 3:5]  # shape (n,2)
+
+            closest_target_dist = np.inf
+            closest_threat_dist = np.inf
+
+            if len(unknown_targets) > 0:
+                target_dists = np.linalg.norm(unknown_targets - agent_pos, axis=1)
+                closest_target_dist = np.min(target_dists)
+
+            if len(unknown_threats) > 0:
+                threat_dists = np.linalg.norm(unknown_threats - agent_pos, axis=1)
+                closest_threat_dist = np.min(threat_dists)
+
+            if closest_target_dist <= closest_threat_dist:
+                # Go toward target
+                self._update_tracking(0)  # local search
+                return 0
+            else:
+                # Go toward threat
+                self._update_tracking(2)
+                return 2
 
         # If mode_selector is "none", always choose localsearch
         if self.mode_selector == "none":
