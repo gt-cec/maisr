@@ -466,12 +466,12 @@ class ExperimentDataLogger:
         self.survey_responses.append({
             'episode_config': survey_data['episode_config'],
             'timestamp': survey_data['timestamp'],
-            'mental_demand': survey_data['responses']['Mental demand'],
-            'physical_demand': survey_data['responses']['Physical demand'],
-            'temporal_demand': survey_data['responses']['Temporal demand'],
-            'effort': survey_data['responses']['Effort'],
-            'performance': survey_data['responses']['Performance'],
-            'frustration': survey_data['responses']['Frustration']
+            'mental_demand': survey_data['responses']["How MENTALLY demanding was the task?"],
+            'physical_demand': survey_data['responses']["How PHYSICALLY demanding was the task?"],
+            'temporal_demand': survey_data['responses']["How much TIME PRESSURE did you feel during the task?"],
+            'effort': survey_data['responses']["How much EFFORT did the task take?"],
+            'performance': survey_data['responses']["How would you rate your PERFORMANCE during the task?"],
+            'frustration': survey_data['responses']["How much FRUSTRATION did you feel during the task?"]
         })
 
         print(f"Logged survey data for {survey_data['episode_config']}")

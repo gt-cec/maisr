@@ -251,12 +251,12 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
         # Survey questions and their labels
         self.questions = [
-            "Mental demand",
-            "Physical demand",
-            "Temporal demand",
-            "Effort",
-            "Performance",
-            "Frustration"
+            "How MENTALLY demanding was the task?",
+            "How PHYSICALLY demanding was the task?",
+            "How much TIME PRESSURE did you feel during the task?",
+            "How much EFFORT did the task take?",
+            "How would you rate your PERFORMANCE during the task?",
+            "How much FRUSTRATION did you feel during the task?"
         ]
 
         # User responses (1-7 scale, None = not answered)
@@ -266,7 +266,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.bar_width = 600
         self.bar_height = 50
         self.segment_width = self.bar_width // 7
-        self.bar_start_x = 250#(self.window_width - self.bar_width) // 2
+        self.bar_start_x = 200#(self.window_width - self.bar_width) // 2
         self.bar_spacing = 120
         self.first_bar_y = 200
 
@@ -281,9 +281,9 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Please rate your workload in the last round"
-        if self.episode_config:
-            title = f"Please rate your workload in the last round"
+        title = "Nice job! Please answer these questions about the last round:"
+        #if self.episode_config:
+            #title = f"Please rate your workload in the last round:"
         self.draw_text_centered(window, title, 120, self.font_large)
 
         # Draw rating bars
@@ -475,8 +475,8 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         # Visual properties
         self.icon_size = 80
         self.icon_spacing = 200
-        self.question_spacing = 160
-        self.first_question_y = 200
+        self.question_spacing = 175
+        self.first_question_y = 225
 
         # Colors
         self.unselected_color = (180, 180, 180)
@@ -498,7 +498,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
         title = "Answer each question below by clicking the icon."
-        self.draw_text_centered(window, title, 120, self.font_large)
+        self.draw_text_centered(window, title, 150, self.font_large)
 
         # Draw each question with teammate icons
         for i, question in enumerate(self.questions):
@@ -526,7 +526,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         center_x = self.window_width // 2
         green_icon_x = center_x - self.icon_spacing // 2
         purple_icon_x = center_x + self.icon_spacing // 2
-        icon_y = y_pos + 50
+        icon_y = y_pos + 65
 
         # Draw green teammate icon
         #self.draw_teammate_icon(window, green_icon_x, icon_y, 'green', question_index, self.responses[question_index] == 'green')
@@ -688,45 +688,45 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         # Navigation hints are drawn in draw_continue_button instead
         pass
 
-class FinalSummaryScreen(InstructionalScreen):
-    """Final screen shown after all episodes"""
-
-    def __init__(self, experiment_results: List[Dict], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.experiment_results = experiment_results
-
-    def draw_content(self, window: pygame.Surface) -> None:
-        # Title
-        self.draw_text_centered(window, "Experiment Complete!", 150,
-                                self.font_large, self.highlight_color)
-
-        # Summary stats
-        if self.experiment_results:
-            total_reward = sum(r['reward'] for r in self.experiment_results)
-            avg_reward = total_reward / len(self.experiment_results)
-
-            self.draw_text_centered(window, f"Episodes Completed: {len(self.experiment_results)}",
-                                    220, self.font_medium)
-            self.draw_text_centered(window, f"Total Score: {total_reward:.2f}",
-                                    250, self.font_medium)
-            self.draw_text_centered(window, f"Average Score: {avg_reward:.2f}",
-                                    280, self.font_medium, (100, 255, 100))
-
-        # Thank you message
-        thank_you = [
-            "",
-            "Thank you for participating in this study!",
-            "",
-            "Your data will help us understand how humans and AI",
-            "can work together more effectively in complex tasks.",
-            "",
-            "If you have any questions about the study, please",
-            "ask the experimenter.",
-            "",
-            "Press ENTER to exit."
-        ]
-
-        self.draw_text_block(window, thank_you, 350, self.font_medium, 35)
+# class FinalSummaryScreen(InstructionalScreen):
+#     """Final screen shown after all episodes"""
+#
+#     def __init__(self, experiment_results: List[Dict], *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.experiment_results = experiment_results
+#
+#     def draw_content(self, window: pygame.Surface) -> None:
+#         # Title
+#         self.draw_text_centered(window, "Experiment Complete!", 150,
+#                                 self.font_large, self.highlight_color)
+#
+#         # Summary stats
+#         if self.experiment_results:
+#             total_reward = sum(r['reward'] for r in self.experiment_results)
+#             avg_reward = total_reward / len(self.experiment_results)
+#
+#             self.draw_text_centered(window, f"Episodes Completed: {len(self.experiment_results)}",
+#                                     220, self.font_medium)
+#             self.draw_text_centered(window, f"Total Score: {total_reward:.2f}",
+#                                     250, self.font_medium)
+#             self.draw_text_centered(window, f"Average Score: {avg_reward:.2f}",
+#                                     280, self.font_medium, (100, 255, 100))
+#
+#         # Thank you message
+#         thank_you = [
+#             "",
+#             "Thank you for participating in this study!",
+#             "",
+#             "Your data will help us understand how humans and AI",
+#             "can work together more effectively in complex tasks.",
+#             "",
+#             "If you have any questions about the study, please",
+#             "ask the experimenter.",
+#             "",
+#             "Press ENTER to exit."
+#         ]
+#
+#         self.draw_text_block(window, thank_you, 350, self.font_medium, 35)
 
 
 class GameInstructionScreen(InstructionalScreen):
@@ -872,44 +872,85 @@ class Instruct1Screen(GameInstructionScreen):
                      "",
                      "",
                      "You will work alongside AI teammates that are",
-                     "trained using reinforcement learning."]
+                     "trained using reinforcement learning.",
+                     "",
+                     "",
+                     "This study will take about 30 minutes."
+                     ]
 
         self.draw_text_block(window, body_text, 250, self.font_large, 40)
 
+# class Instruct2Screen(GameInstructionScreen):
+#     """Map introduction screen with looping video"""
+#
+#     def __init__(self, video_path: str, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.video_path = video_path
+#         self.cap = cv2.VideoCapture(video_path)
+#         if not self.cap.isOpened():
+#             print(f"Error opening video file: {video_path}")
+#         self.last_frame_time = pygame.time.get_ticks()
+#         self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
+#
+#         self.current_frame = None  # Store last loaded frame surface
+#
+#     def get_next_video_frame(self):
+#         if not self.cap.isOpened():
+#             return None
+#
+#         current_time = pygame.time.get_ticks()
+#         if current_time - self.last_frame_time >= self.frame_interval:
+#             ret, frame = self.cap.read()
+#             if not ret:
+#                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop video
+#                 ret, frame = self.cap.read()
+#             if ret:
+#                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#                 frame = cv2.resize(frame, (600, 600))
+#                 frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+#                 self.current_frame = frame_surface
+#                 self.last_frame_time = current_time
+#
+#         return self.current_frame
+#
+#     def draw_content(self, window: pygame.Surface) -> None:
+#         # Draw text
+#         lines = [
+#             "In this game, you will control a 2D aircraft",
+#             "to fly around a map like the one below:"
+#         ]
+#         y_pos = 150
+#         for line in lines:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 40
+#
+#         image_rect = self.image.get_rect(center=(self.window_width // 2, 50 + self.window_width // 2))
+#         window.blit(self.image, image_rect)
+#
+#         # Draw video frame
+#         frame_surface = self.get_next_video_frame()
+#         if frame_surface:
+#             rect = frame_surface.get_rect(center=(self.window_width // 2, 600))
+#             window.blit(frame_surface, rect)
+#         else:
+#             # Fallback placeholder
+#             pygame.draw.rect(window, (100, 100, 100), (200, 250, 600, 600))
+
 class Instruct2Screen(GameInstructionScreen):
-    """Map introduction screen with looping video"""
+    """Map introduction screen"""
 
-    def __init__(self, video_path: str, *args, **kwargs):
+    def __init__(self, image_path: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.video_path = video_path
-        self.cap = cv2.VideoCapture(video_path)
-        if not self.cap.isOpened():
-            print(f"Error opening video file: {video_path}")
-        self.last_frame_time = pygame.time.get_ticks()
-        self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
-
-        self.current_frame = None  # Store last loaded frame surface
-
-    def get_next_video_frame(self):
-        if not self.cap.isOpened():
-            return None
-
-        current_time = pygame.time.get_ticks()
-        if current_time - self.last_frame_time >= self.frame_interval:
-            ret, frame = self.cap.read()
-            if not ret:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Loop video
-                ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame = cv2.resize(frame, (600, 600))
-                frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
-                self.current_frame = frame_surface
-                self.last_frame_time = current_time
-
-        return self.current_frame
+        self.image_path = image_path
+        self.image = None
+        try:
+            self.image = pygame.image.load(image_path)
+            self.image = pygame.transform.scale(self.image, (650, 650))
+        except pygame.error:
+            print(f"Could not load image: {image_path}")
 
     def draw_content(self, window: pygame.Surface) -> None:
+        # Top text at position (100, 50)
         # Draw text
         lines = [
             "In this game, you will control a 2D aircraft",
@@ -920,17 +961,91 @@ class Instruct2Screen(GameInstructionScreen):
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 40
 
-        # Draw video frame
+        # Draw image centered at 500x500 if available
+        if self.image:
+            image_rect = self.image.get_rect(center=(self.window_width // 2, 100 + self.window_width // 2))
+            window.blit(self.image, image_rect)
+        else:
+            # Draw placeholder rectangle
+            placeholder_rect = pygame.Rect(250, 150, 500, 500)
+            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
+            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
+            placeholder_text = "Map Image (500x500)"
+            text_surface = self.font_medium.render(placeholder_text, True, self.text_color)
+            text_rect = text_surface.get_rect(center=placeholder_rect.center)
+            window.blit(text_surface, text_rect)
+
+
+class Instruct3Screen(GameInstructionScreen):
+    """Player aircraft control introduction"""
+
+    def __init__(self, image_path: str, video_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.image_path = image_path
+        self.video_path = video_path
+        self.image = None
+
+        try:
+            self.image = pygame.image.load(image_path)
+            self.image = pygame.transform.scale(self.image, (200, 200))
+        except pygame.error:
+            print(f"Could not load image: {image_path}")
+
+        self.cap = cv2.VideoCapture(video_path)
+        if not self.cap.isOpened():
+            print(f"Error opening video file: {video_path}")
+        self.last_frame_time = pygame.time.get_ticks()
+        self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
+        self.current_frame = None
+
+    def get_next_video_frame(self):
+        if not self.cap.isOpened():
+            return None
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_frame_time >= self.frame_interval:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (563, 300))
+                self.current_frame = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+                self.last_frame_time = current_time
+        return self.current_frame
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        self.draw_text_centered(window, "You control the BLUE aircraft.", 150, self.font_large)
+
+        if self.image:
+            image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
+            window.blit(self.image, image_rect)
+
+        middle_text = ["You control your aircraft by clicking",
+                       "on the map where you want to fly."]
+        y_pos = 460
+        for line in middle_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
+
+        # Draw video just below middle text
         frame_surface = self.get_next_video_frame()
         if frame_surface:
-            rect = frame_surface.get_rect(center=(self.window_width // 2, 500))
+            rect = frame_surface.get_rect(center=(self.window_width // 2, 700))
             window.blit(frame_surface, rect)
         else:
-            # Fallback placeholder
-            pygame.draw.rect(window, (100, 100, 100), (200, 250, 600, 600))
+            pygame.draw.rect(window, (100, 100, 100), (200, 600, 600, 400))
 
-# class Instruct2Screen(GameInstructionScreen):
-#     """Map introduction screen"""
+        bottom_text = ["The aircraft will automatically",
+                       "fly to the point you clicked."]
+        y_pos = 875
+        for line in bottom_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
+
+
+# class Instruct3Screen(GameInstructionScreen):
+#     """Player aircraft control introduction"""
 #
 #     def __init__(self, image_path: str, *args, **kwargs):
 #         super().__init__(*args, **kwargs)
@@ -938,92 +1053,38 @@ class Instruct2Screen(GameInstructionScreen):
 #         self.image = None
 #         try:
 #             self.image = pygame.image.load(image_path)
-#             self.image = pygame.transform.scale(self.image, (600, 600))
+#             self.image = pygame.transform.scale(self.image, (200, 200))
 #         except pygame.error:
 #             print(f"Could not load image: {image_path}")
 #
 #     def draw_content(self, window: pygame.Surface) -> None:
-#         # Top text at position (100, 50)
-#         text = "In this game, you will control a 2D aircraft to fly around a map like the one below:"
 #
-#         # Wrap text to fit within window
-#         words = text.split()
-#         lines = []
-#         current_line = []
-#         max_width = self.window_width - 225  # Leave margins
+#         # Top text at (100, 100)
+#         #text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
+#         #window.blit(text_surface, (100, 150))
+#         self.draw_text_centered(window, "You control the BLUE aircraft.", 150, self.font_large)
 #
-#         for word in words:
-#             test_line = ' '.join(current_line + [word])
-#             text_width = self.font_large.size(test_line)[0]
+#         # Blue circle at (500, 200) with radius 50px
+#         image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
+#         window.blit(self.image, image_rect)
+#         #pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
 #
-#             if text_width <= max_width:
-#                 current_line.append(word)
-#             else:
-#                 if current_line:
-#                     lines.append(' '.join(current_line))
-#                 current_line = [word]
+#         # Bottom text at (50, 500)
+#         middle_text = ["You control your aircraft by clicking",
+#                        "on the map where you want to fly."]
 #
-#         if current_line:
-#             lines.append(' '.join(current_line))
+#         bottom_text = ["The aircraft will automatically",
+#                        "fly to the point you clicked."]
 #
-#         # Draw text lines
-#         y_pos = 150
-#         for line in lines:
+#         y_pos = 500
+#         for line in middle_text:
 #             self.draw_text_centered(window, line, y_pos, self.font_large)
 #             y_pos += 35
 #
-#         # Draw image centered at 500x500 if available
-#         if self.image:
-#             image_rect = self.image.get_rect(center=(self.window_width // 2, 50 + self.window_width // 2))
-#             window.blit(self.image, image_rect)
-#         else:
-#             # Draw placeholder rectangle
-#             placeholder_rect = pygame.Rect(250, 150, 500, 500)
-#             pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
-#             pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
-#             placeholder_text = "Map Image (500x500)"
-#             text_surface = self.font_medium.render(placeholder_text, True, self.text_color)
-#             text_rect = text_surface.get_rect(center=placeholder_rect.center)
-#             window.blit(text_surface, text_rect)
-
-
-class Instruct3Screen(GameInstructionScreen):
-    """Player aircraft control introduction"""
-
-    def __init__(self, image_path: str, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.image_path = image_path
-        self.image = None
-        try:
-            self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (200, 200))
-        except pygame.error:
-            print(f"Could not load image: {image_path}")
-
-    def draw_content(self, window: pygame.Surface) -> None:
-
-        # Top text at (100, 100)
-        #text_surface = self.font_large.render("You control the BLUE aircraft.", True, self.text_color)
-        #window.blit(text_surface, (100, 150))
-        self.draw_text_centered(window, "You control the BLUE aircraft.", 150, self.font_large)
-
-        # Blue circle at (500, 200) with radius 50px
-        image_rect = self.image.get_rect(center=(self.window_width // 2, 300))
-        window.blit(self.image, image_rect)
-        #pygame.draw.circle(window, (0, 100, 255), (500, 300), 75)
-
-        # Bottom text at (50, 500)
-        bottom_text = ["You control your aircraft by clicking",
-                       "on the map where you want to fly.",
-                       "",
-                       "",
-                       "The aircraft will automatically",
-                       "fly to the point you clicked."]
-
-        y_pos = 500
-        for line in bottom_text:
-            self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
+#         y_pos = 850
+#         for line in bottom_text:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 35
 
 
 class Instruct4Screen(GameInstructionScreen):
@@ -1042,7 +1103,7 @@ class Instruct4Screen(GameInstructionScreen):
     def draw_content(self, window: pygame.Surface) -> None:
         # Top text at (100, 100)
 
-        top_text = ["In each level, you will work alongside",
+        top_text = ["In each level, you will be assisted by",
                     "an AI teammate selected from a pool."]
 
         y_pos = 150
@@ -1053,14 +1114,12 @@ class Instruct4Screen(GameInstructionScreen):
         # Red circle at (500, 200) with radius 50px (AI teammate)
         image_rect = self.image.get_rect(center=(self.window_width // 2, 350))
         window.blit(self.image, image_rect)
-        #pygame.draw.circle(window, (255, 50, 50), (250, 350), 50)
-        #pygame.draw.circle(window, (255, 50, 50), (400, 350), 50)
-        #pygame.draw.circle(window, (255, 50, 50), (550, 350), 50)
 
         # Bottom text at (50, 500)
         bottom_text = ["",
-                       "Your teammate will autonomously fly around",
+                       "Your teammate will independently fly around",
                        "the map to help you identify targets.",
+                       "",
                        "",
                        "",
                        "They may follow different strategies depending",
@@ -1091,110 +1150,202 @@ class Instruct5Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
 
-        top_text = ["You earn points by identifying targets",
-                    "on the map. Each level has 15 regular",
-                    "targets and 4 high-value targets."
-                    ]
+        top_text = ["You earn points by identifying",
+                    "targets on the map."]
 
         y_pos = 150
         for line in top_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
-        #text_surface = self.font_large.render("You earn points by identifying targets on the map.", True,self.text_color)
-        #window.blit(text_surface, (100, 100))
-
         # Gold circle at (100, 200) with radius 10px
-        pygame.draw.circle(window, (255, 215, 0), (200, 330), 15)
+        #pygame.draw.circle(window, (255, 215, 0), (200, 330), 15) # TODO render dark gold outline around circle
+        pygame.draw.circle(window, (139, 117, 0), (200, 330), 17)  # dark gold outline
+        pygame.draw.circle(window, (255, 215, 0), (200, 330), 14)  # fill
+
 
         # Text at (150, 200)
         text_surface = self.font_large.render("Regular targets are worth 1 point.", True, self.text_color)
-        window.blit(text_surface, (250, 310))
+        window.blit(text_surface, (300, 320))
 
-        # Text at (100, 300)
-        instruction_text = ["To identify a target, you must",
-                            "fly close enough that your",
-                            "sensor overlaps the target."]
-        y_pos = 450
-        for line in instruction_text:
-            self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
-
-        # Sensor image centered at (500, 650) with width 600px
-        if self.sensor_image:
-            image_rect = self.sensor_image.get_rect(center=(500, 700))
-            window.blit(self.sensor_image, image_rect)
-        else:
-            # Placeholder
-            placeholder_rect = pygame.Rect(200, 575, 600, 150)
-            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
-            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
-            placeholder_text = "Sensor Range Image (600px wide)"
-            text_surface = self.font_large.render(placeholder_text, True, self.text_color)
-            text_rect = text_surface.get_rect(center=placeholder_rect.center)
-            window.blit(text_surface, text_rect)
+        # Gold circle
+        #pygame.draw.circle(window, (255, 215, 0), (200, 450), 50) # TODO change this to be a white circle with a gold outline, and an upside down gold triangle inside it
+        # White circle with gold outline
+        pygame.draw.circle(window, (255, 215, 0), (200, 450), 52)
+        pygame.draw.circle(window, (255, 255, 255), (200, 450), 48)
 
 
-class Instruct6Screen(GameInstructionScreen):
-    """High-value targets explanation"""
+        triangle_points = [(195, 465), (185, 440), (220, 435)]
+        pygame.draw.polygon(window, (255, 215, 0), triangle_points) # Upside down gold triangle inside
 
-    def __init__(self, hvt_image_path: str, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.hvt_image_path = hvt_image_path
-        self.hvt_image = None
-        try:
-            self.hvt_image = pygame.image.load(hvt_image_path)
-            # Scale to width 600px while maintaining aspect ratio
-            original_size = self.hvt_image.get_size()
-            scale_factor = 600 / original_size[0]
-            new_height = int(original_size[1] * scale_factor)
-            self.hvt_image = pygame.transform.scale(self.hvt_image, (600, new_height))
-        except pygame.error:
-            print(f"Could not load image: {hvt_image_path}")
 
-    def draw_content(self, window: pygame.Surface) -> None:
-        # Gold circle at (100, 200) with radius 50px
-        pygame.draw.circle(window, (255, 215, 0), (200, 200), 50)
-
-        # Text at (250, 200)
         text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
-        window.blit(text_surface, (300, 200))
-        #self.draw_text_centered(window, "High-value targets are worth 9 points.", 175, self.font_large)
+        window.blit(text_surface, (300, 430))
 
-        # Text at (250, 350) - wrap text
-        warning_text = ["High-value targets might detect you if you fly",
-                        "within identification range. Each detection",
-                        "reduces your score by 15 points."]
-        y_pos = 350
-        for line in warning_text:
-            self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
-
-        # HVT image centered at (500, 650) with width 600px
-        if self.hvt_image:
-            image_rect = self.hvt_image.get_rect(center=(500, 650))
-            window.blit(self.hvt_image, image_rect)
-        else:
-            # Placeholder
-            placeholder_rect = pygame.Rect(200, 575, 600, 150)
-            pygame.draw.rect(window, (100, 100, 100), placeholder_rect)
-            pygame.draw.rect(window, self.text_color, placeholder_rect, 2)
-            placeholder_text = "HVT Detection Image (600px wide)"
-            text_surface = self.font_large.render(placeholder_text, True, self.text_color)
-            text_rect = text_surface.get_rect(center=placeholder_rect.center)
-            window.blit(text_surface, text_rect)
-
-        # Bottom text at (100, 700)
-        bottom_text = ["To be successful, you will need to weigh the risks",
-                       "and rewards of identifying high-value targets."]
-
-        y_pos = 850
+        bottom_text = ["Each level has 15 regular",
+                       "targets and 4 high-value targets."]
+        y_pos = 650
         for line in bottom_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
 
+class Instruct6Screen(GameInstructionScreen):
+    def __init__(self, hvt_video_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cap = cv2.VideoCapture(hvt_video_path)
+        if not self.cap.isOpened():
+            print(f"Error opening video file: {hvt_video_path}")
+        self.last_frame_time = pygame.time.get_ticks()
+        self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
+        self.current_frame = None
+
+    def get_next_video_frame(self):
+        if not self.cap.isOpened():
+            return None
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_frame_time >= self.frame_interval:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (450, 450))
+                self.current_frame = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+                self.last_frame_time = current_time
+        return self.current_frame
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        instruction_text = [
+            "To identify a target, you must",
+            "fly close enough that your",
+            "sensor overlaps the target."
+        ]
+        y_pos = 150
+        for line in instruction_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
+
+        frame_surface = self.get_next_video_frame()
+        if frame_surface:
+            rect = frame_surface.get_rect(center=(self.window_width // 2, 600))
+            window.blit(frame_surface, rect)
+        else:
+            pygame.draw.rect(window, (100, 100, 100), (200, 300, 600, 400))
+
+
+# class Instruct6Screen(GameInstructionScreen):
+#     """High-value targets explanation"""
+#
+#     def __init__(self, hvt_image_path: str, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.hvt_image_path = hvt_image_path
+#         self.hvt_image = None
+#         try:
+#             self.hvt_image = pygame.image.load(hvt_image_path)
+#             # Scale to width 600px while maintaining aspect ratio
+#             original_size = self.hvt_image.get_size()
+#             scale_factor = 600 / original_size[0]
+#             new_height = int(original_size[1] * scale_factor)
+#             self.hvt_image = pygame.transform.scale(self.hvt_image, (600, new_height))
+#         except pygame.error:
+#             print(f"Could not load image: {hvt_image_path}")
+#
+#     def draw_content(self, window: pygame.Surface) -> None:
+#         # # Gold circle at (100, 200) with radius 50px
+#         # pygame.draw.circle(window, (255, 215, 0), (200, 200), 50)
+#         #
+#         # text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
+#         # window.blit(text_surface, (300, 200))
+#
+#         # Text at (100, 300)
+#         instruction_text = ["To identify a target, you must",
+#                             "fly close enough that your",
+#                             "sensor overlaps the target."]
+#         y_pos = 150
+#         for line in instruction_text:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 35
+#
+
+
 class Instruct7Screen(GameInstructionScreen):
+    def __init__(self, detection_video_path: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cap = cv2.VideoCapture(detection_video_path)
+        if not self.cap.isOpened():
+            print(f"Error opening video file: {detection_video_path}")
+        self.last_frame_time = pygame.time.get_ticks()
+        self.frame_interval = int(1000 / self.cap.get(cv2.CAP_PROP_FPS))
+        self.current_frame = None
+
+    def get_next_video_frame(self):
+        if not self.cap.isOpened():
+            return None
+        current_time = pygame.time.get_ticks()
+        if current_time - self.last_frame_time >= self.frame_interval:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = cv2.resize(frame, (550, 550))
+                self.current_frame = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
+                self.last_frame_time = current_time
+        return self.current_frame
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        warning_text = ["High-value targets might detect you if you fly",
+                        "within identification range. Each detection",
+                        "reduces your score by 15 points."]
+        y_pos = 150
+        for line in warning_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
+
+        frame_surface = self.get_next_video_frame()
+        if frame_surface:
+            rect = frame_surface.get_rect(center=(self.window_width // 2, 550))
+            window.blit(frame_surface, rect)
+
+        bottom_text = ["To be successful, you will need to weigh the risks",
+                       "and rewards of identifying high-value targets."]
+        y_pos = 875
+        for line in bottom_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
+
+
+# class Instruct7Screen(GameInstructionScreen):
+#     """Final instructions screen"""
+#
+#
+#     def draw_content(self, window: pygame.Surface) -> None:
+#
+#         # Text at (250, 350) - wrap text
+#         warning_text = ["High-value targets might detect you if you fly",
+#                         "within identification range. Each detection",
+#                         "reduces your score by 15 points."]
+#         y_pos = 150
+#         for line in warning_text:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 35
+#
+#         # TODO add video loaded from /img/detection_video.mp4
+#
+#         # Bottom text at (100, 700)
+#         bottom_text = ["To be successful, you will need to weigh the risks",
+#                        "and rewards of identifying high-value targets."]
+#
+#         y_pos = 750
+#         for line in bottom_text:
+#             self.draw_text_centered(window, line, y_pos, self.font_large)
+#             y_pos += 35
+
+
+class Instruct8Screen(GameInstructionScreen):
     """Final instructions screen"""
 
     def draw_content(self, window: pygame.Surface) -> None:
@@ -1205,8 +1356,11 @@ class Instruct7Screen(GameInstructionScreen):
             "",
             "",
             "After each round, you will answer a few",
-            "questions about your workload and your impressions",
-            "of the teammate you just worked with.",
+            "questions about your experience with",
+            "the teammate you just worked with.",
+            "",
+            "You will also be asked which",
+            "teammates you liked more.",
             "",
             "",
             "We are developing AI teammates that can adapt",
@@ -1214,31 +1368,110 @@ class Instruct7Screen(GameInstructionScreen):
             "which techniques are most effective!"
         ]
 
-        self.draw_text_block(window, instruction_text, 300, self.font_large, 40)
+        self.draw_text_block(window, instruction_text, 200, self.font_large, 40)
+
+
+class PlaceholderScreen(GameInstructionScreen):
+    """Placeholder screen for later editing"""
+    def draw_content(self, window):
+        self.draw_text_centered(window, "[ The Scoring System ]", 250, self.font_large)
+        placeholder_lines = [
+            "Your performance is tracked using a score system:",
+            "",
+            ""
+        ]
+        self.draw_text_block(window, placeholder_lines, 400, self.font_medium, 40)
+
+class AfterPracticeScreen(GameInstructionScreen):
+    """Placeholder screen for later editing"""
+    def __init__(self, window_width: int, window_height: int):
+        super().__init__(screen_number=1, total_screens=1,
+                         window_width=window_width, window_height=window_height)
+
+    def draw_content(self, window):
+        self.draw_text_centered(window, "", 250, self.font_large)
+        placeholder_lines = [
+            "Nice work! Now it's time to play for real.",
+            "",
+            "When you're ready, click the arrow to start the first round."
+        ]
+        self.draw_text_block(window, placeholder_lines, 400, self.font_large, 40)
+
+
+
+class PracticeIntroScreen(GameInstructionScreen):
+    """Instructional screen before the practice round"""
+    def draw_content(self, window):
+        self.draw_text_centered(window, "Practice Round", 250, self.font_large, self.highlight_color)
+        intro_lines = [
+            "You will now play a practice round.",
+            "",
+            "This is just for you to get used to the controls and gameplay.",
+            "There is no survey after this round.",
+            "",
+            "Take your time and experiment with different control options.",
+            "",
+            "When you're ready, press ENTER or click the arrow to begin."
+        ]
+        self.draw_text_block(window, intro_lines, 400, self.font_large, 40)
+
+class FinalSummaryScreen(InstructionalScreen):
+    """Final screen shown after completing the experiment"""
+
+    def __init__(self, experiment_results, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.experiment_results = experiment_results
+
+    def draw_content(self, window):
+        self.draw_text_centered(window, "Thank You!", 150, self.font_large, self.highlight_color)
+
+        if self.experiment_results:
+            total_reward = sum(r['reward'] for r in self.experiment_results)
+            avg_reward = total_reward / len(self.experiment_results)
+
+            self.draw_text_centered(window, f"Rounds Completed: {len(self.experiment_results)}", 230, self.font_large)
+            self.draw_text_centered(window, f"Total Score: {total_reward:.2f}", 270, self.font_large)
+            self.draw_text_centered(window, f"Average Score: {avg_reward:.2f}", 310, self.font_large, (100, 255, 100))
+
+        message_lines = [
+            "",
+            "Thank you for participating in this user study!",
+            "",
+            "Your responses and performance help us improve",
+            "human-AI teaming in critical tasks.",
+            "",
+            "If you have questions or feedback, please ask the experimenter.",
+            "",
+            "",
+            "",
+            "Press ENTER to exit."
+        ]
+        self.draw_text_block(window, message_lines, 380, self.font_large, 35)
 
 
 class InstructionSeriesManager:
     """Manages the series of instruction screens"""
 
     def __init__(self, window: pygame.Surface, clock: pygame.time.Clock,
-                 video_path: str = None, sensor_image_path: str = None,
-                 hvt_image_path: str = None,
-                 human_image_path: str = None,
-                 teammate_image_path: str = None):
+                 map_image_path: str = None, sensor_image_path: str = None,
+                 hvt_video_path: str = None, detection_video_path: str = None,
+                 click_video_path: str = None,
+                 human_image_path: str = None, teammate_image_path: str = None):
         self.window = window
         self.clock = clock
         self.screen_manager = ScreenManager(window, clock)
 
-        # Create all instruction screens
         self.screens = [
-            Instruct1Screen(1, 7, window.get_width(), window.get_height()),
-            #Instruct2Screen(map_image_path or "map_image.jpg", 2, 7, window.get_width(), window.get_height()),
-            Instruct2Screen(video_path, 2, 7, window.get_width(), window.get_height()),
-            Instruct3Screen(human_image_path, 3, 7, window.get_width(), window.get_height()),
-            Instruct4Screen(teammate_image_path, 4, 7, window.get_width(), window.get_height()),
-            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 7, window.get_width(), window.get_height()),
-            Instruct6Screen(hvt_image_path or "hvt_image.jpg", 6, 7, window.get_width(), window.get_height()),
-            Instruct7Screen(7, 7, window.get_width(), window.get_height())
+            Instruct1Screen(1, 10, window.get_width(), window.get_height()),
+            Instruct2Screen(map_image_path or "map_image.jpg", 2, 10, window.get_width(), window.get_height()),
+            Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, 10, window.get_width(), window.get_height()),
+            Instruct4Screen(teammate_image_path, 4, 10, window.get_width(), window.get_height()),
+            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 10, window.get_width(), window.get_height()),
+            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 6, 10, window.get_width(), window.get_height()),
+            PlaceholderScreen(7, 10, window.get_width(), window.get_height()),
+            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 8, 10, window.get_width(), window.get_height()),
+            Instruct8Screen(9, 10, window.get_width(), window.get_height()),
+            PracticeIntroScreen(10, 10, window.get_width(), window.get_height()),
         ]
 
         self.current_screen_index = 0

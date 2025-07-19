@@ -13,7 +13,8 @@ from utility.config import subject_id
 from utility.data_logging import load_env_config
 from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
-from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, InstructionSeriesManager
+from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
+    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
 import webbrowser
 
 # import cProfile
@@ -169,6 +170,36 @@ class HumanSubpolicyController:
 #     except Exception as e:
 #         print(f"Error loading {agent_name} model: {e}")
 
+def draw_progress_bar(window, font, current_index, total_configs):
+    """Draw a segmented progress bar with labels for each segment."""
+    progress_bar_y_start = 1000
+    progress_bar_height = 50
+    progress_bar_margin = 10
+    segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
+    segment_height = progress_bar_height - 2 * progress_bar_margin
+
+    for i in range(total_configs):
+        x = progress_bar_margin + i * segment_width
+        y = progress_bar_y_start + progress_bar_margin
+
+        # Highlight current segment in blue, completed ones in green, others in gray
+        if i == current_index:
+            color = (0, 128, 255)  # Blue for current
+        elif i < current_index:
+            color = (0, 255, 0)    # Green for completed
+        else:
+            color = (100, 100, 100)  # Gray for upcoming
+
+        pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
+
+        # Label: "PRACTICE" for first, numbers for rest
+        label = "PRACTICE" if i == 0 else str(i)
+        label_surface = font.render(label, True, (0, 0, 0))
+        label_rect = label_surface.get_rect(center=(x + segment_width // 2, y + segment_height // 2))
+        window.blit(label_surface, label_rect)
+
+
+
 
 def draw_instructions(window, font):
     """Draw instructions for the human player"""
@@ -212,6 +243,36 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
         window.blit(text_surface, (1050, y_offset))
         y_offset += 25
 
+# def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections, step_count, max_steps, first_render=False):
+#     """Draw regular target, high-value target, step count, and detections"""
+#     total_regular_targets = 15
+#     total_high_value_targets = 4
+#
+#     labels = [
+#         "Regular targets:",
+#         "High-value targets:",
+#         "Steps:",
+#         "Detections:"
+#     ]
+#     values = [
+#         f"{targets_identified}/{total_regular_targets}",
+#         f"{threats_identified}/{total_high_value_targets}",
+#         f"{step_count}/{max_steps}",
+#         f"{detections}"
+#     ]
+#
+#     x_start = 50
+#     y_pos = 1060
+#     spacing = 1000 / 4
+#
+#     for i in range(4):
+#         if first_render:
+#             label_surface = font.render(labels[i], True, (50, 50, 50))
+#             window.blit(label_surface, (x_start + i * spacing, y_pos - 25))
+#         value_surface = font.render(values[i], True, (0, 0, 0))
+#         window.blit(value_surface, (x_start + i * spacing, y_pos))
+
+
 def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections, step_count, max_steps):
     """Draw regular target, high-value target, step count, and detections"""
     regular_targets = targets_identified
@@ -225,7 +286,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
     bottom_texts = [
         f"Regular targets: {regular_targets}/{total_regular_targets}",
         f"High-value targets: {high_value_targets}/{total_high_value_targets}",
-        f"Steps: {step_count}/{max_steps}",
+        f"Steps: {step_count}/{round(max_steps/35, 0)}",
         f"Detections: {detections}"
     ]
 
@@ -255,11 +316,15 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     #obs = env.reset()[0]
     obs = env.reset()
-    print(f'Obs: {obs} (shape {obs.shape}')
+    #print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
     step_count = 0
     done = False
     paused = False
+
+    # Draw static labels once
+    base_env = env.envs[0].env
+    draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
 
     while not done:
         map_half_size = env.envs[0].env.config['gameboard_size']
@@ -310,6 +375,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         reward = rewards[0]
         info = infos[0]
         done = dones[0]
+        if done:
+            print('DONE')
 
         # Log timestep data
         data_logger.log_timestep(
@@ -322,44 +389,35 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             truncated=False,
             info=info
         )
-        # data_logger.log_timestep(
-        #     env=env,
-        #     human_controller=human_controller,
-        #     human_action=human_action,
-        #     agent_action=agent_action,
-        #     reward=reward,
-        #     terminated=terminated,
-        #     truncated=truncated,
-        #     info=info
-        # )
 
         episode_reward += reward
-        #done = terminated or truncated
         step_count += 1
 
         # Render the environment
         env.render()
 
         # Draw additional UI elements
-        #draw_instructions(window, font)
         draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
         # Draw progress bar at bottom of screen
-        progress_bar_y_start = 1000
-        progress_bar_height = 50
-        progress_bar_margin = 10
-        segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
-        segment_height = progress_bar_height - 2 * progress_bar_margin
+        draw_progress_bar(window, font, config_index, total_configs)
 
-        for i in range(total_configs):
-            x = progress_bar_margin + i * segment_width
-            y = progress_bar_y_start + progress_bar_margin
-            color = (0, 255, 0) if i < config_index else (100, 100, 100)
-            pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
+        # progress_bar_y_start = 1000
+        # progress_bar_height = 50
+        # progress_bar_margin = 10
+        # segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
+        # segment_height = progress_bar_height - 2 * progress_bar_margin
+        #
+        # for i in range(total_configs):
+        #     x = progress_bar_margin + i * segment_width
+        #     y = progress_bar_y_start + progress_bar_margin
+        #     color = (0, 255, 0) if i < config_index else (100, 100, 100)
+        #     pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
 
         #draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
         base_env = env.envs[0].env
         draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
+        #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, step_count, base_env.config['max_steps'], first_render=False)
 
         # Update display
         pygame.display.flip()
@@ -432,22 +490,32 @@ def main():
 
     # Create experiment configuration list (agent + level combinations)
     # 7 rounds each with 2 agents = 14 total configurations
-    config_list = []
-    for agent in ['A', 'B']:
-        for level in range(1, 8):  # Levels 1-7
-            config_list.append(f'{agent}{level}')
+    # config_list = []
+    # for agent in ['A', 'B']:
+    #     for level in range(1, 8):  # Levels 1-7
+    #         config_list.append(f'{agent}{level}')
+    #
+    # # Shuffle the configuration list for randomized order
+    # random.shuffle(config_list)
 
-    # Shuffle the configuration list for randomized order
-    random.shuffle(config_list)
-    print(f"Randomized configuration order: {config_list}")
+    levels = list(range(1, 8))
+    random.shuffle(levels)
+    config_list = [f'{agent}{level}' for level in levels for agent in ('A', 'B')]
+
+    practice_level = levels[0]
+    practice_config = [f'C{practice_level}']
+
+    full_config_list = practice_config + config_list
+
+    print(f"Randomized configuration order: {full_config_list}")
 
     # If start_level is specified, start from that index
     if args.start_level > 0:
-        if args.start_level >= len(config_list):
-            print(f"Error: start_level {args.start_level} is >= total configs {len(config_list)}")
+        if args.start_level >= len(full_config_list):
+            print(f"Error: start_level {args.start_level} is >= total configs {len(full_config_list)}")
             return
-        config_list = config_list[args.start_level:]
-        print(f"Starting from level {args.start_level}: {config_list}")
+        full_config_list = full_config_list[args.start_level:]
+        print(f"Starting from level {args.start_level}: {full_config_list}")
 
     # Load configuration
     time_factor = 10 #20
@@ -488,10 +556,11 @@ def main():
             instruction_manager = InstructionSeriesManager(
                 window,
                 clock,
-                #map_image_path="user_study/img/map_image.png",
-                video_path = "user_study/img/game_video.mp4",
+                map_image_path="user_study/img/map_image.png",
                 sensor_image_path="user_study/img/sensor_image.png",
-                hvt_image_path="user_study/img/threat_image.png",
+                hvt_video_path="user_study/img/target_id_video.mp4",
+                detection_video_path="user_study/img/detection_video.mp4",
+                click_video_path="user_study/img/click_control.mp4", # TODO replace
                 human_image_path="user_study/img/human_aircraft.png",
                 teammate_image_path="user_study/img/teammates_image.png"
             )
@@ -505,7 +574,44 @@ def main():
 
         last_agent_appearance = None
 
-        for config_index, current_config in enumerate(config_list):
+        ############ PRACTICE LEVEL ############
+        practice_cfg = full_config_list[0]
+
+        agent_letter = 'A' # TODO use a practice agent
+        level_number = 1
+        agent_appearance = 'brown' # TODO pick a different appearance
+
+        print(f"\nPreparing for practice level (config: {practice_cfg})")
+        print(f"Practice level - Agent: {agent_letter}, Level: {level_number}")
+        config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
+
+        env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
+        env = DummyVecEnv(env_fns)
+        vecnorm_path = vecnorm_paths[agent_letter]
+        print(f'Loaded vecnorm stats from {vecnorm_path}')
+        env = load_vecnormalize_wrapper(vecnorm_path, env)
+
+        # Load the appropriate agent
+        if agent_letter not in current_agents: current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
+        current_agent_name = current_agents[agent_letter]
+
+        human_controller = HumanSubpolicyController(env) # Initialize human controller for this episode
+
+        should_quit, episode_reward, step_count = run_single_episode(
+            env, human_controller, practice_cfg, 0, len(full_config_list),
+            current_agent_name, window, font, clock, tick_rate, data_logger, time_factor)
+        if should_quit: return
+        ########################################
+
+        after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
+        after_practice_result = screen_manager.show_screen(after_practice_screen)
+
+        if after_practice_result["action"] == "exit":
+            print("User exited after practice screen")
+            return
+
+        #for config_index, current_config in enumerate(full_config_list):
+        for config_index, current_config in enumerate(full_config_list[1:]):
             agent_letter = current_config[0]  # 'A' or 'B'
             level_number = int(current_config[1:])  # Level number
             if agent_letter == 'A':
@@ -513,11 +619,13 @@ def main():
                 agent_appearance = 'purple'
                 # else: # Odd levels
                 #     agent_appearance = 'red'
-            else: # Agent B
+            elif agent_letter == 'B': # Agent B
                 # if level_number % 2 == 0: # Even levels
                 #     agent_appearance = 'brown'
                 # else: # Odd levels
                 agent_appearance = 'green'
+            else:
+                raise ValueError(f'Agent letter is {agent_letter}')
 
             print(f"\nPreparing for config: {current_config}")
             print(f"Agent: {agent_letter}, Level: {level_number}")
@@ -526,64 +634,22 @@ def main():
 
             env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
             env = DummyVecEnv(env_fns)
-            #vecnorm_path = f'./user_study/saved_agents/test_agent_{agent_letter}_vecnormalize.pkl'
             vecnorm_path = vecnorm_paths[agent_letter]
             print(f'Loaded vecnorm stats from {vecnorm_path}')
             env = load_vecnormalize_wrapper(vecnorm_path, env)
 
-            print(f"VecNormalize obs_rms mean: {env.obs_rms.mean}")
-            print(f"VecNormalize obs_rms var: {env.obs_rms.var}")
-
-            # # Create base environment with the specific level
-            # base_env = MAISREnvVec(
-            #     config=config,
-            #     clock=clock,
-            #     window=window,
-            #     render_mode='human',
-            #     run_name=f'user_study_subject_{args.subject_id}',
-            #     tag=f'subject_{args.subject_id}_config_{current_config}',
-            #     agent_appearance = agent_appearance,
-            #     running_experiment=True
-            # )
-
-            # Set the specific level for this episode
-            #base_env.config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-
-            # Create wrapped environment with current agent
-            # env = MaisrLocalSearchWrapper(
-            #     base_env,
-            #     local_search_policy=None,#subpolicies['local_search'],
-            #     go_to_highvalue_policy=None,#subpolicies['go_to_threat'],
-            #     change_region_subpolicy=None,#subpolicies['change_region'],
-            #     evade_policy=None,#EvadeDetection(model_path=None),
-            #     teammate_policy=None,
-            #     obs_noise_std=0.0
-            # )
-
             # Load the appropriate agent
             if agent_letter not in current_agents:
-                # current_agents[agent_letter] = PPO.load(agent_models[agent_letter])
                 current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
             current_agent_name = current_agents[agent_letter]
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
 
-            # Run the episode
-            # profiler = cProfile.Profile()
-            # profiler.enable()
-
             should_quit, episode_reward, step_count = run_single_episode(
-                env, human_controller, current_config, config_index, len(config_list),
+                env, human_controller, current_config, config_index, len(full_config_list),
                 current_agent_name, window, font, clock, tick_rate, data_logger, time_factor
             )
-
-            # profiler.disable()
-            # s = io.StringIO()
-            # sortby = 'cumulative'
-            # ps = pstats.Stats(profiler, stream=s).sort_stats(sortby)
-            # ps.print_stats(30)  # Show top 30 most expensive calls
-            # print(s.getvalue())
 
             # Store results
             result = {
@@ -621,18 +687,15 @@ def main():
                     print(f"Survey data: {survey_data}")
 
             # Show the teammate preference survey
-            if config_index > 0 and config_index % 2 == 0:
+            if config_index > 0 and (config_index+1) % 2 == 0:
                 teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
 
                 if teammate_compare_result["action"] == "continue":
                     survey_data = teammate_compare_result["survey_data"]
                     data_logger.log_teammate_survey_data(survey_data)
-                elif teammate_compare_result["action"] == "exit":
-                    # Handle exit
-                    pass
-
-            #
+                elif teammate_compare_result["action"] == "exit": pass
+            else: print(f'Config index = {config_index}, no teammate comparison this round')
             last_agent_appearance = agent_appearance
 
             # Check if user wants to quit
@@ -641,7 +704,7 @@ def main():
                 break
 
             # Brief pause between episodes (unless it's the last one)
-            if config_index < len(config_list) - 1:
+            if config_index < len(full_config_list) - 1:
                 print("Next episode starting in 2 seconds...")
                 pygame.time.wait(100)
 
@@ -649,6 +712,9 @@ def main():
         print("\nExperiment interrupted by user")
 
     finally:
+        final_screen = FinalSummaryScreen(experiment_results, window.get_width(), window.get_height())
+        screen_manager.show_screen(final_screen)
+
         data_logger.save_session_data()
         session_summary = data_logger.get_session_summary()
 

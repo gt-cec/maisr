@@ -173,7 +173,7 @@ class Aircraft(Agent):
             square_size = self.env.AIRCRAFT_WING_LENGTH
             rect = pygame.Rect(0, 0, square_size, square_size)
             rect.center = (screen_x, screen_y)
-            pygame.draw.rect(window, self.color, rect, 1)  # black border
+            pygame.draw.rect(window, self.color, rect)  # black border
         elif self.appearance == 'green':
             # Forward lines from each wingtip
             def draw_forward_line(point):

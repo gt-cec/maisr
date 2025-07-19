@@ -1225,8 +1225,8 @@ if __name__ == "__main__":
         overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
 
     elif version == 'strategy_diverse_tests':
-        note = 'strategy_2' + machine[0].upper()
-        config['num_timesteps'] = 5e6
+        note = 'strategy_3' + machine[0].upper()
+        config['num_timesteps'] = 2.5e6
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1241,7 +1241,7 @@ if __name__ == "__main__":
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.002], # 0.005,
+            "team_spread_bonus_coeff": [0.002, 0.005, 0.01], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.08],
@@ -1250,9 +1250,11 @@ if __name__ == "__main__":
         }
         overfit_tests = [None]
         config['league_type'] = 'strategy_diverse'
-        load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__3000192_steps.zip'
-        vecnorm_load_path = 'trained_models/strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354_/checkpoints/maisr_checkpoint_strategy_1H-monolith_mxstps-1700_seed-21_thrtrwdscl-1.25_entreg-0.08_trs-0.75_0717_2354__vecnormalize_3000192_steps.pkl'
+        load_root = './saved_good_models/strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204_/'
+        load_path = load_root + 'maisr_checkpoint_strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204__vecnormalize_7999392_steps.pkl'
+        vecnorm_load_path = load_root + 'maisr_checkpoint_strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204__7999392_steps.zip'
         config['teammate_active_at_start'] = True
+        config['load_path'] = load_path
 
     elif version == 'index_test':
         note = 'index_1' + machine[0].upper()
@@ -1265,8 +1267,8 @@ if __name__ == "__main__":
         config['num_timesteps'] = 2.5e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
-        load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
-        vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/	maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
+        load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
+        vecnorm_load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 
