@@ -377,7 +377,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             if run_type == 'solo':
                 agent_action = 8
             else:
-                agent_action, _ = agent_model.predict(obs, deterministic=True)
+                agent_action = 8 # TODO replace
+                #agent_action, _ = agent_model.predict(obs, deterministic=True)
                 #raise NotImplementedError
         else:
             agent_action = last_agent_action
@@ -639,35 +640,35 @@ def main():
 
             print(f"\nEpisode {current_config} completed!")
 
-            workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
-            workload_survey_result = screen_manager.show_screen(workload_survey_screen)
+            #workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+            #workload_survey_result = screen_manager.show_screen(workload_survey_screen)
             #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
 
-            if workload_survey_result["action"] == "exit":
-                print("Experiment terminated by user")
-                break
-            elif workload_survey_result["action"] == "continue":
-                # Log the survey data
-                survey_data = workload_survey_result.get("survey_data", {})
-                print(f"Survey responses for {current_config}: {survey_data['responses']}")
-
-                # Add survey data to your data logger
-                if hasattr(data_logger, 'log_survey_data'):
-                    data_logger.log_survey_data(survey_data)
-                else:
-                    # Fallback: save to file or print
-                    print(f"Survey data: {survey_data}")
+            # if workload_survey_result["action"] == "exit":
+            #     print("Experiment terminated by user")
+            #     break
+            # elif workload_survey_result["action"] == "continue":
+            #     # Log the survey data
+            #     survey_data = workload_survey_result.get("survey_data", {})
+            #     print(f"Survey responses for {current_config}: {survey_data['responses']}")
+            #
+            #     # Add survey data to your data logger
+            #     if hasattr(data_logger, 'log_survey_data'):
+            #         data_logger.log_survey_data(survey_data)
+            #     else:
+            #         # Fallback: save to file or print
+            #         print(f"Survey data: {survey_data}")
 
             # Show the teammate preference survey
-            if config_index > 0 and (config_index+1) % 2 == 0:
-                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
-                teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
-
-                if teammate_compare_result["action"] == "continue":
-                    survey_data = teammate_compare_result["survey_data"]
-                    data_logger.log_teammate_survey_data(survey_data)
-                elif teammate_compare_result["action"] == "exit": pass
-            else: print(f'Config index = {config_index}, no teammate comparison this round')
+            # if config_index > 0 and (config_index+1) % 2 == 0:
+            #     teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+            #     teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
+            #
+            #     if teammate_compare_result["action"] == "continue":
+            #         survey_data = teammate_compare_result["survey_data"]
+            #         data_logger.log_teammate_survey_data(survey_data)
+            #     elif teammate_compare_result["action"] == "exit": pass
+            # else: print(f'Config index = {config_index}, no teammate comparison this round')
             last_agent_appearance = agent_appearance
 
             # Check if user wants to quit
@@ -684,8 +685,8 @@ def main():
         print("\nExperiment interrupted by user")
 
     finally:
-        final_screen = FinalSummaryScreen(experiment_results, window.get_width(), window.get_height())
-        screen_manager.show_screen(final_screen)
+        #final_screen = FinalSummaryScreen(experiment_results, window.get_width(), window.get_height())
+        #screen_manager.show_screen(final_screen)
 
         data_logger.save_session_data()
         session_summary = data_logger.get_session_summary()
