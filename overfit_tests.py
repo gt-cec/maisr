@@ -792,8 +792,8 @@ if __name__ == "__main__":
     num_episodes = 50
     tick_rate = 60
     use_normalize = True
-    render = True
-    time_multiplier = 10
+    render = False
+    time_multiplier = 1 #10
 
 
     localsearch_model_path = None
@@ -804,12 +804,12 @@ if __name__ == "__main__":
     behavior_types = ['average','aligned', 'counter']
 
     model_and_stats_paths = {
-        'low_risk': './R8H_2/low_risk',
-        'high_risk': './R8H_2/high_risk',
-        'noisy_actions': './R8H_2/noisy_actions',
-        'stable_actions': './R8H_2/stable_actions',
-        'no_coord': './R8H_2/no_coord',
-        'yes_coord': './R8H_2/yes_coord',
+        'low_risk': './saved_good_models/R8H_2/low_risk',
+        'high_risk': './saved_good_models/R8H_2/high_risk',
+        'noisy_actions': './saved_good_models/R8H_2/noisy_actions',
+        'stable_actions': './saved_good_models/R8H_2/stable_actions',
+        'no_coord': './saved_good_models/R8H_2/no_coord',
+        'yes_coord': './saved_good_models/R8H_2/yes_coord',
     }
 
     config = load_env_config(config_filename)
@@ -820,6 +820,9 @@ if __name__ == "__main__":
     config['tick_rate'] = tick_rate
     config['game_speed'] = config['game_speed'] / time_multiplier
     config['max_steps'] = config['max_steps'] * time_multiplier
+    config['num_observed_targets'] = 5
+    config['num_observed_threats'] = 1
+
 
     # Initialize pygame
     if render:

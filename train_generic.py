@@ -1250,9 +1250,9 @@ if __name__ == "__main__":
         }
         overfit_tests = [None]
         config['league_type'] = 'strategy_diverse'
-        load_root = './saved_good_models/strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204_/'
-        load_path = load_root + 'maisr_checkpoint_strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204__vecnormalize_7999392_steps.pkl'
-        vecnorm_load_path = load_root + 'maisr_checkpoint_strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204__7999392_steps.zip'
+        #load_root = './saved_good_models/strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204_/'
+        vecnorm_load_path = './saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
+        load_path = './saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
         config['teammate_active_at_start'] = True
         config['load_path'] = load_path
 
@@ -1341,6 +1341,6 @@ if __name__ == "__main__":
                 save_model = True,
                 save_checkpoints = True,
                 overfit_test = overfit_test,
-                save_dir=f"./trained_models/{train_type}/overfit_tests/" if overfit_test is not None else f'./trained_models/{train_type}',
+                save_dir=f"./trained_models/overfit_tests/" if overfit_test is not None else f'./trained_models/',
             )
             print(f"✓ Completed training run")
