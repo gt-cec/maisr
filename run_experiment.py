@@ -15,13 +15,12 @@ from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalS
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
+import user_study.instructional_screens
 import webbrowser
-
-# import cProfile
-# import pstats
-# import io
-
+import socketio
 from stable_baselines3.common.vec_env import VecNormalize
+
+sio = socketio.Client()
 
 def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
@@ -421,6 +420,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
+        # send an image render to the server
+        # sio.emit('image', {'image': env.envs[0].env.render(mode='rgb_array')})
         #pygame.time.wait(50)
         clock.tick(tick_rate)
 
@@ -459,16 +460,20 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main():
+def main(subject_id=None, start_level=None, skip_instructions=None):
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
-    parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
-    parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
-    parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
-    args = parser.parse_args()
+    if subject_id is None or start_level is None or skip_instructions is None:
+        parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
+        parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
+        parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
+        parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
+        args = parser.parse_args()
+        subject_id = args.subject_id
+        start_level = args.start_level
+        skip_instructions = args.skip
 
-    print(f"\n \n Subject ID: {args.subject_id}")
-    print(f"Starting from level: {args.start_level}")
+        print(f"\n \n Subject ID: {subject_id}")
+        print(f"Starting from level: {start_level}")
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
@@ -510,12 +515,12 @@ def main():
     print(f"Randomized configuration order: {full_config_list}")
 
     # If start_level is specified, start from that index
-    if args.start_level > 0:
-        if args.start_level >= len(full_config_list):
-            print(f"Error: start_level {args.start_level} is >= total configs {len(full_config_list)}")
+    if start_level > 0:
+        if start_level >= len(full_config_list):
+            print(f"Error: start_level {start_level} is >= total configs {len(full_config_list)}")
             return
-        full_config_list = full_config_list[args.start_level:]
-        print(f"Starting from level {args.start_level}: {full_config_list}")
+        full_config_list = full_config_list[start_level:]
+        print(f"Starting from level {start_level}: {full_config_list}")
 
     # Load configuration
     time_factor = 10 #20
@@ -528,7 +533,11 @@ def main():
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
-    ctypes.windll.user32.SetProcessDPIAware()
+    # if using windows, set DPI awareness to avoid scaling issues
+    if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
+        ctypes.windll.user32.SetProcessDPIAware()
+    else:
+        print("Not running on Windows, skipping DPI awareness setting")
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -536,7 +545,7 @@ def main():
 
     window_width, window_height = config['window_size'][0], config['window_size'][1]
     window = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption(f"MAISR User Study - Subject {args.subject_id}")
+    pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
     # Create font for instructions
     #font = pygame.font.SysFont(None, 24)
@@ -546,12 +555,12 @@ def main():
     experiment_results = []
     current_agents = {}
 
-    data_logger = ExperimentDataLogger(args.subject_id)
+    data_logger = ExperimentDataLogger(subject_id)
     screen_manager = ScreenManager(window, clock)
 
     # Main experiment loop
     try:
-        if not args.skip:
+        if not skip_instructions:
             print("Starting instruction screens...")
             instruction_manager = InstructionSeriesManager(
                 window,
@@ -562,7 +571,8 @@ def main():
                 detection_video_path="user_study/img/detection_video.mp4",
                 click_video_path="user_study/img/click_control.mp4", # TODO replace
                 human_image_path="user_study/img/human_aircraft.png",
-                teammate_image_path="user_study/img/teammates_image.png"
+                teammate_image_path="user_study/img/teammates_image.png",
+                sio=sio
             )
             instruction_result = instruction_manager.run_instruction_series()
 
@@ -658,7 +668,7 @@ def main():
                 'level': level_number,
                 'reward': episode_reward,
                 'steps': step_count,
-                'config_index': config_index + args.start_level
+                'config_index': config_index + start_level
             }
             experiment_results.append(result)
 
@@ -722,7 +732,7 @@ def main():
         print(f"\n{'=' * 60}")
         print("EXPERIMENT SUMMARY")
         print(f"{'=' * 60}")
-        print(f"Subject ID: {args.subject_id}")
+        print(f"Subject ID: {subject_id}")
         print(f"Completed configurations: {len(experiment_results)}")
 
         if experiment_results:
@@ -755,9 +765,29 @@ def main():
                     print(f"    Success rate: {performance['success_rate']:.2%}")
                     print(f"    Average targets identified: {performance['average_targets_identified']:.1f}")
 
-        print(f"\nData saved to: {data_logger.output_dir}/subject_{args.subject_id}/")
+        print(f"\nData saved to: {data_logger.output_dir}/subject_{subject_id}/")
         pygame.quit()
 
+# socket connections
+@sio.event
+def connect():
+    print('Connection established')
+    sio.emit('click', {'data': 'Hello from Python client!'}) # Example: emitting an event
+
+@sio.event
+def disconnect():
+    print('Disconnected from server')
+
+@sio.event
+def my_response(data): # Example: handling a custom event from the server
+    print('Server response:', data)
 
 if __name__ == "__main__":
-    main()
+    # connect to the server
+    sio.connect('http://localhost:5001') # Replace with your server URL
+
+    # Run the main experiment function
+    main(subject_id=subject_id, start_level=1, skip_instructions=False)
+    import time
+    time.sleep(1)
+    sio.disconnect() # Ensure disconnection on exit

@@ -6,6 +6,7 @@ import sys
 from typing import Dict, List, Optional, Callable
 from enum import Enum
 import cv2
+import requests
 
 class ScreenType(Enum):
     """Types of instructional screens"""
@@ -14,11 +15,10 @@ class ScreenType(Enum):
     BETWEEN_EPISODES = "between_episodes"
     FINAL_SUMMARY = "final_summary"
 
-
 class InstructionalScreen:
     """Base class for instructional screens"""
 
-    def __init__(self, window_width: int = 1000, window_height: int = 1100):
+    def __init__(self, window_width: int = 1000, window_height: int = 1100, sio = None):
 
         font_path = 'AcPlus_IBM_VGA_8x16.ttf'
         #font_size = 16
@@ -38,6 +38,8 @@ class InstructionalScreen:
         self.cursor_visible = True
         self.cursor_timer = 0
         self.cursor_blink_rate = 500  # milliseconds
+
+        self.sio = sio
 
     def render(self, window: pygame.Surface) -> None:
         """Render the screen content"""
@@ -1456,10 +1458,11 @@ class InstructionSeriesManager:
                  map_image_path: str = None, sensor_image_path: str = None,
                  hvt_video_path: str = None, detection_video_path: str = None,
                  click_video_path: str = None,
-                 human_image_path: str = None, teammate_image_path: str = None):
+                 human_image_path: str = None, teammate_image_path: str = None, sio = None):
         self.window = window
         self.clock = clock
         self.screen_manager = ScreenManager(window, clock)
+        self.sio = sio
 
         self.screens = [
             Instruct1Screen(1, 10, window.get_width(), window.get_height()),
@@ -1505,6 +1508,12 @@ class InstructionSeriesManager:
                 # Render
                 current_screen.render(self.screen_manager.window)
                 pygame.display.flip()
+                print(">>>", self.sio.connected)
+                requests.post('http://localhost:5001/screen_update', json={
+                    'screen_index': self.current_screen_index,
+                    'image': str(pygame.image.tostring(self.screen_manager.window, 'RGB'))
+                })
+                # self.sio.emit('image', {'image': pygame.image.tostring(self.screen_manager.window, 'RGB')})
 
             # Process the result
             if result["action"] == "next":

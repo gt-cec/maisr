@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GT MAISR Study</title>
+    </head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #000000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+    </style>
+    <body>
+        <canvas id="canvas" width="600" height="600" style="border:1px solid #FFFFFF;"></canvas>
+    </body>
+
+    <script>
+        // connect to the WebSocket server
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        // handle incoming messages
+        var socket = io();
+
+        socket.on('image', function(data) {
+            console.log('Received image data:', data);
+            const img = new Image();
+            img.onload = function() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            // Convert the base64 string to a Blob
+            const byteString = atob(data.image);
+            const mimeString = 'image/png'; // Assuming PNG format
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: mimeString });
+            img.src = URL.createObjectURL(blob);    
+        });
+    
+        // on canvas click, send a message to the server
+        canvas.addEventListener('click', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            socket.emit('click', { x: x, y: y });
+        });
+    </script>
+</html>
