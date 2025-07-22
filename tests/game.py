@@ -39,7 +39,7 @@ while running:
     draw_board()
     pygame.display.flip()
     send_frame()
-    clock.tick(30)  # 30 FPS target
+    clock.tick(1)  # 30 FPS target
 
 sio.disconnect()
 pygame.quit()

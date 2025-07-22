@@ -1,59 +1,56 @@
 <!DOCTYPE html>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
-<html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>GT MAISR Study</title>
+        <title>CEC MAISR</title>
+        <style>
+            body { display: flex; justify-content: center; align-items: center;  background: #111; text-align: center; color: white; }
+            canvas { border: 1px solid #555; margin-top: 20px; }
+        </style>
     </head>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #000000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-    </style>
     <body>
-        <canvas id="canvas" width="600" height="600" style="border:1px solid #FFFFFF;"></canvas>
+        <canvas id="board" width="1000px" height="1000px"></canvas>
+        <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+        <script src="/pako.min.js"></script>
+        <script>
+            const socket = io();
+            const canvas = document.getElementById('board');
+            const ctx = canvas.getContext('2d');
+
+            socket.on('frame', function(data) {
+                const dv = new DataView(data);
+                const width = dv.getUint32(0);
+                const height = dv.getUint32(4);
+                const compressed = new Uint8Array(data.slice(8));
+                const raw = pako.inflate(compressed);
+
+                const imgData = ctx.createImageData(width, height);
+                console.log('Image data length:', imgData.data.length, 'Raw length:', raw.length);
+                for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
+                    imgData.data[j] = raw[i];
+                    imgData.data[j+1] = raw[i+1];
+                    imgData.data[j+2] = raw[i+2];
+                    imgData.data[j+3] = 255;
+                }
+                ctx.putImageData(imgData, 0, 0);
+            });
+
+            // onclick event to send a message to the server
+            canvas.addEventListener('click', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const message = { type: 'click', x: x, y: y };
+                socket.emit('click', message);
+                console.log('Sent message:', message);
+            });
+
+            // capture keyboard events
+            document.addEventListener('keydown', function(event) {
+                const key = event.key;
+                const message = { key: key };
+                socket.emit('keydown', message);
+                console.log('Sent keydown message:', message);
+            });
+        </script>
     </body>
-
-    <script>
-        // connect to the WebSocket server
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        // handle incoming messages
-        var socket = io();
-
-        socket.on('image', function(data) {
-            console.log('Received image data:', data);
-            const img = new Image();
-            img.onload = function() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            };
-            // Convert the base64 string to a Blob
-            const byteString = atob(data.image);
-            const mimeString = 'image/png'; // Assuming PNG format
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            const blob = new Blob([ab], { type: mimeString });
-            img.src = URL.createObjectURL(blob);    
-        });
-    
-        // on canvas click, send a message to the server
-        canvas.addEventListener('click', function(event) {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            socket.emit('click', { x: x, y: y });
-        });
-    </script>
-</html>
+    </html>

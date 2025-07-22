@@ -306,6 +306,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
 
+    sockets.human_controller = human_controller
+
     # Parse agent and level from config
     agent_letter = config[0]
     level_number = int(config[1:])
@@ -421,7 +423,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        if step_count % 100 == 0:
+        if step_count % 2 == 0:
             sockets.send_frame(window)
         clock.tick(tick_rate)
 
@@ -655,6 +657,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
+            sockets.human_controller = human_controller
 
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(full_config_list),

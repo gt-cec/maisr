@@ -9,6 +9,8 @@ import cv2
 import requests
 import sockets
 
+FPS = 5
+
 class ScreenType(Enum):
     """Types of instructional screens"""
     WELCOME = "welcome"
@@ -1484,16 +1486,19 @@ class InstructionSeriesManager:
         """Run through all instruction screens with proper event handling"""
         while 0 <= self.current_screen_index < len(self.screens):
             current_screen = self.screens[self.current_screen_index]
+            sockets.instruction_controller = current_screen
+            sockets.pyg = pygame.event
 
             # Run the screen manually to ensure proper event handling
             running = True
             result = {"action": "none"}
 
             while running:
-                dt = self.screen_manager.clock.tick(60)
+                dt = self.screen_manager.clock.tick(FPS)
 
                 # Handle events
                 for event in pygame.event.get():
+                    print(f"Event: {event.type}", event.dict)
                     if event.type == pygame.QUIT:
                         result = {"action": "exit"}
                         running = False
@@ -1556,10 +1561,11 @@ class ScreenManager:
         result = {"action": "none", "text_input": ""}
 
         while running:
-            dt = self.clock.tick(60)
+            dt = self.clock.tick(FPS)
 
             # Handle events
             for event in pygame.event.get():
+                print(f"Event: {event.type}", event.dict)
                 if event.type == pygame.QUIT:
                     result = {"action": "exit"}
                     running = False
