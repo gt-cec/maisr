@@ -24,7 +24,6 @@
                 const raw = pako.inflate(compressed);
 
                 const imgData = ctx.createImageData(width, height);
-                console.log('Image data length:', imgData.data.length, 'Raw length:', raw.length);
                 for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
                     imgData.data[j] = raw[i];
                     imgData.data[j+1] = raw[i+1];
@@ -41,7 +40,7 @@
                 const y = event.clientY - rect.top;
                 const message = { type: 'click', x: x, y: y };
                 socket.emit('click', message);
-                console.log('Sent message:', message);
+                // console.log('Sent click message:', message);
             });
 
             // capture keyboard events
@@ -49,7 +48,7 @@
                 const key = event.key;
                 const message = { key: key };
                 socket.emit('keydown', message);
-                console.log('Sent keydown message:', message);
+                // console.log('Sent keydown message:', message);
             });
         </script>
     </body>

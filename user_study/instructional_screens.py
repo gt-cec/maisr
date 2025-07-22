@@ -9,7 +9,7 @@ import cv2
 import requests
 import sockets
 
-FPS = 5
+FPS = 6
 
 class ScreenType(Enum):
     """Types of instructional screens"""

@@ -423,7 +423,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        if step_count % 2 == 0:
+        if step_count % 1 == 0:
             sockets.send_frame(window)
         clock.tick(tick_rate)
 
