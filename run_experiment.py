@@ -15,12 +15,13 @@ from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalS
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
-import user_study.instructional_screens
+from PIL import Image
+from io import BytesIO
+import sockets
 import webbrowser
-import socketio
 from stable_baselines3.common.vec_env import VecNormalize
 
-sio = socketio.Client()
+window = None
 
 def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
@@ -420,9 +421,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        # send an image render to the server
-        # sio.emit('image', {'image': env.envs[0].env.render(mode='rgb_array')})
-        #pygame.time.wait(50)
+        if step_count % 100 == 0:
+            sockets.send_frame(window)
         clock.tick(tick_rate)
 
         # Print periodic status
@@ -544,6 +544,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
 
 
     window_width, window_height = config['window_size'][0], config['window_size'][1]
+    global window
     window = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
@@ -572,7 +573,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
                 click_video_path="user_study/img/click_control.mp4", # TODO replace
                 human_image_path="user_study/img/human_aircraft.png",
                 teammate_image_path="user_study/img/teammates_image.png",
-                sio=sio
             )
             instruction_result = instruction_manager.run_instruction_series()
 
@@ -768,26 +768,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         print(f"\nData saved to: {data_logger.output_dir}/subject_{subject_id}/")
         pygame.quit()
 
-# socket connections
-@sio.event
-def connect():
-    print('Connection established')
-    sio.emit('click', {'data': 'Hello from Python client!'}) # Example: emitting an event
-
-@sio.event
-def disconnect():
-    print('Disconnected from server')
-
-@sio.event
-def my_response(data): # Example: handling a custom event from the server
-    print('Server response:', data)
-
 if __name__ == "__main__":
-    # connect to the server
-    sio.connect('http://localhost:5001') # Replace with your server URL
-
     # Run the main experiment function
     main(subject_id=subject_id, start_level=1, skip_instructions=False)
-    import time
-    time.sleep(1)
-    sio.disconnect() # Ensure disconnection on exit

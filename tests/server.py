@@ -51,10 +51,9 @@ def index():
 def serve_pako():
     return send_from_directory('.', 'pako.min.js')
 
-# @socketio.on('frame')
-# def handle_frame(data):
-#     return
-    # emit('frame', data, broadcast=True, binary=True)
+@socketio.on('frame')
+def handle_frame(data):
+    emit('frame', data, broadcast=True, binary=True)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5001)

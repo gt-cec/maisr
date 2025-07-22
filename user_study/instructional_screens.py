@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Callable
 from enum import Enum
 import cv2
 import requests
+import sockets
 
 class ScreenType(Enum):
     """Types of instructional screens"""
@@ -1508,12 +1509,7 @@ class InstructionSeriesManager:
                 # Render
                 current_screen.render(self.screen_manager.window)
                 pygame.display.flip()
-                print(">>>", self.sio.connected)
-                requests.post('http://localhost:5001/screen_update', json={
-                    'screen_index': self.current_screen_index,
-                    'image': str(pygame.image.tostring(self.screen_manager.window, 'RGB'))
-                })
-                # self.sio.emit('image', {'image': pygame.image.tostring(self.screen_manager.window, 'RGB')})
+                sockets.send_frame(self.window)
 
             # Process the result
             if result["action"] == "next":
