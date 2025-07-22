@@ -35,7 +35,13 @@ def send_frame(window):
     raw = pygame.image.tostring(window, 'RGB')
     compressed = zlib.compress(raw)
     header = struct.pack('>II', window.get_width(), window.get_height())  # width, height
-    sio.emit('frame', header + compressed)
+    try:
+        sio.emit('frame', header + compressed)
+    except socketio.exceptions.BadNamespaceError as e:
+        print(f"Error sending frame, reconnecting")
+        # Handle reconnection logic if needed
+        sio.connect("http://localhost:5001")
+
 
 # catch the click_response event
 @sio.on('click_response')
