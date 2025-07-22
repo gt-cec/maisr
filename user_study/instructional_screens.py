@@ -1498,7 +1498,6 @@ class InstructionSeriesManager:
 
                 # Handle events
                 for event in pygame.event.get():
-                    print(f"Event: {event.type}", event.dict)
                     if event.type == pygame.QUIT:
                         result = {"action": "exit"}
                         running = False
@@ -1565,7 +1564,6 @@ class ScreenManager:
 
             # Handle events
             for event in pygame.event.get():
-                print(f"Event: {event.type}", event.dict)
                 if event.type == pygame.QUIT:
                     result = {"action": "exit"}
                     running = False
