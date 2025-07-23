@@ -149,7 +149,7 @@ class ExperimentDataLogger:
         self.cumulative_reward += reward
 
         # Extract human agent data (agent 0)
-        human_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[0]]
+        human_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]]
         human_position = (float(human_agent.x), float(human_agent.y))
 
         # Get human observation
@@ -160,7 +160,7 @@ class ExperimentDataLogger:
             human_obs_list = list(human_obs)
 
         # Extract RL agent data (agent 1)
-        agent_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]]
+        agent_agent = env.envs[0].env.agents[env.envs[0].env.aircraft_ids[0]]
         agent_position = (float(agent_agent.x), float(agent_agent.y))
 
         # Get RL agent observation

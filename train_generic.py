@@ -1234,8 +1234,8 @@ if __name__ == "__main__":
         vecnorm_load_path = None
 
     elif version == 'strategy':
-        note = 'strategy_3' + machine[0].upper()
-        config['num_timesteps'] = 2.5e6
+        note = 'strat4' + machine[0].upper()
+        config['num_timesteps'] = 4.5e6
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1250,19 +1250,20 @@ if __name__ == "__main__":
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.002, 0.005, 0.01], # 0.005,
+            "team_spread_bonus_coeff": [0.002], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.08],
             "teammate_reward_scale": [0.75],
             # "obs_noise": [0.01],
         }
-        overfit_tests = [None]
+        overfit_test = None
         config['league_type'] = 'strategy_diverse'
-        #load_root = './saved_good_models/strategy_2H-monolith_mxstps-1500_seed-21_thrtrwdscl-1.25_spreadbns-0.002_entreg-0.08_trs-0.75_0718_1204_/'
-        vecnorm_load_path = './saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
-        load_path = './saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
-        config['teammate_active_at_start'] = True
+        config['seed'] = int(args.seed)
+        config['teammate_active_at_start'] = False
+
+        vecnorm_load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
+        load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
         config['load_path'] = load_path
 
     elif version == 'index_test':

@@ -46,6 +46,9 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_ty
             running_experiment=True
         )
 
+        if run_type == 'solo':
+            base_env.agents[base_env.aircraft_ids[0]].is_visible = False
+
         if run_type == 'dual':
             teammate_manager = TeammateManager(
                 league_type="strategy_diverse",
@@ -336,7 +339,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     # Draw static labels once
     base_env = env.envs[0].env
-    draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
+    #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
 
     while not done:
         map_half_size = env.envs[0].env.config['gameboard_size']
@@ -414,7 +417,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         env.render()
 
         # Draw additional UI elements
-        draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
+        #draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
         # Draw progress bar at bottom of screen
         draw_progress_bar(window, font, config_index, total_configs)
@@ -433,7 +436,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         #draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
         base_env = env.envs[0].env
-        draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
+        #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
         #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, step_count, base_env.config['max_steps'], first_render=False)
 
         # Update display
@@ -606,9 +609,10 @@ def main():
             print(f"Agent: {agent_letter}, Level: {level_number}")
 
             config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-            if agent_letter == 'A': # TODO implement heuristic agent
-                run_type = 'solo'
-            else: run_type = 'dual'
+            run_type = 'solo'
+            # if agent_letter == 'A': # TODO implement heuristic agent
+            #     run_type = 'solo'
+            # else: run_type = 'dual'
 
             env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_type) for _ in range(1)]
             env = DummyVecEnv(env_fns)

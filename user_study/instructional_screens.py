@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Callable
 from enum import Enum
 import cv2
 import requests
-import sockets
+#import sockets
 
 FPS = 6
 
@@ -1486,8 +1486,10 @@ class InstructionSeriesManager:
         """Run through all instruction screens with proper event handling"""
         while 0 <= self.current_screen_index < len(self.screens):
             current_screen = self.screens[self.current_screen_index]
-            sockets.instruction_controller = current_screen
-            sockets.pyg = pygame.event
+            if self.sio is not None:
+                import sockets
+                sockets.instruction_controller = current_screen
+                sockets.pyg = pygame.event
 
             # Run the screen manually to ensure proper event handling
             running = True
@@ -1513,7 +1515,8 @@ class InstructionSeriesManager:
                 # Render
                 current_screen.render(self.screen_manager.window)
                 pygame.display.flip()
-                sockets.send_frame(self.window)
+                if self.sio is not None:
+                    sockets.send_frame(self.window)
 
             # Process the result
             if result["action"] == "next":
