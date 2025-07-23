@@ -29,17 +29,17 @@ from utility.data_logging import load_env_config
 #multiprocessing.set_start_method("fork", force=True)
 
 
-def get_output_paths(run_name):
-    base = f"outputs/{run_name}"
-    return {
-        "base": base,
-        "checkpoints": os.path.join(base, "checkpoints"),
-        "model": os.path.join(base, "model"),
-        "metadata": os.path.join(base, "metadata"),
-        "plots": os.path.join(base, "plots"),
-        "tensorboard": os.path.join(base, "logs/tensorboard"),
-        "vecmonitor": os.path.join(base, "logs/vecmonitor"),
-    }
+# def get_output_paths(run_name):
+#     base = f"outputs/{run_name}"
+#     return {
+#         "base": base,
+#         "checkpoints": os.path.join(base, "checkpoints"),
+#         "model": os.path.join(base, "model"),
+#         "metadata": os.path.join(base, "metadata"),
+#         "plots": os.path.join(base, "plots"),
+#         "tensorboard": os.path.join(base, "logs/tensorboard"),
+#         "vecmonitor": os.path.join(base, "logs/vecmonitor"),
+#     }
 
 
 def generate_run_name(config):
@@ -903,7 +903,7 @@ def train_generic(
     #if vecnorm_load_path is None and load_path is not None:
         #raise ValueError('Provided model path without vecnorm stats')
 
-    paths = get_output_paths(run_name)
+    #paths = get_output_paths(run_name)
 
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
@@ -917,14 +917,14 @@ def train_generic(
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-    # os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
-    # #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
-    # os.makedirs(log_dir, exist_ok=True)
-    # os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
-    # os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
+    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
+    #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
+    os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
 
-    for path in paths.values():
-        os.makedirs(path, exist_ok=True)
+    # for path in paths.values():
+    #     os.makedirs(path, exist_ok=True)
 
     init_successful = False
     while not init_successful:
@@ -1019,8 +1019,8 @@ def train_generic(
         env = DummyVecEnv(env_fns)
 
     # SB3 wrappers for main env
-    #env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
-    env = VecMonitor(env, filename=os.path.join(paths["vecmonitor"], 'vecmonitor'))
+    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    #env = VecMonitor(env, filename=os.path.join(paths["vecmonitor"], 'vecmonitor'))
 
     if use_normalize:
         if vecnorm_load_path is not None:
@@ -1073,8 +1073,8 @@ def train_generic(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        #save_path=f"trained_models/{run_name}/checkpoints",
-        save_path=paths["checkpoints"],
+        save_path=f"trained_models/{run_name}/checkpoints",
+        #save_path=paths["checkpoints"],
         name_prefix=f"checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -1116,8 +1116,8 @@ def train_generic(
             env,
             policy_kwargs=policy_kwargs,
             verbose=2,
-            #tensorboard_log=f"logs/tb_runs/{run.id}",
-            tensorboard_log=paths["tensorboard"],
+            tensorboard_log=f"logs/tb_runs/{run.id}",
+            #tensorboard_log=paths["tensorboard"],
             batch_size=env_config['batch_size'],
             n_steps=env_config['ppo_update_steps'],
             learning_rate=env_config['lr'],
@@ -1182,12 +1182,12 @@ def train_generic(
     # Save the final model
     if save_model:
         try:
-            #np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-            #env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
-            #final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
-            np.save(os.path.join(paths["metadata"], "norm_stats.npy"), stats)
-            env.save(os.path.join(paths["model"], "vecnormalize.pkl"))
-            final_model_path = os.path.join(paths["model"], "final_model.zip")
+            np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
+            env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
+            final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
+            # np.save(os.path.join(paths["metadata"], "norm_stats.npy"), stats)
+            # env.save(os.path.join(paths["model"], "vecnormalize.pkl"))
+            # final_model_path = os.path.join(paths["model"], "final_model.zip")
 
             model.save(final_model_path)
             print(f"Training completed! Final model saved to {final_model_path}")
@@ -1327,8 +1327,8 @@ if __name__ == "__main__":
             5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
         }
 
-        load_path = load_paths[args.seed]
-        vecnorm_load_path = vecnorm_load_paths[args.seed]
+        load_path = None#load_paths[args.seed]
+        vecnorm_load_path = None#vecnorm_load_paths[args.seed]
 
 
     param_shorthand = {
