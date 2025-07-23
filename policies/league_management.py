@@ -95,8 +95,7 @@ class TeammateManager:
             'strategy_diverse': ["greedy", "clusters"]
         }
 
-        print(f"\nTeammateManager initialized with league_type: {league_type}, balance_method: {balance_method}")
-        print(f'TeammateManager using selfplay_checkpoint_dir: {selfplay_checkpoint_dir}')
+        print(f"\nTeammateManager initialized: \n        league_type: {league_type}\n        balance_method: {balance_method}\n        selfplay_checkpoint_dir: {selfplay_checkpoint_dir}")
 
     def select_random_teammate(self):
         """Select a teammate based on league type and balance method configuration"""

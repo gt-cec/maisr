@@ -904,8 +904,9 @@ def train_generic(
         #raise ValueError('Provided model path without vecnorm stats')
 
     #paths = get_output_paths(run_name)
+    print('[train_generic] Initializing...')
 
-    print(f'Setting machine_name to {machine_name}. Using project {project_name}')
+    print(f'        Setting machine_name = {machine_name} \n WandB project = {project_name}')
 
     if render:
         pygame.display.init()
@@ -941,6 +942,7 @@ def train_generic(
             print('WandB init failed, ret')
             init_successful = False
         if init_successful:
+            print(f'        WandB init successful')
             break
 
     run.log_code(".")
@@ -955,12 +957,12 @@ def train_generic(
             pretrained_teammate_dir=f'trained_models/pretrained_teammates',
             overfit_test=overfit_test
         )
-        print('Instantiated teammate manager')
+        print('        Instantiated teammate manager')
     else:
         teammate_manager = None
-        print('NOT USING a teammate manager')
+        print('        Not using a teammate manager')
 
-    print(f"Training with {n_envs} environments in parallel")
+    print(f"        Training with {n_envs} environments in parallel")
 
     def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
@@ -1068,7 +1070,7 @@ def train_generic(
         eval_env.obs_rms = env.obs_rms
         eval_env.ret_rms = env.ret_rms
 
-    print('Envs created')
+    print('        Envs created')
 
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
@@ -1099,7 +1101,7 @@ def train_generic(
     callbacks = [wandb_callback, enhanced_wandb_callback]
     if save_checkpoints:
         callbacks.append(checkpoint_callback)
-    print('Callbacks created')
+    print('        Callbacks created')
 
     ################################################# Setup model #################################################
 
@@ -1130,7 +1132,7 @@ def train_generic(
     else:
         raise ValueError('Unsupported algo')
 
-    print('Model instantiated')
+    print('        Model instantiated')
     print(model.policy)
 
     if teammate_manager is not None:
@@ -1138,21 +1140,21 @@ def train_generic(
         if use_normalize and hasattr(env, 'obs_rms'):
             teammate_manager.set_normalization_stats(env.obs_rms, env.ret_rms)
 
-    print(f'Initial entropy coefficient: {model.ent_coef}')
+    #print(f'Initial entropy coefficient: {model.ent_coef}')
     run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
 
     ################################################# Load checkpoint ##################################################
     if load_path:
-        print(f'LOADING FROM {load_path}')
+        print(f'        Checkpoint: Loading from {load_path}')
         #model = model.__class__.load(load_path, env=env)
         model = PPO.load(load_path, env=env)
-    else: print('No checkpoint provided, training new model')
-
-    print('##################################### Beginning agent training... #######################################\n')
+    else: print('        Checkpoint: None provided, training new model')
 
     # Log initial difficulty
     run.log({"curriculum/difficulty_level": 0}, step=0)
-    print(f'Starting with difficulty level {0}')
+    #print(f'Starting with difficulty level {0}')
+
+    print('## Running model.learn... ##\n')
 
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
