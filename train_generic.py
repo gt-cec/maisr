@@ -1144,8 +1144,16 @@ def train_generic(
     run.log({"curriculum/difficulty_level": 0}, step=0)
     #print(f'Starting with difficulty level {0}')
 
-    print('\n\n###### Running model.learn... ######\n')
 
+    # === Save initial checkpoint immediately ===
+    if save_checkpoints:
+        initial_checkpoint_path = f"outputs/{run_name}/checkpoints/{run_name}_checkpoint_0steps"
+        model.save(initial_checkpoint_path + "_model.zip")
+        if isinstance(env, VecNormalize):
+            env.save(initial_checkpoint_path + "_vecnormalize.pkl")
+        print(f"[Startup] Initial checkpoint saved to {initial_checkpoint_path}_model.zip")
+
+    print('\n\n###### Running model.learn... ######\n')
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
         callback=callbacks,
