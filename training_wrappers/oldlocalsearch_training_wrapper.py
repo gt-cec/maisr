@@ -70,11 +70,16 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.teammate_cached_direction = None
         self.teammate_decision_interval = 5  # Change direction only every N steps
 
-        self.periodic_pause_interval = 7  # how often to pause
-        self.periodic_pause_duration = 2  # how long to pause
+        self.periodic_pause_interval = 3  # how often to pause
+        self.periodic_pause_duration = 5  # how long to pause
         self.periodic_step_counter = 0
         self.pause_toggle = False
         self.last_real_direction = None
+
+        # FOr periodic stopping
+        self.just_reached_point = False
+        self.pause_step_counter = 0
+        self.pause_duration_after_reach = 2  # how many steps to pause after reaching
 
         # For detecting stuck agent
         if self.env.config['use_stuck_detection']:
@@ -358,23 +363,27 @@ class MaisrLocalSearchWrapper(gym.Env):
             else:
                 teammate_obs = self.current_teammate._normalize_observation(self.get_observation(1))
 
-            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
+        # Detect if teammate just reached a target or threat
+        if self.current_teammate.decision_speed == 'slow':
+            teammate_pos = np.array([self.env.agents[1].x, self.env.agents[1].y])
+            target_distances = np.linalg.norm(self.env.targets[:, 3:5] - teammate_pos, axis=1)
+            threat_distances = np.linalg.norm(self.env.threats - teammate_pos, axis=1)
+
+            # If any are within ISR radius, we assume we just reached one
+            if np.any(target_distances <= self.env.AIRCRAFT_ISR_RADIUS) or np.any(
+                    threat_distances <= self.env.AIRCRAFT_ISR_RADIUS):
+                if not self.just_reached_point:
+                    self.just_reached_point = True
+                    self.pause_step_counter = 0
+            else:
+                self.just_reached_point = False  # Reset if we're no longer near anything
+
+
+            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
 
             if self.teammate_subpolicy_choice == 0:  # Local search
                 direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
-
-                # # TODO TESTING
-                # if self.teammate_decision_timer == 0 or self.teammate_cached_direction is None:
-                #     direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
-                #     self.teammate_cached_direction = direction_to_move
-                #     self.teammate_decision_timer = self.teammate_decision_interval
-                #
-                # else:
-                #     direction_to_move = self.teammate_cached_direction
-                #     self.teammate_decision_timer -= 1
-
-                ####
 
                 # Apply action noise
                 if hasattr(self.current_teammate, 'action_stability'):
@@ -392,10 +401,9 @@ class MaisrLocalSearchWrapper(gym.Env):
 
                             #direction_to_move = (self.last_real_direction + 8) % 16 if self.pause_toggle else self.last_real_direction
                             if self.pause_toggle:
-                                direction_to_move = (self.last_real_direction + 4) % 16
+                                direction_to_move = (self.last_real_direction + 8) % 16
                             else:
-                                direction_to_move = (self.last_real_direction - 4) % 16
-
+                                direction_to_move = (self.last_real_direction - 8) % 16
                             self.pause_toggle = not self.pause_toggle
 
                         else:
@@ -438,9 +446,11 @@ class MaisrLocalSearchWrapper(gym.Env):
 
                             #waypoint_to_go = (self.last_real_direction + 8) % 16 if self.pause_toggle else waypoint_to_go
                             if self.pause_toggle: # oscillate +90°
-                                waypoint_to_go = (self.last_real_direction + 4) % 16
+                                #waypoint_to_go = (self.last_real_direction + 4) % 16
+                                waypoint_to_go = (self.last_real_direction + 8) % 16
                             else: # original direction (or oscillate -90°)
-                                waypoint_to_go = (self.last_real_direction - 4) % 16
+                                #waypoint_to_go = (self.last_real_direction - 4) % 16
+                                waypoint_to_go = (self.last_real_direction - 8) % 16
 
                             self.pause_toggle = not self.pause_toggle
 
@@ -508,6 +518,23 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_action = (float(nearest_target_pos[0]), float(nearest_target_pos[1]))
             else: # No unknown targets remaining, stay at current position
                 teammate_action = (teammate_x, teammate_y)
+
+        if self.just_reached_point and self.pause_step_counter < self.pause_duration_after_reach:
+            if self.last_real_direction is None:
+                try:
+                    self.last_real_direction = direction_to_move
+                except:
+                    self.last_real_direction = waypoint_to_go
+
+            direction_to_move = (self.last_real_direction + 8) % 16 if self.pause_toggle else (self.last_real_direction - 8) % 16
+            self.pause_toggle = not self.pause_toggle
+            self.pause_step_counter += 1
+
+            try:
+                teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
+            except:
+                teammate_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
+            #return teammate_action
 
         return teammate_action
 

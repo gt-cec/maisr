@@ -1,7 +1,10 @@
 import ctypes
+import glob
 import warnings
 
 import pygame
+from PIL import Image
+
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
 warnings.filterwarnings("ignore", message="RuntimeWarning: Your system is avx2 capable but pygame was not built with support for it")
@@ -37,43 +40,6 @@ from utility.data_logging import load_env_config
 #     run_name = f"{timestamp}_" + "_".join(components)
 #     return run_name
 #
-# def stitch_saved_eval_plots(run_name, step, max_eps=10):
-#     import matplotlib.pyplot as plt
-#     import os
-#     from PIL import Image
-#
-#     folder = f"logs/action_histories/{run_name}"
-#     #folder = os.path.join(paths["plots"])  # You'll need to pass `paths` into the function
-#
-#     images = []
-#
-#     # Try loading eval_ep{0...N}.png
-#     for i in range(max_eps):
-#         path = os.path.join(folder, f"eval_ep{i}.png")
-#         if os.path.exists(path):
-#             images.append(Image.open(path))
-#         else:
-#             break
-#
-#     if not images:
-#         print("[Stitcher] No images found to stitch.")
-#         return
-#
-#     fig, axs = plt.subplots(len(images), 1, figsize=(6, 5 * len(images)))
-#
-#     if len(images) == 1:
-#         axs = [axs]
-#
-#     for img, ax in zip(images, axs):
-#         ax.imshow(img)
-#         ax.axis('off')
-#
-#     os.makedirs(folder, exist_ok=True)
-#     outpath = os.path.join(folder, f"combinedeval_step{step}.png")
-#     plt.tight_layout()
-#     plt.savefig(outpath)
-#     plt.close()
-#     print(f"[Stitcher] Saved combined plot to {outpath}")
 
 
 class EnhancedWandbCallback_Monolith(BaseCallback):
@@ -93,6 +59,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
+        self.run_name = run_name
         self.log_freq = log_freq  # Log every N steps instead of every step
 
         self.use_curriculum = env_config['use_curriculum']
@@ -439,8 +406,18 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
             print('Returning to training... \n')
 
-        # if self.should_stop_training:
-        #     return False
+        # === Periodically log latest episode plot ===
+        if self.num_timesteps % (self.log_freq * 5) == 0:  # log less frequently than stats
+            plot_dir = f"outputs/{self.run_name}/episode_plots"
+            list_of_files = glob.glob(f"{plot_dir}/*.png")
+            if list_of_files:
+                latest_file = max(list_of_files, key=os.path.getmtime)
+                try:
+                    image = Image.open(latest_file)
+                    self.run.log({"plots/latest_episode_plot": wandb.Image(image)}, step=self.num_timesteps)
+                except Exception as e:
+                    print(f"[WandB] Failed to log latest episode plot: {e}")
+
         return True
 
 
@@ -1077,6 +1054,7 @@ def train_generic(
             eval_env=eval_env,
             run=run,
             log_freq=75,
+            run_name = run_name
             #teammate_manager=teammate_manager  # ADD THIS
         )
     elif train_type == 'monolith':
@@ -1250,7 +1228,10 @@ if __name__ == "__main__":
             #"teammate_reward_scale": [0.5, 0.75],
             #"obs_noise": [0.01],
         }
-        overfit_tests =  ["low_risk", "noisy_actions", "high_risk", "yes_coord"]
+        overfit_test =  'periodic_stopping' #["low_risk", "noisy_actions", "high_risk", "yes_coord"]
+        config['teammate_active_at_start'] = True
+        load_path = None
+        vecnorm_load_path = None
 
     elif version == 'strategy_diverse_tests':
         note = 'strategy_3' + machine[0].upper()
@@ -1287,7 +1268,7 @@ if __name__ == "__main__":
     elif version == 'index_test':
         note = 'index_1' + machine[0].upper()
         hyperparams = {'seed':42}
-        overfit_tests = [None]
+        overfit_test = None
         config['action_type'] = 'target_index'
 
     elif version == 'pretrained_agents':
@@ -1295,10 +1276,7 @@ if __name__ == "__main__":
         config['num_timesteps'] = 4.5e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
-        #load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
-        #vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
         project_name = 'maisr-rl-teammates'
-        overfit_tests = [None]
 
         hyperparams = {
             #'seed': [21, 623, 33, 82],
@@ -1307,6 +1285,8 @@ if __name__ == "__main__":
         }
         config['seed'] = int(args.seed)
         overfit_test = None
+        # outputs/{load_prev_run}/checkpoints/{latest_zip} # TODO working here
+        # outputs/{load_prev_run}/checkpoints/{latest_pkl}
 
         load_paths = {
             69: None,

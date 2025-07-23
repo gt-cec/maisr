@@ -2289,8 +2289,11 @@ class MAISREnvVec(gym.Env):
 
             # Plot teammate trajectory
             if teammate_x_coords and teammate_y_coords:
-                plt.plot(teammate_x_coords, teammate_y_coords, 'blue', alpha=0.8, linewidth=2, label='Teammate',
-                         zorder=2)
+                # plt.plot(teammate_x_coords, teammate_y_coords, 'blue', alpha=0.8, linewidth=2, label='Teammate',
+                #          zorder=2)
+                plt.scatter(teammate_x_coords, teammate_y_coords, s=15, c=range(len(teammate_x_coords)),
+                            cmap='Blues', alpha=0.7, marker='o', zorder=3,
+                            vmin=-len(teammate_x_coords) * 0.3, vmax=len(teammate_x_coords))
 
             # Only plot waypoint history for waypoint-based action types
             if self.config['action_type'] != 'direct-control':
