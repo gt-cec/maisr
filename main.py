@@ -300,7 +300,7 @@ async def main():
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 20
+    tick_rate = 30
     #survey_url = "https://gatech.co1.qualtrics.com/jfe/form/SV_egiLZSvblF8SVO6" # TODO
 
     # Define RL agent model paths - UPDATE THESE AS NEEDED

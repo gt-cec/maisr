@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+    <html>
+    <head>
+        <title>CEC MAISR</title>
+        <style>
+            body { display: flex; justify-content: center; align-items: center;  background: #111; text-align: center; color: white; }
+            canvas { border: 1px solid #555; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <canvas id="board" width="1000px" height="1000px"></canvas>
+        <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+        <script src="/pako.min.js"></script>
+        <script>
+            const socket = io();
+            const canvas = document.getElementById('board');
+            const ctx = canvas.getContext('2d');
+
+            socket.on('frame', function(data) {
+                const dv = new DataView(data);
+                const width = dv.getUint32(0);
+                const height = dv.getUint32(4);
+                const compressed = new Uint8Array(data.slice(8));
+                const raw = pako.inflate(compressed);
+
+                const imgData = ctx.createImageData(width, height);
+                for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
+                    imgData.data[j] = raw[i];
+                    imgData.data[j+1] = raw[i+1];
+                    imgData.data[j+2] = raw[i+2];
+                    imgData.data[j+3] = 255;
+                }
+                ctx.putImageData(imgData, 0, 0);
+            });
+
+            // onclick event to send a message to the server
+            canvas.addEventListener('click', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const message = { type: 'click', x: x, y: y };
+                socket.emit('click', message);
+                // console.log('Sent click message:', message);
+            });
+
+            // capture keyboard events
+            document.addEventListener('keydown', function(event) {
+                const key = event.key;
+                const message = { key: key };
+                socket.emit('keydown', message);
+                // console.log('Sent keydown message:', message);
+            });
+        </script>
+    </body>
+    </html>
