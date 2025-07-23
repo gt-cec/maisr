@@ -391,10 +391,13 @@ class MaisrLocalSearchWrapper(gym.Env):
                                 self.last_real_direction = direction_to_move  # seed it the first time
 
                             #direction_to_move = (self.last_real_direction + 8) % 16 if self.pause_toggle else self.last_real_direction
-                            if self.pause_toggle:
-                                direction_to_move = (self.last_real_direction + 4) % 16
-                            else:
-                                direction_to_move = (self.last_real_direction - 4) % 16
+                            try:
+                                if self.pause_toggle:
+                                    direction_to_move = (self.last_real_direction + 4) % 16
+                                else:
+                                    direction_to_move = (self.last_real_direction - 4) % 16
+                            except:
+                                print(f'ERROR with direction_to_move = (self.last_real_direction + 4) % 16. last real direction is {self.last_real_direction}, type {type(self.last_real_direction)}')
 
                             self.pause_toggle = not self.pause_toggle
 
