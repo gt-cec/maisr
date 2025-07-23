@@ -101,7 +101,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
     def __init__(self, env_config, verbose=0, eval_env=None, run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
-                 log_freq=2, teammate_manager=None):
+                 log_freq=4, teammate_manager=None):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
         self.config = env_config
         self.eval_env = eval_env
@@ -1086,7 +1086,7 @@ def train_generic(
             env_config,
             eval_env=eval_env,
             run=run,
-            log_freq=50,
+            log_freq=75,
             #teammate_manager=teammate_manager  # ADD THIS
         )
     elif train_type == 'monolith':
@@ -1094,7 +1094,7 @@ def train_generic(
             env_config,
             eval_env=eval_env,
             run=run,
-            log_freq=50,
+            log_freq=75,
             teammate_manager=teammate_manager
         )
 
@@ -1329,8 +1329,8 @@ if __name__ == "__main__":
             5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
         }
 
-        load_path = None#load_paths[args.seed]
-        vecnorm_load_path = None#vecnorm_load_paths[args.seed]
+        load_path = load_paths[int(args.seed)]
+        vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
 
     param_shorthand = {
@@ -1380,7 +1380,7 @@ if __name__ == "__main__":
         temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
         from datetime import datetime
         timestamp = datetime.now().strftime("%m%d_%H%M")
-        run_name = f'{note}_' + timestamp
+        run_name = f'{note}_' + timestamp + f'seed{str(args.seed)}'
 
         print(f'\n--- Starting training run with params: {current_params} ---')
         train_generic(
