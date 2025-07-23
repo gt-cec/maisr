@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
         load_path = None
         vecnorm_load_path = None
 
-    elif version == 'strategy_diverse_tests':
+    elif version == 'strategy':
         note = 'strategy_3' + machine[0].upper()
         config['num_timesteps'] = 2.5e6
         project_name = 'maisr-rl-exp2'
@@ -1270,6 +1270,8 @@ if __name__ == "__main__":
         hyperparams = {'seed':42}
         overfit_test = None
         config['action_type'] = 'target_index'
+        config['league_type'] = 'strategy_diverse'
+        config['teammate_active_at_start'] = False
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
