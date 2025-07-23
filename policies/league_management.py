@@ -472,7 +472,7 @@ class TeammateManager:
 
     def set_current_model(self, model):
         """Update the reference to the current model during training"""
-        print(f'%%%%%%%%%% TEAMMATE MANAGER current model set to {model}')
+        #print(f'%%%%%%%%%% TEAMMATE MANAGER current model set to {model}')
         self.current_model = model
 
 
@@ -480,10 +480,10 @@ class TeammateManager:
         """Create a copy of the current teammate for self-play when no checkpoints exist yet."""
         print("[TeammateManager] No selfplay checkpoints found, creating copy of current teammate")
 
-        print(f'Teammate manager current model is {self.current_model}')
+        #print(f'Teammate manager current model is {self.current_model}')
 
         if self.current_model is not None:
-            print("%%%%%%%%%%  [TeammateManager] Using current model for teammate copy")
+            #print("%%%%%%%%%%  [TeammateManager] Using current model for teammate copy")
             current_teammate = RLTeammatePolicy(
                 model=self.current_model,  # Use the current model directly
                 env=None,

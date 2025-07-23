@@ -26,69 +26,54 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
 from utility.data_logging import load_env_config
 
-#multiprocessing.set_start_method("fork", force=True)
 
-
-# def get_output_paths(run_name):
-#     base = f"outputs/{run_name}"
-#     return {
-#         "base": base,
-#         "checkpoints": os.path.join(base, "checkpoints"),
-#         "model": os.path.join(base, "model"),
-#         "metadata": os.path.join(base, "metadata"),
-#         "plots": os.path.join(base, "plots"),
-#         "tensorboard": os.path.join(base, "logs/tensorboard"),
-#         "vecmonitor": os.path.join(base, "logs/vecmonitor"),
-#     }
-
-
-def generate_run_name(config):
-    """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
-    history plots to make it easy to match them."""
-
-    components = []#[f"{config['n_envs']}envs",]
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%m%d_%H%M")
-    run_name = f"{timestamp}_" + "_".join(components)
-    return run_name
-
-def stitch_saved_eval_plots(run_name, step, max_eps=10):
-    import matplotlib.pyplot as plt
-    import os
-    from PIL import Image
-
-    folder = f"logs/action_histories/{run_name}"
-    #folder = os.path.join(paths["plots"])  # You'll need to pass `paths` into the function
-
-    images = []
-
-    # Try loading eval_ep{0...N}.png
-    for i in range(max_eps):
-        path = os.path.join(folder, f"eval_ep{i}.png")
-        if os.path.exists(path):
-            images.append(Image.open(path))
-        else:
-            break
-
-    if not images:
-        print("[Stitcher] No images found to stitch.")
-        return
-
-    fig, axs = plt.subplots(len(images), 1, figsize=(6, 5 * len(images)))
-
-    if len(images) == 1:
-        axs = [axs]
-
-    for img, ax in zip(images, axs):
-        ax.imshow(img)
-        ax.axis('off')
-
-    os.makedirs(folder, exist_ok=True)
-    outpath = os.path.join(folder, f"combinedeval_step{step}.png")
-    plt.tight_layout()
-    plt.savefig(outpath)
-    plt.close()
-    print(f"[Stitcher] Saved combined plot to {outpath}")
+# def generate_run_name(config):
+#     """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
+#     history plots to make it easy to match them."""
+#
+#     components = []#[f"{config['n_envs']}envs",]
+#     from datetime import datetime
+#     timestamp = datetime.now().strftime("%m%d_%H%M")
+#     run_name = f"{timestamp}_" + "_".join(components)
+#     return run_name
+#
+# def stitch_saved_eval_plots(run_name, step, max_eps=10):
+#     import matplotlib.pyplot as plt
+#     import os
+#     from PIL import Image
+#
+#     folder = f"logs/action_histories/{run_name}"
+#     #folder = os.path.join(paths["plots"])  # You'll need to pass `paths` into the function
+#
+#     images = []
+#
+#     # Try loading eval_ep{0...N}.png
+#     for i in range(max_eps):
+#         path = os.path.join(folder, f"eval_ep{i}.png")
+#         if os.path.exists(path):
+#             images.append(Image.open(path))
+#         else:
+#             break
+#
+#     if not images:
+#         print("[Stitcher] No images found to stitch.")
+#         return
+#
+#     fig, axs = plt.subplots(len(images), 1, figsize=(6, 5 * len(images)))
+#
+#     if len(images) == 1:
+#         axs = [axs]
+#
+#     for img, ax in zip(images, axs):
+#         ax.imshow(img)
+#         ax.axis('off')
+#
+#     os.makedirs(folder, exist_ok=True)
+#     outpath = os.path.join(folder, f"combinedeval_step{step}.png")
+#     plt.tight_layout()
+#     plt.savefig(outpath)
+#     plt.close()
+#     print(f"[Stitcher] Saved combined plot to {outpath}")
 
 
 class EnhancedWandbCallback_Monolith(BaseCallback):
@@ -258,7 +243,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
         # Evaluation logic remains the same (already infrequent)
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
-            print(f'\n#################################################\nEVALUATING (step: {self.num_timesteps})')
+            print(f'\n################################################# EVALUATING (step {self.num_timesteps}) #################################################')
 
             # Check if the training env is a VecNormalize wrapper
             training_env = self.model.get_env()
@@ -267,7 +252,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
                     self.eval_env.obs_rms = training_env.obs_rms
                     self.eval_env.ret_rms = training_env.ret_rms
-                    print(f"[Callback] Synced normalization stats from training to eval env")
+                    #print(f"[Callback] Synced normalization stats from training to eval env")
 
                     if self.teammate_manager is not None:
                         #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
@@ -417,7 +402,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
-            print(f'\nEVAL LOGGED (mean reward {mean_reward}, std {round(std_reward, 2)}, 'f'mean target_ids: {np.mean(target_ids_list) if target_ids_list else 0}')
+            print(f'EVAL LOGGED (mean reward {round(mean_reward,2)}, std {round(std_reward, 2)}, 'f'mean target_ids: {round(np.mean(target_ids_list),2) if target_ids_list else 0}')
+            print('################################################')
 
 
             #################################### Curriculum learning ####################################
@@ -451,7 +437,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
 
-            print('#################################################\n\nReturning to training... \n')
+            print('Returning to training... \n')
 
         # if self.should_stop_training:
         #     return False
@@ -865,7 +851,7 @@ def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pr
         overfit_test=overfit_test
     )
 
-    print(f"Teammate manager setup with league_type: {league_type}")
+    #print(f"        Teammate manager setup with league_type: {league_type}")
     return teammate_manager
 
 def train_generic(
@@ -878,11 +864,11 @@ def train_generic(
         train_type, # "mode_selector" or "monolith"
         #selfplay_checkpoint_dir,
         run_name='norunname',
-        save_dir="./trained_models/",
+        #save_dir="./outputs/",
         load_path=None,
         vecnorm_load_path=None,
         render=False,
-        log_dir="./logs/",
+        #log_dir="./logs/",
         machine_name='machine',
         save_model=True,
         save_checkpoints = False,
@@ -904,9 +890,9 @@ def train_generic(
         #raise ValueError('Provided model path without vecnorm stats')
 
     #paths = get_output_paths(run_name)
-    print('[train_generic] Initializing...')
+    print('\n[train_generic] Initializing...')
 
-    print(f'        Setting machine_name = {machine_name} \n WandB project = {project_name}')
+    print(f'        Setting machine_name = {machine_name} \n        WandB project = {project_name}')
 
     if render:
         pygame.display.init()
@@ -918,14 +904,17 @@ def train_generic(
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
+    print('\nCreating output folders:')
+    for subfolder in ['episode_plots','trained_models', 'checkpoints','vecnorm_stats','logs']:
+        folder_name = f"outputs/{run_name}/{subfolder}"
+        os.makedirs(folder_name, exist_ok=True)
+        print(f'        Created folder {folder_name}')
+    print('\n')
+    #os.makedirs(f"outputs/episode_plots/{run_name}", exist_ok=True)
     #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
-    os.makedirs(log_dir, exist_ok=True)
-    os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
-    os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
-
-    # for path in paths.values():
-    #     os.makedirs(path, exist_ok=True)
+    #os.makedirs(log_dir, exist_ok=True)
+    #os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
+    #os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
 
     init_successful = False
     while not init_successful:
@@ -939,7 +928,7 @@ def train_generic(
             )
             init_successful = True
         except:
-            print('WandB init failed, ret')
+            print('         WandB init failed, retrying')
             init_successful = False
         if init_successful:
             print(f'        WandB init successful')
@@ -953,7 +942,7 @@ def train_generic(
         teammate_manager = setup_teammate_pool(
             league_type=env_config['league_type'],
             balance_method = env_config['balance_method'],
-            selfplay_checkpoint_dir=f"trained_models/{run_name}/checkpoints",
+            selfplay_checkpoint_dir=f"outputs/{run_name}/checkpoints",
             pretrained_teammate_dir=f'trained_models/pretrained_teammates',
             overfit_test=overfit_test
         )
@@ -962,7 +951,7 @@ def train_generic(
         teammate_manager = None
         print('        Not using a teammate manager')
 
-    print(f"        Training with {n_envs} environments in parallel")
+    print(f"Training with {n_envs} environments in parallel\n")
 
     def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
         def _init():
@@ -1021,7 +1010,8 @@ def train_generic(
         env = DummyVecEnv(env_fns)
 
     # SB3 wrappers for main env
-    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+
+    env = VecMonitor(env, filename=f'outputs/{run_name}/logs/{run_name}vecmonitor')
     #env = VecMonitor(env, filename=os.path.join(paths["vecmonitor"], 'vecmonitor'))
 
     if use_normalize:
@@ -1075,9 +1065,9 @@ def train_generic(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"trained_models/{run_name}/checkpoints",
+        save_path=f"outputs/{run_name}/checkpoints",
         #save_path=paths["checkpoints"],
-        name_prefix=f"checkpoint_{run_name}",
+        name_prefix=f"{run_name}_checkpoint",
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
@@ -1118,7 +1108,7 @@ def train_generic(
             env,
             policy_kwargs=policy_kwargs,
             verbose=2,
-            tensorboard_log=f"logs/tb_runs/{run.id}",
+            tensorboard_log=f"outputs/logs/tb_runs/{run.id}",
             #tensorboard_log=paths["tensorboard"],
             batch_size=env_config['batch_size'],
             n_steps=env_config['ppo_update_steps'],
@@ -1132,7 +1122,7 @@ def train_generic(
     else:
         raise ValueError('Unsupported algo')
 
-    print('        Model instantiated')
+    print('        Model instantiated\n')
     print(model.policy)
 
     if teammate_manager is not None:
@@ -1154,7 +1144,7 @@ def train_generic(
     run.log({"curriculum/difficulty_level": 0}, step=0)
     #print(f'Starting with difficulty level {0}')
 
-    print('## Running model.learn... ##\n')
+    print('\n\n###### Running model.learn... ######\n')
 
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
@@ -1177,28 +1167,28 @@ def train_generic(
     print(f"Obs std: {np.sqrt(env.obs_rms.var + 1e-8)}")
     print(f"Obs count: {env.obs_rms.count}")
 
+    print('\n#########################################################################################################')
     print('########################################## TRAINING COMPLETE ############################################\n')
+    print('#########################################################################################################')
     env.close()
     eval_env.close()
 
     # Save the final model
     if save_model:
         try:
-            np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-            env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
-            final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
-            # np.save(os.path.join(paths["metadata"], "norm_stats.npy"), stats)
-            # env.save(os.path.join(paths["model"], "vecnormalize.pkl"))
-            # final_model_path = os.path.join(paths["model"], "final_model.zip")
+            np.save(f"outputs/{run_name}/trained_models/{run_name}_norm_stats.npy", stats)
+            env.save(f"outputs/{run_name}/vecnorm_stats/{run_name}local_search_vecnormalize.pkl")
+            final_model_path = f'outputs/{run_name}/trained_models/{run_name}_model.zip'  #os.path.join(save_dir, f"{run_name}/{run_name}_model.zip")
 
             model.save(final_model_path)
-            print(f"Training completed! Final model saved to {final_model_path}")
+            print(f"Training completed!\nFinal model saved to {final_model_path}")
         except:
             print('Failed to save model and norm stats')
 
     # Run a final evaluation
+    print('Running final eval:')
     mean_reward, std_reward = evaluate_policy(model, eval_env, n_eval_episodes=env_config['n_eval_episodes'])
-    print(f"Final evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
+    print(f"\nFinal evaluation: mean_reward={mean_reward:.2f} +/- {std_reward:.2f}")
 
     # Log final metrics to wandb
     run.log({"final/mean_reward": mean_reward, "final/std_reward": std_reward, })
@@ -1228,8 +1218,7 @@ if __name__ == "__main__":
     # Define hyperparameter sweep
 
     config = load_env_config(config_filename)
-    if args.testing:
-        config["eval_freq"] = 50
+
 
     if version == 'overfit':
         note = 'overfit' + machine[0].upper()
@@ -1312,6 +1301,7 @@ if __name__ == "__main__":
         overfit_test = None
 
         load_paths = {
+            69: None,
             99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
             44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
             21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
@@ -1321,6 +1311,7 @@ if __name__ == "__main__":
         }
 
         vecnorm_load_paths = {
+            69: None,
             99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
             44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
             21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
@@ -1353,6 +1344,11 @@ if __name__ == "__main__":
         'seed': 'seed'
     }
 
+    if args.testing:
+        config["eval_freq"] = 50
+        config['save_freq'] = 100
+        config['num_timesteps'] = 300
+
     ################################################
 
     config['n_envs'] = num_envs
@@ -1372,15 +1368,10 @@ if __name__ == "__main__":
             param_key = param_shorthand[param_name]
             param_strings.append(f'{param_key}-{param_value}')
 
-        #for overfit_test in overfit_tests:
-            #if overfit_test is not None:
-             #   temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-            #else:
-
         temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
         from datetime import datetime
         timestamp = datetime.now().strftime("%m%d_%H%M")
-        run_name = f'{note}_' + timestamp + f'seed{str(args.seed)}'
+        run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}'
 
         print(f'\n--- Starting training run with params: {current_params} ---')
         train_generic(
@@ -1398,6 +1389,6 @@ if __name__ == "__main__":
             save_model = True,
             save_checkpoints = True,
             overfit_test = overfit_test,
-            save_dir=f"./trained_models/overfit_tests/" if overfit_test is not None else f'./trained_models/',
+            #save_dir=f'./outputs/trained_models/',
         )
         print(f"✓ Completed training run")

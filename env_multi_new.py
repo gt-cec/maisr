@@ -113,7 +113,7 @@ class MAISREnvVec(gym.Env):
                 dtype=np.float32)
 
             if self.tag == 'train_mp0':
-                print(f'Using obs space size {self.obs_size} ({self.config['num_observed_targets']} nearest targets, {self.config['num_observed_threats']} nearest threats')
+                print(f'[Base env] Using obs space size {self.obs_size} ({self.config['num_observed_targets']} nearest targets, {self.config['num_observed_threats']} nearest threats\n')
 
         else:
             raise ValueError("Obs type not recognized")
@@ -2103,8 +2103,7 @@ class MAISREnvVec(gym.Env):
             import numpy as np
 
             # Create directory if it doesn't exist
-            full_dir_path = f'logs/action_histories/{self.run_name}'
-            os.makedirs(full_dir_path, exist_ok=True)
+            os.makedirs(f'outputs/{self.run_name}/episode_plots', exist_ok=True)
 
             # Calculate map bounds for centered coordinate system
             map_half_size = self.config["gameboard_size"] / 2  # 150 for a 300x300 map
@@ -2462,7 +2461,7 @@ class MAISREnvVec(gym.Env):
                             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.7))
 
             # Save the figure with a timestamp
-            filename = f'logs/action_histories/{self.run_name}/{note}{self.tag}_ep{self.episode_counter}.png'
+            filename = f'outputs/{self.run_name}/episode_plots/{note}{self.tag}_ep{self.episode_counter}.png'
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
