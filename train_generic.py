@@ -26,8 +26,21 @@ from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWra
 from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
 from utility.data_logging import load_env_config
 
+#multiprocessing.set_start_method("fork", force=True)
 
-"""Script to train the mode selector top-level policy"""
+
+def get_output_paths(run_name):
+    base = f"outputs/{run_name}"
+    return {
+        "base": base,
+        "checkpoints": os.path.join(base, "checkpoints"),
+        "model": os.path.join(base, "model"),
+        "metadata": os.path.join(base, "metadata"),
+        "plots": os.path.join(base, "plots"),
+        "tensorboard": os.path.join(base, "logs/tensorboard"),
+        "vecmonitor": os.path.join(base, "logs/vecmonitor"),
+    }
+
 
 def generate_run_name(config):
     """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
@@ -45,6 +58,8 @@ def stitch_saved_eval_plots(run_name, step, max_eps=10):
     from PIL import Image
 
     folder = f"logs/action_histories/{run_name}"
+    #folder = os.path.join(paths["plots"])  # You'll need to pass `paths` into the function
+
     images = []
 
     # Try loading eval_ep{0...N}.png
@@ -314,10 +329,10 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
                 total_eval_reward += ep_reward
 
-            try:
-                stitch_saved_eval_plots(run_name=self.run.name, step=self.num_timesteps)
-            except Exception as e:
-                print(f"[Eval] Failed to stitch eval plots: {e}")
+            #try:
+                #stitch_saved_eval_plots(run_name=self.run.name, step=self.num_timesteps)
+            #except Exception as e:
+            #    print(f"[Eval] Failed to stitch eval plots: {e}")
 
             mean_reward = total_eval_reward / self.n_eval_episodes
 
@@ -888,6 +903,8 @@ def train_generic(
     #if vecnorm_load_path is None and load_path is not None:
         #raise ValueError('Provided model path without vecnorm stats')
 
+    paths = get_output_paths(run_name)
+
     print(f'Setting machine_name to {machine_name}. Using project {project_name}')
 
     if render:
@@ -900,11 +917,14 @@ def train_generic(
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-    os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
-    #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
-    os.makedirs(log_dir, exist_ok=True)
-    os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
-    os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
+    # os.makedirs(f"{save_dir}/{run_name}", exist_ok=True)
+    # #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
+    # os.makedirs(log_dir, exist_ok=True)
+    # os.makedirs(f'./logs/action_histories/{run_name}', exist_ok=True)
+    # os.makedirs(f"trained_models/{run_name}/checkpoints", exist_ok=True)
+
+    for path in paths.values():
+        os.makedirs(path, exist_ok=True)
 
     init_successful = False
     while not init_successful:
@@ -999,7 +1019,9 @@ def train_generic(
         env = DummyVecEnv(env_fns)
 
     # SB3 wrappers for main env
-    env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    #env = VecMonitor(env, filename=os.path.join(log_dir, 'vecmonitor'))
+    env = VecMonitor(env, filename=os.path.join(paths["vecmonitor"], 'vecmonitor'))
+
     if use_normalize:
         if vecnorm_load_path is not None:
             env = VecNormalize.load(vecnorm_load_path, venv=env)
@@ -1051,7 +1073,8 @@ def train_generic(
     ################################################# Setup callbacks #################################################
     checkpoint_callback = CheckpointCallback(
         save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"trained_models/{run_name}/checkpoints",
+        #save_path=f"trained_models/{run_name}/checkpoints",
+        save_path=paths["checkpoints"],
         name_prefix=f"maisr_checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
@@ -1093,7 +1116,8 @@ def train_generic(
             env,
             policy_kwargs=policy_kwargs,
             verbose=2,
-            tensorboard_log=f"logs/tb_runs/{run.id}",
+            #tensorboard_log=f"logs/tb_runs/{run.id}",
+            tensorboard_log=paths["tensorboard"],
             batch_size=env_config['batch_size'],
             n_steps=env_config['ppo_update_steps'],
             learning_rate=env_config['lr'],
@@ -1158,9 +1182,13 @@ def train_generic(
     # Save the final model
     if save_model:
         try:
-            np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
-            env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
-            final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
+            #np.save(f"trained_models/{run_name}/{run_name}_norm_stats.npy", stats)
+            #env.save(f"trained_models/{run_name}/{run_name}local_search_vecnormalize.pkl")
+            #final_model_path = os.path.join(save_dir, f"{run_name}/{run_name}_maisr_trained_model")
+            np.save(os.path.join(paths["metadata"], "norm_stats.npy"), stats)
+            env.save(os.path.join(paths["model"], "vecnormalize.pkl"))
+            final_model_path = os.path.join(paths["model"], "final_model.zip")
+
             model.save(final_model_path)
             print(f"Training completed! Final model saved to {final_model_path}")
         except:
@@ -1179,6 +1207,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
+    parser.add_argument('--seed', required=True, help='Seed to run')
     parser.add_argument('--testing', action='store_true', help='')
     args = parser.parse_args()
     version = args.version
@@ -1264,19 +1293,22 @@ if __name__ == "__main__":
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
-        config['num_timesteps'] = 2.5e6
+        config['num_timesteps'] = 4.5e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
-        load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
-        vecnorm_load_path = 'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
+        load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
+        vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 
         hyperparams = {
-            'seed': [42],
+            #'seed': [21, 623, 33, 82],
             'threat_reward_scaling':[1.3],
             "teammate_reward_scale": [0.75],
         }
+        config['seed'] = int(args.seed)
+        overfit_test = None
+
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1300,7 +1332,6 @@ if __name__ == "__main__":
 
     ################################################
 
-
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
@@ -1318,29 +1349,32 @@ if __name__ == "__main__":
             param_key = param_shorthand[param_name]
             param_strings.append(f'{param_key}-{param_value}')
 
-        for overfit_test in overfit_tests:
-            if overfit_test is not None:
-                temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-            else:
-                temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-            run_name = f'{note}-{train_type}_{temp_identifier}_' + generate_run_name(config)
+        #for overfit_test in overfit_tests:
+            #if overfit_test is not None:
+             #   temp_identifier = 'overfit-' + overfit_test + '_' + '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+            #else:
 
-            print(f'\n--- Starting training run with params: {current_params} ---')
-            train_generic(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                use_teammate_manager=True,
-                train_type = train_type,
-                render=False,
-                n_envs=num_envs,
-                load_path=load_path,
-                vecnorm_load_path=vecnorm_load_path,
-                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name=project_name,
-                save_model = True,
-                save_checkpoints = True,
-                overfit_test = overfit_test,
-                save_dir=f"./trained_models/overfit_tests/" if overfit_test is not None else f'./trained_models/',
-            )
-            print(f"✓ Completed training run")
+        temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        run_name = f'{note}_' + timestamp
+
+        print(f'\n--- Starting training run with params: {current_params} ---')
+        train_generic(
+            config,
+            run_name=run_name,
+            use_normalize=True,
+            use_teammate_manager=True,
+            train_type = train_type,
+            render=False,
+            n_envs=num_envs,
+            load_path=load_path,
+            vecnorm_load_path=vecnorm_load_path,
+            machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+            project_name=project_name,
+            save_model = True,
+            save_checkpoints = True,
+            overfit_test = overfit_test,
+            save_dir=f"./trained_models/overfit_tests/" if overfit_test is not None else f'./trained_models/',
+        )
+        print(f"✓ Completed training run")

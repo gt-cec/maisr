@@ -789,7 +789,7 @@ if __name__ == "__main__":
     print(f'Beginning main')
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    num_episodes = 50
+    num_episodes = 150
     tick_rate = 60
     use_normalize = True
     render = False
