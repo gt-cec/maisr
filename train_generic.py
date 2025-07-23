@@ -1075,7 +1075,7 @@ def train_generic(
         save_freq=env_config['save_freq'] // n_envs,
         #save_path=f"trained_models/{run_name}/checkpoints",
         save_path=paths["checkpoints"],
-        name_prefix=f"maisr_checkpoint_{run_name}",
+        name_prefix=f"checkpoint_{run_name}",
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
@@ -1296,8 +1296,8 @@ if __name__ == "__main__":
         config['num_timesteps'] = 4.5e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
-        load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
-        vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
+        #load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__2238912_steps.zip'
+        #vecnorm_load_path = None #'trained_models/pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737_/checkpoints/maisr_checkpoint_pretrainP-monolith_seed-21_thrtrwdscl-1.3_trs-0.75_0718_0737__vecnormalize_2238912_steps.pkl'
         project_name = 'maisr-rl-teammates'
         overfit_tests = [None]
 
@@ -1308,6 +1308,27 @@ if __name__ == "__main__":
         }
         config['seed'] = int(args.seed)
         overfit_test = None
+
+        load_paths = {
+            99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
+            44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
+            21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
+            623: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_3941184_steps.zip',
+            999: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_3928704_steps.zip',
+            5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_3903744_steps.zip'
+        }
+
+        vecnorm_load_paths = {
+            99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
+            44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
+            21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
+            623: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_vecnormalize_3941184_steps.pkl',
+            999: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_vecnormalize_3928704_steps.pkl',
+            5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
+        }
+
+        load_path = load_paths[args.seed]
+        vecnorm_load_path = vecnorm_load_paths[args.seed]
 
 
     param_shorthand = {
