@@ -3333,3 +3333,25 @@ class ChangeRegions(SubPolicy):
             2: np.array([-0.5, -0.5]),  # SW
             3: np.array([0.5, -0.5])}  # SE
         return centers.get(region_id, np.array([0.0, 0.0]))
+
+class RecordedTrajectoryTeammate(TeammatePolicy):
+    def __init__(self, trajectory_file):
+        import json
+        with open(trajectory_file, 'r') as f:
+            self.trajectory = json.load(f)['teammate_position']
+        self.index = 0
+        self.name = "Recorded_Human_Teammate"
+
+    def choose_subpolicy(self, *args, **kwargs):
+        return 0  # not used
+
+    def reset(self):
+        self.index = 0
+
+    def get_action(self):
+        if self.index < len(self.trajectory):
+            action = tuple(self.trajectory[self.index])
+            self.index += 1
+            return action
+        else:
+            return self.trajectory[-1]  # hold last position

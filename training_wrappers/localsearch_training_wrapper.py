@@ -3,7 +3,7 @@ import warnings
 
 import gymnasium as gym
 import numpy as np
-from policies.league_management import TeammateManager, TeammatePolicy
+from policies.league_management import TeammateManager, TeammatePolicy, RecordedTrajectoryTeammate
 
 
 class MaisrLocalSearchWrapper(gym.Env):
@@ -368,6 +368,9 @@ class MaisrLocalSearchWrapper(gym.Env):
         return action
 
     def get_teammate_action(self):
+
+        if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
+            return self.current_teammate.get_action()
 
         if self.teammate_manager or self.teammate_policy:
             if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None:

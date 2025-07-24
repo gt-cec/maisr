@@ -26,7 +26,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
+from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, \
+    GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
 from utility.data_logging import load_env_config
 
 
@@ -61,6 +62,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.run = run
         self.run_name = run_name
         self.log_freq = log_freq  # Log every N steps instead of every step
+        self.run_human_eval = env_config.get("run_human_eval", False)
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
@@ -249,7 +251,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 done = False
                 ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
 
-
                 try:
                     #teammate_names.append(self.eval_env.get_wrapper_attr("current_teammate").name)
                     teammate_names.append(self.eval_env.envs[0].current_teammate.name)
@@ -278,14 +279,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     ep_threat_ids += info['new_threat_ids']
 
                     final_info = info
-                #
-                # if hasattr(self.eval_env, 'envs'): base_env = self.eval_env.envs[0].env.env
-                # else: base_env = self.eval_env.env.env
-                # try:
-                #     episode_data = base_env.get_action_history_data()
-                #     eval_episode_data_list.append(episode_data)
-                # except (
-                #         Exception) as e: print(f'[Eval] Failed to get episode data for plotting: {e}')
 
                 ep_length = final_info["episode"]["l"]
                 target_ids_list.append(ep_target_ids)
@@ -295,11 +288,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 target_ids_per_step_list.append(ep_target_ids / ep_length)
 
                 total_eval_reward += ep_reward
-
-            #try:
-                #stitch_saved_eval_plots(run_name=self.run.name, step=self.num_timesteps)
-            #except Exception as e:
-            #    print(f"[Eval] Failed to stitch eval plots: {e}")
 
             mean_reward = total_eval_reward / self.n_eval_episodes
 
@@ -312,6 +300,71 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
+
+
+            if self.run_human_eval:
+                print("[Eval] Running additional evaluation with recorded human trajectory")
+                human_levels = [0, 2, 4, 5] # If we want just the 'a' variants
+                recorded_teammate_paths = {
+                    0: '',
+                    2: '',
+                    4: '',
+                    5: ''}
+
+                try:
+                    target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
+                    mean_reward, std_reward, total_eval_reward = 0, 0, 0
+                    eval_lengths = []
+                    teammate_names = []
+
+                    for level in range(7):
+                        self.eval_env.envs[0].level_idx = level
+                        recorded_teammate_path = recorded_teammate_paths[level]
+                        recorded_teammate = RecordedTrajectoryTeammate(recorded_teammate_path)
+                        self.eval_env.envs[0].current_teammate = recorded_teammate
+
+                        done = False
+                        ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
+
+                        while not done:
+                            action, other = self.model.predict(obs, deterministic=True)
+
+                            obses, rewards, dones, infos = self.eval_env.step([action])
+                            obs = obses[0]
+                            reward = rewards[0]
+                            info = infos[0]
+                            done = dones[0]
+
+                            ep_reward += reward
+                            ep_target_ids += info['new_target_ids']
+                            ep_threat_ids += info['new_threat_ids']
+
+                            final_info = info
+
+                        ep_length = final_info["episode"]["l"]
+                        target_ids_list.append(ep_target_ids)
+                        threat_ids_list.append(ep_threat_ids)
+
+                        eval_lengths.append(ep_length)
+                        target_ids_per_step_list.append(ep_target_ids / ep_length)
+
+                        total_eval_reward += ep_reward
+
+                    mean_reward = total_eval_reward / self.n_eval_episodes
+
+                    # Log evaluation results
+                    eval_metrics = {
+                        "eval_with_human/mean_reward": mean_reward,
+                        "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+                        "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
+                        "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
+                        "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
+                        "curriculum/difficulty_level": self.current_difficulty
+                    }
+
+                    self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
+                except Exception as e:
+                    print(f"[Eval] Failed to run recorded teammate eval: {e}")
 
             ###################### === Dynamic League Ratio Update Based on Evaluation Reward === ######################
             for threshold, new_ratio in self.ratio_schedule.items():
@@ -1378,10 +1431,10 @@ if __name__ == "__main__":
     }
 
     if args.testing:
-        config["eval_freq"] = 50
-        config['num_eval_episodes'] = 2
-        config['save_freq'] = 50
-        config['num_timesteps'] = 300
+        config["eval_freq"] = 500
+        config['num_eval_episodes'] = 5
+        config['save_freq'] = 200
+        config['num_timesteps'] = 1e5
         project_name = 'maisr-tests'
 
     ################################################
