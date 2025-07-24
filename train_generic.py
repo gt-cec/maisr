@@ -1250,17 +1250,17 @@ if __name__ == "__main__":
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.002], # 0.005,
+            "team_spread_bonus_coeff": [0.002, 0.005], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
-            'entropy_regularization': [0.08],
-            "teammate_reward_scale": [0.75],
+            'entropy_regularization': [0.08, 0.09],
+            "teammate_reward_scale": [0.75, 0.9],
             # "obs_noise": [0.01],
         }
         overfit_test = None
         config['league_type'] = 'strategy_diverse'
         config['seed'] = int(args.seed)
-        config['teammate_active_at_start'] = False
+        config['teammate_active_at_start'] = True
 
         vecnorm_load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
         load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
@@ -1311,8 +1311,8 @@ if __name__ == "__main__":
             5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
         }
 
-        load_path = load_paths[int(args.seed)]
-        vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
+        load_path = None # load_paths[int(args.seed)]
+        vecnorm_load_path = None #vecnorm_load_paths[int(args.seed)]
 
 
     param_shorthand = {

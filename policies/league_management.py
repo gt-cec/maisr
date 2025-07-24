@@ -1584,6 +1584,8 @@ class GoToNearestThreat(SubPolicy):
             action = self.model.predict(observation)
         else:
             action = self.heuristic(observation)
+        if not isinstance(action, tuple):
+            return action, None
         return action
 
     def heuristic(self, observation) -> np.int32:
@@ -1749,6 +1751,8 @@ class EvadeDetection(SubPolicy):
         else:
             action = self.heuristic(observation)
 
+        if not isinstance(action, tuple):
+            return action, None
         return action
 
     def heuristic(self, observation) -> np.int32:

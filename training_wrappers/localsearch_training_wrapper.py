@@ -1,4 +1,5 @@
 import random
+import warnings
 
 import gymnasium as gym
 import numpy as np
@@ -333,6 +334,38 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return obs
 
+    def _unwrap_action(self, action):
+        teammate_info = "Unavailable"
+        # subpolicy_map = {
+        #     0: "LocalSearch",
+        #     1: "ChangeRegion",
+        #     2: "GoToThreat",
+        #     3: "HoldPosition",
+        #     4: "ChangeRegion_NE",
+        #     5: "ChangeRegion_SE",
+        #     6: "ChangeRegion_SW"
+        # }
+        #
+        # if self.current_teammate:
+        #     name = getattr(self.current_teammate, 'name', 'Unknown')
+        #     policy_type = type(self.current_teammate).__name__
+        #     stability = getattr(self.current_teammate, 'action_stability', 'N/A')
+        #     decision_speed = getattr(self.current_teammate, 'decision_speed', 'N/A')
+        #     subpolicy_idx = getattr(self, 'teammate_subpolicy_choice', 'N/A')
+        #     subpolicy_name = subpolicy_map.get(subpolicy_idx, f"Unknown({subpolicy_idx})")
+        #
+        #     teammate_info = (
+        #         f"name={name}, type={policy_type}, stability={stability}, speed={decision_speed}, "
+        #         f"subpolicy={subpolicy_name} (index={subpolicy_idx})"
+        #     )
+        if isinstance(action, tuple):
+            # warnings.warn(
+            #     f"WARNING: Teammate action is a tuple {action}. Unwrapping first element.\n"
+            #     f"Teammate debug info: {teammate_info}"
+            # )
+            return action[0]
+        #print(f"NOT A TUPLE - WARNING: Teammate action is NOT a tuple {action}. Unwrapping first element.\n", f"Teammate debug info: {teammate_info}\n")
+        return action
 
     def get_teammate_action(self):
 
@@ -347,10 +380,13 @@ class MaisrLocalSearchWrapper(gym.Env):
                 if hasattr(self.current_teammate, 'model'):
                     teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
                     direction_to_move = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+                    direction_to_move = self._unwrap_action(direction_to_move)
+
 
                 else:
                     teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
-                    direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
+                    direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
+                    direction_to_move = self._unwrap_action(direction_to_move)
 
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
                 return teammate_action
@@ -362,19 +398,8 @@ class MaisrLocalSearchWrapper(gym.Env):
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
 
             if self.teammate_subpolicy_choice == 0:  # Local search
-                direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
-
-                # # TODO TESTING
-                # if self.teammate_decision_timer == 0 or self.teammate_cached_direction is None:
-                #     direction_to_move, _ = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
-                #     self.teammate_cached_direction = direction_to_move
-                #     self.teammate_decision_timer = self.teammate_decision_interval
-                #
-                # else:
-                #     direction_to_move = self.teammate_cached_direction
-                #     self.teammate_decision_timer -= 1
-
-                ####
+                direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
+                direction_to_move = self._unwrap_action(direction_to_move)
 
                 # Apply action noise
                 if hasattr(self.current_teammate, 'action_stability'):
@@ -386,11 +411,14 @@ class MaisrLocalSearchWrapper(gym.Env):
 
                         # Determine if we are in a pause window
                         if (self.periodic_step_counter % self.periodic_pause_interval) < self.periodic_pause_duration:
-                            # Oscillate using the last real direction
                             if self.last_real_direction is None:
                                 self.last_real_direction = direction_to_move  # seed it the first time
 
                             #direction_to_move = (self.last_real_direction + 8) % 16 if self.pause_toggle else self.last_real_direction
+                            if isinstance(self.last_real_direction, tuple):
+                                self.last_real_direction = self.last_real_direction[0]
+                                print('(subpol choice 0) fixed last_real_direction')
+
                             try:
                                 if self.pause_toggle:
                                     direction_to_move = (self.last_real_direction + 4) % 16
@@ -408,8 +436,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     elif self.current_teammate.action_stability in ['noisy', 'very_noisy'] and random.random() < noise_chance[self.current_teammate.action_stability]:
                         #old_direction_to_move = direction_to_move
                         noise = random.choice(noise_options[self.current_teammate.action_stability])
-                        if isinstance(direction_to_move, tuple):
-                            direction_to_move = direction_to_move[0]
+                        direction_to_move = self._unwrap_action(direction_to_move)
                         try:
                             direction_to_move = (direction_to_move + noise) % 16
                         except: print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
@@ -422,7 +449,8 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_action = self.env._denormalize_waypoint(waypoint_to_go)
 
             elif self.teammate_subpolicy_choice == 2:  # go to high value target
-                waypoint_to_go = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
+                direction_to_move = self.go_to_highvalue_policy.act(teammate_subpolicy_observation)
+                direction_to_move = self._unwrap_action(direction_to_move)
 
                 # Apply action noise
                 if hasattr(self.current_teammate, 'action_stability'):
@@ -435,29 +463,30 @@ class MaisrLocalSearchWrapper(gym.Env):
 
                         # Determine if we are in a pause window
                         if (self.periodic_step_counter % self.periodic_pause_interval) < self.periodic_pause_duration:
-                            # Oscillate using the last real direction
-                            if self.last_real_direction is None:
-                                self.last_real_direction = waypoint_to_go  # seed it the first time
-
-                            #waypoint_to_go = (self.last_real_direction + 8) % 16 if self.pause_toggle else waypoint_to_go
-                            if self.pause_toggle: # oscillate +90°
-                                waypoint_to_go = (self.last_real_direction + 4) % 16
-                            else: # original direction (or oscillate -90°)
-                                waypoint_to_go = (self.last_real_direction - 4) % 16
+                            if self.last_real_direction is None: # Oscillate using the last real direction
+                                self.last_real_direction = direction_to_move  # seed it the first time
+                            try:
+                                if self.pause_toggle: # oscillate +90°
+                                    direction_to_move = (self.last_real_direction + 4) % 16
+                                else: # original direction (or oscillate -90°)
+                                    direction_to_move = (self.last_real_direction - 4) % 16
+                            except:
+                                print( f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
 
                             self.pause_toggle = not self.pause_toggle
 
-                        else:
-                            # We're not pausing — take and store the real direction
-                            self.last_real_direction = waypoint_to_go
+                        else: # We're not pausing — take and store the real direction
+                            self.last_real_direction = direction_to_move
 
                     elif self.current_teammate.action_stability in ['noisy', 'very_noisy'] and random.random() < noise_chance[self.current_teammate.action_stability]:
                         noise = random.choice(noise_options[self.current_teammate.action_stability])
-                        if isinstance(waypoint_to_go, tuple): waypoint_to_go = waypoint_to_go[0]
-                        try: waypoint_to_go = (waypoint_to_go + noise) % 16
-                        except: print( f'ERROR: failed to add noise, teammate action is {waypoint_to_go}, type {type(waypoint_to_go)}')
+                        direction_to_move = self._unwrap_action(direction_to_move)
+                        try:
+                            direction_to_move = (direction_to_move + noise) % 16
+                        except:
+                            print( f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
 
-                teammate_action = self.env._direction_to_waypoint(waypoint_to_go, 1)
+                teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 3:  # Hold at current location
                 teammate_action = np.array([
