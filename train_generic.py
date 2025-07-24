@@ -1,5 +1,6 @@
 import ctypes
 import glob
+import json
 import warnings
 
 import pygame
@@ -55,6 +56,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
                  log_freq=4, teammate_manager=None):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
+        self.avg_mean_diffs = []
+        self.avg_var_diffs = []
         self.config = env_config
         self.eval_env = eval_env
         self.eval_freq = env_config['eval_freq']
@@ -111,6 +114,55 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.teammate_manager = teammate_manager
 
     def _on_step(self):
+
+        #if self.num_timesteps % 50 == 0:
+            # if self.eval_env.envs[0].current_teammate is not None:
+            #     if self.eval_env.envs[0].current_teammate.norm_stats is not None:
+            #
+            #         teammate_obs_mean = self.eval_env.envs[0].current_teammate.norm_stats.obs_rms.mean
+            #         teammate_obs_var = self.eval_env.envs[0].current_teammate.norm_stats.obs_rms.var
+            #
+            #         agent_obs_mean = self.eval_env.obs_rms.mean
+            #         agent_obs_var = self.eval_env.obs_rms.var
+            #
+            #         mean_diffs = []
+            #         var_diffs = []
+            #         for i in range(len(teammate_obs_mean)):
+            #             mean_diff = teammate_obs_mean[i] - agent_obs_mean[i]
+            #             mean_diffs.append(mean_diff)
+            #
+            #         for j in range(len(teammate_obs_var)):
+            #             var_diff = teammate_obs_var[j] - agent_obs_var[j]
+            #             var_diffs.append(var_diff)
+            #
+            #         avg_mean_diff = sum(mean_diffs)/len(mean_diffs)
+            #         avg_var_diff = sum(var_diffs) / len(var_diffs)
+            #         #print(f'    DIAGNOSTIC Avg normstat mean diff: {avg_mean_diff} ({mean_diffs}')
+            #         #print(f'    DIAGNOSTIC Avg normstat var diff: {avg_var_diff} ({var_diffs}')
+            #
+            #         self.avg_mean_diffs.append(avg_mean_diff)
+            #         self.avg_var_diffs.append(avg_var_diff)
+            #
+            #         diff_log = {
+            #             "step": self.num_timesteps,
+            #             "avg_mean_diff": avg_mean_diff,
+            #             "avg_var_diff": avg_var_diff,
+            #             "mean_diffs": mean_diffs,
+            #             "var_diffs": var_diffs
+            #         }
+            #         diff_log_path = f"outputs/logs/normstat_diffs.json"
+            #         try:
+            #             if os.path.exists(diff_log_path):
+            #                 with open(diff_log_path, "r") as f:
+            #                     existing_data = json.load(f)
+            #             else:
+            #                 existing_data = []
+            #             existing_data.append(diff_log)
+            #             with open(diff_log_path, "w") as f:
+            #                 json.dump(existing_data, f, indent=2)
+            #         except Exception as e:
+            #             print(f"[Callback] Failed to write normstat diffs: {e}")
+
         # Only log on the specified frequency
         should_log_episode_data = self.num_timesteps % self.log_freq == 0
 
@@ -1289,6 +1341,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
     parser.add_argument('--seed', required=True, help='Seed to run')
+    parser.add_argument('--fcp_letter', required=False, help='Seed to run')
     parser.add_argument('--testing', action='store_true', help='')
     args = parser.parse_args()
     version = args.version
@@ -1338,7 +1391,7 @@ if __name__ == "__main__":
 
     elif version == 'strategy':
         note = 'strat4' + machine[0].upper()
-        config['num_timesteps'] = 4.5e6
+        config['num_timesteps'] = 3.5e6
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1353,7 +1406,7 @@ if __name__ == "__main__":
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.002, 0.005], # 0.005,
+            "team_spread_bonus_coeff": [0.005, 0.002], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.08, 0.09],
@@ -1408,6 +1461,40 @@ if __name__ == "__main__":
 
         load_path = None # load_paths[int(args.seed)]
         vecnorm_load_path = None #vecnorm_load_paths[int(args.seed)]
+
+    elif version == 'mixed':
+        note = 'fcp_mixed' + machine[0].upper()
+        config['num_timesteps'] = 4.5e6
+        config['league_type'] = 'mixed'
+        config['teammate_active_at_start'] = True
+        project_name = 'maisr-rl-mixedtraining'
+
+        pretrained_agents_path = './pretrained_teammates/' # TODO pass this to teammate manager
+
+        fcp_letter = args.fcp_letter
+
+        fcp_configs = {
+            "A": {
+                "fcp_ratio": 1.0,
+                "ratio_schedule": None},
+            "B": {
+                "fcp_ratio": 0.5,
+                "ratio_schedule": None},
+            "C": {
+                "fcp_ratio": 1.0,
+                "ratio_schedule": {30: 0.7}},
+            "D": {
+                "fcp_ratio": 1.0,
+                "ratio_schedule": {30: 0.5}},
+            "E": {
+                "fcp_ratio": 1.0,
+                "ratio_schedule": {50: 0.5}},
+            "F": {
+                "fcp_ratio": 1.0,
+                "ratio_schedule": {50: 0.7}}
+        }
+
+        config['fcp_ratio'] = fcp_configs[fcp_letter]['fcp_ratio']
 
 
     param_shorthand = {

@@ -256,10 +256,12 @@ class TeammateManager:
         # Select checkpoint based on type
         if selection_strategy_enabled:  # Selfplay strategy
             selection_strategy = random.random()
+            selection_strategy = 0.4 # TODO temp force
 
             if selection_strategy < 0.5:
                 # Select from most recent 3 checkpoints
-                recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
+                #recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
+                recent_checkpoints = all_checkpoints[:min(2, len(all_checkpoints))]
                 selected_checkpoint = random.choice(recent_checkpoints)
                 strategy_name = "Recent3"
             elif selection_strategy < 0.8:
@@ -1045,7 +1047,26 @@ class RLTeammatePolicy(TeammatePolicy):
 
     def _normalize_observation(self, observation):
         """Apply normalization to observation if stats are available"""
-        if self.live_obs_rms is not None:
+        if self.norm_stats is not None:
+            try:
+                obs_mean = self.norm_stats.obs_rms.mean
+                obs_var = self.norm_stats.obs_rms.var
+                #print('norm stats means:')
+                #print(obs_mean)
+
+                epsilon = 1e-8
+                clip_obs = 10.0
+
+                normalized_obs = np.clip(
+                    (observation - obs_mean) / np.sqrt(obs_var + epsilon),
+                    -clip_obs,
+                    clip_obs
+                )
+                return normalized_obs.astype(np.float32)
+            except Exception as e:
+                print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
+
+        elif self.live_obs_rms is not None:
             try:
                 obs_mean = self.live_obs_rms.mean
                 obs_var = self.live_obs_rms.var
@@ -1063,27 +1084,7 @@ class RLTeammatePolicy(TeammatePolicy):
                 print(f"[RLTeammatePolicy] Error using live normalization: {e}")
 
         # Fallback to file-based stats if live stats fail
-        if self.norm_stats is not None:
-            try:
-                obs_mean = self.norm_stats.obs_rms.mean
-                obs_var = self.norm_stats.obs_rms.var
-                #print('norm stats means:')
-                #print(obs_mean)
 
-
-                epsilon = 1e-8
-                clip_obs = 10.0
-
-                normalized_obs = np.clip(
-                    (observation - obs_mean) / np.sqrt(obs_var + epsilon),
-                    -clip_obs,
-                    clip_obs
-                )
-                return normalized_obs.astype(np.float32)
-            except Exception as e:
-                print(f"[RLTeammatePolicy] Error normalizing observation: {e}")
-
-        # No normalization available - return as-is
         return observation
 
     def reset(self):
