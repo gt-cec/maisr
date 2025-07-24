@@ -36,7 +36,7 @@ class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
     def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir,
-                 subpolicies=None, overfit_test = None, current_model = None):
+                 subpolicies=None, overfit_test = None, current_model = None, fcp_ratio=1.0):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -56,6 +56,7 @@ class TeammateManager:
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
+        self.fcp_ratio = fcp_ratio
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay"]
@@ -144,7 +145,6 @@ class TeammateManager:
                 return self._create_pretrained_rl_teammate()
 
         elif self.league_type == "strategy_diverse":
-
             return self._create_strategy_diverse_heuristic_teammate() # TEMP
 
             prob = random.random()
@@ -161,6 +161,14 @@ class TeammateManager:
             else:
                 print(f'[_select_uniform_teammate] Creating pretrained RL teammate')
                 return self._create_pretrained_rl_teammate()
+
+        elif self.league_type == 'mixed':
+            if random.random() < self.fcp_ratio:
+                print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')
+                return self._create_pretrained_rl_teammate()
+            else:
+                print(f'[Teammate Manager - Mixed] Creating strategy heuristic teammate')
+                return self._create_strategy_diverse_heuristic_teammate()
 
         else:
             raise ValueError(f"Unknown league_type: {self.league_type}")
@@ -216,9 +224,20 @@ class TeammateManager:
             os.path.join(checkpoint_dir, "model_*.zip"),
         ]
 
+        normstats_patterns = [
+            # Pattern: strat4L_0723_1646_seed69_checkpoint_vecnormalize_2496_steps.pkl
+            os.path.join(checkpoint_dir, "*.pkl"),
+            os.path.join(checkpoint_dir, "**/*.pkl"),
+            os.path.join(checkpoint_dir, "*_steps.pkl"),
+        ]
+
         all_checkpoints = []
         for pattern in checkpoint_patterns:
             all_checkpoints.extend(glob.glob(pattern, recursive=True))
+
+        all_normstats = []
+        for pattern in normstats_patterns:
+            all_normstats.extend(glob.glob(pattern, recursive=True))
 
         # Remove duplicates and sort by modification time (newest first)
         all_checkpoints = list(set(all_checkpoints))
@@ -232,6 +251,7 @@ class TeammateManager:
                 return teammate
 
         all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        all_normstats.sort(key=lambda x: os.path.getmtime(x), reverse=True)
 
         # Select checkpoint based on type
         if selection_strategy_enabled:  # Selfplay strategy
@@ -258,10 +278,42 @@ class TeammateManager:
 
         try:
             # Load the selected checkpoint
-            print(f"Loading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" +
-                  (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
+            print(f"\nLoading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" + (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
             model = PPO.load(selected_checkpoint)
 
+            # (TODO test) find the corresponding norm stats .pkl file for the selected checkpoint. If not found, set to None.
+            import re
+            checkpoint_filename = os.path.basename(selected_checkpoint)
+            norm_stats_path = None
+
+            # Strip off the model suffix
+            # Extract step count to match against _vecnormalize_{steps}_steps.pkl
+            step_match = re.search(r'checkpoint_(\d+)_steps(?:_model)?\.zip$', checkpoint_filename)
+            norm_stats_path = None
+
+            if step_match:
+                step_count = step_match.group(1)
+                checkpoint_prefix = checkpoint_filename.split("checkpoint_")[0].rstrip("_")
+
+                # Construct expected vecnormalize filename
+                expected_vecnorm_filename = f"{checkpoint_prefix}_checkpoint_vecnormalize_{step_count}_steps.pkl"
+
+                for stat_path in all_normstats:
+                    if os.path.basename(stat_path) == expected_vecnorm_filename:
+                        norm_stats_path = stat_path
+                        break
+
+            # if checkpoint_filename.endswith("_model.zip"):
+            #     prefix = checkpoint_filename.replace("_model.zip", "")
+            # else:
+            #     prefix = checkpoint_filename.replace(".zip", "")  # fallback for _100_steps.zip style
+            #
+            # # Look for matching .pkl
+            # for stat_path in all_normstats:
+            #     stat_filename = os.path.basename(stat_path)
+            #     if stat_filename.startswith(prefix) and stat_filename.endswith("_vecnormalize.pkl"):
+            #         norm_stats_path = stat_path
+            #         break
 
             # Create RL teammate policy using the loaded model
             rl_teammate = RLTeammatePolicy(
@@ -270,12 +322,15 @@ class TeammateManager:
                 local_search_policy=self.subpolicies.get('local_search'),
                 go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
                 change_region_subpolicy=self.subpolicies.get('change_region'),
-                norm_stats_path=None
+                norm_stats_path=norm_stats_path
             )
 
             # Pass current normalization stats if available
-            if hasattr(self, 'obs_rms') and hasattr(self, 'ret_rms'):
+            if rl_teammate.norm_stats is None and hasattr(self, 'obs_rms') and hasattr(self, 'ret_rms'):
+                print('No teammate normstats file found. Using live stats')
+                print(f'Debug: norm_stats_path = {norm_stats_path}')
                 rl_teammate.set_live_normalization_stats(self.obs_rms, self.ret_rms)
+
 
             # Set name based on type
             checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
@@ -293,6 +348,8 @@ class TeammateManager:
             teammate = self._create_baseline_teammate()
             teammate.name = f"{fallback_prefix}_LoadError_Fallback"
             return teammate
+
+
 
     def _create_overfit_test_teammate(self):
         """Create teammate with specific configuration for overfit testing"""
@@ -920,38 +977,44 @@ class RLTeammatePolicy(TeammatePolicy):
         self.env = env
         self.use_collision_avoidance = use_collision_avoidance
 
-        self.norm_stats = None
+        #self.norm_stats = None
         if norm_stats_path and os.path.exists(norm_stats_path):
             try:
-                self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
-                #print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
+                #self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
+                import pickle
+                with open(norm_stats_path, 'rb') as f:
+                    self.norm_stats = pickle.load(f)
+                print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
             except Exception as e:
                 print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
                 self.norm_stats = None
+        else:
+            self.norm_stats = None
 
         self.local_search_policy = local_search_policy
         self.go_to_highvalue_policy = go_to_highvalue_policy
         self.change_region_subpolicy = change_region_subpolicy
 
         # Initialize normalization stats
-        self.norm_stats = None
+        #self.norm_stats = None
         self.live_obs_rms = None  # For live stats from training env
         self.live_ret_rms = None
 
         # Try to load from file first
-        if norm_stats_path and os.path.exists(norm_stats_path):
-            try:
-                self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
-                print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
-            except Exception as e:
-                print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
-                self.norm_stats = None
+        # if norm_stats_path and os.path.exists(norm_stats_path):
+        #     try:
+        #         self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
+        #         print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
+        #     except Exception as e:
+        #         print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
+        #         self.norm_stats = None
 
         # Default name
         self.name = "RL_Teammate"
 
         # Track last observation for potential debugging
         self.last_observation = None
+
 
     def choose_subpolicy(self, observation, current_subpolicy):
         """Choose subpolicy using the trained RL model"""
@@ -982,7 +1045,6 @@ class RLTeammatePolicy(TeammatePolicy):
 
     def _normalize_observation(self, observation):
         """Apply normalization to observation if stats are available"""
-        # Prefer live stats over file stats (this is the key!)
         if self.live_obs_rms is not None:
             try:
                 obs_mean = self.live_obs_rms.mean
@@ -990,7 +1052,7 @@ class RLTeammatePolicy(TeammatePolicy):
                 epsilon = 1e-8  # Same as VecNormalize default
                 clip_obs = 10.0  # Same as VecNormalize default
 
-                # Apply the EXACT same normalization formula as VecNormalize
+                # Apply the exact same normalization formula as VecNormalize
                 normalized_obs = np.clip(
                     (observation - obs_mean) / np.sqrt(obs_var + epsilon),
                     -clip_obs,
@@ -1003,8 +1065,12 @@ class RLTeammatePolicy(TeammatePolicy):
         # Fallback to file-based stats if live stats fail
         if self.norm_stats is not None:
             try:
-                obs_mean = self.norm_stats['obs_mean']
-                obs_var = self.norm_stats['obs_var']
+                obs_mean = self.norm_stats.obs_rms.mean
+                obs_var = self.norm_stats.obs_rms.var
+                #print('norm stats means:')
+                #print(obs_mean)
+
+
                 epsilon = 1e-8
                 clip_obs = 10.0
 

@@ -977,3 +977,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         if current_identified > self.last_targets_identified:
             self.last_progress_step = self.env.step_count_outer
             self.last_targets_identified = current_identified
+
+    def change_league_ratio(self, new_ratio):
+        if self.teammate_manager is not None:
+            self.teammate_manager.fcp_ratio = new_ratio

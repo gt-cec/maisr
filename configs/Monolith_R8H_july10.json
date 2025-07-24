@@ -67,7 +67,7 @@
 	"clip_range": 0.2,
 
 	"num_timesteps": 1.5e6,
-	"save_freq": 2500,
+	"save_freq": 125000,
 	"n_eval_episodes": 7,
 	"eval_freq": 1000,
 
@@ -86,5 +86,8 @@
 	"starting_difficulty": 0,
 	"max_difficulty": 2,
 
-	"use_stuck_detection": false
+	"use_stuck_detection": false,
+
+	"starting_fcp_ratio": 1.0,
+	"ratio_schedule": {}
 }

@@ -85,6 +85,10 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.entropy_decay_start_step = None
         self.original_entropy_coeff = None
 
+        # For mixed league training league updates
+        self.ratio_schedule = env_config.get("ratio_schedule", {})  # dict: {reward_threshold: new_ratio}
+        self.ratio_update_milestones = set()  # track which thresholds we’ve already applied
+
         # Buffer for accumulating data between log events
         self.episode_buffer = {
             'rewards': [],
@@ -237,6 +241,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             mean_reward, std_reward = 0, 0
             total_eval_reward = 0
             eval_lengths = []
+            teammate_names = []
             eval_episode_data_list = []
 
             obs = self.eval_env.reset()
@@ -244,7 +249,17 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 done = False
                 ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
 
+
+                try:
+                    #teammate_names.append(self.eval_env.get_wrapper_attr("current_teammate").name)
+                    teammate_names.append(self.eval_env.envs[0].current_teammate.name)
+
+                except Exception as e:
+                    print('Error, failed to get teammate name using get_wrapper_attr')
+                    print(e)
+
                 while not done:
+
                     action, other = self.model.predict(obs, deterministic=True)
                     #action = action[0]
 
@@ -297,6 +312,39 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
+
+            ###################### === Dynamic League Ratio Update Based on Evaluation Reward === ######################
+            for threshold, new_ratio in self.ratio_schedule.items():
+                if mean_reward >= threshold and threshold not in self.ratio_update_milestones:
+                    print(f'\n[League Ratio Update] Reward {mean_reward:.2f} exceeded threshold {threshold}, updating league ratio to {new_ratio}')
+                    try:
+                        self.model.get_env().env_method("change_league_ratio", new_ratio)
+                        self.ratio_update_milestones.add(threshold)
+                        self.run.log({
+                            "league_ratio/update_triggered": True,
+                            "league_ratio/new_ratio": new_ratio,
+                            "league_ratio/trigger_step": self.num_timesteps,
+                            "league_ratio/trigger_threshold": threshold
+                        }, step=self.num_timesteps)
+                    except Exception as e:
+                        print(f"[League Ratio Update] Failed to update league ratio: {e}")
+
+            ### Tracking teammate frequently
+            try:
+                counts = {
+                    "Diverse": sum(1 for name in teammate_names if name.startswith("Diverse_")),
+                    "SelfPlay": sum(1 for name in teammate_names if name.startswith("SelfPlay_")),
+                    "Pretrained": sum(1 for name in teammate_names if name.startswith("Pretrained_")),
+                    "Total": len(teammate_names)
+                }
+                ratios = {
+                    "eval_teammate_ratios/teammate_ratio_diverse": counts["Diverse"] / counts["Total"] if counts["Total"] else 0,
+                    "eval_teammate_ratios/teammate_ratio_selfplay": counts["SelfPlay"] / counts["Total"] if counts["Total"] else 0,
+                    "eval_teammate_ratios/teammate_ratio_pretrained": counts["Pretrained"] / counts["Total"] if counts["Total"] else 0
+                }
+                self.run.log(ratios, step=self.num_timesteps)
+            except Exception as e:
+                print(f'Failed to log teammate frequency counts: {e}')
 
             ######################## Entropy decay #####################################################
             if self.use_entropy_decay_schedule:
@@ -803,7 +851,7 @@ def make_env(env_config, rank, seed, run_name='no_name'):
     return _init
 
 
-def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, overfit_test):
+def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, overfit_test, fcp_ratio=1.0):
     """Setup teammate manager with specified league type"""
 
     # Create subpolicies for teammates to use
@@ -921,7 +969,8 @@ def train_generic(
             balance_method = env_config['balance_method'],
             selfplay_checkpoint_dir=f"outputs/{run_name}/checkpoints",
             pretrained_teammate_dir=f'trained_models/pretrained_teammates',
-            overfit_test=overfit_test
+            overfit_test=overfit_test,
+            fcp_ratio = env_config['starting_fcp_ratio']
         )
         print('        Instantiated teammate manager')
     else:
@@ -1125,11 +1174,12 @@ def train_generic(
 
     # === Save initial checkpoint immediately ===
     if save_checkpoints:
-        initial_checkpoint_path = f"outputs/{run_name}/checkpoints/{run_name}_checkpoint_0steps"
-        model.save(initial_checkpoint_path + "_model.zip")
+        initial_checkpoint_path = f"outputs/{run_name}/checkpoints/{run_name}_checkpoint_0_steps.zip"
+        vecnormalize_path =  f"outputs/{run_name}/checkpoints/{run_name}_checkpoint_vecnormalize_0_steps.pkl"
+        model.save(initial_checkpoint_path)
         if isinstance(env, VecNormalize):
-            env.save(initial_checkpoint_path + "_vecnormalize.pkl")
-        print(f"[Startup] Initial checkpoint saved to {initial_checkpoint_path}_model.zip")
+            env.save(vecnormalize_path)
+        print(f"[Startup] Initial checkpoint saved to {initial_checkpoint_path}")
 
     print('\n\n###### Running model.learn... ######\n')
     model.learn(
@@ -1260,19 +1310,11 @@ if __name__ == "__main__":
         overfit_test = None
         config['league_type'] = 'strategy_diverse'
         config['seed'] = int(args.seed)
-        config['teammate_active_at_start'] = True
+        config['teammate_active_at_start'] = False
 
         vecnorm_load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
         load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
         config['load_path'] = load_path
-
-    elif version == 'index_test':
-        note = 'index_1' + machine[0].upper()
-        hyperparams = {'seed':42}
-        overfit_test = None
-        config['action_type'] = 'target_index'
-        config['league_type'] = 'strategy_diverse'
-        config['teammate_active_at_start'] = False
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
@@ -1337,8 +1379,10 @@ if __name__ == "__main__":
 
     if args.testing:
         config["eval_freq"] = 50
-        config['save_freq'] = 100
+        config['num_eval_episodes'] = 2
+        config['save_freq'] = 50
         config['num_timesteps'] = 300
+        project_name = 'maisr-tests'
 
     ################################################
 
