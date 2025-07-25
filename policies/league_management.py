@@ -283,7 +283,7 @@ class TeammateManager:
             print(f"\nLoading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" + (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
             model = PPO.load(selected_checkpoint)
 
-            # (TODO test) find the corresponding norm stats .pkl file for the selected checkpoint. If not found, set to None.
+            # Find the corresponding norm stats .pkl file for the selected checkpoint. If not found, set to None.
             import re
             checkpoint_filename = os.path.basename(selected_checkpoint)
             norm_stats_path = None
@@ -1062,6 +1062,11 @@ class RLTeammatePolicy(TeammatePolicy):
                     -clip_obs,
                     clip_obs
                 )
+                #if self.env.step_count_outer % 50 == 0:
+                #print("[Teammate] Normstats mean (first 3):", self.norm_stats.obs_rms.mean[:3])
+                print("[Teammate] Obs (first 3):", observation[:3])
+                print("[Teammate] Normalized Obs (first 3):", normalized_obs[:3])
+
                 return normalized_obs.astype(np.float32)
             except Exception as e:
                 print(f"[RLTeammatePolicy] Error normalizing observation: {e}")

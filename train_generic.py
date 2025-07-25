@@ -32,16 +32,27 @@ from policies.league_management import TeammateManager, GenericTeammatePolicy, S
 from utility.data_logging import load_env_config
 
 
-# def generate_run_name(config):
-#     """Generate a unique, descriptive name for this training run. Will be shared across logs, WandB, and action
-#     history plots to make it easy to match them."""
-#
-#     components = []#[f"{config['n_envs']}envs",]
-#     from datetime import datetime
-#     timestamp = datetime.now().strftime("%m%d_%H%M")
-#     run_name = f"{timestamp}_" + "_".join(components)
-#     return run_name
-#
+class PrintObsEvery50Steps(BaseCallback):
+    """
+    Custom callback to print the agent's environment observation every 50 steps.
+    """
+    def __init__(self, verbose: int = 0):
+        super().__init__(verbose)
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % 50 == 0:
+            observations = self.locals.get('new_obs')
+            if observations is None:
+                observations = self.locals.get('obs')
+
+            if observations is not None:
+                # Print first environment's observation
+                print(f"\n%%%%%%%%% [Step {self.num_timesteps}] Observation[0]: {observations[0][:3]}\n")
+            else:
+                print(f"[Step {self.num_timesteps}] No observations found in locals.")
+        return True
+
+
 
 
 class EnhancedWandbCallback_Monolith(BaseCallback):
@@ -522,8 +533,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
-            print(f'EVAL LOGGED (mean reward {round(mean_reward,2)}, std {round(std_reward, 2)}, 'f'mean target_ids: {round(np.mean(target_ids_list),2) if target_ids_list else 0}')
-            print('################################################')
+            print(f'\n ########## EVAL LOGGED (mean reward {round(mean_reward,1)}, std {round(std_reward, 2)}, 'f'mean target_ids: {round(np.mean(target_ids_list),2) if target_ids_list else 0} ##########\n')
 
 
             #################################### Curriculum learning ####################################
@@ -557,7 +567,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
 
-            print('Returning to training... \n')
+
 
         # === Periodically log latest episode plot ===
         if self.num_timesteps % (self.log_freq * 5) == 0:  # log less frequently than stats
@@ -1038,7 +1048,7 @@ def train_generic(
     for subfolder in ['episode_plots','trained_models', 'checkpoints','vecnorm_stats','logs']:
         folder_name = f"outputs/{run_name}/{subfolder}"
         os.makedirs(folder_name, exist_ok=True)
-        print(f'        Created folder {folder_name}')
+        print(f'        {folder_name}')
     print('\n')
     #os.makedirs(f"outputs/episode_plots/{run_name}", exist_ok=True)
     #os.makedirs(f"./trained_models/{run_name}/", exist_ok=True)
@@ -1061,7 +1071,7 @@ def train_generic(
             print('         WandB init failed, retrying')
             init_successful = False
         if init_successful:
-            print(f'        WandB init successful')
+            #print(f'        WandB init successful')
             break
 
     run.log_code(".")
@@ -1220,7 +1230,9 @@ def train_generic(
             teammate_manager=teammate_manager
         )
 
-    callbacks = [wandb_callback, enhanced_wandb_callback]
+    printcallback = PrintObsEvery50Steps(verbose=1)
+
+    callbacks = [wandb_callback, enhanced_wandb_callback, printcallback]
     if save_checkpoints:
         callbacks.append(checkpoint_callback)
     print('        Callbacks created')
@@ -1286,11 +1298,14 @@ def train_generic(
             env.save(vecnormalize_path)
         print(f"[Startup] Initial checkpoint saved to {initial_checkpoint_path}")
 
+    teammate_manager._create_selfplay_teammate()
+    teammate_manager.current_teammate.env = env # TODO Temp added
+
     print('\n\n###### Running model.learn... ######\n')
     model.learn(
         total_timesteps=int(env_config['num_timesteps']),
         callback=callbacks,
-        reset_num_timesteps=False if load_path else True  # TODO check this
+        reset_num_timesteps=False if load_path else True
     )
 
     # Save normalization stats for deployment
@@ -1341,7 +1356,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
     parser.add_argument('--seed', required=True, help='Seed to run')
-    parser.add_argument('--fcp_letter', required=False, help='Seed to run')
+    parser.add_argument('--fcp_letter', required=False, help='Which fictitious coplay config to use')
     parser.add_argument('--testing', action='store_true', help='')
     args = parser.parse_args()
     version = args.version
@@ -1518,10 +1533,10 @@ if __name__ == "__main__":
     }
 
     if args.testing:
-        config["eval_freq"] = 500
+        config["eval_freq"] = 1000
         config['num_eval_episodes'] = 5
-        config['save_freq'] = 200
-        config['num_timesteps'] = 1e5
+        config['save_freq'] = 500
+        config['num_timesteps'] = 5e5
         project_name = 'maisr-tests'
 
     ################################################

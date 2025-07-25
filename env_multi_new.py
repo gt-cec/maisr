@@ -398,10 +398,8 @@ class MAISREnvVec(gym.Env):
             appearance = self.agent_appearance if i == 0 else None
             agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game_speed'] * self.config['agent_speed'], appearance=appearance)
 
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
-
-        if self.config['num_aircraft'] == 2: # TODO delete
-            self.human_idx = self.aircraft_ids[1]  # Agent ID for the human-controlled aircraft. Dynamic so that if human dies in training round, their ID increments 1
+            #self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[0] # TODO TEMP
 
         # Reset step, episode, and reward counters
         self.step_count_inner = 0

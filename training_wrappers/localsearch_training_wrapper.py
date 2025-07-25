@@ -212,7 +212,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         if self.obs_noise_std > 0:
             noise = np.random.normal(0, self.obs_noise_std, observation.shape)
-            observation = np.clip(observation + noise, -1, 1)  # Clip to valid range
+            #observation = np.clip(observation + noise, -1, 1)  # Clip to valid range # TODO temp removed
 
         # Convert base_env elements to wrapper elements if needed
         reward = base_reward
@@ -368,20 +368,27 @@ class MaisrLocalSearchWrapper(gym.Env):
         return action
 
     def get_teammate_action(self):
+        obs_agent1_raw = self.env.get_observation_nearest_n(1)
+        obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
+
+        if self.env.step_count_outer % 50 == 0:
+            print(f"\n    &&&&& Step {self.env.step_count_outer} Teammate obs Raw:", obs_agent1_raw[:3])
+            print("    &&&&&          Teammate obs Norm:", obs_agent1_norm[:3])
 
         if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
             return self.current_teammate.get_action()
 
-        if self.teammate_manager or self.teammate_policy:
-            if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None:
-                self.current_teammate.env = self.env
+        elif self.teammate_manager or self.teammate_policy:
+            # if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None: # TODO potential problem 1
+            #     self.current_teammate.env = self.env
 
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] == 'selfplay':
 
                 # If using a selfplay model
                 if hasattr(self.current_teammate, 'model'):
-                    teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
+                    teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1)) # TODO temp
+                    #teammate_obs = self.env.get_observation_nearest_n(1)
                     direction_to_move = self.current_teammate.model.predict(teammate_obs, deterministic=True)
                     direction_to_move = self._unwrap_action(direction_to_move)
 
