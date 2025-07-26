@@ -309,6 +309,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             teammate_names = []
             eval_episode_data_list = []
 
+            level_metrics = {}
+
             obs = self.eval_env.reset()
             for i in range(self.n_eval_episodes):
                 done = False
@@ -344,6 +346,24 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     final_info = info
 
                 ep_length = final_info["episode"]["l"]
+
+                level_idx = getattr(self.eval_env.envs[0].env, "level_idx", -1)
+                #self.eval_env.envs[0].env.level_idx
+                if level_idx not in level_metrics:
+                    level_metrics[level_idx] = {
+                        "rewards": [],
+                        "target_ids": [],
+                        "threat_ids": [],
+                        "episode_lengths": [],
+                        "target_ids_per_step": []
+                    }
+
+                level_metrics[level_idx]["rewards"].append(ep_reward)
+                level_metrics[level_idx]["target_ids"].append(ep_target_ids)
+                level_metrics[level_idx]["threat_ids"].append(ep_threat_ids)
+                level_metrics[level_idx]["episode_lengths"].append(ep_length)
+                level_metrics[level_idx]["target_ids_per_step"].append(ep_target_ids / ep_length)
+
                 target_ids_list.append(ep_target_ids)
                 threat_ids_list.append(ep_threat_ids)
 
@@ -363,6 +383,18 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 "eval/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                 "curriculum/difficulty_level": self.current_difficulty
             }
+
+            # Add per-level eval metrics
+            for level, metrics in level_metrics.items():
+                if len(metrics["rewards"]) == 0:
+                    continue
+                eval_metrics.update({
+                    f"eval/level{level}_reward": np.mean(metrics["rewards"]),
+                    f"eval/level{level}_target_ids": np.mean(metrics["target_ids"]),
+                    f"eval/level{level}_threat_ids": np.mean(metrics["threat_ids"]),
+                    f"eval/level{level}_episode_length": np.mean(metrics["episode_lengths"]),
+                    f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
+                })
 
 
             if self.run_human_eval:
