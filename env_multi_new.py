@@ -398,8 +398,8 @@ class MAISREnvVec(gym.Env):
             appearance = self.agent_appearance if i == 0 else None
             agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game_speed'] * self.config['agent_speed'], appearance=appearance)
 
-            #self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
-            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[0] # TODO TEMP
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
+            #self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[0] # TODO TEMP
 
         # Reset step, episode, and reward counters
         self.step_count_inner = 0
@@ -961,17 +961,18 @@ class MAISREnvVec(gym.Env):
                     self.observation[i * 2 + 1] = 0.0
 
             # dx, dy vector to threat as last two elements of the observation
-            for j in range(len(self.threats)):
-                threat_pos = np.array([self.threats[j][0], self.threats[j][1]])
+            start_idx = 2 * N  # Start after targets
+            for j in range(M):
+                threat_pos = self.threats[j]
                 vector_to_threat = threat_pos - agent_pos
-                self.observation[-2 * (j + 1)] = vector_to_threat[0]  # x component
-                self.observation[-1 * (j + 1)] = vector_to_threat[1]  # y component
+                self.observation[start_idx + j * 2] = vector_to_threat[0]
+                self.observation[start_idx + j * 2 + 1] = vector_to_threat[1]
 
-        for threat_idx in range(2):
-            threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
-            vector_to_threat = threat_pos - agent_pos
-            self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
-            self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
+        # for threat_idx in range(2):
+        #     threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+        #     vector_to_threat = threat_pos - agent_pos
+        #     self.observation[-(4 - threat_idx * 2)] = vector_to_threat[0]  # x component
+        #     self.observation[-(4 - threat_idx * 2 - 1)] = vector_to_threat[1]  # y component
 
         # Observe teammate
         if self.config['observe_teammate']:
@@ -1000,7 +1001,7 @@ class MAISREnvVec(gym.Env):
                 self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
                 self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
 
-        if False and self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
+        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
             print(f'======= Obs check (ep {self.episode_counter}, step {self.step_count_outer + 1}) =======')
             idx = 0
             for i in range(self.config['num_observed_targets']):
@@ -2573,3 +2574,5 @@ class MAISREnvVec(gym.Env):
         self.threats[:, 0:2] = threat_positions[:self.config['num_threats']]
 
         return agent_x, agent_y, teammate_x, teammate_y
+
+

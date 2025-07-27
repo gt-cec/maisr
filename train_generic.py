@@ -283,23 +283,54 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
             # Check if the training env is a VecNormalize wrapper
             training_env = self.model.get_env()
-            if hasattr(training_env, 'obs_rms') and hasattr(training_env, 'ret_rms'):
-                # Training env is VecNormalize, sync stats to eval env
-                if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
-                    self.eval_env.obs_rms = training_env.obs_rms
-                    self.eval_env.ret_rms = training_env.ret_rms
-                    #print(f"[Callback] Synced normalization stats from training to eval env")
+            # TODO: Save obs_rms.mean and env.obs_rms.var for both training_env and eval_env to a json, with timesteps.
+            norm_stats_log_path = f"outputs/logs/norm_stats_history.json"
+            norm_data = {
+                "step": self.num_timesteps,
+                "training_env": {
+                    "obs_mean": training_env.obs_rms.mean.tolist(),
+                    "obs_var": training_env.obs_rms.var.tolist(),
+                    "obs_count": training_env.obs_rms.count,
+                    "ep_count": training_env.get_attr("episode_counter")[0]
 
-                    if self.teammate_manager is not None:
-                        #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
-                        self.teammate_manager.set_normalization_stats(
-                            training_env.obs_rms,
-                            training_env.ret_rms
-                        )
-                else:
-                    print(f"[Callback] Warning: Training env has normalization but eval env doesn't")
+
+                },
+                "eval_env": {
+                    "obs_mean": self.eval_env.obs_rms.mean.tolist(),
+                    "obs_var": self.eval_env.obs_rms.var.tolist(),
+                    "obs_count": self.eval_env.obs_rms.count,
+                    "ep_count": self.eval_env.envs[0].env.episode_counter
+                }
+            }
+
+            if os.path.exists(norm_stats_log_path):
+                with open(norm_stats_log_path, "r") as f:
+                    existing_data = json.load(f)
             else:
-                print(f"[Callback] No normalization detected in training environment")
+                existing_data = []
+
+            existing_data.append(norm_data)
+
+            with open(norm_stats_log_path, "w") as f:
+                json.dump(existing_data, f, indent=2)
+
+            # if hasattr(training_env, 'obs_rms') and hasattr(training_env, 'ret_rms'):
+            #     # Training env is VecNormalize, sync stats to eval env
+            #     if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
+            #         self.eval_env.obs_rms = training_env.obs_rms
+            #         self.eval_env.ret_rms = training_env.ret_rms
+            #         #print(f"[Callback] Synced normalization stats from training to eval env")
+            #
+            #         if self.teammate_manager is not None:
+            #             #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
+            #             self.teammate_manager.set_normalization_stats(
+            #                 training_env.obs_rms,
+            #                 training_env.ret_rms
+            #             )
+            #     else:
+            #         print(f"[Callback] Warning: Training env has normalization but eval env doesn't")
+            #else:
+             #   print(f"[Callback] No normalization detected in training environment")
             target_ids_list = []
             threat_ids_list = []
             target_ids_per_step_list = []
@@ -347,7 +378,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
                 ep_length = final_info["episode"]["l"]
 
-                level_idx = getattr(self.eval_env.envs[0].env, "level_idx", -1)
+                level_idx = self.eval_env.envs[0].env.env.level_idx
+                print(f'eval level idx is {level_idx}')
                 #self.eval_env.envs[0].env.level_idx
                 if level_idx not in level_metrics:
                     level_metrics[level_idx] = {
@@ -389,11 +421,11 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 if len(metrics["rewards"]) == 0:
                     continue
                 eval_metrics.update({
-                    f"eval/level{level}_reward": np.mean(metrics["rewards"]),
-                    f"eval/level{level}_target_ids": np.mean(metrics["target_ids"]),
-                    f"eval/level{level}_threat_ids": np.mean(metrics["threat_ids"]),
-                    f"eval/level{level}_episode_length": np.mean(metrics["episode_lengths"]),
-                    f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
+                    f"eval_levels/level{level}_reward": np.mean(metrics["rewards"]),
+                    f"eval_levels/level{level}_target_ids": np.mean(metrics["target_ids"]),
+                    f"eval_levels/level{level}_threat_ids": np.mean(metrics["threat_ids"]),
+                    #f"eval/level{level}_episode_length": np.mean(metrics["episode_lengths"]),
+                    #f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
                 })
 
 
@@ -540,7 +572,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
 
             #################################### Aircraft switching ####################################
-            print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
+            #print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
             if (not self.switched_to_twoship) and target_ids_list:
                 #avg_target_ids = np.mean(target_ids_list)
                 #if avg_target_ids > self.twoship_switch_threshold:
@@ -1079,7 +1111,11 @@ def train_generic(
     print('\nCreating output folders:')
     for subfolder in ['episode_plots','trained_models', 'checkpoints','vecnorm_stats','logs']:
         folder_name = f"outputs/{run_name}/{subfolder}"
-        os.makedirs(folder_name, exist_ok=True)
+        try:
+            os.makedirs(folder_name, exist_ok=True)
+        except:
+            print(f'failed to create folder {subfolder}, retrying...')
+            os.makedirs(folder_name, exist_ok=True)
         print(f'        {folder_name}')
     print('\n')
     #os.makedirs(f"outputs/episode_plots/{run_name}", exist_ok=True)
@@ -1439,6 +1475,8 @@ if __name__ == "__main__":
     elif version == 'strategy':
         note = 'strat4' + machine[0].upper()
         config['num_timesteps'] = 3.5e6
+        config['teammate_active_at_start'] = False
+        config['teammate_reward_scale'] = 0.5
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1453,17 +1491,17 @@ if __name__ == "__main__":
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
-            "team_spread_bonus_coeff": [0.005, 0.002], # 0.005,
+            #"team_spread_bonus_coeff": [0.005, 0.002], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.08, 0.09],
-            "teammate_reward_scale": [0.75, 0.9],
+            #"teammate_reward_scale": [0.75, 0.9],
             # "obs_noise": [0.01],
         }
         overfit_test = None
         config['league_type'] = 'strategy_diverse'
         config['seed'] = int(args.seed)
-        config['teammate_active_at_start'] = False
+        config['teammate_active_at_start'] = False # TODO remove
 
         vecnorm_load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
         load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
@@ -1478,7 +1516,7 @@ if __name__ == "__main__":
 
         hyperparams = {
             #'seed': [21, 623, 33, 82],
-            'threat_reward_scaling':[1.3],
+            'threat_reward_scaling':[1],
             "teammate_reward_scale": [0.75],
         }
         config['seed'] = int(args.seed)
@@ -1565,7 +1603,7 @@ if __name__ == "__main__":
     }
 
     if args.testing:
-        config["eval_freq"] = 1000
+        config["eval_freq"] = 50
         config['num_eval_episodes'] = 5
         config['save_freq'] = 500
         config['num_timesteps'] = 5e5

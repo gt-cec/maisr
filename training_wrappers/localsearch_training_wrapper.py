@@ -128,6 +128,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
             self.teammate_manager.reset_for_episode()
             self.current_teammate = self.teammate_manager.select_random_teammate()
+            self.current_teammate.env = self.env
 
 
         # if self.teammate_manager:
@@ -991,3 +992,7 @@ class MaisrLocalSearchWrapper(gym.Env):
     def change_league_ratio(self, new_ratio):
         if self.teammate_manager is not None:
             self.teammate_manager.fcp_ratio = new_ratio
+
+    @property
+    def episode_counter(self):
+        return self.env.episode_counter
