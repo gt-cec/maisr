@@ -1509,7 +1509,7 @@ if __name__ == "__main__":
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
-        config['num_timesteps'] = 4.5e6
+        config['num_timesteps'] = 5e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-teammates'
@@ -1525,7 +1525,7 @@ if __name__ == "__main__":
         # outputs/{load_prev_run}/checkpoints/{latest_pkl}
 
         load_paths = {
-            69: None,
+            69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_4499928_steps.zip',
             99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
             44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
             21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
@@ -1535,7 +1535,7 @@ if __name__ == "__main__":
         }
 
         vecnorm_load_paths = {
-            69: None,
+            69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_vecnormalize_4499928_steps.pkl',
             99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
             44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
             21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
