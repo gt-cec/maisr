@@ -34,8 +34,10 @@ class MaisrLocalSearchWrapper(gym.Env):
         #self.action_space = gym.spaces.Discrete(16)
         if self.env.config['action_type'] == 'target_index':
             # Total selectable entities: targets + threats
-            total_entities = self.env.config['num_targets'] + self.env.config['num_threats']
-            self.action_space = gym.spaces.Discrete(total_entities)
+            #total_entities = self.env.config['num_targets'] + self.env.config['num_threats']
+            total_observed_entities = self.env.config['num_observed_targets'] + self.env.config['num_observed_threats']
+            self.action_space = gym.spaces.Discrete(total_observed_entities)
+
         elif self.env.config['action_type'] == 'Discrete8':
             self.action_space = gym.spaces.Discrete(8)  # 8 directions
         elif self.env.config['action_type'] == 'Discrete16':
@@ -149,9 +151,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         if self.env.config['action_type'] == 'target_index':
             # Action is already an index, pass it through
             processed_action = action
-        else:
-            # For directional actions, keep existing logic
-            processed_action = action
+            #print(f'\n\n %%%%%%%% Agent took action {action} %%%%%%%%%% \n \n')
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
@@ -372,6 +372,12 @@ class MaisrLocalSearchWrapper(gym.Env):
         obs_agent1_raw = self.env.get_observation_nearest_n(1)
         obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
 
+        if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
+            teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
+            teammate_target_index = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+            teammate_target_index = self._unwrap_action(teammate_target_index)
+            return self.env._index_to_waypoint(int(teammate_target_index))
+
         #if self.env.step_count_outer % 50 == 0:
             #print(f"\n    &&&&& Step {self.env.step_count_outer} Teammate obs Raw:", obs_agent1_raw[:3])
             #print("    &&&&&          Teammate obs Norm:", obs_agent1_norm[:3])
@@ -399,6 +405,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
                     direction_to_move = self._unwrap_action(direction_to_move)
 
+                print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
                 return teammate_action
 
@@ -453,6 +460,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                         except: print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
                         #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
 
+                print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 1:  # Change region - NW
@@ -497,6 +505,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                         except:
                             print( f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
 
+                print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 3:  # Hold at current location

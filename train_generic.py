@@ -89,7 +89,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
         self.switched_to_twoship = False
         self.twoship_switch_threshold = env_config['twoship_switch_threshold']
-        self.twoship_switch_reward_threshold = 23
+        #self.twoship_switch_reward_threshold = 23
 
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
@@ -574,9 +574,9 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             #################################### Aircraft switching ####################################
             #print(f'About to check for 2 ship switch: self.switched_to_twoship = {self.switched_to_twoship}, target_ids_list = {target_ids_list}')
             if (not self.switched_to_twoship) and target_ids_list:
-                #avg_target_ids = np.mean(target_ids_list)
-                #if avg_target_ids > self.twoship_switch_threshold:
-                if mean_reward > self.twoship_switch_reward_threshold:
+                avg_target_ids = np.mean(target_ids_list)
+                if avg_target_ids > self.twoship_switch_threshold:
+                #if mean_reward > self.twoship_switch_reward_threshold:
                     print(f'\n{"=" * 80}')
                     print(f'AIRCRAFT SWITCHING TRIGGERED! (step {self.num_timesteps})')
                     #print(f'Average target IDs ({avg_target_ids:.2f}) exceeded threshold ({self.twoship_switch_threshold})')
@@ -1491,6 +1491,7 @@ if __name__ == "__main__":
             'entropy_decay_steps':[5e6],
             'seed': [21],
             'threat_reward_scaling':[1],
+            #'twoship_switch_threshold':[6, 8],
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
@@ -1583,6 +1584,25 @@ if __name__ == "__main__":
 
         config['fcp_ratio'] = fcp_configs[fcp_letter]['fcp_ratio']
 
+    elif version == 'index':
+        note = 'index' + machine[0].upper()
+        config['num_timesteps'] = 1e6
+        config['league_type'] = 'selfplay'
+        config['teammate_active_at_start'] = True
+        project_name = 'maisr-rl-index'
+        config['action_type'] = 'target_index'
+
+        hyperparams = {
+            # 'seed': [21, 623, 33, 82],
+            'threat_reward_scaling': [0.3, 0.5],
+            "teammate_reward_scale": [0.75],
+            "potential_ratio": [0.5, 1]
+        }
+        config['seed'] = int(args.seed)
+        overfit_test = None
+
+        load_path = None#load_paths[int(args.seed)]
+        vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
@@ -1597,6 +1617,7 @@ if __name__ == "__main__":
         "entropy_decay_schedule": "entdcy",
         "use_stuck_detection": "stuckdtct",
         "lr": "lr",
+        "potential_ratio":"potratio",
         "max_steps": 'mxstps',
         'threat_reward_scaling': 'thrtrwdscl',
         'shaping_coeff_earlyfinish': 'erlyfnsh',

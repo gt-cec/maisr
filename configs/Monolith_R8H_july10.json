@@ -32,6 +32,8 @@
 	"teammate_reward_scale": 0.75,
 	"threat_id_reward": 11,
 	"shaping_decay_rate":1,
+
+	"potential_ratio": 1,
 	"target_potential_coeff": 0.05,
 	"threat_potential_coeff": 0.25,
 	"shaping_coeff_earlyfinish": 0.07,

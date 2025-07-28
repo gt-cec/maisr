@@ -1064,8 +1064,8 @@ class RLTeammatePolicy(TeammatePolicy):
                 )
                 #if self.env.step_count_outer % 50 == 0:
                 #print("[Teammate] Normstats mean (first 3):", self.norm_stats.obs_rms.mean[:3])
-                print("[Teammate] Obs (first 3):", observation[:3])
-                print("[Teammate] Normalized Obs (first 3):", normalized_obs[:3])
+                #print("[Teammate] Obs (first 3):", observation[:3])
+                #print("[Teammate] Normalized Obs (first 3):", normalized_obs[:3])
 
                 return normalized_obs.astype(np.float32)
             except Exception as e:

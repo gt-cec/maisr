@@ -527,6 +527,7 @@ class MAISREnvVec(gym.Env):
             else:
                 #waypoint = self._direction_to_waypoint(action)
                 if self.config['action_type'] == 'target_index':
+                    #print(f'Calling self._index_to_waypoint({int(action[0])})')
                     waypoint = self._index_to_waypoint(int(action[0]))
                 else:
                     waypoint = self._direction_to_waypoint(action)
@@ -740,7 +741,7 @@ class MAISREnvVec(gym.Env):
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
         if self.num_threats_identified < self.config['max_threat_ids']:
-            threat_potential_reward = threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
+            threat_potential_reward = threat_potential_gain * self.config.get("potential_ratio", 1) * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
         else:
             threat_potential_reward = - 0.05 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
 
@@ -765,7 +766,7 @@ class MAISREnvVec(gym.Env):
             print(f'Threat ID: {new_reward["threat_identification"]} IDs * {self.config["threat_id_reward"]} rew/ID = {threat_id_reward} reward')
 
             # Potential-based rewards
-            target_potential_reward = target_potential_gain * self.config['target_potential_coeff'] * (300 / self.config['gameboard_size'])
+            target_potential_reward = target_potential_gain * self.config.get("potential_ratio", 1) * self.config['target_potential_coeff'] * (300 / self.config['gameboard_size'])
             print(
                 f'Target potential: {target_potential_gain:.4f} potential * {self.config["target_potential_coeff"]} coeff * {300 / self.config["gameboard_size"]:.2f} scale = {target_potential_reward:.4f} reward')
             print(f'Threat potential: threat_gain={threat_potential_gain:.4f}, identified={self.num_threats_identified}/{self.config["max_threat_ids"]}, reward={threat_potential_reward:.4f}')
@@ -795,7 +796,7 @@ class MAISREnvVec(gym.Env):
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
                  (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
-                 (target_potential_gain * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
+                 (target_potential_gain * self.config.get("potential_ratio", 1) * self.config['target_potential_coeff'] * (300/self.config['gameboard_size'])) + \
                  threat_potential_reward + \
                  (self.config['shaping_time_penalty']) + \
                  proximity_penalty + spread_bonus + fail_penalty + threat_id_reward
@@ -1970,7 +1971,10 @@ class MAISREnvVec(gym.Env):
         current_x = self.agents[self.aircraft_ids[agent_id]].x
         current_y = self.agents[self.aircraft_ids[agent_id]].y
 
-        dx_norm, dy_norm = direction_map[action]
+        try:
+            dx_norm, dy_norm = direction_map[action]
+        except:
+            raise ValueError(f'ERROR, action is {action}, agent index is {agent_id}')
         #print('reached direction map')
 
         # Calculate waypoint at fixed distance in chosen direction
