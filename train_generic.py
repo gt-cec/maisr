@@ -379,7 +379,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 ep_length = final_info["episode"]["l"]
 
                 level_idx = self.eval_env.envs[0].env.env.level_idx
-                print(f'eval level idx is {level_idx}')
+                #print(f'eval level idx is {level_idx}')
                 #self.eval_env.envs[0].env.level_idx
                 if level_idx not in level_metrics:
                     level_metrics[level_idx] = {
@@ -588,8 +588,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     self.switched_to_twoship = True
 
                     # Log the switch
-                    eval_metrics["aircraft/num_aircraft"] = 2
-                    eval_metrics["aircraft/switch_step"] = self.num_timesteps
+                    eval_metrics["monitoring/num_aircraft"] = 2
+                    #eval_metrics["aircraft/switch_step"] = self.num_timesteps
 
 
                 if not self.switched_to_twoship:
@@ -911,7 +911,7 @@ class EnhancedWandbCallback_MS(BaseCallback):
                 self.model.ent_coef = new_entropy_coeff
 
                 # Log entropy decay metrics
-                eval_metrics["entropy_decay/current_coeff"] = new_entropy_coeff
+                eval_metrics["monitoring/current_entropy_coeffificient"] = new_entropy_coeff
                 eval_metrics["entropy_decay/decay_progress"] = decay_progress
                 eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
 
@@ -991,7 +991,7 @@ class EnhancedWandbCallback_MS(BaseCallback):
                         self.best_eval_performance = -np.inf
                     self.performance_crash_counter = 0
 
-                    self.run.log({"curriculum/difficulty_level": self.current_difficulty}, step=self.num_timesteps)
+                    self.run.log({"monitoring/curriculum_level": self.current_difficulty}, step=self.num_timesteps)
 
                     # Decrease LR
                     print(
@@ -1300,7 +1300,7 @@ def train_generic(
 
     printcallback = PrintObsEvery50Steps(verbose=1)
 
-    callbacks = [wandb_callback, enhanced_wandb_callback, printcallback]
+    callbacks = [wandb_callback, enhanced_wandb_callback] # printcallback
     if save_checkpoints:
         callbacks.append(checkpoint_callback)
     print('        Callbacks created')
@@ -1477,10 +1477,9 @@ if __name__ == "__main__":
         vecnorm_load_path = None
 
     elif version == 'strategy':
-        note = 'strat4' + machine[0].upper()
+        note = 'strat5' + machine[0].upper()
         config['num_timesteps'] = 8e6
         config['teammate_active_at_start'] = False
-        config['teammate_reward_scale'] = 0.5
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1489,9 +1488,9 @@ if __name__ == "__main__":
             # "num_observed_threats":[1],
             # "use_stuck_detection": [False, True],
             'max_steps':[1500],
-            # 'entropy_decay_steps':[1.5e6],
+            'entropy_decay_steps':[5e6],
             'seed': [21],
-            'threat_reward_scaling':[1.25],
+            'threat_reward_scaling':[1],
             # 'shaping_coeff_earlyfinish':[0.07]
             # "network_size":[128],
             # "lr": [0.001, 0.0015]
@@ -1499,7 +1498,7 @@ if __name__ == "__main__":
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
             'entropy_regularization': [0.07, 0.08],
-            #"teammate_reward_scale": [0.75, 0.9],
+            "teammate_reward_scale": [0.5, 0.75],
             # "obs_noise": [0.01],
         }
         overfit_test = None

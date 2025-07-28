@@ -2467,7 +2467,9 @@ class MAISREnvVec(gym.Env):
             plt.savefig(filename, dpi=100, bbox_inches='tight')
             plt.close()
 
-            print(f"Action history plot saved to ...{filename[-20:]}")
+            try: print(f"Action history plot saved to ...{filename[-35:]}")
+            except: print(f"Action history plot saved to ...{filename[-20:]}")
+
         except ImportError as e:
             print(f"Could not save action history plot: {e}")
         except Exception as e:

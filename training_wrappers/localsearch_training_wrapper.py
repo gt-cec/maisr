@@ -372,9 +372,9 @@ class MaisrLocalSearchWrapper(gym.Env):
         obs_agent1_raw = self.env.get_observation_nearest_n(1)
         obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
 
-        if self.env.step_count_outer % 50 == 0:
-            print(f"\n    &&&&& Step {self.env.step_count_outer} Teammate obs Raw:", obs_agent1_raw[:3])
-            print("    &&&&&          Teammate obs Norm:", obs_agent1_norm[:3])
+        #if self.env.step_count_outer % 50 == 0:
+            #print(f"\n    &&&&& Step {self.env.step_count_outer} Teammate obs Raw:", obs_agent1_raw[:3])
+            #print("    &&&&&          Teammate obs Norm:", obs_agent1_norm[:3])
 
         if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
             return self.current_teammate.get_action()
