@@ -284,35 +284,35 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             # Check if the training env is a VecNormalize wrapper
             training_env = self.model.get_env()
             # TODO: Save obs_rms.mean and env.obs_rms.var for both training_env and eval_env to a json, with timesteps.
-            norm_stats_log_path = f"outputs/logs/norm_stats_history.json"
-            norm_data = {
-                "step": self.num_timesteps,
-                "training_env": {
-                    "obs_mean": training_env.obs_rms.mean.tolist(),
-                    "obs_var": training_env.obs_rms.var.tolist(),
-                    "obs_count": training_env.obs_rms.count,
-                    "ep_count": training_env.get_attr("episode_counter")[0]
+            # norm_stats_log_path = f"outputs/logs/norm_stats_history.json"
+            # norm_data = {
+            #     "step": self.num_timesteps,
+            #     "training_env": {
+            #         "obs_mean": training_env.obs_rms.mean.tolist(),
+            #         "obs_var": training_env.obs_rms.var.tolist(),
+            #         "obs_count": training_env.obs_rms.count,
+            #         "ep_count": training_env.get_attr("episode_counter")[0]
+            #
+            #
+            #     },
+            #     "eval_env": {
+            #         "obs_mean": self.eval_env.obs_rms.mean.tolist(),
+            #         "obs_var": self.eval_env.obs_rms.var.tolist(),
+            #         "obs_count": self.eval_env.obs_rms.count,
+            #         "ep_count": self.eval_env.envs[0].env.episode_counter
+            #     }
+            # }
 
+            # if os.path.exists(norm_stats_log_path):
+            #     with open(norm_stats_log_path, "r") as f:
+            #         existing_data = json.load(f)
+            # else:
+            #     existing_data = []
+            #
+            # existing_data.append(norm_data)
 
-                },
-                "eval_env": {
-                    "obs_mean": self.eval_env.obs_rms.mean.tolist(),
-                    "obs_var": self.eval_env.obs_rms.var.tolist(),
-                    "obs_count": self.eval_env.obs_rms.count,
-                    "ep_count": self.eval_env.envs[0].env.episode_counter
-                }
-            }
-
-            if os.path.exists(norm_stats_log_path):
-                with open(norm_stats_log_path, "r") as f:
-                    existing_data = json.load(f)
-            else:
-                existing_data = []
-
-            existing_data.append(norm_data)
-
-            with open(norm_stats_log_path, "w") as f:
-                json.dump(existing_data, f, indent=2)
+            # with open(norm_stats_log_path, "w") as f:
+            #     json.dump(existing_data, f, indent=2)
 
             # if hasattr(training_env, 'obs_rms') and hasattr(training_env, 'ret_rms'):
             #     # Training env is VecNormalize, sync stats to eval env
@@ -1426,6 +1426,10 @@ if __name__ == "__main__":
     parser.add_argument('--seed', required=True, help='Seed to run')
     parser.add_argument('--fcp_letter', required=False, help='Which fictitious coplay config to use')
     parser.add_argument('--testing', action='store_true', help='')
+
+    #parser.add_argument('--entropy_regularization', required=True, help='')
+    #parser.add_argument('--teammate_reward_scale', required=True, help='')
+
     args = parser.parse_args()
     version = args.version
 
@@ -1474,7 +1478,7 @@ if __name__ == "__main__":
 
     elif version == 'strategy':
         note = 'strat4' + machine[0].upper()
-        config['num_timesteps'] = 3.5e6
+        config['num_timesteps'] = 8e6
         config['teammate_active_at_start'] = False
         config['teammate_reward_scale'] = 0.5
         project_name = 'maisr-rl-exp2'
@@ -1494,14 +1498,13 @@ if __name__ == "__main__":
             #"team_spread_bonus_coeff": [0.005, 0.002], # 0.005,
             # "force_specific_level": [99],
             # "observe_teammate_direction":[True],
-            'entropy_regularization': [0.08, 0.09],
+            'entropy_regularization': [0.07, 0.08],
             #"teammate_reward_scale": [0.75, 0.9],
             # "obs_noise": [0.01],
         }
         overfit_test = None
         config['league_type'] = 'strategy_diverse'
         config['seed'] = int(args.seed)
-        config['teammate_active_at_start'] = False # TODO remove
 
         vecnorm_load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_vecnormalize.pkl'
         load_path = None #'./saved_good_models/strategy2H_0718_1204/strategy2H_0718_1204_model.zip'
@@ -1509,7 +1512,7 @@ if __name__ == "__main__":
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
-        config['num_timesteps'] = 5e6
+        config['num_timesteps'] = 8e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-teammates'
@@ -1526,26 +1529,26 @@ if __name__ == "__main__":
 
         load_paths = {
             69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_4499928_steps.zip',
-            99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
-            44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
-            21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
-            623: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_3941184_steps.zip',
-            999: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_3928704_steps.zip',
-            5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_3903744_steps.zip'
+            99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
+            44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
+            21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
+            623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_3941184_steps.zip',
+            999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_3928704_steps.zip',
+            5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_3903744_steps.zip'
         }
 
         vecnorm_load_paths = {
             69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_vecnormalize_4499928_steps.pkl',
-            99: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
-            44: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
-            21: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
-            623: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_vecnormalize_3941184_steps.pkl',
-            999: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_vecnormalize_3928704_steps.pkl',
-            5732: 'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
+            99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
+            44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
+            21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
+            623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_vecnormalize_3941184_steps.pkl',
+            999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_vecnormalize_3928704_steps.pkl',
+            5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
         }
 
-        load_path = None # load_paths[int(args.seed)]
-        vecnorm_load_path = None #vecnorm_load_paths[int(args.seed)]
+        load_path = load_paths[int(args.seed)]
+        vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
     elif version == 'mixed':
         note = 'fcp_mixed' + machine[0].upper()

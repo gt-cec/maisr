@@ -20,3 +20,8 @@ conda activate maisr-rl
 # >>> Run the training script <<<
 cd maisr-rl
 python train_generic.py --version 'pretrained_agents' --seed 99
+
+status=$?
+if [ $status -ne 0 ]; then
+    tail -n 50 logs/array_job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.err | mail -s "SLURM Job ${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID} FAILED" rbowers32@gatech.edu
+fi
