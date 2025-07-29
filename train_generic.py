@@ -479,9 +479,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     #f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
                 })
 
-
+            main_tag = self.eval_env.envs[0].env.env.tag
             if self.run_human_eval:
-                main_tag = self.eval_env.envs[0].env.env.tag
                 self.eval_env.envs[0].env.env.tag = "human_eval0"
                 print("\n ++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++")
                 recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
@@ -514,17 +513,44 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     self.eval_env.envs[0].env.env.level_idx = level
                     self.eval_env.envs[0].env.env.config['force_specific_level'] = level
                     # Load as recorded teammate
-                    recorded_teammate = RecordedTrajectoryTeammate(trajectory_file, self.eval_env.envs[0].env.env, timescale_correction)
-                    self.eval_env.envs[0].current_teammate = recorded_teammate
-                    self.eval_env.envs[0].env.current_teammate = recorded_teammate
+                    #recorded_teammate = RecordedTrajectoryTeammate(trajectory_file, self.eval_env.envs[0].env.env, timescale_correction)
+                    #self.eval_env.envs[0].current_teammate = recorded_teammate
+                    #self.eval_env.envs[0].env.current_teammate = recorded_teammate
+
+                    self.eval_env.envs[0].current_teammate = None
+                    self.eval_env.envs[0].env.current_teammate = None
+
+                    with open(trajectory_file, 'r') as f:
+                        data = json.load(f)
+
+                    if isinstance(data, dict) and "timesteps" in data:
+                        timesteps = data["timesteps"]
+                    elif isinstance(data, list):
+                        timesteps = data
+
+                    waypoints = [entry["human_custom_waypoint"] for entry in timesteps]
+                    waypoints = waypoints[::10] # Timescale correction
+
+                    base_env = self.eval_env.envs[0].env.env
+                    current_pos = base_env.agents[base_env.aircraft_ids[1]].x, base_env.agents[base_env.aircraft_ids[1]].y
+                    waypoints = [wp if wp is not None else current_pos for wp in waypoints]
+                    print(f"[Eval] Waypoints: {waypoints}")
+
 
                     print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
-
                     obs = self.eval_env.reset()
                     done = False
                     ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
+                    step_idx = 0
 
                     while not done:
+
+                        base_env = self.eval_env.envs[0].env.env
+                        if step_idx < len(waypoints):
+                            base_env.agents[base_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
+                        else:
+                            base_env.agents[base_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
+
                         action, other = self.model.predict(obs, deterministic=True)
 
                         obses, rewards, dones, infos = self.eval_env.step([action])
@@ -537,6 +563,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                         ep_reward += reward
                         ep_target_ids += info['new_target_ids']
                         ep_threat_ids += info['new_threat_ids']
+
+                        step_idx += 1
 
                         final_info = info
 
@@ -1648,17 +1676,23 @@ if __name__ == "__main__":
                 "fcp_ratio": 0.5,
                 "ratio_schedule": None},
             "C": {
-                "fcp_ratio": 1.0,
-                "ratio_schedule": {30: 0.7}},
+                "fcp_ratio": 0.25,
+                "ratio_schedule": None},
             "D": {
-                "fcp_ratio": 1.0,
-                "ratio_schedule": {30: 0.5}},
-            "E": {
-                "fcp_ratio": 1.0,
-                "ratio_schedule": {50: 0.5}},
-            "F": {
-                "fcp_ratio": 1.0,
-                "ratio_schedule": {50: 0.7}}
+                "fcp_ratio": 0.75,
+                "ratio_schedule": None},
+            # "C": {
+            #     "fcp_ratio": 1.0,
+            #     "ratio_schedule": {30: 0.7}},
+            # "D": {
+            #     "fcp_ratio": 1.0,
+            #     "ratio_schedule": {30: 0.5}},
+            # "E": {
+            #     "fcp_ratio": 1.0,
+            #     "ratio_schedule": {50: 0.5}},
+            # "F": {
+            #     "fcp_ratio": 1.0,
+            #     "ratio_schedule": {50: 0.7}}
         }
 
         config['fcp_ratio'] = fcp_configs[fcp_letter]['fcp_ratio']
@@ -1699,10 +1733,11 @@ if __name__ == "__main__":
             # 'seed': [21, 623, 33, 82],
             'threat_reward_scaling': [0.3],
             "teammate_reward_scale": [0.75],
-            "potential_ratio": [0.5, 1],
+            "potential_ratio": [0.5],
             "gamma": [0.99, 0.985, 0.98],
-            "team_spread_bonus_coeff": [0.005, 0.01],
-            "shaping_coeff_earlyfinish": [0.11]
+            "team_spread_bonus_coeff": [0.005, 0.01, 0.015],
+            "shaping_coeff_earlyfinish": [0.11, 0.16],
+
         }
         config['seed'] = int(args.seed)
         overfit_test = None

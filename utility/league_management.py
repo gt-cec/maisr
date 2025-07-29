@@ -165,7 +165,8 @@ class TeammateManager:
         elif self.league_type == 'mixed':
             if random.random() < self.fcp_ratio:
                 print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')
-                return self._create_pretrained_rl_teammate()
+                #return self._create_pretrained_rl_teammate()
+                return self._create_selfplay_teammate() # TODO TEMP CHANGED
             else:
                 print(f'[Teammate Manager - Mixed] Creating strategy heuristic teammate')
                 return self._create_strategy_diverse_heuristic_teammate()

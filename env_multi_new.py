@@ -561,8 +561,8 @@ class MAISREnvVec(gym.Env):
 
         if self.config['num_aircraft'] == 2:
             self.teammate_location_history.append((self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y))
-            if self.tag == 'human_eval0':
-                print(f'\n\nAppended teammate location {(self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y)}')
+            #if self.tag == 'human_eval0':
+                #print(f'\n\nAppended teammate location {(self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y)}')
 
 
         ################################ Move the agents and check for gameplay updates ################################
