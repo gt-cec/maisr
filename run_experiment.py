@@ -17,7 +17,7 @@ from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
 from PIL import Image
 from io import BytesIO
-import sockets
+#import sockets
 import webbrowser
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -306,7 +306,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
 
-    sockets.human_controller = human_controller
+    #sockets.human_controller = human_controller
 
     # Parse agent and level from config
     agent_letter = config[0]
@@ -423,8 +423,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        if step_count % 1 == 0:
-            sockets.send_frame(window)
+        #if step_count % 1 == 0:
+            #sockets.send_frame(window)
         clock.tick(tick_rate)
 
         # Print periodic status
@@ -481,8 +481,8 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
     config_filename = 'configs/Monolith_R8H_july10.json'
     tick_rate = 30
 
-    agent_a_name = 'selfplay_trained_jul18'
-    agent_b_name = 'strategy_trained_jul18'
+    agent_a_name = 'selfplay_seed77'#'selfplay_trained_jul18'
+    agent_b_name = 'selfplay_seed77'#'strategy_trained_jul18'
 
     # Define RL agent model paths
     agent_models = {
@@ -657,7 +657,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
-            sockets.human_controller = human_controller
+            #sockets.human_controller = human_controller
 
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(full_config_list),

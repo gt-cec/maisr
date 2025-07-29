@@ -494,8 +494,8 @@ def main():
     config_filename = 'configs/Monolith_R8H_july10.json'
     tick_rate = 30
 
-    agent_a_name = 'selfplay_trained_jul18'
-    agent_b_name = 'strategy_trained_jul18'
+    agent_a_name = 'selfplay_seed77'  # 'selfplay_trained_jul18'
+    agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
 
     # Define RL agent model paths
     agent_models = {
@@ -609,7 +609,7 @@ def main():
             print(f"Agent: {agent_letter}, Level: {level_number}")
 
             config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-            run_type = 'solo'
+            run_type = 'dual'
             # if agent_letter == 'A': # TODO implement heuristic agent
             #     run_type = 'solo'
             # else: run_type = 'dual'
