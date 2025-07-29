@@ -1661,6 +1661,30 @@ if __name__ == "__main__":
         #vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
         load_path, vecnorm_load_path = get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)
 
+    elif version == 'index-strategy':
+        note = 'index_strategy' + machine[0].upper()
+        config['num_timesteps'] = 5e5
+        config['league_type'] = 'strategy_diverse'
+        config['teammate_active_at_start'] = False
+        project_name = 'maisr-rl-index'
+        config['action_type'] = 'target_index'
+
+        hyperparams = {
+            # 'seed': [21, 623, 33, 82],
+            'threat_reward_scaling': [0.3],
+            "teammate_reward_scale": [0.75],
+            "potential_ratio": [0.5, 1],
+            "gamma": [0.99, 0.985, 0.98],
+            "team_spread_bonus_coeff": [0.005],
+            "shaping_coeff_earlyfinish": [0.11]
+        }
+        config['seed'] = int(args.seed)
+        overfit_test = None
+
+        # load_path = None#load_paths[int(args.seed)]
+        # vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
+        load_path, vecnorm_load_path = None, None#get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)
+
     param_shorthand = {
         'entropy_regularization': 'entreg',
         'teammate_reward_scale': 'trs',
