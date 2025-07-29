@@ -2,22 +2,19 @@ import ctypes
 import pygame
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
-    EvadeDetection, TeammateManager, HeuristicAgent, TargetSearchLocalTSP
+from utility.league_management import LocalSearch, ChangeRegions, GoToNearestThreat, \
+    TeammateManager, TargetSearchLocalTSP
 import json
 import datetime
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 import os
 import pickle
-from collections import defaultdict
+
 
 def find_model_files(base_path):
     """Find .zip and .pkl files in the specified directory"""

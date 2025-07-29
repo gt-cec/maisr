@@ -2,15 +2,12 @@ import ctypes
 import pygame
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch,
-                                        ChangeRegions, GoToNearestThreat, EvadeDetection,
-                                        TeammateManager, RLTeammatePolicy)
+from utility.league_management import (GenericTeammatePolicy, LocalSearch,
+                                       ChangeRegions, GoToNearestThreat, EvadeDetection,
+                                       RLTeammatePolicy)
 
 
 class HumanSubpolicyController:
@@ -121,7 +118,7 @@ def create_pretrained_teammate(model_path, subpolicies):
         print("Falling back to heuristic teammate")
 
         # Fallback to heuristic teammate
-        from policies.league_management import HeuristicAgent
+        from utility.league_management import HeuristicAgent
         heuristic_agent = HeuristicAgent(
             mode_selector="heuristic",
             risk_tolerance="medium",

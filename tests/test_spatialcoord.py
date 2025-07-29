@@ -1,11 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import json
 import os
 from env_multi_new import MAISREnvVec
 from utility.data_logging import load_env_config
-from policies.league_management import TargetSearchLocalTSP
+from utility.league_management import TargetSearchLocalTSP
 
 
 class TSPRouteAnalyzer:

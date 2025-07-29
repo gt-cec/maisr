@@ -3,7 +3,6 @@ import warnings
 import pygame
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
-import gymnasium as gym
 import os
 import numpy as np
 import multiprocessing
@@ -12,7 +11,7 @@ import torch
 
 import wandb
 from wandb.integration.sb3 import WandbCallback
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
@@ -21,7 +20,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
+from utility.league_management import TeammateManager, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP
 from utility.data_logging import load_env_config
 
 

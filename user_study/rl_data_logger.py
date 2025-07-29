@@ -224,7 +224,7 @@ class ExperimentDataLogger:
         self.current_episode_data['events'].append(asdict(event))
         print(f"Event logged: {event_type} at timestep {self.current_timestep}")
 
-    def end_episode(self, env, final_info: Dict) -> EpisodeSummary:
+    def end_episode(self, env, final_info, final_target_ids, final_threat_ids) -> EpisodeSummary:
         """Finalize episode logging and create summary"""
         episode_end_time = datetime.now()
         episode_duration = (episode_end_time - self.episode_start_time).total_seconds()
@@ -240,8 +240,8 @@ class ExperimentDataLogger:
             episode_end_time=episode_end_time.isoformat(),
             episode_duration_seconds=episode_duration,
             total_reward=float(self.cumulative_reward),
-            final_targets_identified=int(env.envs[0].env.targets_identified),
-            final_threats_identified=int(env.envs[0].env.num_threats_identified),
+            final_targets_identified=final_target_ids,#int(env.envs[0].env.targets_identified),
+            final_threats_identified=final_threat_ids,#int(env.envs[0].env.num_threats_identified),
             total_detections=int(env.envs[0].env.detections),
             total_timesteps=self.current_timestep,
             all_targets_identified=bool(env.envs[0].env.all_targets_identified),
@@ -318,7 +318,7 @@ class ExperimentDataLogger:
             # Additional debugging - check for remaining non-serializable objects
             self._debug_json_serialization(summary_clean, "summary")
 
-        print(f"Episode data saved:")
+        print(f"Episode data saved to {summary_path}")
 
     def _debug_json_serialization(self, obj, path=""):
         """Debug helper to identify non-JSON-serializable objects"""

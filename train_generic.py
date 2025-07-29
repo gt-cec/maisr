@@ -2,6 +2,7 @@ import ctypes
 import glob
 import json
 import warnings
+import random
 
 import pygame
 from PIL import Image
@@ -27,8 +28,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, \
-    GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
+from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
 from utility.data_logging import load_env_config
 
 import os, glob
@@ -127,7 +127,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.run = run
         self.run_name = run_name
         self.log_freq = log_freq  # Log every N steps instead of every step
-        self.run_human_eval = env_config.get("run_human_eval", False)
+        self.run_human_eval = env_config["run_human_eval"]
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
@@ -481,68 +481,94 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
 
             if self.run_human_eval:
-                print("[Eval] Running additional evaluation with recorded human trajectory")
-                human_levels = [0, 2, 4, 5] # If we want just the 'a' variants
-                recorded_teammate_paths = {
-                    0: '',
-                    2: '',
-                    4: '',
-                    5: ''}
+                main_tag = self.eval_env.envs[0].env.env.tag
+                self.eval_env.envs[0].env.env.tag = "human_eval0"
+                print("\n ++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++")
+                recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
+                num_trajectories = len(recorded_teammate_indices)
 
-                try:
-                    target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
-                    mean_reward, std_reward, total_eval_reward = 0, 0, 0
-                    eval_lengths = []
-                    teammate_names = []
+                #try:
+                target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
+                mean_reward, std_reward, total_eval_reward = 0, 0, 0
+                eval_lengths = []
+                teammate_names = []
 
-                    for level in range(7):
-                        self.eval_env.envs[0].level_idx = level
-                        recorded_teammate_path = recorded_teammate_paths[level]
-                        recorded_teammate = RecordedTrajectoryTeammate(recorded_teammate_path)
-                        self.eval_env.envs[0].current_teammate = recorded_teammate
+                timescale_correction = 10 # TODO make this dynamic
 
-                        done = False
-                        ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
+                for level in range(7):
 
-                        while not done:
-                            action, other = self.model.predict(obs, deterministic=True)
+                    # Pick a random teammate idx
+                    rand_idx = random.choice(recorded_teammate_indices)
 
-                            obses, rewards, dones, infos = self.eval_env.step([action])
-                            obs = obses[0]
-                            reward = rewards[0]
-                            info = infos[0]
-                            done = dones[0]
+                    # Grab all json trajectories for that subject and level
+                    traj_pattern = f"./human_trajectories/subject_{rand_idx}/timesteps_A{level+1}_*.json"
+                    candidate_files = glob.glob(traj_pattern)
+                    if not candidate_files:
+                        print(f"[Eval] No trajectories found for subject {rand_idx} level {level}")
+                        continue
 
-                            ep_reward += reward
-                            ep_target_ids += info['new_target_ids']
-                            ep_threat_ids += info['new_threat_ids']
+                    # Pick a random json trajectory file
+                    trajectory_file = random.choice(candidate_files)
 
-                            final_info = info
+                    # Set eval env to this level
+                    self.eval_env.envs[0].env.env.level_idx = level
+                    self.eval_env.envs[0].env.env.config['force_specific_level'] = level
+                    # Load as recorded teammate
+                    recorded_teammate = RecordedTrajectoryTeammate(trajectory_file, self.eval_env.envs[0].env.env, timescale_correction)
+                    self.eval_env.envs[0].current_teammate = recorded_teammate
+                    self.eval_env.envs[0].env.current_teammate = recorded_teammate
 
-                        ep_length = final_info["episode"]["l"]
-                        target_ids_list.append(ep_target_ids)
-                        threat_ids_list.append(ep_threat_ids)
+                    print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
 
-                        eval_lengths.append(ep_length)
-                        target_ids_per_step_list.append(ep_target_ids / ep_length)
+                    obs = self.eval_env.reset()
+                    done = False
+                    ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
 
-                        total_eval_reward += ep_reward
+                    while not done:
+                        action, other = self.model.predict(obs, deterministic=True)
 
-                    mean_reward = total_eval_reward / self.n_eval_episodes
+                        obses, rewards, dones, infos = self.eval_env.step([action])
 
-                    # Log evaluation results
-                    eval_metrics = {
-                        "eval_with_human/mean_reward": mean_reward,
-                        "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
-                        "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
-                        "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
-                        "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
-                        "curriculum/difficulty_level": self.current_difficulty
-                    }
+                        obs = obses[0]
+                        reward = rewards[0]
+                        info = infos[0]
+                        done = dones[0]
 
-                    self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
-                except Exception as e:
-                    print(f"[Eval] Failed to run recorded teammate eval: {e}")
+                        ep_reward += reward
+                        ep_target_ids += info['new_target_ids']
+                        ep_threat_ids += info['new_threat_ids']
+
+                        final_info = info
+
+                    ep_length = final_info["episode"]["l"]
+                    target_ids_list.append(ep_target_ids)
+                    threat_ids_list.append(ep_threat_ids)
+
+                    eval_lengths.append(ep_length)
+                    target_ids_per_step_list.append(ep_target_ids / ep_length)
+
+                    total_eval_reward += ep_reward
+
+                mean_reward = total_eval_reward / self.n_eval_episodes
+
+                # Log evaluation results
+                eval_metrics = {
+                    "eval_with_human/mean_reward": mean_reward,
+                    "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+                    "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
+                    "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
+                    "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
+                    "curriculum/difficulty_level": self.current_difficulty
+                }
+
+                self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
+                #except Exception as e:
+                    #print(f"[Eval] Failed to run recorded teammate eval: {e}")
+
+            print("++++++++ [Human Eval] Human eval complete ++++++++\n")
+            self.eval_env.envs[0].env.env.config['force_specific_level'] = 99
+            self.eval_env.envs[0].env.env.tag = main_tag
+
 
             ###################### === Dynamic League Ratio Update Based on Evaluation Reward === ######################
             for threshold, new_ratio in self.ratio_schedule.items():
@@ -1488,7 +1514,7 @@ if __name__ == "__main__":
 
     ############## ---- SETTINGS ---- ##############
     load_path = None
-    config_filename = 'configs/Monolith_R8H_july10.json'
+    config_filename = 'configs/Monolith_index_August.json'
     num_envs = 2 if args.testing else multiprocessing.cpu_count()
     train_type = 'monolith'
     project_name = 'maisr-rl-lab' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'maisr-rl-pace' # 'isye-ae-2023pc3'
@@ -1663,9 +1689,9 @@ if __name__ == "__main__":
 
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
-        config['num_timesteps'] = 5e5
+        config['num_timesteps'] = 3e5
         config['league_type'] = 'strategy_diverse'
-        config['teammate_active_at_start'] = False
+        config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-index'
         config['action_type'] = 'target_index'
 
@@ -1675,7 +1701,7 @@ if __name__ == "__main__":
             "teammate_reward_scale": [0.75],
             "potential_ratio": [0.5, 1],
             "gamma": [0.99, 0.985, 0.98],
-            "team_spread_bonus_coeff": [0.005],
+            "team_spread_bonus_coeff": [0.005, 0.01],
             "shaping_coeff_earlyfinish": [0.11]
         }
         config['seed'] = int(args.seed)

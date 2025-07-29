@@ -11,7 +11,7 @@ from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config import subject_id
 from utility.data_logging import load_env_config
-from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
+from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
@@ -364,7 +364,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         # Get agent action
         #agent_action, _ = agent_model.predict(obs, deterministic=True)
         if last_agent_action is None or step_count % time_factor == 0:
+
             agent_action, _ = agent_model.predict(obs, deterministic=True)
+            #print(f'Agent chose action {agent_action}')
         else:
             agent_action = last_agent_action
 
@@ -376,7 +378,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        done = dones[0]
+        done = dones[0] or np.sum(env.envs[0].env.threat_identified) >= 2.0 # TODO testing
         if done:
             print('DONE')
 
@@ -463,26 +465,41 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
 
 
 def main(subject_id=None, start_level=None, skip_instructions=None):
-    # Parse command line arguments
-    if subject_id is None or start_level is None or skip_instructions is None:
-        parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
-        parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
-        parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
-        parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
-        args = parser.parse_args()
-        subject_id = args.subject_id
-        start_level = args.start_level
-        skip_instructions = args.skip
 
-        print(f"\n \n Subject ID: {subject_id}")
-        print(f"Starting from level: {start_level}")
+    print(f"\n \n Subject ID: {subject_id}")
+    print(f"Starting from level: {start_level}")
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 30
+    tick_rate = 45
+    time_factor = 10  # 20
+    config = load_env_config(config_filename)
 
-    agent_a_name = 'selfplay_seed77'#'selfplay_trained_jul18'
-    agent_b_name = 'selfplay_seed77'#'strategy_trained_jul18'
+    config['tick_rate'] = tick_rate
+    config['game_speed'] /= time_factor
+    config['max_steps'] *= (1700 / 1500) * time_factor
+    config['use_stuck_detection'] = False
+    config['prob_detect'] = 0.0003
+    print(f'LOADED CONFIG {config_filename}')
+
+    if subject_id == 90:
+        agent_a_name = 'index_selfplay'#strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'index_selfplay'#'strategy_trained_jul18'
+        config['action_type'] = 'target_index'
+
+    elif subject_id == 91:
+        agent_a_name = 'index_strategy'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
+        config['action_type'] = 'target_index'
+
+    elif subject_id == 92:
+        agent_a_name = 'strategy_trained'  # '#'selfplay_trained_jul18'
+        agent_b_name = 'strategy_trained'  # 'strategy_trained_jul18'
+
+    elif subject_id == 93:
+        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+
 
     # Define RL agent model paths
     agent_models = {
@@ -494,16 +511,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         'A': f'./user_study/saved_agents/{agent_a_name}_vecnormalize.pkl',
         'B': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
-
-    # Create experiment configuration list (agent + level combinations)
-    # 7 rounds each with 2 agents = 14 total configurations
-    # config_list = []
-    # for agent in ['A', 'B']:
-    #     for level in range(1, 8):  # Levels 1-7
-    #         config_list.append(f'{agent}{level}')
-    #
-    # # Shuffle the configuration list for randomized order
-    # random.shuffle(config_list)
 
     levels = list(range(1, 8))
     random.shuffle(levels)
@@ -524,15 +531,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         full_config_list = full_config_list[start_level:]
         print(f"Starting from level {start_level}: {full_config_list}")
 
-    # Load configuration
-    time_factor = 10 #20
-    config = load_env_config(config_filename)
-    config['tick_rate'] = tick_rate
-    config['game_speed'] /= time_factor
-    config['max_steps'] *= (1700/1500) * time_factor
-    config['use_stuck_detection'] = False
-    config['prob_detect'] = 0.0003
-    print(f'LOADED CONFIG {config_filename}')
+
 
     # Initialize pygame
     # if using windows, set DPI awareness to avoid scaling issues
@@ -680,27 +679,29 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
 
             print(f"\nEpisode {current_config} completed!")
 
-            workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
-            workload_survey_result = screen_manager.show_screen(workload_survey_screen)
-            #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
+            if not skip_instructions:
+                workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+                workload_survey_result = screen_manager.show_screen(workload_survey_screen)
+                #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
 
-            if workload_survey_result["action"] == "exit":
-                print("Experiment terminated by user")
-                break
-            elif workload_survey_result["action"] == "continue":
-                # Log the survey data
-                survey_data = workload_survey_result.get("survey_data", {})
-                print(f"Survey responses for {current_config}: {survey_data['responses']}")
+                if workload_survey_result["action"] == "exit":
+                    print("Experiment terminated by user")
+                    break
+                elif workload_survey_result["action"] == "continue":
+                    # Log the survey data
+                    survey_data = workload_survey_result.get("survey_data", {})
+                    print(f"Survey responses for {current_config}: {survey_data['responses']}")
 
-                # Add survey data to your data logger
-                if hasattr(data_logger, 'log_survey_data'):
-                    data_logger.log_survey_data(survey_data)
-                else:
-                    # Fallback: save to file or print
-                    print(f"Survey data: {survey_data}")
+                    # Add survey data to your data logger
+                    if hasattr(data_logger, 'log_survey_data'):
+                        data_logger.log_survey_data(survey_data)
+                    else:
+                        # Fallback: save to file or print
+                        print(f"Survey data: {survey_data}")
 
             # Show the teammate preference survey
-            if config_index > 0 and (config_index+1) % 2 == 0:
+
+            if (not skip_instructions) and config_index > 0 and (config_index+1) % 2 == 0:
                 teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
 
@@ -708,7 +709,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
                     survey_data = teammate_compare_result["survey_data"]
                     data_logger.log_teammate_survey_data(survey_data)
                 elif teammate_compare_result["action"] == "exit": pass
-            else: print(f'Config index = {config_index}, no teammate comparison this round')
             last_agent_appearance = agent_appearance
 
             # Check if user wants to quit
@@ -772,5 +772,12 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         pygame.quit()
 
 if __name__ == "__main__":
-    # Run the main experiment function
-    main(subject_id=subject_id, start_level=1, skip_instructions=False)
+    parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
+    parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
+    parser.add_argument('--start_level', type=int, default=0, help='Starting level index (default: 0)')
+    parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
+    args = parser.parse_args()
+    subject_id = args.subject_id
+    start_level = args.start_level
+    skip_instructions = args.skip
+    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions)

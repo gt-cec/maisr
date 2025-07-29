@@ -1,6 +1,6 @@
 import gymnasium as gym
 import numpy as np
-from policies.league_management import TeammateManager, TeammatePolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from utility.league_management import TeammateManager, TeammatePolicy
 
 
 class MaisrModeSelectorWrapper(gym.Env):

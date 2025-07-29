@@ -1,7 +1,4 @@
-import ctypes
 import warnings
-import pygame
-import gymnasium as gym
 import os
 import numpy as np
 import multiprocessing
@@ -15,7 +12,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 
-from policies.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from utility.league_management import TeammateManager, LocalSearch, ChangeRegions, GoToNearestThreat
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config

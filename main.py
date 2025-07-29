@@ -5,12 +5,11 @@ import asyncio
 import numpy as np
 import random
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 #import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
+from utility.league_management import (RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, InstructionSeriesManager
 import webbrowser

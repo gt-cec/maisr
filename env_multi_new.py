@@ -252,6 +252,14 @@ class MAISREnvVec(gym.Env):
 
     def reset(self, seed=None, options=None):
 
+        if hasattr(self, "recorded_teammate_positions"):  # list of [x,y]
+            num_microsteps = self.max_steps  # or max_steps per episode
+            self.interpolated_teammate_positions = interpolate_trajectory(
+                self.recorded_teammate_positions,
+                num_microsteps
+            )
+            self.teammate_step_idx = 0
+
         # Load settings based on difficulty level
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
@@ -540,13 +548,21 @@ class MAISREnvVec(gym.Env):
 
         self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
 
+        if hasattr(self, "interpolated_teammate_positions"):
+            pos = self.interpolated_teammate_positions[self.teammate_step_idx]
+            self.agents[self.aircraft_ids[1]].x = pos[0]
+            self.agents[self.aircraft_ids[1]].y = pos[1]
+            self.agents[self.aircraft_ids[1]].waypoint_override = pos
+            self.teammate_step_idx = min(self.teammate_step_idx + 1, len(self.interpolated_teammate_positions) - 1)
+
         # Log actions to action_history plot
         self.action_history.append(self.agents[0].waypoint_override)
         self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
 
         if self.config['num_aircraft'] == 2:
-            self.teammate_location_history.append(
-                (self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y))
+            self.teammate_location_history.append((self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y))
+            if self.tag == 'human_eval0':
+                print(f'\n\nAppended teammate location {(self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y)}')
 
 
         ################################ Move the agents and check for gameplay updates ################################
@@ -616,7 +632,7 @@ class MAISREnvVec(gym.Env):
                     # Update info dictionary
                     info["score_breakdown"]["target_points"] += self.config['base_env_target_id_reward'] if self.targets[target_idx, 1] == 0.0 else self.config['base_env_target_id_reward']
                     info["new_identifications"].append({
-                        "type": "low quality info gathered",
+                        "type": "target identified",
                         "target_id": int(self.targets[target_idx, 0]),
                         "aircraft": aircraft.agent_idx,
                         "time": self.display_time
@@ -688,7 +704,7 @@ class MAISREnvVec(gym.Env):
             #     self.collect_level_data()
 
             # Keep individual plots for specific episodes if needed
-            if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0"] and self.episode_counter in self.episodes_to_plot:
+            if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0", "human_eval0"] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
 
             if self.render_mode == 'human':
@@ -2582,3 +2598,16 @@ class MAISREnvVec(gym.Env):
         return agent_x, agent_y, teammate_x, teammate_y
 
 
+def interpolate_trajectory(trajectory, num_microsteps):
+    """
+    Linearly interpolate trajectory (N x 2) into num_microsteps x 2
+    trajectory: list or np.array of [x, y] positions
+    """
+    trajectory = np.array(trajectory)
+    orig_steps = len(trajectory)
+    new_times = np.linspace(0, orig_steps - 1, num_microsteps)
+
+    x_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 0])
+    y_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 1])
+
+    return np.stack([x_interp, y_interp], axis=1)

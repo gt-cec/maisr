@@ -2,23 +2,19 @@ import argparse
 import ctypes
 import pygame
 import numpy as np
-import random
 
+from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from utility.config import subject_id
 from utility.data_logging import load_env_config
-from utility.league_management import (TeammateManager)
 from user_study.rl_data_logger import ExperimentDataLogger
-from user_study.instructional_screens import ScreenManager, InstructionSeriesManager
-import webbrowser
-
-# import cProfile
-# import pstats
-# import io
-
+from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
+    InstructionSeriesManager, FinalSummaryScreen
+#import sockets
 from stable_baselines3.common.vec_env import VecNormalize
+
+window = None
 
 def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
@@ -30,7 +26,7 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
     return vec_normalize
 
 
-def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_type, run_name='no_name'):
+def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_name='no_name'):
     def _init():
         base_env = MAISREnvVec(
             config=config,
@@ -43,20 +39,6 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_ty
             running_experiment=True
         )
 
-        if run_type == 'solo':
-            base_env.agents[base_env.aircraft_ids[0]].is_visible = False
-
-        if run_type == 'dual':
-            teammate_manager = TeammateManager(
-                league_type="strategy_diverse",
-                balance_method="uniform",
-                selfplay_checkpoint_dir=None,
-                pretrained_teammate_dir=None,
-                overfit_test="low_risk"  # You can cycle through multiple overfit types if needed
-            )
-        else:
-            teammate_manager = None
-
         wrapped_env = MaisrLocalSearchWrapper(
             base_env,
             config['obs_noise_std_localsearch'],
@@ -65,7 +47,6 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_ty
             change_region_subpolicy=None,  # subpolicies['change_region'],
             evade_policy=None,  # EvadeDetection(model_path=None),
             teammate_policy=None,
-            teammate_manager=teammate_manager
         )
 
         #wrapped_env = Monitor(wrapped_env)
@@ -311,12 +292,14 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
         window.blit(text_surface, (x_start + i * spacing, y_pos))
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, window, font, clock, tick_rate, data_logger, time_factor, run_type):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, run_type):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
-    print(f"Run type: {run_type}")
+    #print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
+
+    #sockets.human_controller = human_controller
 
     # Parse agent and level from config
     agent_letter = config[0]
@@ -336,19 +319,27 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     # Draw static labels once
     base_env = env.envs[0].env
-    #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
+    draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
+
+    if run_type == 'solo':
+        base_env = env.envs[0].env
+        base_env.agents[base_env.aircraft_ids[0]].is_visible = False
+        print(f'%%%% Set teammate to not visible %%%%\n\n ')
 
     while not done:
         map_half_size = env.envs[0].env.config['gameboard_size']
         current_time = pygame.time.get_ticks()
 
         # Handle pygame events
+        end_round_early = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return True, episode_reward, step_count  # Signal to quit experiment
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return True, episode_reward, step_count  # Signal to quit experiment
+                elif event.key == pygame.K_RETURN:
+                    end_round_early = True
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
@@ -377,9 +368,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             if run_type == 'solo':
                 agent_action = 8
             else:
-                agent_action = 8 # TODO replace
-                #agent_action, _ = agent_model.predict(obs, deterministic=True)
-                #raise NotImplementedError
+                agent_action, _ = agent_model.predict(obs, deterministic=True)
+            #print(f'Agent chose action {agent_action}')
         else:
             agent_action = last_agent_action
 
@@ -391,9 +381,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        done = dones[0]
-        if done:
-            print('DONE')
+        done = dones[0] or end_round_early or (env.envs[0].env.all_targets_identified and np.sum(env.envs[0].env.threat_identified) >= 2.0) # TODO testing
+
+        final_threat_ids = env.envs[0].env.num_threats_identified
+        final_target_ids = env.envs[0].env.targets_identified
 
         # Log timestep data
         data_logger.log_timestep(
@@ -414,85 +405,73 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         env.render()
 
         # Draw additional UI elements
-        #draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
+        draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
 
         # Draw progress bar at bottom of screen
         draw_progress_bar(window, font, config_index, total_configs)
 
-        # progress_bar_y_start = 1000
-        # progress_bar_height = 50
-        # progress_bar_margin = 10
-        # segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
-        # segment_height = progress_bar_height - 2 * progress_bar_margin
-        #
-        # for i in range(total_configs):
-        #     x = progress_bar_margin + i * segment_width
-        #     y = progress_bar_y_start + progress_bar_margin
-        #     color = (0, 255, 0) if i < config_index else (100, 100, 100)
-        #     pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
-
-        #draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
         base_env = env.envs[0].env
-        #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
+        draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
         #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, step_count, base_env.config['max_steps'], first_render=False)
 
         # Update display
         pygame.display.flip()
-        #pygame.time.wait(50)
+
         clock.tick(tick_rate)
 
-        # Print periodic status
-        #if step_count % 50 == 0:
-            #print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
-
     # End episode logging
-    episode_summary = data_logger.end_episode(env, info)
+    final_threat_ids = env.envs[0].env.num_threats_identified
+    final_target_ids = env.envs[0].env.targets_identified
+    episode_summary = data_logger.end_episode(env, info, final_target_ids, final_threat_ids)
 
-    print(f"\nConfig {config} Complete!")
-    print(f"Final Reward: {episode_reward:.2f}")
-    print(f"Steps Taken: {step_count}")
-    print(f"Targets Identified: {info.get('target_ids', 0)}")
-    print(f"Detections: {info.get('detections', 0)}")
+    #print(f"\nConfig {config} Complete!")
+    #print(f"Final Reward: {episode_reward:.2f}")
+    #print(f"Steps Taken: {step_count}")
+    #print(f"Targets Identified: {info.get('target_ids', 0)}")
+    #print(f"Detections: {info.get('detections', 0)}")
 
     return False, episode_reward, step_count  # False = don't quit experiment
 
 
-def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = None):
-    """Launch survey URL in default browser
-    Args:
-        level_id: Int, 0 to num_levels
-        agent_type: Str ('fcp', 'self_play', 'strategy_diverse')
-        subject_id: int
+def main(subject_id=None, start_level=None, skip_instructions=None, run_type='solo'):
 
-    """
-    try:
-        full_url = url + '?subject_id=' + str(subject_id) + '&scenario_number=' + str(level_id) + '&agent_type=' + str(agent_type)
-        print(f"Opening survey URL: {full_url}")
-
-        webbrowser.open_new_tab(full_url)
-        return True
-    except Exception as e:
-        print(f"Error opening survey URL: {e}")
-        return False
-
-
-def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
-    parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
-    parser.add_argument('--start_level', type=int, default=0,help='Starting level index (default: 0)')
-    parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
-    args = parser.parse_args()
-
-    print(f"\n \n Subject ID: {args.subject_id}")
-    print(f"Starting from level: {args.start_level}")
+    print(f"\n \n Subject ID: {subject_id}")
+    print(f"Starting from level: {start_level}")
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 30
+    tick_rate = 45
+    time_factor = 10  # 20
+    config = load_env_config(config_filename)
 
-    agent_a_name = 'selfplay_seed77'  # 'selfplay_trained_jul18'
-    agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+    config['tick_rate'] = tick_rate
+    config['game_speed'] /= time_factor
+    config['max_steps'] *= (1700 / 1500) * time_factor
+    config['use_stuck_detection'] = False
+    config['prob_detect'] = 0.0000
+    print(f'LOADED CONFIG {config_filename}')
+
+    if subject_id == 90:
+        agent_a_name = 'index_selfplay'#strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'index_selfplay'#'strategy_trained_jul18'
+        config['action_type'] = 'target_index'
+
+    elif subject_id == 91:
+        agent_a_name = 'index_strategy'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
+        config['action_type'] = 'target_index'
+
+    elif subject_id == 92:
+        agent_a_name = 'strategy_trained'  # '#'selfplay_trained_jul18'
+        agent_b_name = 'strategy_trained'  # 'strategy_trained_jul18'
+
+    elif subject_id == 93:
+        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+
+    else: # Default
+        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
 
     # Define RL agent model paths
     agent_models = {
@@ -505,50 +484,29 @@ def main():
         'B': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
 
-    # Create experiment configuration list (agent + level combinations)
-    # 7 rounds each with 2 agents = 14 total configurations
-    # config_list = []
-    # for agent in ['A', 'B']:
-    #     for level in range(1, 8):  # Levels 1-7
-    #         config_list.append(f'{agent}{level}')
-    #
-    # # Shuffle the configuration list for randomized order
-    # random.shuffle(config_list)
-
     levels = list(range(1, 8))
-    random.shuffle(levels)
-    config_list = [f'{agent}{level}' for level in levels for agent in ('A', 'B')]
+    #random.shuffle(levels)
+    config_list = [f'{agent}{level}' for level in levels for agent in ('A')]
 
-    print(f"Randomized configuration order: {config_list}")
+    full_config_list = config_list
 
-    # If start_level is specified, start from that index
-    if args.start_level > 0:
-        if args.start_level >= len(config_list):
-            print(f"Error: start_level {args.start_level} is >= total configs {len(config_list)}")
-            return
-        full_config_list = config_list[args.start_level:]
-        print(f"Starting from level {args.start_level}: {full_config_list}")
-
-    # Load configuration
-    time_factor = 10 #20
-    config = load_env_config(config_filename)
-    config['tick_rate'] = tick_rate
-    config['game_speed'] /= time_factor
-    config['max_steps'] *= (1700/1500) * time_factor
-    config['use_stuck_detection'] = False
-    config['prob_detect'] = 0.0003
-    print(f'LOADED CONFIG {config_filename}')
+    print(f"Randomized configuration order: {full_config_list}")
 
     # Initialize pygame
-    ctypes.windll.user32.SetProcessDPIAware()
+    # if using windows, set DPI awareness to avoid scaling issues
+    if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
+        ctypes.windll.user32.SetProcessDPIAware()
+    else:
+        print("Not running on Windows, skipping DPI awareness setting")
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
 
 
     window_width, window_height = config['window_size'][0], config['window_size'][1]
+    global window
     window = pygame.display.set_mode((window_width, window_height))
-    pygame.display.set_caption(f"MAISR User Study - Subject {args.subject_id}")
+    pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
     # Create font for instructions
     #font = pygame.font.SysFont(None, 24)
@@ -558,12 +516,12 @@ def main():
     experiment_results = []
     current_agents = {}
 
-    data_logger = ExperimentDataLogger(args.subject_id)
+    data_logger = ExperimentDataLogger(subject_id)
     screen_manager = ScreenManager(window, clock)
 
     # Main experiment loop
     try:
-        if not args.skip:
+        if not skip_instructions:
             print("Starting instruction screens...")
             instruction_manager = InstructionSeriesManager(
                 window,
@@ -574,7 +532,7 @@ def main():
                 detection_video_path="user_study/img/detection_video.mp4",
                 click_video_path="user_study/img/click_control.mp4", # TODO replace
                 human_image_path="user_study/img/human_aircraft.png",
-                teammate_image_path="user_study/img/teammates_image.png"
+                teammate_image_path="user_study/img/teammates_image.png",
             )
             instruction_result = instruction_manager.run_instruction_series()
 
@@ -586,43 +544,43 @@ def main():
 
         last_agent_appearance = None
 
-        for config_index, current_config in enumerate(config_list):
+        #for config_index, current_config in enumerate(full_config_list):
+        for config_index, current_config in enumerate(full_config_list):
             agent_letter = current_config[0]  # 'A' or 'B'
             level_number = int(current_config[1:])  # Level number
             if agent_letter == 'A':
-                #if level_number % 2 == 0: # Even levels
                 agent_appearance = 'purple'
-                # else: # Odd levels
-                #     agent_appearance = 'red'
+
             elif agent_letter == 'B': # Agent B
-                # if level_number % 2 == 0: # Even levels
-                #     agent_appearance = 'brown'
-                # else: # Odd levels
                 agent_appearance = 'green'
             else:
                 raise ValueError(f'Agent letter is {agent_letter}')
 
             print(f"\nPreparing for config: {current_config}")
-            print(f"Agent: {agent_letter}, Level: {level_number}")
+            #print(f"Agent: {agent_letter}, Level: {level_number}")
 
             config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-            run_type = 'solo'
-            # if agent_letter == 'A': # TODO implement heuristic agent
-            #     run_type = 'solo'
-            # else: run_type = 'dual'
 
-            env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_type) for _ in range(1)]
+            env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
             env = DummyVecEnv(env_fns)
             vecnorm_path = vecnorm_paths[agent_letter]
             print(f'Loaded vecnorm stats from {vecnorm_path}')
             env = load_vecnormalize_wrapper(vecnorm_path, env)
 
+
+
+            # Load the appropriate agent
+            if agent_letter not in current_agents:
+                current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
+            current_agent_name = current_agents[agent_letter]
+
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
+            #sockets.human_controller = human_controller
 
             should_quit, episode_reward, step_count = run_single_episode(
-                env, human_controller, current_config, config_index, len(config_list),
-                window, font, clock, tick_rate, data_logger, time_factor, run_type
+                env, human_controller, current_config, config_index, len(full_config_list),
+                current_agent_name, window, font, clock, tick_rate, data_logger, time_factor, run_type
             )
 
             # Store results
@@ -632,7 +590,7 @@ def main():
                 'level': level_number,
                 'reward': episode_reward,
                 'steps': step_count,
-                'config_index': config_index + args.start_level
+                'config_index': config_index + start_level
             }
             experiment_results.append(result)
 
@@ -641,35 +599,36 @@ def main():
 
             print(f"\nEpisode {current_config} completed!")
 
-            #workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
-            #workload_survey_result = screen_manager.show_screen(workload_survey_screen)
-            #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
+            if not skip_instructions:
+                workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+                workload_survey_result = screen_manager.show_screen(workload_survey_screen)
+                #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
 
-            # if workload_survey_result["action"] == "exit":
-            #     print("Experiment terminated by user")
-            #     break
-            # elif workload_survey_result["action"] == "continue":
-            #     # Log the survey data
-            #     survey_data = workload_survey_result.get("survey_data", {})
-            #     print(f"Survey responses for {current_config}: {survey_data['responses']}")
-            #
-            #     # Add survey data to your data logger
-            #     if hasattr(data_logger, 'log_survey_data'):
-            #         data_logger.log_survey_data(survey_data)
-            #     else:
-            #         # Fallback: save to file or print
-            #         print(f"Survey data: {survey_data}")
+                if workload_survey_result["action"] == "exit":
+                    print("Experiment terminated by user")
+                    break
+                elif workload_survey_result["action"] == "continue":
+                    # Log the survey data
+                    survey_data = workload_survey_result.get("survey_data", {})
+                    print(f"Survey responses for {current_config}: {survey_data['responses']}")
+
+                    # Add survey data to your data logger
+                    if hasattr(data_logger, 'log_survey_data'):
+                        data_logger.log_survey_data(survey_data)
+                    else:
+                        # Fallback: save to file or print
+                        print(f"Survey data: {survey_data}")
 
             # Show the teammate preference survey
-            # if config_index > 0 and (config_index+1) % 2 == 0:
-            #     teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
-            #     teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
-            #
-            #     if teammate_compare_result["action"] == "continue":
-            #         survey_data = teammate_compare_result["survey_data"]
-            #         data_logger.log_teammate_survey_data(survey_data)
-            #     elif teammate_compare_result["action"] == "exit": pass
-            # else: print(f'Config index = {config_index}, no teammate comparison this round')
+
+            if (not skip_instructions) and config_index > 0 and (config_index+1) % 2 == 0:
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+                teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
+
+                if teammate_compare_result["action"] == "continue":
+                    survey_data = teammate_compare_result["survey_data"]
+                    data_logger.log_teammate_survey_data(survey_data)
+                elif teammate_compare_result["action"] == "exit": pass
             last_agent_appearance = agent_appearance
 
             # Check if user wants to quit
@@ -678,7 +637,7 @@ def main():
                 break
 
             # Brief pause between episodes (unless it's the last one)
-            if config_index < len(config_list) - 1:
+            if config_index < len(full_config_list) - 1:
                 print("Next episode starting in 2 seconds...")
                 pygame.time.wait(100)
 
@@ -686,8 +645,8 @@ def main():
         print("\nExperiment interrupted by user")
 
     finally:
-        #final_screen = FinalSummaryScreen(experiment_results, window.get_width(), window.get_height())
-        #screen_manager.show_screen(final_screen)
+        final_screen = FinalSummaryScreen(experiment_results, window.get_width(), window.get_height())
+        screen_manager.show_screen(final_screen)
 
         data_logger.save_session_data()
         session_summary = data_logger.get_session_summary()
@@ -696,7 +655,7 @@ def main():
         print(f"\n{'=' * 60}")
         print("EXPERIMENT SUMMARY")
         print(f"{'=' * 60}")
-        print(f"Subject ID: {args.subject_id}")
+        print(f"Subject ID: {subject_id}")
         print(f"Completed configurations: {len(experiment_results)}")
 
         if experiment_results:
@@ -729,9 +688,19 @@ def main():
                     print(f"    Success rate: {performance['success_rate']:.2%}")
                     print(f"    Average targets identified: {performance['average_targets_identified']:.1f}")
 
-        print(f"\nData saved to: {data_logger.output_dir}/subject_{args.subject_id}/")
+        print(f"\nData saved to: {data_logger.output_dir}/subject_{subject_id}/")
         pygame.quit()
 
-
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Run MAISR user study experiment')
+    parser.add_argument('subject_id', type=int, help='Subject ID (integer)')
+    parser.add_argument('--start_level', type=int, default=0, help='Starting level index (default: 0)')
+    parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
+    args = parser.parse_args()
+    subject_id = args.subject_id
+    start_level = args.start_level
+    skip_instructions = args.skip
+    for run_type in ['solo']: # dual
+    #for subject_id in [90, 91, 92, 93]:
+        print(f'\n======= Running subject ID {subject_id} =======')
+        main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, run_type=run_type)

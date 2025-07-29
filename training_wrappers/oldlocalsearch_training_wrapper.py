@@ -2,7 +2,7 @@ import random
 
 import gymnasium as gym
 import numpy as np
-from policies.league_management import TeammateManager, TeammatePolicy
+from utility.league_management import TeammateManager, TeammatePolicy
 
 
 class MaisrLocalSearchWrapper(gym.Env):

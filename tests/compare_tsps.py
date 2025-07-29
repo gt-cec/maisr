@@ -1,5 +1,4 @@
 import ctypes
-from re import search
 
 import pygame
 import numpy as np
@@ -7,7 +6,7 @@ import matplotlib.pyplot as plt
 from env_multi_new import MAISREnvVec
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import (
+from utility.league_management import (
     TeammateManager, TargetSearchLocalTSP, LocalSearch,
     ChangeRegions, GoToNearestThreat, EvadeDetection
 )

@@ -1,8 +1,7 @@
 import numpy as np
-import torch
 from stable_baselines3 import PPO
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from policies.league_management import TeammateManager
+from utility.league_management import TeammateManager
 from env_multi_new import MAISREnvVec
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import os
@@ -10,10 +9,10 @@ import os
 from utility.data_logging import load_env_config
 
 # === CONFIG ===
-checkpoint_path = "./obstest/test_checkpoint_0_steps_model.zip"
-norm_stats_path = "./obstest/test_checkpoint_vecnormalize_0_steps.pkl"
+checkpoint_path = "../obstest/test_checkpoint_0_steps_model.zip"
+norm_stats_path = "../obstest/test_checkpoint_vecnormalize_0_steps.pkl"
 
-config = load_env_config('configs/Monolith_R8H_july10.json')
+config = load_env_config('../configs/Monolith_R8H_july10.json')
 config['teammate_active_at_start'] = True
 
 # === 1. Load Environment ===

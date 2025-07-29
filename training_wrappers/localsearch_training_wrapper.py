@@ -1,9 +1,8 @@
 import random
-import warnings
 
 import gymnasium as gym
 import numpy as np
-from policies.league_management import TeammateManager, TeammatePolicy, RecordedTrajectoryTeammate
+from utility.league_management import TeammateManager, TeammatePolicy, RecordedTrajectoryTeammate
 
 
 class MaisrLocalSearchWrapper(gym.Env):
@@ -124,23 +123,25 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Reset teammate selection for new episode
 
-        if self.teammate_manager:
+        #if self.env.tag == 'human_eval0':
+        if hasattr(self.current_teammate, 'name'):
+            if self.current_teammate.name == 'Recorded_Human_Teammate':
+                pass
+        elif self.teammate_manager:
             # Update the teammate manager with the current model before selecting a teammate
             #self.teammate_manager.set_current_model(self.env.model)
 
             self.teammate_manager.reset_for_episode()
             self.current_teammate = self.teammate_manager.select_random_teammate()
             self.current_teammate.env = self.env
-
-
-        # if self.teammate_manager:
-        #     self.teammate_manager.reset_for_episode()
-        #     self.current_teammate = self.teammate_manager.select_random_teammate()
+            #print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
 
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
+            #print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate}')
         else:
             self.current_teammate = None
+            #print(f'[localsearchwrapper] current teammate is {self.current_teammate}')
 
         return raw_obs, _
 
@@ -155,12 +156,19 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
-            self.teammate_action = self.get_teammate_action()
-            #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
-            if isinstance(self.teammate_action, np.ndarray):
-                self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
-                #print(f'converted teammate action to tuple: {self.teammate_action}')
-            self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+            #if self.env.tag == 'human_eval0':
+            if hasattr(self.current_teammate, 'name'):
+                if self.current_teammate.name == 'Recorded_Human_Teammate':
+                    self.teammate_action = self.current_teammate.get_action()
+                    self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y = self.current_teammate.get_action()
+
+            else:
+                self.teammate_action = self.get_teammate_action()
+                #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
+                if isinstance(self.teammate_action, np.ndarray):
+                    self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
+                    #print(f'converted teammate action to tuple: {self.teammate_action}')
+                self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
 
         ############ Stuck detection ############
 
@@ -369,6 +377,12 @@ class MaisrLocalSearchWrapper(gym.Env):
         return action
 
     def get_teammate_action(self):
+        #if self.env.tag == 'human_eval0':
+        # if hasattr(self.current_teammate, 'name'):
+        #     if self.current_teammate.name == 'Recorded_Human_Teammate':
+        #         return self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y
+
+
         obs_agent1_raw = self.env.get_observation_nearest_n(1)
         obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
 
@@ -405,7 +419,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
                     direction_to_move = self._unwrap_action(direction_to_move)
 
-                print(f'Teammate action is {direction_to_move}')
+                #print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
                 return teammate_action
 
@@ -460,7 +474,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                         except: print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
                         #print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_direction_to_move} + {noise} -> {direction_to_move})')
 
-                print(f'Teammate action is {direction_to_move}')
+                #print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 1:  # Change region - NW
@@ -505,10 +519,11 @@ class MaisrLocalSearchWrapper(gym.Env):
                         except:
                             print( f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
 
-                print(f'Teammate action is {direction_to_move}')
+                #print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
 
             elif self.teammate_subpolicy_choice == 3:  # Hold at current location
+                print(' %%%%%%%%%%%%%%%% \nteammate subpolicy choice is 3, overriding action')
                 teammate_action = np.array([
                     self.env.agents[self.env.aircraft_ids[1]].x / self.env.config['gameboard_size'],
                     self.env.agents[self.env.aircraft_ids[1]].y / self.env.config['gameboard_size']])

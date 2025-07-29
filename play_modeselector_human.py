@@ -1,18 +1,15 @@
 import ctypes
 import pygame
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
 from utility.data_logging import load_env_config
-from policies.league_management import GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, \
+from utility.league_management import LocalSearch, ChangeRegions, GoToNearestThreat, \
     EvadeDetection, TeammateManager
 import json
 import datetime
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d import Axes3D
 
 
 def calculate_spatial_coverage(positions, gameboard_size):

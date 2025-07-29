@@ -3341,23 +3341,66 @@ class ChangeRegions(SubPolicy):
         return centers.get(region_id, np.array([0.0, 0.0]))
 
 class RecordedTrajectoryTeammate(TeammatePolicy):
-    def __init__(self, trajectory_file):
+    def __init__(self, trajectory_file, env, timescale_correction: int = 1):
+        """
+        Load a recorded human trajectory from a JSON file where each entry has 'human_position'.
+        Optionally subsample positions by taking every `timescale_correction`th timestep.
+        """
         import json
+
+        self.env = env
+
         with open(trajectory_file, 'r') as f:
-            self.trajectory = json.load(f)['teammate_position']
+            data = json.load(f)
+
+        # Handle both {"timesteps": [...]} and raw list formats
+        if isinstance(data, dict) and "timesteps" in data:
+            timesteps = data["timesteps"]
+        elif isinstance(data, list):
+            timesteps = data
+        else:
+            raise ValueError(f"Unrecognized trajectory file format: {type(data)} keys={list(data) if isinstance(data, dict) else 'N/A'}")
+
+        # Extract and optionally downsample positions
+        raw_positions = [entry["human_position"] for entry in timesteps]
+        raw_actions = [entry["human_custom_waypoint"] for entry in timesteps]
+        if timescale_correction > 1:
+            raw_positions = raw_positions[::timescale_correction]
+            raw_actions = raw_actions[::timescale_correction]
+
+
+        self.position_trajectory = raw_positions
+        self.action_trajectory = raw_actions
+        self.last_action = None
+        print(f'%%%%% Action trajectory = {self.action_trajectory}')
         self.index = 0
         self.name = "Recorded_Human_Teammate"
+        self.timescale_correction = timescale_correction
 
     def choose_subpolicy(self, *args, **kwargs):
-        return 0  # not used
+        return 0  # Not used
 
     def reset(self):
         self.index = 0
 
     def get_action(self):
-        if self.index < len(self.trajectory):
-            action = tuple(self.trajectory[self.index])
+        """Return the next recorded position (x, y)."""
+
+        self.current_location = self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y
+
+        if self.index < len(self.action_trajectory):
+            #print(f'\n\n In recorded teammate get action: action_trajectory is {self.action_trajectory}')
+            if self.action_trajectory[self.index] is None:
+                if self.last_action is None:
+                    self.last_action = self.current_location
+                action = self.last_action
+                print(f'Action at index {self.index} is None, using last action {self.last_action}')
+            else:
+                action = tuple(self.action_trajectory[self.index])
+                print(f'Action at index {self.index} is {action}')
             self.index += 1
+            self.last_action = action
             return action
         else:
-            return self.trajectory[-1]  # hold last position
+            # Hold at last known position if trajectory is exhausted
+            return self.action_trajectory[-1]
