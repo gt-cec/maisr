@@ -31,6 +31,57 @@ from policies.league_management import TeammateManager, GenericTeammatePolicy, S
     GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
 from utility.data_logging import load_env_config
 
+import os, glob
+
+
+def get_latest_checkpoint_and_vecnorm(seed: int, note_prefix: str = "pretrain") -> tuple[str, str]:
+    """
+    Automatically find the latest checkpoint .zip and VecNormalize .pkl for a given seed.
+
+    Args:
+        seed (int): The training seed used in the run folder name.
+        note_prefix (str): The prefix used in the run folder name, e.g., "pretrainH".
+
+    Returns:
+        (load_path, vecnorm_path): Tuple of strings with the latest checkpoint and vecnormalize file paths.
+    """
+    # Pattern for run folder: <note>_MMDD_HHMM_seed<seed>/checkpoints
+    pattern = f"outputs/{note_prefix}_*_seed{seed}/checkpoints"
+    checkpoint_dirs = glob.glob(pattern)
+
+    if not checkpoint_dirs:
+        raise FileNotFoundError(f"[AutoLoad] No checkpoint directories found for seed {seed} using pattern {pattern}")
+
+    # Use the most recently modified directory if multiple matches
+    latest_dir = max(checkpoint_dirs, key=os.path.getmtime)
+
+    # Get all checkpoint zips and vecnorm pkls
+    checkpoint_zips = glob.glob(os.path.join(latest_dir, "*_checkpoint_*_steps.zip"))
+    vecnorm_pkls = glob.glob(os.path.join(latest_dir, "*_checkpoint_vecnormalize_*_steps.pkl"))
+
+    if not checkpoint_zips or not vecnorm_pkls:
+        raise FileNotFoundError(f"[AutoLoad] No valid checkpoints or vecnormalize files found in {latest_dir}")
+
+    # Helper to extract step number from file names
+    def extract_step(path: str, vecnorm: bool = False) -> int:
+        base = os.path.basename(path)
+        if vecnorm:
+            # <run>_checkpoint_vecnormalize_<steps>_steps.pkl
+            step_str = base.split("_vecnormalize_")[-1].replace("_steps.pkl", "")
+        else:
+            # <run>_checkpoint_<steps>_steps.zip
+            step_str = base.split("_checkpoint_")[-1].replace("_steps.zip", "")
+        return int(step_str)
+
+    # Pick the files with the highest step count
+    latest_zip = max(checkpoint_zips, key=lambda p: extract_step(p, vecnorm=False))
+    latest_pkl = max(vecnorm_pkls, key=lambda p: extract_step(p, vecnorm=True))
+
+    print(f"[AutoLoad] Using latest checkpoint: {latest_zip}")
+    print(f"[AutoLoad] Using latest vecnorm stats: {latest_pkl}")
+
+    return latest_zip, latest_pkl
+
 
 class PrintObsEvery50Steps(BaseCallback):
     """
@@ -1512,7 +1563,7 @@ if __name__ == "__main__":
 
     elif version == 'pretrained_agents':
         note = 'pretrain' + machine[0].upper()
-        config['num_timesteps'] = 8e6
+        config['num_timesteps'] = 2e6
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-teammates'
@@ -1527,28 +1578,30 @@ if __name__ == "__main__":
         # outputs/{load_prev_run}/checkpoints/{latest_zip} # TODO working here
         # outputs/{load_prev_run}/checkpoints/{latest_pkl}
 
-        load_paths = {
-            69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_4499928_steps.zip',
-            99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
-            44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
-            21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
-            623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_3941184_steps.zip',
-            999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_3928704_steps.zip',
-            5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_3903744_steps.zip'
-        }
+        # load_paths = {
+        #     69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_4499928_steps.zip',
+        #     99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_3941184_steps.zip',
+        #     44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_3948672_steps.zip',
+        #     21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_3946176_steps.zip',
+        #     623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_3941184_steps.zip',
+        #     999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_3928704_steps.zip',
+        #     5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_3903744_steps.zip'
+        # }
+        #
+        # vecnorm_load_paths = {
+        #     69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_vecnormalize_4499928_steps.pkl',
+        #     99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
+        #     44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
+        #     21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
+        #     623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_vecnormalize_3941184_steps.pkl',
+        #     999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_vecnormalize_3928704_steps.pkl',
+        #     5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
+        # }
 
-        vecnorm_load_paths = {
-            69: 'outputs/pretrainH_0726_2122_seed69/checkpoints/pretrainH_0726_2122_seed69_checkpoint_vecnormalize_4499928_steps.pkl',
-            99: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed99_vecnormalize_3941184_steps.pkl',
-            44: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2038seed44_vecnormalize_3948672_steps.pkl',
-            21: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed21_vecnormalize_3946176_steps.pkl',
-            623: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed623_vecnormalize_3941184_steps.pkl',
-            999: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed999_vecnormalize_3928704_steps.pkl',
-            5732: None,#'checkpoints_to_load/maisr_checkpoint_pretrainP_0722_2039seed5732_vecnormalize_3903744_steps.pkl'
-        }
+        load_path, vecnorm_load_path = get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)
 
-        load_path = load_paths[int(args.seed)]
-        vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
+        #load_path = load_paths[int(args.seed)]
+        #vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
     elif version == 'mixed':
         note = 'fcp_mixed' + machine[0].upper()
@@ -1604,8 +1657,9 @@ if __name__ == "__main__":
         config['seed'] = int(args.seed)
         overfit_test = None
 
-        load_path = None#load_paths[int(args.seed)]
-        vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
+        #load_path = None#load_paths[int(args.seed)]
+        #vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
+        load_path, vecnorm_load_path = get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)
 
     param_shorthand = {
         'entropy_regularization': 'entreg',
