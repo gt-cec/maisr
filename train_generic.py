@@ -593,7 +593,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
 
                 if not self.switched_to_twoship:
-                    eval_metrics["aircraft/num_aircraft"] = 1 if not self.switched_to_twoship else 2
+                    eval_metrics["monitoring/num_aircraft"] = 1 if not self.switched_to_twoship else 2
 
             self.run.log(eval_metrics, step=self.num_timesteps)
 
@@ -1586,7 +1586,7 @@ if __name__ == "__main__":
 
     elif version == 'index':
         note = 'index' + machine[0].upper()
-        config['num_timesteps'] = 1e6
+        config['num_timesteps'] = 7e5
         config['league_type'] = 'selfplay'
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-index'
@@ -1594,9 +1594,12 @@ if __name__ == "__main__":
 
         hyperparams = {
             # 'seed': [21, 623, 33, 82],
-            'threat_reward_scaling': [0.3, 0.5],
+            'threat_reward_scaling': [0.3],
             "teammate_reward_scale": [0.75],
-            "potential_ratio": [0.5, 1]
+            "potential_ratio": [0.5, 1],
+            "gamma":[0.99, 0.985],
+            "team_spread_bonus_coeff": [0.005],
+            "shaping_coeff_earlyfinish":[0.11, 0.07]
         }
         config['seed'] = int(args.seed)
         overfit_test = None
@@ -1622,7 +1625,8 @@ if __name__ == "__main__":
         'threat_reward_scaling': 'thrtrwdscl',
         'shaping_coeff_earlyfinish': 'erlyfnsh',
         'entropy_decay_steps': 'entdcystps',
-        'seed': 'seed'
+        'seed': 'seed',
+        "gamma":"gamma"
     }
 
     if args.testing:
