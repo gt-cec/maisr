@@ -27,7 +27,7 @@ def handle_frame(data):
     emit('frame', data, broadcast=True, binary=True)
     end_time = time.time()
     latency_ms = (end_time - start_time) * 1000
-    print(f"[Latency Log] Frame processed and broadcast in {latency_ms:.2f} ms")
+    #print(f"[Latency Log] Frame processed and broadcast in {latency_ms:.2f} ms")
 
 # @socketio.on('frame')
 # def handle_frame(data):

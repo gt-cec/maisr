@@ -22,11 +22,44 @@ from io import BytesIO
 import webbrowser
 from stable_baselines3.common.vec_env import VecNormalize
 
-#sockets.pyg = pygame
-
-
 
 window = None
+
+def draw_countdown_overlay(window, font, countdown_steps, countdown_length, map_rect=None):
+    """Draw a 3-second countdown overlay with gray background and a black circle around the number."""
+    # Calculate seconds left (3, 2, 1)
+    seconds_total = 3
+    steps_per_second = countdown_length // seconds_total
+    seconds_left = seconds_total - (countdown_steps // steps_per_second)
+    seconds_left = max(1, seconds_left)  # Ensure we display 1 at the last moment
+
+    width, height = window.get_size()
+
+    # Gray box overlay: either the whole screen or just the map area
+    if map_rect is None:
+        overlay_rect = pygame.Rect(0, 0, width, height)
+    else:
+        overlay_rect = map_rect
+
+    overlay = pygame.Surface((overlay_rect.width, overlay_rect.height))
+    overlay.set_alpha(180)  # 0=transparent, 255=opaque
+    overlay.fill((100, 100, 100))
+    window.blit(overlay, overlay_rect.topleft)
+
+    # Big countdown font (ignore the passed font for size)
+    big_font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 100)
+    countdown_text = str(seconds_left)
+    text_surface = big_font.render(countdown_text, True, (255, 255, 255))
+    text_rect = text_surface.get_rect(center=(overlay_rect.centerx, overlay_rect.centery))
+
+    # Draw black circle behind text
+    circle_radius = max(text_rect.width, text_rect.height) // 2# + 20
+    pygame.draw.circle(window, (0, 0, 0), text_rect.center, circle_radius)
+
+    # Draw the countdown text
+    window.blit(text_surface, text_rect)
+
+
 
 def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
@@ -263,7 +296,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
 
     bottom_texts = [
         f"Regular: {regular_targets}/15",
-        f"High-value: {high_value_targets}/4",
+        f"High-value: {high_value_targets}/2",
         f"Score: {score}",
         f"Time left: {time_left}s"
     ]
@@ -303,7 +336,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
 #         window.blit(text_surface, (x_start + i * spacing, y_pos))
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, admin=False):
     """Run a single episode of the experiment"""
     print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
@@ -342,7 +375,19 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     # Draw static labels once
     draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
 
+    countdown_length = 100
+
+    countdown_steps = 0
+
     while not done:
+        if countdown_steps <= countdown_length:
+            env.render()
+            draw_countdown_overlay(window, font, countdown_steps, countdown_length)
+            pygame.display.flip()  # Update screen
+            pygame.time.wait(33)  # ~30 FPS for countdown
+            countdown_steps += 1
+            continue  # Skip the rest of the loop until countdown is done
+
         map_half_size = env.envs[0].env.config['gameboard_size']
         current_time = pygame.time.get_ticks()
         skip_round = False
@@ -357,7 +402,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
-                elif event.key == pygame.K_RETURN:
+                elif event.key == pygame.K_RETURN and admin:
                     skip_round = True
                 else:
                     # Handle subpolicy selection
@@ -465,7 +510,7 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False):
+def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False, admin=False):
 
     import sockets
     sockets.connect()
@@ -485,7 +530,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     config['game_speed'] /= time_factor
     config['max_steps'] *= (1700 / 1500) * time_factor
     config['use_stuck_detection'] = False
-    config['prob_detect'] = 0.0003
+    config['prob_detect'] = 0#0.0003
     print(f'LOADED CONFIG {config_filename}')
 
     if subject_id == 90:
@@ -645,9 +690,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
             # Run the episode
             should_quit, episode_reward, step_count = run_single_episode(
-                env, human_controller, current_config, config_index, len(full_config_list),
-                current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter
-            )
+                        env, human_controller, current_config, config_index, len(full_config_list),
+                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, admin=admin
+                    )
             if should_quit:
                 print("Experiment terminated by user")
                 break
@@ -676,7 +721,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             env.close()
 
             # Workload survey and teammate survey logic (skip for practice)
-            if not skip_instructions:
+            if (not skip_instructions) and (agent_letter != 'S'):
                 workload_survey_screen = WorkloadSurveyScreen(
                     episode_config=current_config, window_width=window_width, window_height=window_height)
                 workload_survey_result = screen_manager.show_screen(workload_survey_screen)
@@ -691,7 +736,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
             print(f'config index = {config_index}')
             print(f'(config_index + 1) % 2 == 0: {(config_index) % 2 == 0}')
-            if (not skip_instructions) and config_index > 0 and (config_index) % 2 == 0:
+            if (agent_letter != 'S') and (not skip_instructions) and config_index > 0 and (config_index) % 2 == 0:
                 teammate_compare_survey = TeammatePreferenceSurveyScreen(
                     window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
@@ -861,7 +906,9 @@ if __name__ == "__main__":
     parser.add_argument('--start_level', type=int, default=0, help='Starting level index (default: 0)')
     parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
     parser.add_argument('--pilot', action='store_true', help='Set to true if running pilot studies. Appends solo configs after main rounds.')
+    parser.add_argument('--admin', action='store_true',help='Allows skipping sections with ENTER')
     args = parser.parse_args()
+
     subject_id = args.subject_id
     start_level = args.start_level
     skip_instructions = args.skip

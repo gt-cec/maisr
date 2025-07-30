@@ -106,7 +106,7 @@ def compress_delta_frame(delta_data):
     changed_pixels = delta_data['changed_pixels']
     positions = delta_data['positions']
 
-    print(f"Delta compression: {len(changed_pixels)} changed pixels")
+    #print(f"Delta compression: {len(changed_pixels)} changed pixels")
 
     # Create a simple binary format that JavaScript can parse
     # Format: [num_pixels (4 bytes)] + [y1,x1,r1,g1,b1, y2,x2,r2,g2,b2, ...]
@@ -126,7 +126,7 @@ def compress_delta_frame(delta_data):
 
     # Compress the binary data
     compressed = zlib.compress(data, level=6)
-    print(f"Delta compressed: {len(data)} -> {len(compressed)} bytes")
+    #print(f"Delta compressed: {len(data)} -> {len(compressed)} bytes")
 
     return compressed
 

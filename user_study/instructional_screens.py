@@ -1181,7 +1181,7 @@ class Instruct5Screen(GameInstructionScreen):
 
 
         # Text at (150, 200)
-        text_surface = self.font_large.render("Regular targets are worth 1 point.", True, self.text_color)
+        text_surface = self.font_large.render("There are 15 REGULAR targets on the map.", True, self.text_color)
         window.blit(text_surface, (300, 320))
 
         # Gold circle
@@ -1204,15 +1204,15 @@ class Instruct5Screen(GameInstructionScreen):
         pygame.draw.polygon(window, (255, 215, 0), triangle_points) # Upside down gold triangle inside
 
 
-        text_surface = self.font_large.render("High-value targets are worth 9 points.", True, self.text_color)
+        text_surface = self.font_large.render("There are 4 HIGH-VALUE targets on the map", True, self.text_color)
         window.blit(text_surface, (300, 430))
-
-        bottom_text = ["Each level has 15 regular",
-                       "targets and 4 high-value targets."]
-        y_pos = 650
-        for line in bottom_text:
-            self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
+        #
+        # bottom_text = ["Each level has 15 regular",
+        #                "targets and 4 high-value targets."]
+        # y_pos = 650
+        # for line in bottom_text:
+        #     self.draw_text_centered(window, line, y_pos, self.font_large)
+        #     y_pos += 35
 
 
 class Instruct6Screen(GameInstructionScreen):
@@ -1339,12 +1339,13 @@ class Instruct7Screen(GameInstructionScreen):
                     "",
                     "Your final score is calculated as:",
                     "",
-                    "5× (targets IDed) - 30× abs(2 - threats IDed)",
+                    "5 × (targets) - 30 × abs(2 - threats)",
                     "+ 1.25× (# of seconds early)",
                     "",
                     "",
                     "You will need to coordinate with your teammate to succeed.",
                     "Try to search the map efficiently and balance your risk.",
+                    "",
                     "",
                     "",
                     "Good luck!"
