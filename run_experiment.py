@@ -335,6 +335,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     done = False
     paused = False
 
+    # Initialize frame management
+    frame_skip_counter = 0
+    frame_send_interval = 1  # Send every N frames (adjust for performance)
+
     # Draw static labels once
     draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
 
@@ -419,8 +423,11 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Update display
         pygame.display.flip()
-        if step_count % 1 == 0:
+
+        if step_count % 30 == 0:
             sockets.send_frame(window)
+        else:
+            sockets.send_frame_with_delta(window, quality=65)
         clock.tick(tick_rate)
 
         # Print periodic status
@@ -470,7 +477,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 45
+    tick_rate = 30
     time_factor = 20  # 20
     config = load_env_config(config_filename)
 
@@ -648,6 +655,8 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             # After practice episode, show the after-practice screen
             if config_index == 0:
                 after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
+                #if self.sio is not None:
+                #sockets.send_frame(window)
                 after_practice_result = screen_manager.show_screen(after_practice_screen)
                 if after_practice_result["action"] == "exit":
                     print("User exited after practice screen")

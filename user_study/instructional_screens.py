@@ -480,15 +480,15 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         # Visual properties
         self.icon_size = 80
         self.icon_spacing = 200
-        self.question_spacing = 175
-        self.first_question_y = 225 + 150 + 100
+        self.question_spacing = 175 + 15
+        self.first_question_y = 225 + 150 + 100 - 40
 
         # Colors
-        self.unselected_color = (150, 150, 150)
+        self.unselected_color = (120, 120, 120)
         self.green_color = (76, 175, 80)
         self.purple_color = (156, 39, 176)
-        self.selected_bg_color = (250, 250, 250)
-        self.icon_bg_color = (180, 180, 180)
+        self.selected_bg_color = (255, 255, 255)
+        self.icon_bg_color = (120, 120, 120)#(180, 180, 180)
 
         # Continue button
         self.continue_button_size = 80
@@ -502,8 +502,17 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Answer each question below by clicking the box."
+        title = 'What did you think of the last two teammates you flew with?'
         self.draw_text_centered(window, title, 150, self.font_large)
+
+        #self.draw_teammate_icon(window, 300, 300, self.agent_appearance, -1, True, self.icon_size * 2.2,scale=2.5)
+        self.draw_teammate_icon(window, 300, 225, self.agent_appearance, -1, True, 0, scale=2.5)
+        #self.draw_teammate_icon(window, 700, 300, self.last_agent_appearance, -1, True,self.icon_size * 2.2, scale=2.5)
+        self.draw_teammate_icon(window, 700, 225, self.last_agent_appearance, -1, True, 0, scale=2.5)
+
+        middle_text = "Answer each question below by clicking the boxes."
+
+        self.draw_text_centered(window, middle_text, 340, self.font_large)
 
         # Draw each question with teammate icons
         for i, question in enumerate(self.questions):
@@ -514,10 +523,6 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
     def draw_question_with_icons(self, window: pygame.Surface, question_index: int, question_text: str) -> None:
         """Draw a question with two teammate icon options"""
-
-        # Draw header
-        self.draw_teammate_icon(window, 300, 300, self.agent_appearance, question_index, True, self.icon_size * 2.5, scale = 3)
-        self.draw_teammate_icon(window, 700, 300, self.last_agent_appearance, question_index, True, self.icon_size * 2.5, scale = 3)
 
         y_pos = self.first_question_y + (question_index * self.question_spacing)
 
@@ -536,7 +541,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         center_x = self.window_width // 2
         green_icon_x = center_x - self.icon_spacing // 2
         purple_icon_x = center_x + self.icon_spacing // 2
-        icon_y = y_pos + 65
+        icon_y = y_pos + 80
 
         # Draw green teammate icon
         #self.draw_teammate_icon(window, green_icon_x, icon_y, 'green', question_index, self.responses[question_index] == 'green')
@@ -1328,14 +1333,14 @@ class Instruct7Screen(GameInstructionScreen):
                     "your score will be reduced.",
                     "",
                     "",
-                    "If you finish a round early (all 15 targets and at",
-                    "least 2 threats) you will receive an EARLY FINISH bonus.",
+                    "If you finish a round EARLY (all 15 targets and at",
+                    "least 2 threats) you will receive a bonus.",
                     "",
                     "",
                     "Your final score is calculated as:",
                     "",
-                    "5 × (# of targets) - 30 × abs(2 - # of threats)",
-                    "+ 1.25 × (# of seconds early)",
+                    "5× (targets IDed) - 30× abs(2 - threats IDed)",
+                    "+ 1.25× (# of seconds early)",
                     "",
                     "",
                     "You will need to coordinate with your teammate to succeed.",
@@ -1442,6 +1447,10 @@ class AfterPracticeScreen(GameInstructionScreen):
             "When you're ready, click the arrow to start the first round."
         ]
         self.draw_text_block(window, placeholder_lines, 400, self.font_large, 40)
+
+        if self.sio is not None:
+            import sockets
+            sockets.send_frame(window)
 
 
 
@@ -1613,6 +1622,10 @@ class ScreenManager:
 
         while running:
             dt = self.clock.tick(FPS)
+
+
+            import sockets
+            sockets.send_frame(self.window)
 
             # Handle events
             for event in pygame.event.get():

@@ -1,3 +1,6 @@
+import time
+
+
 from flask import Flask, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 
@@ -20,7 +23,11 @@ def serve_pako():
 
 @socketio.on('frame',namespace='/')
 def handle_frame(data):
+    start_time = time.time()
     emit('frame', data, broadcast=True, binary=True)
+    end_time = time.time()
+    latency_ms = (end_time - start_time) * 1000
+    print(f"[Latency Log] Frame processed and broadcast in {latency_ms:.2f} ms")
 
 # @socketio.on('frame')
 # def handle_frame(data):

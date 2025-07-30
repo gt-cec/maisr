@@ -1,55 +1,260 @@
 <!DOCTYPE html>
-    <html>
-    <head>
-        <title>CEC MAISR</title>
-        <style>
-            body { display: flex; justify-content: center; align-items: center;  background: #111; text-align: center; color: white; }
-            canvas { border: 1px solid #555; margin-top: 20px; }
-        </style>
-    </head>
-    <body>
-        <canvas id="board" width="1000px" height="1100px"></canvas>
-        <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
-        <script src="/pako.min.js"></script>
-        <script>
-            const socket = io();
-            const canvas = document.getElementById('board');
-            const ctx = canvas.getContext('2d');
+<html>
+<head>
+    <title>CEC MAISR</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #111;
+            text-align: center;
+            color: white;
+            font-family: monospace;
+            margin: 0;
+            padding: 10px;
+        }
+        canvas {
+            border: 1px solid #555;
+        }
+        #stats {
+            margin-bottom: 10px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        #stats span {
+            margin-right: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div id="stats">
+        <span>FPS: <span id="fps">0</span></span>
+        <span>Frame Type: <span id="frameType">-</span></span>
+        <span>Bandwidth: <span id="bandwidth">0 KB/s</span></span>
+    </div>
+    <canvas id="board" width="1000px" height="1100px"></canvas>
 
-            socket.on('frame', function(data) {
-                const dv = new DataView(data);
-                const width = dv.getUint32(0);
-                const height = dv.getUint32(4);
-                const compressed = new Uint8Array(data.slice(8));
-                const raw = pako.inflate(compressed);
+    <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+    <script src="/pako.min.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
 
-                const imgData = ctx.createImageData(width, height);
-                for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
-                    imgData.data[j] = raw[i];
-                    imgData.data[j+1] = raw[i+1];
-                    imgData.data[j+2] = raw[i+2];
-                    imgData.data[j+3] = 255;
+        // Stats tracking
+        let frameCount = 0;
+        let lastStatsUpdate = Date.now();
+        let totalBytesReceived = 0;
+        let lastBandwidthUpdate = Date.now();
+
+        // Current frame data for delta reconstruction
+        let currentImageData = null;
+
+        function updateStats(frameType, dataSize) {
+            frameCount++;
+            totalBytesReceived += dataSize;
+
+            const now = Date.now();
+
+            // Update FPS every second
+            if (now - lastStatsUpdate >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastStatsUpdate = now;
+            }
+
+            // Update bandwidth every second
+            if (now - lastBandwidthUpdate >= 1000) {
+                const kbps = (totalBytesReceived / 1024).toFixed(1);
+                document.getElementById('bandwidth').textContent = kbps + ' KB/s';
+                totalBytesReceived = 0;
+                lastBandwidthUpdate = now;
+            }
+
+            document.getElementById('frameType').textContent = frameType;
+        }
+
+        function handleLegacyFrame(data) {
+            // Handle old zlib-compressed RGB format
+            const dv = new DataView(data);
+            const width = dv.getUint32(0);
+            const height = dv.getUint32(4);
+            const compressed = new Uint8Array(data.slice(8));
+            const raw = pako.inflate(compressed);
+
+            const imgData = ctx.createImageData(width, height);
+            for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
+                imgData.data[j] = raw[i];
+                imgData.data[j+1] = raw[i+1];
+                imgData.data[j+2] = raw[i+2];
+                imgData.data[j+3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            currentImageData = imgData;
+            updateStats('Legacy', data.byteLength);
+        }
+
+        function handleJpegFrame(data, width, height) {
+            // Handle JPEG-compressed frames
+            const blob = new Blob([data], { type: 'image/jpeg' });
+            const img = new Image();
+
+            img.onload = function() {
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0);
+
+                // Store current frame data for potential delta reconstruction
+                currentImageData = ctx.getImageData(0, 0, width, height);
+                updateStats('JPEG', data.byteLength);
+                URL.revokeObjectURL(img.src);
+            };
+
+            img.onerror = function() {
+                console.error('Failed to load JPEG frame');
+                URL.revokeObjectURL(img.src);
+            };
+
+            img.src = URL.createObjectURL(blob);
+        }
+
+        function handleDeltaFrame(data, width, height) {
+            if (!currentImageData) {
+                console.warn('Received delta frame without base frame, requesting full frame');
+                socket.emit('request_full_frame');
+                return;
+            }
+
+            try {
+                console.log('Processing delta frame, compressed size:', data.byteLength);
+
+                // Decompress delta data
+                const decompressed = pako.inflate(data);
+                console.log('Delta decompressed size:', decompressed.length);
+
+                // Parse the binary format: [num_pixels (4 bytes)] + [y,x,r,g,b per pixel (7 bytes each)]
+                const dv = new DataView(decompressed.buffer);
+                const numPixels = dv.getUint32(0, false); // Big endian
+
+                console.log('Delta pixels to update:', numPixels);
+
+                if (numPixels === 0) {
+                    console.log('No pixels to update in delta frame');
+                    updateStats('Delta (empty)', data.byteLength);
+                    return;
                 }
-                ctx.putImageData(imgData, 0, 0);
-            });
 
-            // onclick event to send a message to the server
-            canvas.addEventListener('click', function(event) {
-                const rect = canvas.getBoundingClientRect();
-                const x = event.clientX - rect.left;
-                const y = event.clientY - rect.top;
-                const message = { type: 'click', x: x, y: y };
-                socket.emit('click', message);
-                // console.log('Sent click message:', message);
-            });
+                // Create a copy of current image data
+                const newImageData = ctx.createImageData(currentImageData.width, currentImageData.height);
+                newImageData.data.set(currentImageData.data);
 
-            // capture keyboard events
-            document.addEventListener('keydown', function(event) {
-                const key = event.key;
-                const message = { key: key };
-                socket.emit('keydown', message);
-                // console.log('Sent keydown message:', message);
-            });
-        </script>
-    </body>
-    </html>
+                // Apply delta changes
+                let offset = 4; // Skip the pixel count
+                for (let i = 0; i < numPixels; i++) {
+                    const y = dv.getUint16(offset, false);     // Big endian
+                    const x = dv.getUint16(offset + 2, false); // Big endian
+                    const r = dv.getUint8(offset + 4);
+                    const g = dv.getUint8(offset + 5);
+                    const b = dv.getUint8(offset + 6);
+
+                    // Calculate pixel index in image data (RGBA format)
+                    const pixelIndex = (y * width + x) * 4;
+
+                    // Bounds check
+                    if (pixelIndex >= 0 && pixelIndex + 3 < newImageData.data.length) {
+                        newImageData.data[pixelIndex] = r;     // Red
+                        newImageData.data[pixelIndex + 1] = g; // Green
+                        newImageData.data[pixelIndex + 2] = b; // Blue
+                        newImageData.data[pixelIndex + 3] = 255; // Alpha
+                    } else {
+                        console.warn(`Pixel out of bounds: (${x},${y}) -> index ${pixelIndex}`);
+                    }
+
+                    offset += 7; // Move to next pixel (2+2+1+1+1)
+                }
+
+                // Draw the updated image
+                ctx.putImageData(newImageData, 0, 0);
+                currentImageData = newImageData;
+
+                console.log('Delta frame applied successfully');
+                updateStats('Delta', data.byteLength);
+
+            } catch (e) {
+                console.error('Error processing delta frame:', e);
+                console.log('Delta data length:', data.byteLength);
+                // Request a full frame to recover
+                socket.emit('request_full_frame');
+                updateStats('Delta (error)', data.byteLength);
+            }
+        }
+
+        socket.on('frame', function(data) {
+            if (data.byteLength < 8) {
+                console.error('Frame data too small');
+                return;
+            }
+
+            const dv = new DataView(data);
+
+            // Check if this is the new format with 3 header values (width, height, type)
+            if (data.byteLength >= 12) {
+                const width = dv.getUint32(0, false);  // Big endian
+                const height = dv.getUint32(4, false);
+                const frameType = dv.getUint32(8, false);
+
+                // Sanity check for reasonable dimensions
+                if (width > 0 && width <= 4000 && height > 0 && height <= 4000) {
+                    const frameData = data.slice(12);
+
+                    if (frameType === 0) {
+                        // Full frame (JPEG)
+                        handleJpegFrame(frameData, width, height);
+                        return;
+                    } else if (frameType === 1) {
+                        // Delta frame
+                        handleDeltaFrame(frameData, width, height);
+                        return;
+                    }
+                }
+            }
+
+            // Fallback to legacy format (zlib-compressed RGB)
+            handleLegacyFrame(data);
+        });
+
+        // Click event to send a message to the server
+        canvas.addEventListener('click', function(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const message = { type: 'click', x: x, y: y };
+            socket.emit('click', message);
+        });
+
+        // Capture keyboard events
+        document.addEventListener('keydown', function(event) {
+            const key = event.key;
+            const message = { key: key };
+            socket.emit('keydown', message);
+        });
+
+        // Connection status
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Disconnected from server');
+            document.getElementById('frameType').textContent = 'Disconnected';
+        });
+
+        // Handle full frame requests
+        socket.on('request_full_frame', function() {
+            console.log('Server requesting full frame');
+        });
+    </script>
+</body>
+</html>
