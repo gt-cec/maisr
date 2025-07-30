@@ -600,7 +600,7 @@ class MAISREnvVec(gym.Env):
                         self.threat_identified[threat_idx] = True
                         self.num_threats_identified += 1
                         info['threat_ids'] += 1
-                        print(f'info[threat ids] = {info['threat_ids']}')
+                        #print(f'info[threat ids] = {info['threat_ids']}')
 
                         # Add reward for identifying threat
                         new_reward['threat_identification'] = new_reward.get('threat_identification', 0) + 1

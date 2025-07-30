@@ -124,17 +124,23 @@ class MaisrLocalSearchWrapper(gym.Env):
         # Reset teammate selection for new episode
 
         #if self.env.tag == 'human_eval0':
-        if hasattr(self.current_teammate, 'name'):
-            if self.current_teammate.name == 'Recorded_Human_Teammate':
-                pass
-        elif self.teammate_manager:
-            # Update the teammate manager with the current model before selecting a teammate
-            #self.teammate_manager.set_current_model(self.env.model)
 
-            self.teammate_manager.reset_for_episode()
-            self.current_teammate = self.teammate_manager.select_random_teammate()
-            self.current_teammate.env = self.env
-            #print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+        if self.teammate_manager:
+            if hasattr(self.current_teammate, 'name'):
+                if self.current_teammate.name == 'Recorded_Human_Teammate':
+                    pass
+                else:
+                    # Update the teammate manager with the current model before selecting a teammate
+                    #self.teammate_manager.set_current_model(self.env.model)
+
+                    self.teammate_manager.reset_for_episode()
+                    self.current_teammate = self.teammate_manager.select_random_teammate()
+                    self.current_teammate.env = self.env
+                    #print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+            else:
+                self.teammate_manager.reset_for_episode()
+                self.current_teammate = self.teammate_manager.select_random_teammate()
+                self.current_teammate.env = self.env
 
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
