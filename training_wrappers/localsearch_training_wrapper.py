@@ -163,26 +163,29 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
-            #if self.env.tag == 'human_eval0':
-            if hasattr(self.current_teammate, 'name'):
-                if self.current_teammate.name == 'Recorded_Human_Teammate':
-                    self.teammate_action = self.current_teammate.get_action()
-                    self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y = self.current_teammate.get_action()
-                else:
-                    self.teammate_action = self.get_teammate_action()
-                    if isinstance(self.teammate_action, np.ndarray):
-                        self.teammate_action = (self.teammate_action[0], self.teammate_action[1])
-                    self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+            if self.env.tag == 'human_eval0':
+                pass
 
-            elif self.env.tag != 'human_eval0':
-                self.teammate_action = self.get_teammate_action()
-                #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
-                if isinstance(self.teammate_action, np.ndarray):
-                    self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
-                    #print(f'converted teammate action to tuple: {self.teammate_action}')
-                self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+            # if hasattr(self.current_teammate, 'name'):
+            #     if self.current_teammate.name == 'Recorded_Human_Teammate':
+            #         self.teammate_action = self.current_teammate.get_action()
+            #         self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y = self.current_teammate.get_action()
+            #     else:
             else:
-                raise ValueError(f'Current teammate does not have .name but env tag is not human_eval0 (tag is {self.env.tag}')
+                self.teammate_action = self.get_teammate_action()
+                if isinstance(self.teammate_action, np.ndarray):
+                    self.teammate_action = (self.teammate_action[0], self.teammate_action[1])
+                self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+
+            # elif self.env.tag != 'human_eval0':
+            #     self.teammate_action = self.get_teammate_action()
+            #     #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
+            #     if isinstance(self.teammate_action, np.ndarray):
+            #         self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
+            #         #print(f'converted teammate action to tuple: {self.teammate_action}')
+            #     self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+            # else:
+            #     raise ValueError(f'Current teammate does not have .name but env tag is not human_eval0 (tag is {self.env.tag}')
 
         ############ Stuck detection ############
 
