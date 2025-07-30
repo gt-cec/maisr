@@ -174,7 +174,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                         self.teammate_action = (self.teammate_action[0], self.teammate_action[1])
                     self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
 
-            elif self.env.tag == 'human_eval0':
+            elif self.env.tag != 'human_eval0':
                 self.teammate_action = self.get_teammate_action()
                 #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
                 if isinstance(self.teammate_action, np.ndarray):
@@ -182,7 +182,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     #print(f'converted teammate action to tuple: {self.teammate_action}')
                 self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
             else:
-                raise ValueError
+                raise ValueError(f'Current teammate does not have .name but env tag is not human_eval0 (tag is {self.env.tag}')
 
         ############ Stuck detection ############
 

@@ -440,6 +440,10 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
             #main_tag = self.eval_env.envs[0].env.env.tag
             if self.run_human_eval:
                 print("\n\n ++++++++++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++++++++++ \n")
+
+                base_human_env = self.human_eval_env.envs[0].env.env
+                base_human_env.tag = 'human_eval0'
+
                 recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
                 num_trajectories = len(recorded_teammate_indices)
 
@@ -467,7 +471,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     trajectory_file = random.choice(candidate_files)
 
                     # Set eval env to this level
-                    base_human_env = self.human_eval_env.envs[0].env.env
+
                     base_human_env.level_idx = level
                     base_human_env.config['force_specific_level'] = level
                     # Load as recorded teammate
@@ -1318,7 +1322,7 @@ def train_generic(
         GoToNearestThreat(model_path=None),
         ChangeRegions(model_path=None),
         None,
-        teammate_manager=None)
+        teammate_manager=teammate_manager)
     human_eval_env = Monitor(human_eval_env)
     human_eval_env = DummyVecEnv([lambda: human_eval_env])
 
