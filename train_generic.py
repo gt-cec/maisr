@@ -1633,44 +1633,12 @@ if __name__ == "__main__":
             "gamma": [0.985],
             "team_spread_bonus_coeff": [0.015],
             "shaping_coeff_earlyfinish": [0.16],
-            'league_type': ['strategy_diverse', 'selfplay', 'mixed50']# Later: mixed25, mixed75
+            'league_type': ['mixed50','strategy_diverse', 'selfplay']# Later: mixed25, mixed75
 
         }
         config['seed'] = int(args.seed)
         overfit_test = None
-
-        pretrained_agents_path = './pretrained_teammates/' # TODO pass this to teammate manager
-
-        fcp_letter = args.fcp_letter
-
-        fcp_configs = {
-            "A": {
-                "fcp_ratio": 1.0,
-                "ratio_schedule": None},
-            "B": {
-                "fcp_ratio": 0.5,
-                "ratio_schedule": None},
-            "C": {
-                "fcp_ratio": 0.25,
-                "ratio_schedule": None},
-            "D": {
-                "fcp_ratio": 0.75,
-                "ratio_schedule": None},
-            # "C": {
-            #     "fcp_ratio": 1.0,
-            #     "ratio_schedule": {30: 0.7}},
-            # "D": {
-            #     "fcp_ratio": 1.0,
-            #     "ratio_schedule": {30: 0.5}},
-            # "E": {
-            #     "fcp_ratio": 1.0,
-            #     "ratio_schedule": {50: 0.5}},
-            # "F": {
-            #     "fcp_ratio": 1.0,
-            #     "ratio_schedule": {50: 0.7}}
-        }
-
-        config['fcp_ratio'] = fcp_configs[fcp_letter]['fcp_ratio']
+        load_path, vecnorm_load_path = None, None
 
     elif version == 'index':
         note = 'index' + machine[0].upper()

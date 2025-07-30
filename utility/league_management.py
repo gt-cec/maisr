@@ -59,7 +59,7 @@ class TeammateManager:
         self.fcp_ratio = fcp_ratio
 
         # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay"]
+        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'mixed50','mixed25','mixed75']
         if league_type not in valid_league_types:
             raise ValueError(f"league_type must be one of {valid_league_types}")
 
