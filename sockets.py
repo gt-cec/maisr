@@ -6,9 +6,26 @@ import zlib
 import struct
 
 # SocketIO client
-sio = socketio.Client()
 #sio.connect("http://localhost:5001")
-sio.connect("http://192.168.1.183:5001")
+#sio.connect("http://192.168.1.183:5001")
+
+sio = socketio.Client()
+
+
+
+@sio.event
+def connect_error(data):
+    print("Connection failed:", data)
+
+@sio.event
+def disconnect():
+    print("Disconnected from server")
+
+def connect():
+    print("Connecting to server...")
+    #sio.connect('http://99.45.36.114:5001', wait_timeout=10, namespaces=['/'])
+    sio.connect('http://192.168.1.183:5001', wait_timeout=10, namespaces=['/'])
+    print("Connected!")
 
 human_controller = None
 instruction_controller = None
@@ -44,6 +61,39 @@ def send_frame(window):
         sio.connect("http://localhost:5001")
 
 
+# def send_frame(window):
+#     # Option A: Use PNG compression (better quality, potentially smaller)
+#     w, h = window.get_size()
+#     raw = pygame.image.tostring(window, 'RGB')
+#
+#     # Convert to PIL Image for better compression
+#     pil_image = Image.frombuffer('RGB', (w, h), raw)
+#
+#     # Use PNG with optimization
+#     buffer = BytesIO()
+#     pil_image.save(buffer, format='PNG', optimize=True, compress_level=6)
+#     compressed = buffer.getvalue()
+#
+#     header = struct.pack('>II', w, h)
+#     try:
+#         # Remove the binary=True parameter - not needed for client emit
+#         sio.emit('frame', header + compressed)
+#     except Exception as e:
+#         print(f"Error sending frame: {e}")
+
+
+# def send_frame_jpeg(window, quality=75):
+#     w, h = window.get_size()
+#     raw = pygame.image.tostring(window, 'RGB')
+#     pil_image = Image.frombuffer('RGB', (w, h), raw)
+#
+#     buffer = BytesIO()
+#     pil_image.save(buffer, format='JPEG', quality=quality, optimize=True)
+#     compressed = buffer.getvalue()
+#
+#     header = struct.pack('>II', w, h)
+#     sio.emit('frame', header + compressed, binary=True)
+
 # catch the click_response event
 @sio.on('click_response')
 def click_response(data):
@@ -57,18 +107,7 @@ def click_response(data):
         pygame.event.post(event)
     except Exception as e:
         print("Error posting click event:", e)
-# @sio.on('click_response')
-# def click_response(data):
-#     print(f"Click response received: {data}")
-#     pyg.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN,{"pos": (data["x"], data["y"]), "button": 1}))
 
-# @sio.on('keydown_response')
-# def keydown_response(data):
-#     print(f"Key down response received: {data}", human_controller, instruction_controller)
-#     keycode = key_string_to_pygame(data["key"])
-#     print(f'Keycode = {keycode}')
-#     pyg.event.post(pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
-#     instruction_controller.handle_event(event = pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
 @sio.on('keydown_response')
 def keydown_response(data):
     try:

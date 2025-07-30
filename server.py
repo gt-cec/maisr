@@ -3,6 +3,12 @@ from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
+#socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+
+@socketio.on('connect', namespace='/')
+def handle_connect():
+    print("Client connected to '/'")
 
 @app.route('/')
 def index():
@@ -12,16 +18,20 @@ def index():
 def serve_pako():
     return send_from_directory('.', 'pako.min.js')
 
-@socketio.on('frame')
+@socketio.on('frame',namespace='/')
 def handle_frame(data):
     emit('frame', data, broadcast=True, binary=True)
 
-@socketio.on('click')
+# @socketio.on('frame')
+# def handle_frame(data):
+#     emit('frame', data, broadcast=True, binary=True)
+
+@socketio.on('click',namespace='/')
 def handle_click(data):
     print(f"Click received: {data}")
     emit('click_response', data, broadcast=True)
 
-@socketio.on('keydown')
+@socketio.on('keydown',namespace='/')
 def handle_keydown(data):
     print(f"Key down received: {data}")
     emit('keydown_response', data, broadcast=True)

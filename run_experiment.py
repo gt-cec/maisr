@@ -8,6 +8,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
+from server import socketio
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config import subject_id
 from utility.data_logging import load_env_config
@@ -17,11 +18,13 @@ from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
 from PIL import Image
 from io import BytesIO
-import sockets
+
 import webbrowser
 from stable_baselines3.common.vec_env import VecNormalize
 
 #sockets.pyg = pygame
+
+
 
 window = None
 
@@ -307,6 +310,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
 
+    import sockets
+
     sockets.human_controller = human_controller
 
     base_env = env.envs[0].env
@@ -454,6 +459,11 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
 
 
 def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False):
+
+    import sockets
+    sockets.connect()
+    #sio = socketio.Client()
+    #sio.connect("http://99.45.36.114:5001")
 
     print(f"\n \n Subject ID: {subject_id}")
     print(f"Starting from level: {start_level}")
