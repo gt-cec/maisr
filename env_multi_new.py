@@ -825,6 +825,12 @@ class MAISREnvVec(gym.Env):
                  (self.config['shaping_time_penalty']) + \
                  proximity_penalty + spread_bonus + fail_penalty + threat_id_reward
 
+        if agent_target_ids > 0:
+            # Reward decreases as episode progresses (encourages early discovery)
+            time_factor = 1.0 - (self.step_count_inner / self.max_steps)
+            shaping_reward = agent_target_ids * self.config['quick_id_shaping_coeff'] * time_factor
+            reward += shaping_reward
+
         return reward
 
     def get_potential(self, observation):

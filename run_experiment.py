@@ -364,7 +364,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     #obs = env.reset()[0]
     obs = env.reset()
     if config_index == 1:
-        base_env.max_steps =base_env.config['max_steps'] * 2
+        base_env.max_steps = base_env.config['max_steps'] * 1.5
     else:
         base_env.max_steps = base_env.config['max_steps']
     #print(f'Obs: {obs} (shape {obs.shape}')

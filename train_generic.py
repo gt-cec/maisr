@@ -1683,7 +1683,8 @@ if __name__ == "__main__":
             "potential_ratio": [0.5],
             "gamma": [0.985],
             "team_spread_bonus_coeff": [0.015, 0.02],
-            "shaping_coeff_earlyfinish": [0.16, 0.2],
+            "shaping_coeff_earlyfinish": [0.2],
+            "quick_id_shaping_coeff": [1, 0]
             #'league_type': ['strategy_diverse', 'selfplay', 'mixed50']
 
         }
@@ -1716,7 +1717,8 @@ if __name__ == "__main__":
         'entropy_decay_steps': 'entdcystps',
         'seed': 'seed',
         "gamma":"gamma",
-        'league_type':'lgtype'
+        'league_type':'lgtype',
+        'quick_id_shaping_coeff':'quick_id_cf'
     }
 
     if args.testing:
