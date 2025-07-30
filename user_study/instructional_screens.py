@@ -1204,7 +1204,7 @@ class Instruct5Screen(GameInstructionScreen):
         pygame.draw.polygon(window, (255, 215, 0), triangle_points) # Upside down gold triangle inside
 
 
-        text_surface = self.font_large.render("There are 4 HIGH-VALUE targets on the map", True, self.text_color)
+        text_surface = self.font_large.render("There are 4 HIGH-VALUE targets on the map.", True, self.text_color)
         window.blit(text_surface, (300, 430))
         #
         # bottom_text = ["Each level has 15 regular",
@@ -1333,8 +1333,8 @@ class Instruct7Screen(GameInstructionScreen):
                     "your score will be reduced.",
                     "",
                     "",
-                    "If you finish a round EARLY (all 15 targets and at",
-                    "least 2 threats) you will receive a bonus.",
+                    "If you identify all 15 targets and at least 2 threats before",
+                    "the round timer ends, you will receive a bonus for finishing early.",
                     "",
                     "",
                     "Your final score is calculated as:",

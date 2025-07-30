@@ -380,6 +380,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     countdown_steps = 0
 
+    first_frame = True
     while not done:
         if countdown_steps <= countdown_length:
             env.render()
@@ -394,6 +395,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         current_time = pygame.time.get_ticks()
         skip_round = False
 
+        if first_frame:
+            sockets.send_frame(window)
+            first_frame = False
+
         # Handle pygame events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -407,7 +412,6 @@ def run_single_episode(env, human_controller, config, config_index, total_config
                 elif event.key == pygame.K_RETURN and admin:
                     skip_round = True
                 else:
-                    # Handle subpolicy selection
                     human_controller.handle_keypress(event.key)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
@@ -471,7 +475,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         # Update display
         pygame.display.flip()
 
-        if step_count % 30 == 0:
+        if step_count % 120 == 0:
             sockets.send_frame(window)
         else:
             sockets.send_frame_with_delta(window, quality=65)
@@ -572,14 +576,29 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         'S': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
 
+    # levels = list(range(1, 8))
+    # random.shuffle(levels)
+    # config_list = [f'{agent}{level}' for level in levels for agent in ('A', 'B')]
+    #
+    # practice_level = levels[0]
+    # practice_config = [f'C{practice_level}']
+    #
+    # full_config_list = practice_config + config_list
+
     levels = list(range(1, 8))
     random.shuffle(levels)
-    config_list = [f'{agent}{level}' for level in levels for agent in ('A', 'B')]
+
+    config_list = []
+    for level in levels:
+        pair = [f"A{level}", f"B{level}"]
+        random.shuffle(pair)  # Randomize whether A or B comes first for this level
+        config_list.extend(pair)
 
     practice_level = levels[0]
-    practice_config = [f'C{practice_level}']
+    practice_config = [f"C{practice_level}"]
 
     full_config_list = practice_config + config_list
+    print(f"Randomized configuration order: {full_config_list}")
 
     print(f"Randomized configuration order: {full_config_list}")
 
@@ -649,25 +668,41 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
         last_agent_appearance = None
 
-        for config_index, current_config in enumerate(full_config_list):
+        appearance_map = {
+            1: 'red',
+            2: 'green',
+            3: 'red',
+            4: 'brown',
+            5: 'red',
+            6: 'purple',
+            7: 'green',
+            8: 'brown',
+            9: 'green',
+            10: 'purple',
+            11: 'brown',
+            12: 'purple',
+            13: 'red',
+            14: 'purple',
+        }
 
-            # Handle practice level special settings
-            if config_index == 0:
+        for config_index, current_config in enumerate(full_config_list):
+            if config_index == 0: # # Handle practice level special settings
                 print(f"\nPreparing for practice level (config: {current_config})")
-                agent_letter = 'A'  # Pick default practice agent
+                agent_letter = 'S'
                 level_number = 1
                 agent_appearance = 'brown'  # Practice agent color
             else:
-                agent_letter = current_config[0]  # 'A' or 'B'
+                agent_letter = current_config[0]  # 'A', 'B', or 'S'
                 level_number = int(current_config[1:])
-                if agent_letter == 'A':
-                    agent_appearance = 'purple'
-                elif agent_letter == 'B':
-                    agent_appearance = 'green'
-                elif agent_letter == 'S':
-                    agent_appearance = 'brown'
-                else:
-                    raise ValueError(f"Unexpected agent letter {agent_letter}")
+                agent_appearance = appearance_map.get(config_index, 'black' if agent_letter == 'S' else 'red')
+            #     if agent_letter == 'A':
+            #         agent_appearance = 'purple' if config_index % 2 == 0 else 'red'
+            #     elif agent_letter == 'B':
+            #         agent_appearance = 'green' if config_index % 2 == 0 else 'brown'
+            #     elif agent_letter == 'S':
+            #         agent_appearance = 'black'
+            #     else:
+            #         raise ValueError(f"Unexpected agent letter {agent_letter}")
 
             print(f"\nPreparing for config: {current_config}")
             if agent_letter == 'S':
