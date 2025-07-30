@@ -17,9 +17,11 @@ from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen
     InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
 from PIL import Image
 from io import BytesIO
-#import sockets
+import sockets
 import webbrowser
 from stable_baselines3.common.vec_env import VecNormalize
+
+#sockets.pyg = pygame
 
 window = None
 
@@ -306,7 +308,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     print(f"Agent: {agent_model}")
     print(f"{'=' * 50}")
 
-    #sockets.human_controller = human_controller
+    sockets.human_controller = human_controller
+
+    base_env = env.envs[0].env
 
     # Parse agent and level from config
     agent_letter = config[0]
@@ -325,7 +329,6 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     paused = False
 
     # Draw static labels once
-    base_env = env.envs[0].env
     draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
 
     while not done:
@@ -358,8 +361,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         if human_controller.should_override_waypoint():
             custom_waypoint = human_controller.get_custom_waypoint()
             custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
-            #env.env.agents[env.env.aircraft_ids[1]].waypoint_override = custom_waypoint #tuple(custom_waypoint)
-            env.envs[0].env.agents[env.envs[0].env.aircraft_ids[1]].waypoint_override = custom_waypoint
+            base_env.agents[base_env.aircraft_ids[1]].waypoint_override = custom_waypoint
 
         # Get agent action
         #agent_action, _ = agent_model.predict(obs, deterministic=True)
@@ -373,14 +375,14 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         last_agent_action = agent_action
 
         # Take step in environment
-        #obs, reward, terminated, truncated, info = env.step(agent_action)
         obses, rewards, dones, infos = env.step([agent_action])
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        done = dones[0] or np.sum(env.envs[0].env.threat_identified) >= 2.0 # TODO testing
-        if done:
-            print('DONE')
+        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) # TODO testing
+
+        final_target_ids = base_env.targets_identified
+        final_threat_ids = base_env.num_threats_identified
 
         # Log timestep data
         data_logger.log_timestep(
@@ -399,34 +401,14 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Render the environment
         env.render()
-
-        # Draw additional UI elements
         draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
-
-        # Draw progress bar at bottom of screen
         draw_progress_bar(window, font, config_index, total_configs)
-
-        # progress_bar_y_start = 1000
-        # progress_bar_height = 50
-        # progress_bar_margin = 10
-        # segment_width = (window.get_width() - 2 * progress_bar_margin) // total_configs
-        # segment_height = progress_bar_height - 2 * progress_bar_margin
-        #
-        # for i in range(total_configs):
-        #     x = progress_bar_margin + i * segment_width
-        #     y = progress_bar_y_start + progress_bar_margin
-        #     color = (0, 255, 0) if i < config_index else (100, 100, 100)
-        #     pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
-
-        #draw_bottom_bar_info(window, font, env.env.num_threats_identified, env.env.targets_identified, env.env.detections, step_count, env.env.config['max_steps'])
-        base_env = env.envs[0].env
         draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
-        #draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, step_count, base_env.config['max_steps'], first_render=False)
 
         # Update display
         pygame.display.flip()
-        #if step_count % 1 == 0:
-            #sockets.send_frame(window)
+        if step_count % 1 == 0:
+            sockets.send_frame(window)
         clock.tick(tick_rate)
 
         # Print periodic status
@@ -434,13 +416,13 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             #print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
 
     # End episode logging
-    episode_summary = data_logger.end_episode(env, info)
+    episode_summary = data_logger.end_episode(env, info, info.get('target_ids', -1), info.get('threat_ids', -1))
 
     print(f"\nConfig {config} Complete!")
     print(f"Final Reward: {episode_reward:.2f}")
     print(f"Steps Taken: {step_count}")
-    print(f"Targets Identified: {info.get('target_ids', 0)}")
-    print(f"Detections: {info.get('detections', 0)}")
+    print(f"Targets Identified: {info.get('target_ids', -1)}")
+    print(f"Detections: {info.get('detections', -1)}")
 
     return False, episode_reward, step_count  # False = don't quit experiment
 
@@ -500,6 +482,10 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
         agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
 
+    else:
+        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+
 
     # Define RL agent model paths
     agent_models = {
@@ -551,7 +537,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
 
     # Create font for instructions
     #font = pygame.font.SysFont(None, 24)
-    font = pygame.font.Font('AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
+    font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
 
     # Store results
     experiment_results = []
@@ -574,6 +560,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
                 click_video_path="user_study/img/click_control.mp4", # TODO replace
                 human_image_path="user_study/img/human_aircraft.png",
                 teammate_image_path="user_study/img/teammates_image.png",
+                sio = sockets
             )
             instruction_result = instruction_manager.run_instruction_series()
 
@@ -586,140 +573,236 @@ def main(subject_id=None, start_level=None, skip_instructions=None):
         last_agent_appearance = None
 
         ############ PRACTICE LEVEL ############
-        practice_cfg = full_config_list[0]
+        # practice_cfg = full_config_list[0]
+        #
+        # agent_letter = 'A' # TODO use a practice agent
+        # level_number = 1
+        # agent_appearance = 'brown' # TODO pick a different appearance
+        #
+        # print(f"\nPreparing for practice level (config: {practice_cfg})")
+        # print(f"Practice level - Agent: {agent_letter}, Level: {level_number}")
+        # config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
+        #
+        # env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
+        # env = DummyVecEnv(env_fns)
+        # vecnorm_path = vecnorm_paths[agent_letter]
+        # print(f'Loaded vecnorm stats from {vecnorm_path}')
+        # env = load_vecnormalize_wrapper(vecnorm_path, env)
+        #
+        # # Load the appropriate agent
+        # if agent_letter not in current_agents: current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
+        # current_agent_name = current_agents[agent_letter]
+        #
+        # human_controller = HumanSubpolicyController(env) # Initialize human controller for this episode
+        #
+        # should_quit, episode_reward, step_count = run_single_episode(
+        #     env, human_controller, practice_cfg, 0, len(full_config_list),
+        #     current_agent_name, window, font, clock, tick_rate, data_logger, time_factor)
+        # if should_quit: return
+        # ########################################
+        #
+        # after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
+        # after_practice_result = screen_manager.show_screen(after_practice_screen)
+        #
+        # if after_practice_result["action"] == "exit":
+        #     print("User exited after practice screen")
+        #     return
 
-        agent_letter = 'A' # TODO use a practice agent
-        level_number = 1
-        agent_appearance = 'brown' # TODO pick a different appearance
+        for config_index, current_config in enumerate(full_config_list):
 
-        print(f"\nPreparing for practice level (config: {practice_cfg})")
-        print(f"Practice level - Agent: {agent_letter}, Level: {level_number}")
-        config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-
-        env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
-        env = DummyVecEnv(env_fns)
-        vecnorm_path = vecnorm_paths[agent_letter]
-        print(f'Loaded vecnorm stats from {vecnorm_path}')
-        env = load_vecnormalize_wrapper(vecnorm_path, env)
-
-        # Load the appropriate agent
-        if agent_letter not in current_agents: current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
-        current_agent_name = current_agents[agent_letter]
-
-        human_controller = HumanSubpolicyController(env) # Initialize human controller for this episode
-
-        should_quit, episode_reward, step_count = run_single_episode(
-            env, human_controller, practice_cfg, 0, len(full_config_list),
-            current_agent_name, window, font, clock, tick_rate, data_logger, time_factor)
-        if should_quit: return
-        ########################################
-
-        after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
-        after_practice_result = screen_manager.show_screen(after_practice_screen)
-
-        if after_practice_result["action"] == "exit":
-            print("User exited after practice screen")
-            return
-
-        #for config_index, current_config in enumerate(full_config_list):
-        for config_index, current_config in enumerate(full_config_list[1:]):
-            agent_letter = current_config[0]  # 'A' or 'B'
-            level_number = int(current_config[1:])  # Level number
-            if agent_letter == 'A':
-                #if level_number % 2 == 0: # Even levels
-                agent_appearance = 'purple'
-                # else: # Odd levels
-                #     agent_appearance = 'red'
-            elif agent_letter == 'B': # Agent B
-                # if level_number % 2 == 0: # Even levels
-                #     agent_appearance = 'brown'
-                # else: # Odd levels
-                agent_appearance = 'green'
+            # Handle practice level special settings
+            if config_index == 0:
+                print(f"\nPreparing for practice level (config: {current_config})")
+                agent_letter = 'A'  # Pick default practice agent
+                level_number = 1
+                agent_appearance = 'brown'  # Practice agent color
             else:
-                raise ValueError(f'Agent letter is {agent_letter}')
+                agent_letter = current_config[0]  # 'A' or 'B'
+                level_number = int(current_config[1:])
+                if agent_letter == 'A':
+                    agent_appearance = 'purple'
+                elif agent_letter == 'B':
+                    agent_appearance = 'green'
+                else:
+                    raise ValueError(f"Unexpected agent letter {agent_letter}")
 
             print(f"\nPreparing for config: {current_config}")
             print(f"Agent: {agent_letter}, Level: {level_number}")
-
             config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
 
+            # Build environment
             env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
             env = DummyVecEnv(env_fns)
             vecnorm_path = vecnorm_paths[agent_letter]
             print(f'Loaded vecnorm stats from {vecnorm_path}')
             env = load_vecnormalize_wrapper(vecnorm_path, env)
 
-            # Load the appropriate agent
+            # Load RL agent
             if agent_letter not in current_agents:
                 current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
-            current_agent_name = current_agents[agent_letter]
+            current_agent_model = current_agents[agent_letter]
 
             # Initialize human controller for this episode
             human_controller = HumanSubpolicyController(env)
-            #sockets.human_controller = human_controller
+            sockets.human_controller = human_controller
 
+            # Run the episode
             should_quit, episode_reward, step_count = run_single_episode(
                 env, human_controller, current_config, config_index, len(full_config_list),
-                current_agent_name, window, font, clock, tick_rate, data_logger, time_factor
+                current_agent_model, window, font, clock, tick_rate, data_logger, time_factor
             )
+            if should_quit:
+                print("Experiment terminated by user")
+                break
+
+            # After practice episode, show the after-practice screen
+            if config_index == 0:
+                after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
+                after_practice_result = screen_manager.show_screen(after_practice_screen)
+                if after_practice_result["action"] == "exit":
+                    print("User exited after practice screen")
+                    return
+                continue  # skip survey for practice
 
             # Store results
-            result = {
+            experiment_results.append({
                 'config': current_config,
                 'agent': agent_letter,
                 'level': level_number,
                 'reward': episode_reward,
                 'steps': step_count,
                 'config_index': config_index + start_level
-            }
-            experiment_results.append(result)
+            })
 
-            # Clean up environment
             env.close()
 
-            print(f"\nEpisode {current_config} completed!")
-
+            # Workload survey and teammate survey logic (skip for practice)
             if not skip_instructions:
-                workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+                workload_survey_screen = WorkloadSurveyScreen(
+                    episode_config=current_config, window_width=window_width, window_height=window_height)
                 workload_survey_result = screen_manager.show_screen(workload_survey_screen)
-                #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
-
                 if workload_survey_result["action"] == "exit":
                     print("Experiment terminated by user")
                     break
                 elif workload_survey_result["action"] == "continue":
-                    # Log the survey data
                     survey_data = workload_survey_result.get("survey_data", {})
                     print(f"Survey responses for {current_config}: {survey_data['responses']}")
-
-                    # Add survey data to your data logger
                     if hasattr(data_logger, 'log_survey_data'):
                         data_logger.log_survey_data(survey_data)
-                    else:
-                        # Fallback: save to file or print
-                        print(f"Survey data: {survey_data}")
 
-            # Show the teammate preference survey
-
-            if (not skip_instructions) and config_index > 0 and (config_index+1) % 2 == 0:
-                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+            if (not skip_instructions) and config_index > 0 and (config_index + 1) % 2 == 0:
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(
+                    window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
-
                 if teammate_compare_result["action"] == "continue":
                     survey_data = teammate_compare_result["survey_data"]
                     data_logger.log_teammate_survey_data(survey_data)
-                elif teammate_compare_result["action"] == "exit": pass
+
             last_agent_appearance = agent_appearance
 
-            # Check if user wants to quit
-            if should_quit:
-                print("Experiment terminated by user")
-                break
-
-            # Brief pause between episodes (unless it's the last one)
             if config_index < len(full_config_list) - 1:
                 print("Next episode starting in 2 seconds...")
                 pygame.time.wait(100)
+
+        # for config_index, current_config in enumerate(full_config_list):
+        # #for config_index, current_config in enumerate(full_config_list[1:]):
+        #     agent_letter = current_config[0]  # 'A' or 'B'
+        #     level_number = int(current_config[1:])  # Level number
+        #     if agent_letter == 'A':
+        #         #if level_number % 2 == 0: # Even levels
+        #         agent_appearance = 'purple'
+        #         # else: # Odd levels
+        #         #     agent_appearance = 'red'
+        #     elif agent_letter == 'B': # Agent B
+        #         # if level_number % 2 == 0: # Even levels
+        #         #     agent_appearance = 'brown'
+        #         # else: # Odd levels
+        #         agent_appearance = 'green'
+        #     else:
+        #         raise ValueError(f'Agent letter is {agent_letter}')
+        #
+        #     print(f"\nPreparing for config: {current_config}")
+        #     print(f"Agent: {agent_letter}, Level: {level_number}")
+        #
+        #     config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
+        #
+        #     env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
+        #     env = DummyVecEnv(env_fns)
+        #     vecnorm_path = vecnorm_paths[agent_letter]
+        #     print(f'Loaded vecnorm stats from {vecnorm_path}')
+        #     env = load_vecnormalize_wrapper(vecnorm_path, env)
+        #
+        #     # Load the appropriate agent
+        #     if agent_letter not in current_agents:
+        #         current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
+        #     current_agent_name = current_agents[agent_letter]
+        #
+        #     # Initialize human controller for this episode
+        #     human_controller = HumanSubpolicyController(env)
+        #     sockets.human_controller = human_controller
+        #
+        #     should_quit, episode_reward, step_count = run_single_episode(
+        #         env, human_controller, current_config, config_index, len(full_config_list),
+        #         current_agent_name, window, font, clock, tick_rate, data_logger, time_factor
+        #     )
+        #
+        #     # Store results
+        #     result = {
+        #         'config': current_config,
+        #         'agent': agent_letter,
+        #         'level': level_number,
+        #         'reward': episode_reward,
+        #         'steps': step_count,
+        #         'config_index': config_index + start_level
+        #     }
+        #     experiment_results.append(result)
+        #
+        #     # Clean up environment
+        #     env.close()
+        #
+        #     print(f"\nEpisode {current_config} completed!")
+        #
+        #     if not skip_instructions:
+        #         workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
+        #         workload_survey_result = screen_manager.show_screen(workload_survey_screen)
+        #         #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
+        #
+        #         if workload_survey_result["action"] == "exit":
+        #             print("Experiment terminated by user")
+        #             break
+        #         elif workload_survey_result["action"] == "continue":
+        #             # Log the survey data
+        #             survey_data = workload_survey_result.get("survey_data", {})
+        #             print(f"Survey responses for {current_config}: {survey_data['responses']}")
+        #
+        #             # Add survey data to your data logger
+        #             if hasattr(data_logger, 'log_survey_data'):
+        #                 data_logger.log_survey_data(survey_data)
+        #             else:
+        #                 # Fallback: save to file or print
+        #                 print(f"Survey data: {survey_data}")
+        #
+        #     # Show the teammate preference survey
+        #
+        #     if (not skip_instructions) and config_index > 0 and (config_index+1) % 2 == 0:
+        #         teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+        #         teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
+        #
+        #         if teammate_compare_result["action"] == "continue":
+        #             survey_data = teammate_compare_result["survey_data"]
+        #             data_logger.log_teammate_survey_data(survey_data)
+        #         elif teammate_compare_result["action"] == "exit": pass
+        #     last_agent_appearance = agent_appearance
+        #
+        #     # Check if user wants to quit
+        #     if should_quit:
+        #         print("Experiment terminated by user")
+        #         break
+        #
+        #     # Brief pause between episodes (unless it's the last one)
+        #     if config_index < len(full_config_list) - 1:
+        #         print("Next episode starting in 2 seconds...")
+        #         pygame.time.wait(100)
 
     except KeyboardInterrupt:
         print("\nExperiment interrupted by user")

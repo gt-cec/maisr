@@ -23,7 +23,7 @@ class InstructionalScreen:
 
     def __init__(self, window_width: int = 1000, window_height: int = 1100, sio = None):
 
-        font_path = 'AcPlus_IBM_VGA_8x16.ttf'
+        font_path = './user_study/AcPlus_IBM_VGA_8x16.ttf'
         #font_size = 16
         #font = pygame.font.Font(font_path, font_size)
 

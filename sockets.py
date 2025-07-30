@@ -7,11 +7,12 @@ import struct
 
 # SocketIO client
 sio = socketio.Client()
-sio.connect("http://localhost:5001")
+#sio.connect("http://localhost:5001")
+sio.connect("http://192.168.1.183:5001")
 
 human_controller = None
 instruction_controller = None
-pyg = None
+pyg = pygame
 
 def key_string_to_pygame(key_str):
     # Map common keys from JS to pygame
@@ -46,12 +47,39 @@ def send_frame(window):
 # catch the click_response event
 @sio.on('click_response')
 def click_response(data):
-    print(f"Click response received: {data}")
-    pyg.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"pos": (data["x"], data["y"]), "button": 1}))
+    try:
+        from pygame.event import Event
+        print(f"Click response received: {data}")
+        event = Event(pygame.MOUSEBUTTONDOWN, {
+            "pos": (data["x"], data["y"]),
+            "button": 1
+        })
+        pygame.event.post(event)
+    except Exception as e:
+        print("Error posting click event:", e)
+# @sio.on('click_response')
+# def click_response(data):
+#     print(f"Click response received: {data}")
+#     pyg.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN,{"pos": (data["x"], data["y"]), "button": 1}))
 
+# @sio.on('keydown_response')
+# def keydown_response(data):
+#     print(f"Key down response received: {data}", human_controller, instruction_controller)
+#     keycode = key_string_to_pygame(data["key"])
+#     print(f'Keycode = {keycode}')
+#     pyg.event.post(pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
+#     instruction_controller.handle_event(event = pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
 @sio.on('keydown_response')
 def keydown_response(data):
-    print(f"Key down response received: {data}", human_controller, instruction_controller)
-    keycode = key_string_to_pygame(data["key"])
-    pyg.post(pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
-    # instruction_controller.handle_event(event = pygame.event.Event(pygame.KEYDOWN, {"key": keycode}))
+    try:
+        from pygame.event import Event  # <--- force import capital E
+
+        print(f"Key down response received: {data}", human_controller, instruction_controller)
+        keycode = key_string_to_pygame(data["key"])
+        if keycode is not None:
+            event = Event(pygame.KEYDOWN, {"key": keycode})  # <--- use Event directly
+            pygame.event.post(event)
+        else:
+            print(f"Warning: Unknown key {data['key']}")
+    except Exception as e:
+        print("Error posting keydown event:", e)

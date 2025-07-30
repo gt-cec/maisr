@@ -492,6 +492,9 @@ class MAISREnvVec(gym.Env):
         final_info["reward_components"] = consolidated_reward_components
         final_info["frame_skip_steps"] = steps_executed
 
+        final_info['threat_ids'] = np.sum(self.threat_identified)
+        #print(f'final info threat ids: = {final_info['threat_ids']} ')
+
         #print(f'Outer step potential gain: {info['inner_step_potential_gain']}')
 
         return observation, total_reward, self.terminated, self.truncated, final_info
@@ -523,6 +526,7 @@ class MAISREnvVec(gym.Env):
             "reward_components": {},
             "detections": self.detections,  # Current detection count
             "target_ids": 0,
+            "threat_ids": 0,
             'episode': {'r': 0, 'l': self.step_count_inner},
             "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
 
@@ -595,6 +599,8 @@ class MAISREnvVec(gym.Env):
                     if self.threat_timers[aircraft_idx, threat_idx] >= self.config['time_to_id'] and not self.threat_identified[threat_idx]:
                         self.threat_identified[threat_idx] = True
                         self.num_threats_identified += 1
+                        info['threat_ids'] += 1
+                        print(f'info[threat ids] = {info['threat_ids']}')
 
                         # Add reward for identifying threat
                         new_reward['threat_identification'] = new_reward.get('threat_identification', 0) + 1
@@ -2574,7 +2580,7 @@ class MAISREnvVec(gym.Env):
         """Method to receive wrapper observations from wrapper"""
         self.wrapper_observations = wrapper_observations
 
-    def load_level_from_json(self, level_data_path="level_layouts.json"):
+    def load_level_from_json(self, level_data_path="./utility/level_layouts.json"):
         with open(level_data_path, 'r') as f:
             level_data = json.load(f)['levels']
 
