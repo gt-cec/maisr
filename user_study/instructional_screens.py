@@ -1368,6 +1368,17 @@ class Instruct7Screen(GameInstructionScreen):
         #     self.draw_text_centered(window, line, y_pos, self.font_large)
         #     y_pos += 35
 
+class SecondPracticeIntroScreen(InstructionalScreen):
+    """Screen shown between the two practice rounds"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        self.draw_text_centered(window,
+            "Nice job! Let's do one more practice round\njust to get more familiar.",
+            self.window_height // 2,
+            self.font_large,
+            self.highlight_color
+        )
+
 
 # class Instruct7Screen(GameInstructionScreen):
 #     """Final instructions screen"""

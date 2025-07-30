@@ -15,7 +15,7 @@ from utility.data_logging import load_env_config
 from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
-    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen
+    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen, SecondPracticeIntroScreen
 from PIL import Image
 from io import BytesIO
 
@@ -363,6 +363,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     #obs = env.reset()[0]
     obs = env.reset()
+    if config_index == 1:
+        base_env.max_steps =base_env.config['max_steps'] * 2
+    else:
+        base_env.max_steps = base_env.config['max_steps']
     #print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
     step_count = 0
@@ -576,15 +580,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         'S': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
 
-    # levels = list(range(1, 8))
-    # random.shuffle(levels)
-    # config_list = [f'{agent}{level}' for level in levels for agent in ('A', 'B')]
-    #
-    # practice_level = levels[0]
-    # practice_config = [f'C{practice_level}']
-    #
-    # full_config_list = practice_config + config_list
-
     levels = list(range(1, 8))
     random.shuffle(levels)
 
@@ -595,11 +590,10 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         config_list.extend(pair)
 
     practice_level = levels[0]
-    practice_config = [f"C{practice_level}"]
+    #practice_config = [f"C{practice_level}"]
+    practice_config = [f"C{practice_level}", f"C{practice_level}"]
 
     full_config_list = practice_config + config_list
-    print(f"Randomized configuration order: {full_config_list}")
-
     print(f"Randomized configuration order: {full_config_list}")
 
     # If start_level is specified, start from that index
@@ -669,24 +663,34 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         last_agent_appearance = None
 
         appearance_map = {
-            1: 'red',
-            2: 'green',
-            3: 'red',
-            4: 'brown',
-            5: 'red',
-            6: 'purple',
-            7: 'green',
-            8: 'brown',
-            9: 'green',
-            10: 'purple',
-            11: 'brown',
-            12: 'purple',
-            13: 'red',
-            14: 'purple',
+            2: 'red',
+            3: 'green',
+            4: 'red',
+            5: 'brown',
+            6: 'red',
+            7: 'purple',
+            8: 'green',
+            9: 'brown',
+            10: 'green',
+            11: 'purple',
+            12: 'brown',
+            13: 'purple',
+            14: 'red',
+            15: 'purple',
         }
 
         for config_index, current_config in enumerate(full_config_list):
+
             if config_index == 0: # # Handle practice level special settings
+                print(f"\nPreparing for practice level (config: {current_config})")
+                agent_letter = 'S'
+                level_number = 1
+                agent_appearance = 'brown'  # Practice agent color
+            elif config_index == 1: # # Handle practice level special settings
+                screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
+                result = screen_manager.run_screen(screen)
+                if result.get("action") == "exit":
+                    return
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'S'
                 level_number = 1
