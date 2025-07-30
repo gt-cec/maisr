@@ -739,8 +739,8 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 print("Experiment terminated by user")
                 break
 
-            # After practice episode, show the after-practice screen
-            if config_index == 0:
+            # After second practice episode, show the after-practice screen
+            if config_index == 1:
                 after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
                 #if self.sio is not None:
                 #sockets.send_frame(window)

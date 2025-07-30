@@ -1372,12 +1372,14 @@ class SecondPracticeIntroScreen(InstructionalScreen):
     """Screen shown between the two practice rounds"""
 
     def draw_content(self, window: pygame.Surface) -> None:
-        self.draw_text_centered(window,
-            "Nice job! Let's do one more practice round\njust to get more familiar.",
-            self.window_height // 2,
-            self.font_large,
-            self.highlight_color
-        )
+        top_text = ["Nice job! Let's do one more practice",
+                    "round just to get more familiar."
+                    ]
+
+        y_pos = 150
+        for line in top_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
 
 
 # class Instruct7Screen(GameInstructionScreen):
