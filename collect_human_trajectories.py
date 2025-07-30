@@ -13,6 +13,7 @@ from utility.league_management import (TeammateManager)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, InstructionSeriesManager
 import webbrowser
+#from run_experiment import run_single_episode
 
 # import cProfile
 # import pstats
@@ -343,6 +344,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         current_time = pygame.time.get_ticks()
 
         # Handle pygame events
+        skip_round = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return True, episode_reward, step_count  # Signal to quit experiment
@@ -352,6 +354,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
+                elif event.key == pygame.K_RETURN:
+                    skip_round = True
                 else:
                     # Handle subpolicy selection
                     human_controller.handle_keypress(event.key)
@@ -391,7 +395,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        done = dones[0]
+        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round # TODO testing
         if done:
             print('DONE')
 
@@ -446,7 +450,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             #print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
 
     # End episode logging
-    episode_summary = data_logger.end_episode(env, info)
+    episode_summary = data_logger.end_episode(env, info, int(info.get('target_ids', -1)), int(info.get('threat_ids', -1)))
 
     print(f"\nConfig {config} Complete!")
     print(f"Final Reward: {episode_reward:.2f}")
@@ -489,7 +493,7 @@ def main():
 
     # Configuration
     config_filename = 'configs/Monolith_R8H_july10.json'
-    tick_rate = 30
+    tick_rate = 45
 
     agent_a_name = 'selfplay_seed77'  # 'selfplay_trained_jul18'
     agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
@@ -530,13 +534,14 @@ def main():
         print(f"Starting from level {args.start_level}: {full_config_list}")
 
     # Load configuration
-    time_factor = 10 #20
+    time_factor = 7 #20
     config = load_env_config(config_filename)
     config['tick_rate'] = tick_rate
     config['game_speed'] /= time_factor
     config['max_steps'] *= (1700/1500) * time_factor
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0.0003
+    config['observe_teammate_priority'] = False
     print(f'LOADED CONFIG {config_filename}')
 
     # Initialize pygame
@@ -552,7 +557,7 @@ def main():
 
     # Create font for instructions
     #font = pygame.font.SysFont(None, 24)
-    font = pygame.font.Font('AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
+    font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
 
     # Store results
     experiment_results = []

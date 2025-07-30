@@ -626,8 +626,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     self.model.ent_coef = new_entropy_coeff
 
                     # Log entropy decay metrics
-                    eval_metrics["entropy_decay/current_coeff"] = new_entropy_coeff
-                    eval_metrics["entropy_decay/decay_progress"] = decay_progress
+                    eval_metrics["monitoring/current_entropy_coeff"] = new_entropy_coeff
+                    #eval_metrics["entropy_decay/decay_progress"] = decay_progress
                     #eval_metrics["entropy_decay/steps_since_trigger"] = steps_since_trigger
 
                     if decay_progress >= 1.0:
@@ -1412,7 +1412,7 @@ def train_generic(
             teammate_manager.set_normalization_stats(env.obs_rms, env.ret_rms)
 
     #print(f'Initial entropy coefficient: {model.ent_coef}')
-    run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
+    #run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
 
     ################################################# Load checkpoint ##################################################
     if load_path:
@@ -1670,7 +1670,7 @@ if __name__ == "__main__":
 
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
-        config['num_timesteps'] = 4e5
+        config['num_timesteps'] = 6e5
         config['league_type'] = 'strategy_diverse'
         config['teammate_active_at_start'] = False
         project_name = 'maisr-rl-index'
@@ -1678,7 +1678,7 @@ if __name__ == "__main__":
 
         hyperparams = {
             # 'seed': [21, 623, 33, 82],
-            'threat_reward_scaling': [0.3],
+            'threat_reward_scaling': [0.25],
             "teammate_reward_scale": [0.75],
             "potential_ratio": [0.5],
             "gamma": [0.985],

@@ -26,6 +26,8 @@
 	"obs_type": "nearest",
 	"observe_teammate": true,
 	"observe_teammate_direction": true,
+	"observe_teammate_priority": true,
+
 	"action_type": "target_index",
 	"obs_noise_std_localsearch": 0.01,
 
@@ -36,7 +38,7 @@
 
 	"potential_ratio": 1,
 	"target_potential_coeff": 0.05,
-	"threat_potential_coeff": 0.25,
+	"threat_potential_coeff": 0.18,
 	"shaping_coeff_earlyfinish": 0.07,
 	"shaping_time_penalty": 0.0000,
 	"inside_threat_penalty": 0.0,

@@ -163,7 +163,7 @@ class TeammateManager:
                 return self._create_pretrained_rl_teammate()
 
         elif self.league_type in ['mixed50', 'mixed25', 'mixed75']:
-            ratio = int(self.league_type[-2:])/10
+            ratio = int(self.league_type[-2:])/100
             if random.random() < ratio:
                 print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
                 #return self._create_pretrained_rl_teammate()

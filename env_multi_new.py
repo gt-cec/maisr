@@ -101,6 +101,8 @@ class MAISREnvVec(gym.Env):
         elif self.config['obs_type'] == 'nearest':
 
             self.obs_size = 2 * self.config['num_observed_targets'] + 2*self.config['num_observed_threats']
+            if self.config['observe_teammate_priority']:
+                self.obs_size += 1
 
             if self.config['observe_teammate'] == True:
                 self.obs_size += 2
@@ -1023,6 +1025,50 @@ class MAISREnvVec(gym.Env):
             else:
                 self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
                 self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
+
+        # === New feature: teammate flying toward a threat ===
+        if self.config['observe_teammate_priority']:
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+            # Compute teammate heading
+            if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                waypoint = np.array(teammate_agent.waypoint_override)
+                heading_vec = waypoint - teammate_pos
+                heading_dist = np.linalg.norm(heading_vec)
+                if heading_dist > 0:
+                    heading_unit = heading_vec / heading_dist
+                else:
+                    heading_unit = np.array([0.0, 0.0])
+            else:
+                heading_unit = np.array([0.0, 0.0])
+
+            # Combine threats and targets with labels
+            entities = [(pos, "threat") for pos in self.threats] + \
+                       [(pos, "target") for pos in self.targets[:, 3:5]]
+
+            closest_entity_type = None
+            closest_forward_dist = float("inf")
+            beam_half_width = 25.0  # 50-pixel wide beam
+
+            for pos, etype in entities:
+                vec_to_entity = pos - teammate_pos
+                forward_dist = np.dot(vec_to_entity, heading_unit)  # projection along heading
+
+                if forward_dist <= 0:
+                    continue  # Only consider entities in front
+
+                # Perpendicular distance to heading line
+                perp_dist = np.linalg.norm(vec_to_entity - forward_dist * heading_unit)
+                if perp_dist <= beam_half_width:
+                    if forward_dist < closest_forward_dist:
+                        closest_forward_dist = forward_dist
+                        closest_entity_type = etype
+
+            # 1 if teammate is flying toward a threat, else 0
+            self.observation[-1] = 1.0 if closest_entity_type == "threat" else 0.0
+
 
         if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
             print(f'======= Obs check (ep {self.episode_counter}, step {self.step_count_outer + 1}) =======')
