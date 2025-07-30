@@ -1670,7 +1670,7 @@ if __name__ == "__main__":
 
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
-        config['num_timesteps'] = 6e5
+        config['num_timesteps'] = 3e5
         config['league_type'] = 'strategy_diverse'
         config['teammate_active_at_start'] = False
         project_name = 'maisr-rl-index'
@@ -1682,17 +1682,17 @@ if __name__ == "__main__":
             "teammate_reward_scale": [0.75],
             "potential_ratio": [0.5],
             "gamma": [0.985],
-            "team_spread_bonus_coeff": [0.015, 0.02],
+            "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
-            "quick_id_shaping_coeff": [1, 0]
+            "quick_id_shaping_coeff": [1, 0, 2]
             #'league_type': ['strategy_diverse', 'selfplay', 'mixed50']
 
         }
         config['seed'] = int(args.seed)
         overfit_test = None
 
-        load_path = None#'outputs/index_strategyL_0730_0038_seed99/checkpoints/index_strategyL_0730_0038_seed99_checkpoint_249984_steps.zip'
-        vecnorm_load_path = None#'outputs/index_strategyL_0730_0038_seed99/checkpoints/index_strategyL_0730_0038_seed99_checkpoint_vecnormalize_249984_steps.pkl'
+        load_path = 'outputs/index_strategyL_0730_1355_seed99/checkpoints/index_strategyL_0730_1355_seed99_checkpoint_499968_steps.zip'
+        vecnorm_load_path = 'outputs/index_strategyL_0730_1355_seed99/checkpoints/index_strategyL_0730_1355_seed99_checkpoint_vecnormalize_499968_steps.pkl'
         # load_path = None#load_paths[int(args.seed)]
         # vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
         #load_path, vecnorm_load_path = None, None#get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)

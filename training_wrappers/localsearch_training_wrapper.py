@@ -485,7 +485,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     elif self.current_teammate.action_stability in ['noisy', 'very_noisy'] and random.random() < noise_chance[self.current_teammate.action_stability]:
                         #old_direction_to_move = direction_to_move
                         noise = random.choice(noise_options[self.current_teammate.action_stability])
-                        direction_to_move = self._unwrap_action(direction_to_move)
+                        direction_to_move = int(self._unwrap_action(direction_to_move))
                         try:
                             direction_to_move = (direction_to_move + noise) % 16
                         except: print(f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
@@ -517,9 +517,9 @@ class MaisrLocalSearchWrapper(gym.Env):
                                 self.last_real_direction = direction_to_move  # seed it the first time
                             try:
                                 if self.pause_toggle: # oscillate +90°
-                                    direction_to_move = (self.last_real_direction + 4) % 16
+                                    direction_to_move = (int(self.last_real_direction) + 4) % 16
                                 else: # original direction (or oscillate -90°)
-                                    direction_to_move = (self.last_real_direction - 4) % 16
+                                    direction_to_move = (int(self.last_real_direction) - 4) % 16
                             except:
                                 print( f'ERROR: failed to add noise, teammate action is {direction_to_move}, type {type(direction_to_move)}')
 
@@ -530,7 +530,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
                     elif self.current_teammate.action_stability in ['noisy', 'very_noisy'] and random.random() < noise_chance[self.current_teammate.action_stability]:
                         noise = random.choice(noise_options[self.current_teammate.action_stability])
-                        direction_to_move = self._unwrap_action(direction_to_move)
+                        direction_to_move = int(self._unwrap_action(direction_to_move))
                         try:
                             direction_to_move = (direction_to_move + noise) % 16
                         except:
