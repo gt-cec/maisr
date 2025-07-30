@@ -688,7 +688,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 agent_appearance = 'brown'  # Practice agent color
             elif config_index == 1: # # Handle practice level special settings
                 screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
-                result = screen_manager.run_screen(screen)
+                result = screen_manager.show_screen(screen)
                 if result.get("action") == "exit":
                     return
                 print(f"\nPreparing for practice level (config: {current_config})")
