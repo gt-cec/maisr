@@ -468,10 +468,10 @@ class ExperimentDataLogger:
             'timestamp': survey_data['timestamp'],
             'mental_demand': survey_data['responses']["How MENTALLY demanding was the task?"],
             'physical_demand': survey_data['responses']["How PHYSICALLY demanding was the task?"],
-            'temporal_demand': survey_data['responses']["How much TIME PRESSURE did you feel during the task?"],
+            'temporal_demand': survey_data['responses']["How much TIME PRESSURE did you feel?"],
             'effort': survey_data['responses']["How much EFFORT did the task take?"],
-            'performance': survey_data['responses']["How would you rate your PERFORMANCE during the task?"],
-            'frustration': survey_data['responses']["How much FRUSTRATION did you feel during the task?"]
+            'performance': survey_data['responses']["How would you rate your PERFORMANCE?"],
+            'frustration': survey_data['responses']["How much FRUSTRATION did you feel?"]
         })
 
         print(f"Logged survey data for {survey_data['episode_config']}")

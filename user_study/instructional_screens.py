@@ -258,10 +258,10 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.questions = [
             "How MENTALLY demanding was the task?",
             "How PHYSICALLY demanding was the task?",
-            "How much TIME PRESSURE did you feel during the task?",
+            "How much TIME PRESSURE did you feel?",
             "How much EFFORT did the task take?",
-            "How would you rate your PERFORMANCE during the task?",
-            "How much FRUSTRATION did you feel during the task?"
+            "How would you rate your PERFORMANCE?",
+            "How much FRUSTRATION did you feel?"
         ]
 
         # User responses (1-7 scale, None = not answered)
@@ -272,8 +272,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.bar_height = 50
         self.segment_width = self.bar_width // 7
         self.bar_start_x = 200#(self.window_width - self.bar_width) // 2
-        self.bar_spacing = 120
-        self.first_bar_y = 200
+        self.bar_spacing = 135
+        self.first_bar_y = 230
 
         # Colors
         self.unselected_color = (100, 100, 100)
@@ -303,8 +303,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
         y_pos = self.first_bar_y + (question_index * self.bar_spacing)
 
         # Draw question label
-        label_surface = self.font_medium.render(question_text, True, self.text_color)
-        window.blit(label_surface, (self.bar_start_x, y_pos - 35))
+        label_surface = self.font_large.render(question_text, True, self.text_color)
+        window.blit(label_surface, (self.bar_start_x, y_pos - 40))
 
         # Draw each segment of the rating bar
         for segment in range(7):
@@ -332,13 +332,13 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
             # Draw segment number
             number_text = str(segment + 1)
-            number_surface = self.font_medium.render(number_text, True, self.text_color)
+            number_surface = self.font_large.render(number_text, True, self.text_color)
             number_rect = number_surface.get_rect(center=segment_rect.center)
             window.blit(number_surface, number_rect)
 
     def draw_continue_section(self, window: pygame.Surface) -> None:
         """Draw the continue button area"""
-        continue_y = self.first_bar_y + (len(self.questions) * self.bar_spacing) + 50
+        continue_y = self.first_bar_y + (len(self.questions) * self.bar_spacing) + 0
 
         # Check if all questions are answered
         all_answered = all(response is not None for response in self.responses.values())
@@ -359,8 +359,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
         # Draw arrow button
         button_size = 60
-        button_x = self.window_width - 150
-        button_y = continue_y
+        button_x = self.window_width - 200
+        button_y = continue_y - 50
         button_rect = pygame.Rect(button_x, button_y, button_size, button_size)
 
         pygame.draw.rect(window, button_color, button_rect, border_radius=10)
@@ -469,9 +469,9 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
         # Survey questions
         self.questions = [
-            "Which teammate did you prefer overall?",
-            "Which teammate performed better?",
-            "Which teammate was better at\nadapting to your strategy?"
+            "Which teammate did you prefer?",
+            "Which teammate was better at searching efficiently?",
+            "Which teammate was better at coordinating with you?"
         ]
 
         # User responses (None = not answered, 'green' or 'purple' for selection)
@@ -481,14 +481,14 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         self.icon_size = 80
         self.icon_spacing = 200
         self.question_spacing = 175
-        self.first_question_y = 225
+        self.first_question_y = 225 + 150 + 100
 
         # Colors
-        self.unselected_color = (180, 180, 180)
+        self.unselected_color = (150, 150, 150)
         self.green_color = (76, 175, 80)
         self.purple_color = (156, 39, 176)
-        self.selected_bg_color = (220, 220, 220)
-        self.icon_bg_color = (150, 150, 150)
+        self.selected_bg_color = (250, 250, 250)
+        self.icon_bg_color = (180, 180, 180)
 
         # Continue button
         self.continue_button_size = 80
@@ -502,7 +502,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Answer each question below by clicking the icon."
+        title = "Answer each question below by clicking the box."
         self.draw_text_centered(window, title, 150, self.font_large)
 
         # Draw each question with teammate icons
@@ -514,6 +514,11 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
     def draw_question_with_icons(self, window: pygame.Surface, question_index: int, question_text: str) -> None:
         """Draw a question with two teammate icon options"""
+
+        # Draw header
+        self.draw_teammate_icon(window, 300, 300, self.agent_appearance, question_index, True, self.icon_size * 2.5, scale = 3)
+        self.draw_teammate_icon(window, 700, 300, self.last_agent_appearance, question_index, True, self.icon_size * 2.5, scale = 3)
+
         y_pos = self.first_question_y + (question_index * self.question_spacing)
 
         # Draw question text (handle multi-line)
@@ -535,23 +540,23 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
         # Draw green teammate icon
         #self.draw_teammate_icon(window, green_icon_x, icon_y, 'green', question_index, self.responses[question_index] == 'green')
-        self.draw_teammate_icon(window, green_icon_x, icon_y, self.agent_appearance, question_index, self.responses[question_index] == self.agent_appearance)
+        self.draw_teammate_icon(window, green_icon_x, icon_y, self.agent_appearance, question_index, self.responses[question_index] == self.agent_appearance, self.icon_size*1.5)
 
         # Draw purple teammate icon
         #self.draw_teammate_icon(window, purple_icon_x, icon_y, 'purple', question_index, self.responses[question_index] == 'purple')
-        self.draw_teammate_icon(window, purple_icon_x, icon_y, self.last_agent_appearance, question_index,self.responses[question_index] == self.last_agent_appearance)
+        self.draw_teammate_icon(window, purple_icon_x, icon_y, self.last_agent_appearance, question_index,self.responses[question_index] == self.last_agent_appearance, self.icon_size*1.5)
 
     def draw_teammate_icon(self, window: pygame.Surface, x: int, y: int, icon_type: str,
-                           question_index: int, is_selected: bool) -> None:
+                           question_index: int, is_selected: bool, icon_size, scale = 1.8) -> None:
         """Draw a teammate icon as a rotated and scaled-up mini aircraft rendering"""
 
         # Dummy env-like constants (scaled up 25%)
-        scale = 1.2
+        #scale = 1.2
         NOSE = 10 * scale
         TAIL = 25 * scale
         WING = 18 * scale
         TAIL_WIDTH = 7 * scale
-        LINE_WIDTH = 5
+        LINE_WIDTH = int(math.floor(5 * scale))
 
         # 90 degrees counterclockwise = π/2
         direction = -math.pi / 2
@@ -565,7 +570,8 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
 
         # Draw background box
-        icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2, self.icon_size, self.icon_size)
+        #icon_rect = pygame.Rect(x - self.icon_size // 2, y - self.icon_size // 2, self.icon_size, self.icon_size)
+        icon_rect = pygame.Rect(x - icon_size // 2, y - icon_size // 2, icon_size, icon_size)
         bg_color = self.selected_bg_color if is_selected else self.icon_bg_color
         pygame.draw.rect(window, bg_color, icon_rect, border_radius=10)
         pygame.draw.rect(window, (100, 100, 100), icon_rect, 3, border_radius=10)
@@ -958,8 +964,8 @@ class Instruct2Screen(GameInstructionScreen):
         # Top text at position (100, 50)
         # Draw text
         lines = [
-            "In this game, you will control a 2D aircraft",
-            "to fly around a map like the one below:"
+            "In this game, you will control a 2D",
+            "aircraft to fly around the map below:"
         ]
         y_pos = 150
         for line in lines:
@@ -1043,7 +1049,7 @@ class Instruct3Screen(GameInstructionScreen):
 
         bottom_text = ["The aircraft will automatically",
                        "fly to the point you clicked."]
-        y_pos = 875
+        y_pos = 890
         for line in bottom_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
@@ -1177,10 +1183,19 @@ class Instruct5Screen(GameInstructionScreen):
         #pygame.draw.circle(window, (255, 215, 0), (200, 450), 50) # TODO change this to be a white circle with a gold outline, and an upside down gold triangle inside it
         # White circle with gold outline
         pygame.draw.circle(window, (255, 215, 0), (200, 450), 52)
-        pygame.draw.circle(window, (255, 255, 255), (200, 450), 48)
+        pygame.draw.circle(window, (0, 0, 0), (200, 450), 48)
 
 
-        triangle_points = [(195, 465), (185, 440), (220, 435)]
+        #triangle_points = [(195, 465), (185, 440), (220, 435)]
+        cx, cy = 200, 450
+        side = 40  # side length of the triangle
+        h = (3 ** 0.5 / 2) * side  # height of the equilateral triangle
+
+        triangle_points = [
+            (cx - side / 2, cy - h / 3),  # bottom-left
+            (cx + side / 2, cy - h / 3),  # bottom-right
+            (cx, cy + 2 * h / 3)  # top (pointing down)
+        ]
         pygame.draw.polygon(window, (255, 215, 0), triangle_points) # Upside down gold triangle inside
 
 
@@ -1302,25 +1317,50 @@ class Instruct7Screen(GameInstructionScreen):
         return self.current_frame
 
     def draw_content(self, window: pygame.Surface) -> None:
-        warning_text = ["High-value targets might detect you if you fly",
-                        "within identification range. Each detection",
-                        "reduces your score by 15 points."]
+        # warning_text = ["High-value targets might detect you if you fly",
+        #                 "within identification range. Each detection",
+        #                 "reduces your score by 15 points."]
+
+        top_text = ["Your goal is to identify 15 targets and exactly 2 threats.",
+                    "",
+                    "",
+                    "If you identify more than or less than 2 threats,",
+                    "your score will be reduced.",
+                    "",
+                    "",
+                    "If you finish a round early (all 15 targets and at",
+                    "least 2 threats) you will receive an EARLY FINISH bonus.",
+                    "",
+                    "",
+                    "Your final score is calculated as:",
+                    "",
+                    "5 × (# of targets) - 30 × abs(2 - # of threats)",
+                    "+ 1.25 × (# of seconds early)",
+                    "",
+                    "",
+                    "You will need to coordinate with your teammate to succeed.",
+                    "Try to search the map efficiently and balance your risk.",
+                    "",
+                    "",
+                    "Good luck!"
+                    ]
+
         y_pos = 150
-        for line in warning_text:
+        for line in top_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
-        frame_surface = self.get_next_video_frame()
-        if frame_surface:
-            rect = frame_surface.get_rect(center=(self.window_width // 2, 550))
-            window.blit(frame_surface, rect)
-
-        bottom_text = ["To be successful, you will need to weigh the risks",
-                       "and rewards of identifying high-value targets."]
-        y_pos = 875
-        for line in bottom_text:
-            self.draw_text_centered(window, line, y_pos, self.font_large)
-            y_pos += 35
+        # frame_surface = self.get_next_video_frame()
+        # if frame_surface:
+        #     rect = frame_surface.get_rect(center=(self.window_width // 2, 550))
+        #     window.blit(frame_surface, rect)
+        #
+        # bottom_text = ["To be successful, you will need to weigh the risks",
+        #                "and rewards of identifying high-value targets."]
+        # y_pos = 875
+        # for line in bottom_text:
+        #     self.draw_text_centered(window, line, y_pos, self.font_large)
+        #     y_pos += 35
 
 
 # class Instruct7Screen(GameInstructionScreen):
@@ -1357,15 +1397,16 @@ class Instruct8Screen(GameInstructionScreen):
         instruction_text = [
             "You will complete a total of 14 rounds in the game.",
             "",
-            "Each round will take about 90 seconds.",
+            "Each round is approximately 1 minute long.",
             "",
             "",
-            "After each round, you will answer a few",
-            "questions about your experience with",
-            "the teammate you just worked with.",
+            "After each round, you will answer",
+            "a few questions about the teammate",
+            "you just worked with.",
+            "",
             "",
             "You will also be asked which",
-            "teammates you liked more.",
+            "teammates you preferred.",
             "",
             "",
             "We are developing AI teammates that can adapt",
@@ -1411,12 +1452,15 @@ class PracticeIntroScreen(GameInstructionScreen):
         intro_lines = [
             "You will now play a practice round.",
             "",
-            "This is just for you to get used to the controls and gameplay.",
-            "There is no survey after this round.",
+            "",
+            "This is just for you to get used to the controls and",
+            "gameplay. There is no survey after this round.",
+            "",
             "",
             "Take your time and experiment with different control options.",
             "",
-            "When you're ready, press ENTER or click the arrow to begin."
+            "",
+            "When you're ready, click the arrow to begin."
         ]
         self.draw_text_block(window, intro_lines, 400, self.font_large, 40)
 
@@ -1442,14 +1486,17 @@ class FinalSummaryScreen(InstructionalScreen):
             "",
             "Thank you for participating in this user study!",
             "",
-            "Your responses and performance help us improve",
+            "",
+            "Your participation helps us improve",
             "human-AI teaming in critical tasks.",
             "",
-            "If you have questions or feedback, please ask the experimenter.",
+            "",
+            "Please tell the researcher that you are done.",
+            "",
+            "If you have questions or feedback, please ask the researcher.",
             "",
             "",
             "",
-            "Press ENTER to exit."
         ]
         self.draw_text_block(window, message_lines, 380, self.font_large, 35)
 
@@ -1467,17 +1514,19 @@ class InstructionSeriesManager:
         self.screen_manager = ScreenManager(window, clock)
         self.sio = sio
 
+        total_screens = 9
+
         self.screens = [
-            Instruct1Screen(1, 10, window.get_width(), window.get_height()),
-            Instruct2Screen(map_image_path or "map_image.jpg", 2, 10, window.get_width(), window.get_height()),
-            Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, 10, window.get_width(), window.get_height()),
-            Instruct4Screen(teammate_image_path, 4, 10, window.get_width(), window.get_height()),
-            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, 10, window.get_width(), window.get_height()),
-            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 6, 10, window.get_width(), window.get_height()),
-            PlaceholderScreen(7, 10, window.get_width(), window.get_height()),
-            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 8, 10, window.get_width(), window.get_height()),
-            Instruct8Screen(9, 10, window.get_width(), window.get_height()),
-            PracticeIntroScreen(10, 10, window.get_width(), window.get_height()),
+            Instruct1Screen(1, total_screens, window.get_width(), window.get_height()),
+            Instruct2Screen(map_image_path or "map_image.jpg", 2, total_screens, window.get_width(), window.get_height()),
+            Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, total_screens, window.get_width(), window.get_height()),
+            Instruct4Screen(teammate_image_path, 4, total_screens, window.get_width(), window.get_height()),
+            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, total_screens, window.get_width(), window.get_height()),
+            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 6, total_screens, window.get_width(), window.get_height()),
+            #PlaceholderScreen(7, 10, window.get_width(), window.get_height()),
+            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 7, total_screens, window.get_width(), window.get_height()),
+            Instruct8Screen(8, total_screens, window.get_width(), window.get_height()),
+            PracticeIntroScreen(9, total_screens, window.get_width(), window.get_height()),
         ]
 
         self.current_screen_index = 0
