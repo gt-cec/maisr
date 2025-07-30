@@ -1340,7 +1340,7 @@ class Instruct7Screen(GameInstructionScreen):
                     "Your final score is calculated as:",
                     "",
                     "5 × (targets) - 30 × abs(2 - threats)",
-                    "+ 1.25× (# of seconds early)",
+                    "+ 1.25 × (# of seconds early)",
                     "",
                     "",
                     "You will need to coordinate with your teammate to succeed.",

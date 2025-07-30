@@ -61,6 +61,7 @@ def draw_countdown_overlay(window, font, countdown_steps, countdown_length, map_
 
 
 
+
 def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
     print(f"Loading VecNormalize stats from: {vecnorm_path}")
@@ -383,8 +384,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         if countdown_steps <= countdown_length:
             env.render()
             draw_countdown_overlay(window, font, countdown_steps, countdown_length)
-            pygame.display.flip()  # Update screen
-            pygame.time.wait(33)  # ~30 FPS for countdown
+            pygame.display.flip()
+            pygame.time.wait(33)
+            sockets.send_frame(window)
             countdown_steps += 1
             continue  # Skip the rest of the loop until countdown is done
 
@@ -521,9 +523,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     print(f"Starting from level: {start_level}")
 
     # Configuration
-    config_filename = 'configs/Monolith_R8H_july10.json'
+    config_filename = 'configs/Monolith_index_August.json'
     tick_rate = 30
-    time_factor = 20  # 20
+    time_factor = 20
     config = load_env_config(config_filename)
 
     config['tick_rate'] = tick_rate
@@ -531,6 +533,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     config['max_steps'] *= (1700 / 1500) * time_factor
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0#0.0003
+    config['observe_teammate_priority'] = False # TODO switch to true with new agents
     print(f'LOADED CONFIG {config_filename}')
 
     if subject_id == 90:
