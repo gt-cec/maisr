@@ -1,3 +1,4 @@
+import copy
 import ctypes
 import glob
 import json
@@ -114,7 +115,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
     4. Logs additional PPO training metrics
     """
 
-    def __init__(self, env_config, verbose=0, eval_env=None, run=None,
+    def __init__(self, env_config, verbose=0, eval_env=None, human_eval_env=None,run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
                  log_freq=4, teammate_manager=None):
         super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
@@ -122,12 +123,18 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.avg_var_diffs = []
         self.config = env_config
         self.eval_env = eval_env
+        self.human_eval_env = human_eval_env
+
         self.eval_freq = env_config['eval_freq']
         self.n_eval_episodes = env_config['n_eval_episodes']
         self.run = run
         self.run_name = run_name
         self.log_freq = log_freq  # Log every N steps instead of every step
+
         self.run_human_eval = env_config["run_human_eval"]
+        # if self.run_human_eval:
+        #     self.human_eval_env = copy.deepcopy(eval_env)
+        #     self.human_eval_env.envs[0].env.env.tag = "human_eval0"
 
         self.use_curriculum = env_config['use_curriculum']
         self.min_target_ids_to_advance = env_config['min_target_ids_to_advance']
@@ -145,8 +152,8 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
         self.entropy_decay_enabled = False
-        self.entropy_decay_trigger_threshold = 0.15  # mean_target_ids_per_step threshold
-        self.entropy_decay_threat_threshold = 1.0 # eval/mean_threat_ids threshold
+        self.entropy_decay_trigger_threshold = 0.25  # mean_target_ids_per_step threshold
+        self.entropy_decay_threat_threshold = 1.5 # eval/mean_threat_ids threshold
         self.entropy_decay_steps = env_config['entropy_decay_steps'] # Decay over this many steps
         self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
         self.entropy_decay_start_step = None
@@ -332,56 +339,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         if self.eval_env is not None and self.num_timesteps % self.eval_freq == 0:
             print(f'\n################################################# EVALUATING (step {self.num_timesteps}) #################################################')
 
-            # Check if the training env is a VecNormalize wrapper
-            training_env = self.model.get_env()
-            # TODO: Save obs_rms.mean and env.obs_rms.var for both training_env and eval_env to a json, with timesteps.
-            # norm_stats_log_path = f"outputs/logs/norm_stats_history.json"
-            # norm_data = {
-            #     "step": self.num_timesteps,
-            #     "training_env": {
-            #         "obs_mean": training_env.obs_rms.mean.tolist(),
-            #         "obs_var": training_env.obs_rms.var.tolist(),
-            #         "obs_count": training_env.obs_rms.count,
-            #         "ep_count": training_env.get_attr("episode_counter")[0]
-            #
-            #
-            #     },
-            #     "eval_env": {
-            #         "obs_mean": self.eval_env.obs_rms.mean.tolist(),
-            #         "obs_var": self.eval_env.obs_rms.var.tolist(),
-            #         "obs_count": self.eval_env.obs_rms.count,
-            #         "ep_count": self.eval_env.envs[0].env.episode_counter
-            #     }
-            # }
-
-            # if os.path.exists(norm_stats_log_path):
-            #     with open(norm_stats_log_path, "r") as f:
-            #         existing_data = json.load(f)
-            # else:
-            #     existing_data = []
-            #
-            # existing_data.append(norm_data)
-
-            # with open(norm_stats_log_path, "w") as f:
-            #     json.dump(existing_data, f, indent=2)
-
-            # if hasattr(training_env, 'obs_rms') and hasattr(training_env, 'ret_rms'):
-            #     # Training env is VecNormalize, sync stats to eval env
-            #     if hasattr(self.eval_env, 'obs_rms') and hasattr(self.eval_env, 'ret_rms'):
-            #         self.eval_env.obs_rms = training_env.obs_rms
-            #         self.eval_env.ret_rms = training_env.ret_rms
-            #         #print(f"[Callback] Synced normalization stats from training to eval env")
-            #
-            #         if self.teammate_manager is not None:
-            #             #print(f"[Callback] Updating teammate manager with latest normalization stats at step {self.num_timesteps}")
-            #             self.teammate_manager.set_normalization_stats(
-            #                 training_env.obs_rms,
-            #                 training_env.ret_rms
-            #             )
-            #     else:
-            #         print(f"[Callback] Warning: Training env has normalization but eval env doesn't")
-            #else:
-             #   print(f"[Callback] No normalization detected in training environment")
             target_ids_list = []
             threat_ids_list = []
             target_ids_per_step_list = []
@@ -405,6 +362,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 except Exception as e:
                     print('Error, failed to get teammate name using get_wrapper_attr')
                     print(e)
+                    raise ValueError
 
                 while not done:
 
@@ -479,10 +437,9 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     #f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
                 })
 
-            main_tag = self.eval_env.envs[0].env.env.tag
+            #main_tag = self.eval_env.envs[0].env.env.tag
             if self.run_human_eval:
-                self.eval_env.envs[0].env.env.tag = "human_eval0"
-                print("\n ++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++")
+                print("\n\n ++++++++++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++++++++++ \n")
                 recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
                 num_trajectories = len(recorded_teammate_indices)
 
@@ -510,15 +467,16 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     trajectory_file = random.choice(candidate_files)
 
                     # Set eval env to this level
-                    self.eval_env.envs[0].env.env.level_idx = level
-                    self.eval_env.envs[0].env.env.config['force_specific_level'] = level
+                    base_human_env = self.human_eval_env.envs[0].env.env
+                    base_human_env.level_idx = level
+                    base_human_env.config['force_specific_level'] = level
                     # Load as recorded teammate
                     #recorded_teammate = RecordedTrajectoryTeammate(trajectory_file, self.eval_env.envs[0].env.env, timescale_correction)
                     #self.eval_env.envs[0].current_teammate = recorded_teammate
                     #self.eval_env.envs[0].env.current_teammate = recorded_teammate
 
-                    self.eval_env.envs[0].current_teammate = None
-                    self.eval_env.envs[0].env.current_teammate = None
+                    #self.eval_env.envs[0].current_teammate = None
+                    #self.eval_env.envs[0].env.current_teammate = None
 
                     with open(trajectory_file, 'r') as f:
                         data = json.load(f)
@@ -531,29 +489,28 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     waypoints = [entry["human_custom_waypoint"] for entry in timesteps]
                     waypoints = waypoints[::10] # Timescale correction
 
-                    base_env = self.eval_env.envs[0].env.env
-                    current_pos = base_env.agents[base_env.aircraft_ids[1]].x, base_env.agents[base_env.aircraft_ids[1]].y
+
+                    current_pos = base_human_env.agents[base_human_env.aircraft_ids[1]].x, base_human_env.agents[base_human_env.aircraft_ids[1]].y
                     waypoints = [wp if wp is not None else current_pos for wp in waypoints]
-                    print(f"[Eval] Waypoints: {waypoints}")
+                    #print(f"[Eval] Waypoints: {waypoints}")
 
 
                     print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
-                    obs = self.eval_env.reset()
+                    obs = self.human_eval_env.reset()
                     done = False
                     ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
                     step_idx = 0
 
                     while not done:
 
-                        base_env = self.eval_env.envs[0].env.env
                         if step_idx < len(waypoints):
-                            base_env.agents[base_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
+                            base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
                         else:
-                            base_env.agents[base_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
+                            base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
 
                         action, other = self.model.predict(obs, deterministic=True)
 
-                        obses, rewards, dones, infos = self.eval_env.step([action])
+                        obses, rewards, dones, infos = self.human_eval_env.step([action])
 
                         obs = obses[0]
                         reward = rewards[0]
@@ -580,14 +537,14 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 mean_reward = total_eval_reward / self.n_eval_episodes
 
                 # Log evaluation results
-                eval_metrics = {
+                eval_metrics.update({
                     "eval_with_human/mean_reward": mean_reward,
                     "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
                     "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
                     "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
                     "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
                     "curriculum/difficulty_level": self.current_difficulty
-                }
+                })
 
                 self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
                 #except Exception as e:
@@ -595,7 +552,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
 
             print("++++++++ [Human Eval] Human eval complete ++++++++\n")
             self.eval_env.envs[0].env.env.config['force_specific_level'] = 99
-            self.eval_env.envs[0].env.env.tag = main_tag
+            #self.eval_env.envs[0].env.env.tag = main_tag
 
 
             ###################### === Dynamic League Ratio Update Based on Evaluation Reward === ######################
@@ -614,7 +571,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     except Exception as e:
                         print(f"[League Ratio Update] Failed to update league ratio: {e}")
 
-            ### Tracking teammate frequently
+            ### Tracking teammate frequency
             try:
                 counts = {
                     "Diverse": sum(1 for name in teammate_names if name.startswith("Diverse_")),
@@ -1341,28 +1298,30 @@ def train_generic(
 
     # Create and wrap eval environment
     base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name)
-    if train_type == 'mode_selector':
-        eval_env = MaisrModeSelectorWrapper(
-                    base_eval_env,
-                    LocalSearch(model_path=None),
-                    GoToNearestThreat(model_path=None),
-                    ChangeRegions(model_path=None),
-                    None,
-                    teammate_manager = teammate_manager
-                )
-    elif train_type == 'monolith':
-        eval_env = MaisrLocalSearchWrapper(
-            base_eval_env,
-            env_config['obs_noise_std_localsearch'],
-            LocalSearch(model_path=None),
-            GoToNearestThreat(model_path=None),
-            ChangeRegions(model_path=None),
-            None,
-            teammate_manager=teammate_manager
-        )
-
+    eval_env = MaisrLocalSearchWrapper(
+        base_eval_env,
+        env_config['obs_noise_std_localsearch'],
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        None,
+        teammate_manager=teammate_manager)
     eval_env = Monitor(eval_env)
     eval_env = DummyVecEnv([lambda: eval_env])
+
+
+    base_human_eval_env = MAISREnvVec(env_config, None, render_mode='headless', tag='human_eval0', run_name=run_name)
+    human_eval_env = MaisrLocalSearchWrapper(
+        base_human_eval_env,
+        env_config['obs_noise_std_localsearch'],
+        LocalSearch(model_path=None),
+        GoToNearestThreat(model_path=None),
+        ChangeRegions(model_path=None),
+        None,
+        teammate_manager=None)
+    human_eval_env = Monitor(human_eval_env)
+    human_eval_env = DummyVecEnv([lambda: human_eval_env])
+
 
     if use_normalize:
         if vecnorm_load_path is not None:
@@ -1385,23 +1344,24 @@ def train_generic(
         save_replay_buffer=True, save_vecnormalize=True,
     )
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
-    if train_type == 'mode_selector':
-        enhanced_wandb_callback = EnhancedWandbCallback_MS(
-            env_config,
-            eval_env=eval_env,
-            run=run,
-            log_freq=75,
-            run_name = run_name
-            #teammate_manager=teammate_manager  # ADD THIS
-        )
-    elif train_type == 'monolith':
-        enhanced_wandb_callback = EnhancedWandbCallback_Monolith(
-            env_config,
-            eval_env=eval_env,
-            run=run,
-            log_freq=75,
-            teammate_manager=teammate_manager
-        )
+    # if train_type == 'mode_selector':
+    #     enhanced_wandb_callback = EnhancedWandbCallback_MS(
+    #         env_config,
+    #         eval_env=eval_env,
+    #         run=run,
+    #         log_freq=75,
+    #         run_name = run_name
+    #         #teammate_manager=teammate_manager  # ADD THIS
+    #     )
+    #elif train_type == 'monolith':
+    enhanced_wandb_callback = EnhancedWandbCallback_Monolith(
+        env_config,
+        eval_env=eval_env,
+        human_eval_env=human_eval_env,
+        run=run,
+        log_freq=75,
+        teammate_manager=teammate_manager
+    )
 
     printcallback = PrintObsEvery50Steps(verbose=1)
 
@@ -1657,12 +1617,27 @@ if __name__ == "__main__":
         #load_path = load_paths[int(args.seed)]
         #vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
-    elif version == 'mixed':
+    elif version == 'mixed-1seed':
         note = 'fcp_mixed' + machine[0].upper()
-        config['num_timesteps'] = 4.5e6
-        config['league_type'] = 'mixed'
+        config['num_timesteps'] = 4e5
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
+
+        config['action_type'] = 'target_index'
+
+        hyperparams = {
+            # 'seed': [21, 623, 33, 82],
+            'threat_reward_scaling': [0.3],
+            "teammate_reward_scale": [0.75],
+            "potential_ratio": [0.5],
+            "gamma": [0.985],
+            "team_spread_bonus_coeff": [0.015],
+            "shaping_coeff_earlyfinish": [0.16],
+            'league_type': ['strategy_diverse', 'selfplay', 'mixed50']
+
+        }
+        config['seed'] = int(args.seed)
+        overfit_test = None
 
         pretrained_agents_path = './pretrained_teammates/' # TODO pass this to teammate manager
 
@@ -1725,7 +1700,7 @@ if __name__ == "__main__":
         note = 'index_strategy' + machine[0].upper()
         config['num_timesteps'] = 4e5
         config['league_type'] = 'strategy_diverse'
-        config['teammate_active_at_start'] = True
+        config['teammate_active_at_start'] = False
         project_name = 'maisr-rl-index'
         config['action_type'] = 'target_index'
 

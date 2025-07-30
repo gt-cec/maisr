@@ -162,6 +162,22 @@ class TeammateManager:
                 print(f'[_select_uniform_teammate] Creating pretrained RL teammate')
                 return self._create_pretrained_rl_teammate()
 
+        elif self.league_type in ['mixed50', 'mixed25', 'mixed75']:
+            ratio = int(self.league_type[-2:])/10
+            if random.random() < ratio:
+                print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
+                #return self._create_pretrained_rl_teammate()
+                return self._create_selfplay_teammate()
+            else:
+                print(f'[Teammate Manager - {self.league_type}] Creating strategy heuristic teammate')
+                return self._create_strategy_diverse_heuristic_teammate()
+
+        elif self.league_type == 'fcp':
+            if random.random() < 0.5:
+                return self._create_pretrained_rl_teammate()
+            else:
+                return self._create_selfplay_teammate()
+
         elif self.league_type == 'mixed':
             if random.random() < self.fcp_ratio:
                 print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')

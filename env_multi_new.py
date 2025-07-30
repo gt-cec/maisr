@@ -2366,7 +2366,9 @@ class MAISREnvVec(gym.Env):
 
             if hasattr(self, 'config') and self.config.get('num_aircraft', 1) >= 2:
                 # Try to get teammate name from the wrapper (if using teammate manager)
-                if hasattr(self, 'teammate_name'):
+                if self.tag == 'human_eval0':
+                    teammate_name = 'recorded_human_trajectory'
+                elif hasattr(self, 'teammate_name'):
                     teammate_name = self.teammate_name
                 elif hasattr(self, 'current_teammate') and hasattr(self.current_teammate, 'name'):
                     teammate_name = self.current_teammate.name
