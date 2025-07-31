@@ -469,7 +469,7 @@ class ExperimentDataLogger:
             'episode_config': survey_data['episode_config'],
             'timestamp': survey_data['timestamp'],
             'mental_demand': survey_data['responses']["How MENTALLY demanding was the task?"],
-            'physical_demand': survey_data['responses']["How PHYSICALLY demanding was the task?"],
+            #'physical_demand': survey_data['responses']["How PHYSICALLY demanding was the task?"],
             'temporal_demand': survey_data['responses']["How much TIME PRESSURE did you feel?"],
             'effort': survey_data['responses']["How much EFFORT did the task take?"],
             'performance': survey_data['responses']["How would you rate your PERFORMANCE?"],

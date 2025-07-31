@@ -258,7 +258,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
         # Survey questions and their labels
         self.questions = [
             "How MENTALLY demanding was the task?",
-            "How PHYSICALLY demanding was the task?",
+            #"How PHYSICALLY demanding was the task?",
             "How much TIME PRESSURE did you feel?",
             "How much EFFORT did the task take?",
             "How would you rate your PERFORMANCE?",
@@ -471,9 +471,9 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 
         # Survey questions
         self.questions = [
-            "Which teammate did you prefer?",
             "Which teammate was better at searching efficiently?",
-            "Which teammate was better at coordinating with you?"
+            "Which teammate was better at coordinating with you?",
+            "Which teammate did you prefer?"
         ]
 
         # User responses (None = not answered, 'green' or 'purple' for selection)
@@ -572,7 +572,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         # Colors
         if icon_type == 'green': color = (76, 175, 80)
         elif icon_type == 'purple': color = (156, 39, 176)
-        elif icon_type == 'red': color = (225, 25, 25)
+        elif icon_type == 'red': color = (255, 25, 25)
         elif icon_type == 'brown': color = (255, 150, 0)
         elif icon_type == 'black': color = (30, 30, 30)
         else: color = (180, 180, 180)
@@ -619,6 +619,17 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
                 end = (pt[0] - math.cos(direction) * 18,
                        pt[1] - math.sin(direction) * 18)
                 pygame.draw.line(window, color, pt, end, LINE_WIDTH)
+
+            perp_angle = direction + math.pi / 2
+            start = (
+                nose[0] - math.cos(perp_angle) * 4.5,
+                nose[1] - math.sin(perp_angle) * 4.5
+            )
+            end = (
+                nose[0] + math.cos(perp_angle) * 4.5,
+                nose[1] + math.sin(perp_angle) * 4.5
+            )
+            pygame.draw.line(window, color, start, end, LINE_WIDTH)
 
         # Store for click detection
         if not hasattr(self, 'icon_rects'):
@@ -702,9 +713,9 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         return {
             "survey_type": "teammate_preference",
             "responses": {
-                "preferred_overall": self.responses[0],
-                "performed_better": self.responses[1],
-                "adapted_better": self.responses[2]
+                "performed_better": self.responses[0],
+                "adapted_better": self.responses[1],
+                "preferred_overall": self.responses[2]
             },
             "timestamp": pygame.time.get_ticks()
         }
@@ -1124,7 +1135,7 @@ class Instruct4Screen(GameInstructionScreen):
         self.image = None
         try:
             self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (855*.8, 200*.8))
+            self.image = pygame.transform.scale(self.image, (855*.8, 200*1.2))
         except pygame.error:
             print(f"Could not load image: {image_path}")
 
@@ -1145,13 +1156,18 @@ class Instruct4Screen(GameInstructionScreen):
 
         # Bottom text at (50, 500)
         bottom_text = ["",
-                       "Your teammate will independently fly around",
-                       "the map to help you identify targets.",
+                       "Your teammate will independently fly",
+                       "around the map to identify targets.",
                        "",
                        "",
+                       "All teammates are trained with the same goals as",
+                       "you (15 regular + 2 high-value targets), but they",
+                       "might do better or worse depending on their training.",
                        "",
-                       "They may follow different strategies depending",
-                       "on what they learned in their training."]
+                       "",
+                       "You will need to coordinate with your teammate to succeed.",
+                       "Try to search the map efficiently and balance your risk.",
+                       ]
 
         y_pos = 500
         for line in bottom_text:
@@ -1338,26 +1354,22 @@ class Instruct7Screen(GameInstructionScreen):
         #                 "within identification range. Each detection",
         #                 "reduces your score by 15 points."]
 
-        top_text = ["Your goal is to identify 15 targets and exactly 2 threats.",
+        top_text = ["Your goal is to identify all 15 targets",
+                    "and exactly 2 high-value targets.",
                     "",
                     "",
-                    "If you identify more than or less than 2 threats,",
-                    "your score will be reduced.",
+                    "If you identify more or less than 2 high-",
+                    "value targets, your score will be reduced.",
                     "",
                     "",
-                    "If you identify all 15 targets and at least 2 threats before the",
-                    "round timer ends, you will receive a bonus for finishing early.",
+                    "If you complete your goals before the round timer",
+                    "ends, you will receive a bonus for finishing early.",
                     "",
                     "",
                     "Your final score is calculated as:",
                     "",
-                    "5 × (targets) - 10 × abs(2 - threats)",
+                    "5 × (regular targets) - 10 × abs(2 - high value targets)",
                     "+ 1.25 × (# of seconds early)",
-                    "",
-                    "",
-                    "You will need to coordinate with your teammate to succeed.",
-                    "Try to search the map efficiently and balance your risk.",
-                    "",
                     "",
                     "",
                     "Good luck!"
@@ -1450,7 +1462,7 @@ class Instruct8Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         instruction_text = [
-            "You will complete a total of 21 rounds in the game.",
+            "You will complete 16 rounds in the game.",
             "",
             "Each round is approximately 1 minute long.",
             "",
@@ -1460,8 +1472,8 @@ class Instruct8Screen(GameInstructionScreen):
             "you just worked with.",
             "",
             "",
-            "You will also be asked which",
-            "teammates you preferred.",
+            "Please try to remember how each",
+            "teammate looked, and how they performed!",
             "",
             "",
             "We are developing AI teammates that can adapt",
@@ -1507,7 +1519,7 @@ class AfterPracticeScreen(GameInstructionScreen):
 class PracticeIntroScreen(GameInstructionScreen):
     """Instructional screen before the practice round"""
     def draw_content(self, window):
-        self.draw_text_centered(window, "Practice Round", 250, self.font_large, self.highlight_color)
+        self.draw_text_centered(window, "Practice Round", 150, self.font_large, self.highlight_color)
         intro_lines = [
             "You will now play a practice round.",
             "",
@@ -1524,7 +1536,7 @@ class PracticeIntroScreen(GameInstructionScreen):
             "Please only click once, and the level will begin loading."
 
         ]
-        self.draw_text_block(window, intro_lines, 400, self.font_large, 40)
+        self.draw_text_block(window, intro_lines, 250, self.font_large, 40)
 
 class FinalSummaryScreen(InstructionalScreen):
     """Final screen shown after completing the experiment"""
@@ -1583,11 +1595,10 @@ class InstructionSeriesManager:
             Instruct1Screen(1, total_screens, window.get_width(), window.get_height()),
             Instruct2Screen(map_image_path or "map_image.jpg", 2, total_screens, window.get_width(), window.get_height()),
             Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, total_screens, window.get_width(), window.get_height()),
-            Instruct4Screen(teammate_image_path, 4, total_screens, window.get_width(), window.get_height()),
-            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 5, total_screens, window.get_width(), window.get_height()),
-            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 6, total_screens, window.get_width(), window.get_height()),
-            #PlaceholderScreen(7, 10, window.get_width(), window.get_height()),
-            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 7, total_screens, window.get_width(), window.get_height()),
+            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 4, total_screens, window.get_width(), window.get_height()),
+            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 5, total_screens, window.get_width(), window.get_height()),
+            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 6, total_screens, window.get_width(), window.get_height()),
+            Instruct4Screen(teammate_image_path, 7, total_screens, window.get_width(), window.get_height()),
             Instruct8Screen(8, total_screens, window.get_width(), window.get_height()),
             PracticeIntroScreen(9, total_screens, window.get_width(), window.get_height()),
         ]

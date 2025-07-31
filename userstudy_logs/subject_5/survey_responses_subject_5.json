@@ -1,0 +1,82 @@
+[
+  {
+    "episode_config": "B1",
+    "timestamp": 611048,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 2.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 3.0
+  },
+  {
+    "episode_config": "A1",
+    "timestamp": 696148,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 3.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 4.0
+  },
+  {
+    "episode_config": "B3",
+    "timestamp": 814012,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 1.0,
+    "effort": 1.0,
+    "performance": 6.0,
+    "frustration": 1.0
+  },
+  {
+    "episode_config": "A4",
+    "timestamp": 1061867,
+    "mental_demand": 2.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 3.0,
+    "effort": 3.0,
+    "performance": 5.0,
+    "frustration": 4.0
+  },
+  {
+    "episode_config": "C5",
+    "timestamp": 1129850,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 2.0,
+    "effort": 1.0,
+    "performance": 4.0,
+    "frustration": 2.0
+  },
+  {
+    "episode_config": "B5",
+    "timestamp": 1181976,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 2.0,
+    "effort": 1.0,
+    "performance": 5.0,
+    "frustration": 1.0
+  },
+  {
+    "episode_config": "C3",
+    "timestamp": 1320290,
+    "mental_demand": 1.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 1.0,
+    "effort": 1.0,
+    "performance": 6.0,
+    "frustration": 5.0
+  },
+  {
+    "episode_config": "B7",
+    "timestamp": 1389774,
+    "mental_demand": 2.0,
+    "physical_demand": 1.0,
+    "temporal_demand": 3.0,
+    "effort": 1.0,
+    "performance": 5.0,
+    "frustration": 2.0
+  }
+]

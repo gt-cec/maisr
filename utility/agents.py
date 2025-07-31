@@ -159,6 +159,36 @@ class Aircraft(Agent):
         left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
         right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
 
+        # Draw waypoint line and marker
+        if self.target_point is not None:
+            if self.show_agent_waypoint >= 1:
+                # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
+                waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
+
+                # Calculate direction from aircraft to smoothed waypoint
+                dx = waypoint_to_draw[0] - self.x
+                dy = waypoint_to_draw[1] - self.y
+                distance = math.hypot(dx, dy)
+
+                if distance > 0:
+                    # Extend the line to a fixed length (e.g., same as original target distance)
+                    original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
+                    extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
+
+                    extended_x = self.x + (dx / distance) * original_distance
+                    extended_y = self.y + (dy / distance) * original_distance
+
+                    # Convert to screen coordinates
+                    target_screen_x = extended_x + map_half_size
+                    target_screen_y = extended_y + map_half_size
+                else:
+                    # Fallback if distance is zero
+                    target_screen_x = waypoint_to_draw[0] + map_half_size
+                    target_screen_y = waypoint_to_draw[1] + map_half_size
+
+                pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+                pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
+
         # Draw all the aircraft components
         pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
         pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
@@ -190,12 +220,12 @@ class Aircraft(Agent):
             # Perpendicular line at nose
             perp_angle = self.direction + math.pi / 2
             start = (
-                nose_point[0] - math.cos(perp_angle) * 3.5,
-                nose_point[1] - math.sin(perp_angle) * 3.5
+                nose_point[0] - math.cos(perp_angle) * 4.5,
+                nose_point[1] - math.sin(perp_angle) * 4.5
             )
             end = (
-                nose_point[0] + math.cos(perp_angle) * 3.5,
-                nose_point[1] + math.sin(perp_angle) * 3.5
+                nose_point[0] + math.cos(perp_angle) * 4.5,
+                nose_point[1] + math.sin(perp_angle) * 4.5
             )
             pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
 
@@ -217,7 +247,7 @@ class Aircraft(Agent):
                 offset_tail[0] + math.cos(self.direction) * 5,
                 offset_tail[1] + math.sin(self.direction) * 5
             )
-            pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
+            #pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
 
         elif self.appearance == 'brown':
             # Same nose line as red
@@ -258,35 +288,35 @@ class Aircraft(Agent):
         # Draw the engagement radius (using screen coordinates)
         pygame.draw.circle(window, self.color, (int(screen_x), int(screen_y)), self.env.AIRCRAFT_ENGAGEMENT_RADIUS,2)
 
-        # Draw waypoint line and marker
-        if self.target_point is not None:
-            if self.show_agent_waypoint >= 1:
-                # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
-                waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
-
-                # Calculate direction from aircraft to smoothed waypoint
-                dx = waypoint_to_draw[0] - self.x
-                dy = waypoint_to_draw[1] - self.y
-                distance = math.hypot(dx, dy)
-
-                if distance > 0:
-                    # Extend the line to a fixed length (e.g., same as original target distance)
-                    original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
-                    extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
-
-                    extended_x = self.x + (dx / distance) * original_distance
-                    extended_y = self.y + (dy / distance) * original_distance
-
-                    # Convert to screen coordinates
-                    target_screen_x = extended_x + map_half_size
-                    target_screen_y = extended_y + map_half_size
-                else:
-                    # Fallback if distance is zero
-                    target_screen_x = waypoint_to_draw[0] + map_half_size
-                    target_screen_y = waypoint_to_draw[1] + map_half_size
-
-                pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
-                pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
+        # # Draw waypoint line and marker
+        # if self.target_point is not None:
+        #     if self.show_agent_waypoint >= 1:
+        #         # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
+        #         waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
+        #
+        #         # Calculate direction from aircraft to smoothed waypoint
+        #         dx = waypoint_to_draw[0] - self.x
+        #         dy = waypoint_to_draw[1] - self.y
+        #         distance = math.hypot(dx, dy)
+        #
+        #         if distance > 0:
+        #             # Extend the line to a fixed length (e.g., same as original target distance)
+        #             original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
+        #             extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
+        #
+        #             extended_x = self.x + (dx / distance) * original_distance
+        #             extended_y = self.y + (dy / distance) * original_distance
+        #
+        #             # Convert to screen coordinates
+        #             target_screen_x = extended_x + map_half_size
+        #             target_screen_y = extended_y + map_half_size
+        #         else:
+        #             # Fallback if distance is zero
+        #             target_screen_x = waypoint_to_draw[0] + map_half_size
+        #             target_screen_y = waypoint_to_draw[1] + map_half_size
+        #
+        #         pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+        #         pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
 
 
     def draw_damage(self):

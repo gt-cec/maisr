@@ -4,6 +4,7 @@ import pygame
 import numpy as np
 import random
 
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
@@ -209,7 +210,7 @@ class HumanSubpolicyController:
 #     except Exception as e:
 #         print(f"Error loading {agent_name} model: {e}")
 
-def draw_progress_bar(window, font, current_index, total_configs):
+def draw_progress_bar(window, font, current_index, total_configs, start_level):
     """Draw a segmented progress bar with labels for each segment."""
     progress_bar_y_start = 1000
     progress_bar_height = 50
@@ -232,7 +233,11 @@ def draw_progress_bar(window, font, current_index, total_configs):
         pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
 
         # Label: "PRACTICE" for first, numbers for rest
-        label = "P1" if i == 0 else "P2" if i == 1 else str(i-1)
+        if start_level == 0:
+            label = "P1" if i == 0 else "P2" if i == 1 else str(i - 1)
+        else:
+            label = str(i)
+
         label_surface = font.render(label, True, (0, 0, 0))
         label_rect = label_surface.get_rect(center=(x + segment_width // 2, y + segment_height // 2))
         window.blit(label_surface, label_rect)
@@ -277,7 +282,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
 
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, admin=False):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, admin=False):
     """Run a single episode of the experiment"""
     #print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
@@ -379,13 +384,38 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             base_env.agents[base_env.aircraft_ids[1]].waypoint_override = custom_waypoint
 
         # Get agent action
-        #agent_action, _ = agent_model.predict(obs, deterministic=True)
         if last_agent_action is None or step_count % time_factor == 0:
-            if agent_letter == 'S':
-                agent_action = 8
+            if agent_letter == 'P':
+                agent_action = 0
             else:
                 agent_action, _ = agent_model.predict(obs, deterministic=True)
-            #print(f'Agent chose action {agent_action}')
+            #     with torch.no_grad():
+            #         obs_tensor = torch.tensor(obs).unsqueeze(0).float()
+            #         distribution = agent_model.policy.get_distribution(obs_tensor)
+            #         action_probs = distribution.distribution.probs.squeeze(0).clone()
+            #
+            #         #tie_breaker = torch.tensor([0.1, 0.06, 0.04, 0.02, 0.00, 0.1, 0.1])
+            #         #action_probs += tie_breaker
+            #
+            #         k = 7
+            #         top_probs, top_indices = torch.topk(action_probs, k, largest=True)
+            #
+            #         top_probs_values = top_probs.squeeze().cpu().numpy()
+            #         top_indices_values = top_indices.squeeze().cpu().numpy()
+            #
+            #         print(f"Top {k} probs: {top_probs_values}")
+            #         print(f"Top {k} idx:   {top_indices_values}")
+            #
+            #         #agent_action = torch.argmax(action_probs).item()
+            #
+            #         if abs(top_probs_values[0] - top_probs_values[1]) <= 0.03:
+            #             agent_action = min(top_indices_values[0], top_indices_values[1])
+            #             print(f"Tie-breaker triggered: Prob diff {abs(top_probs_values[0] - top_probs_values[1]):.4f}, "
+            #                   f"selected lower index {agent_action}")
+            #
+            #         else:
+            #             agent_action = top_indices_values[0].item()  # highest probability
+
         else:
             agent_action = last_agent_action
 
@@ -424,7 +454,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         # Render the environment
         env.render()
         #draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
-        draw_progress_bar(window, font, config_index, total_configs)
+        draw_progress_bar(window, font, config_index, total_configs, start_level)
         draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'], tick_rate)
 
         # Update display
@@ -472,7 +502,7 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False, admin=False, run_third_agent = False):
+def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_trajectories=False, admin=False, run_third_agent = False):
 
     import sockets
     sockets.connect()
@@ -618,7 +648,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
     # Main experiment loop
     try:
-        if not skip_instructions:
+        if (not skip_instructions) and start_level == 0:
             print("Starting instruction screens...")
             instruction_manager = InstructionSeriesManager(
                 window,
@@ -651,38 +681,15 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             'P': 'black'
         }
 
-        # appearance_map = {
-        #     2: 'red',
-        #     3: 'green',
-        #     4: 'red',
-        #     5: 'brown',
-        #     6: 'red',
-        #     7: 'purple',
-        #     8: 'green',
-        #     9: 'brown',
-        #     10: 'green',
-        #     11: 'purple',
-        #     12: 'brown',
-        #     13: 'purple',
-        #     14: 'red',
-        #     15: 'purple',
-        #     16:
-        #     17:
-        #     18:
-        #     19:
-        #     20:
-        #     21:
-        #     22:
-        #
-        # }
         for config_index, current_config in enumerate(full_config_list):
 
-            if config_index == 0: # # Handle practice level special settings
+            if config_index == 0 and start_level == 0: # # Handle practice level special settings
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'P'
                 level_number = 1
-                agent_appearance = 'black'  # Practice agent color
-            elif config_index == 1: # # Handle practice level special settings
+                #agent_appearance = 'black'  # Practice agent color
+                agent_appearance = appearance_map.get(agent_letter, 'black')
+            elif config_index == 1 and start_level == 0: # # Handle practice level special settings
                 screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
                 result = screen_manager.show_screen(screen)
                 # if result.get("action") == "exit":
@@ -690,7 +697,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'P'
                 level_number = 1
-                agent_appearance = 'black'  # Practice agent color
+                agent_appearance = appearance_map.get(agent_letter, 'black')
+                #agent_appearance = 'black'  # Practice agent color
+
             else:
                 agent_letter = current_config[0]  # 'A', 'B', or 'S'
                 level_number = int(current_config[1:])
@@ -725,7 +734,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             # Run the episode
             should_quit, episode_reward, step_count, target_ids, threat_ids, = run_single_episode(
                         env, human_controller, current_config, config_index, len(full_config_list),
-                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, admin=admin)
+                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, admin=admin)
 
             if should_quit:
                 print("Experiment terminated by user")
@@ -815,6 +824,12 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         data_logger.save_session_data()
         session_summary = data_logger.get_session_summary()
 
+        try:
+            print("Emitting study_complete to server...")
+            sockets.sio.emit('study_complete')  #{'subject_id': subject_id}
+        except Exception as e:
+            print(f"Failed to emit study_complete: {e}")
+
         # Print experiment summary
         print(f"\n{'=' * 60}")
         print("EXPERIMENT SUMMARY")
@@ -867,4 +882,7 @@ if __name__ == "__main__":
     subject_id = args.subject_id
     start_level = args.start_level
     skip_instructions = args.skip
+
+
+
     main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = args.pilot)
