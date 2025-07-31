@@ -396,8 +396,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        #short_round_triggered = False #step_count > 50 # TODO can remove this
-        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round
+        short_round_triggered = False #step_count > 10 # TODO can remove this
+        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round or short_round_triggered
         if skip_round:
             print(f'SKIP ROUND')
             done = True

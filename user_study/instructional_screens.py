@@ -1537,12 +1537,12 @@ class FinalSummaryScreen(InstructionalScreen):
         self.draw_text_centered(window, "Thank You!", 150, self.font_large, self.highlight_color)
 
         if self.experiment_results:
-            total_reward = sum(r['reward'] for r in self.experiment_results)
-            avg_reward = total_reward / len(self.experiment_results)
+            #total_reward = sum(r['reward'] for r in self.experiment_results)
+            #avg_reward = total_reward / len(self.experiment_results)
 
             self.draw_text_centered(window, f"Rounds Completed: {len(self.experiment_results)}", 230, self.font_large)
-            self.draw_text_centered(window, f"Total Score: {total_reward:.2f}", 270, self.font_large)
-            self.draw_text_centered(window, f"Average Score: {avg_reward:.2f}", 310, self.font_large, (100, 255, 100))
+            #self.draw_text_centered(window, f"Total Score: {total_reward:.2f}", 270, self.font_large)
+            #self.draw_text_centered(window, f"Average Score: {avg_reward:.2f}", 310, self.font_large, (100, 255, 100))
 
         message_lines = [
             "",

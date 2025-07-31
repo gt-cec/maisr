@@ -384,7 +384,7 @@ class ExperimentDataLogger:
         session_duration = (datetime.now() - self.session_start_time).total_seconds()
         self.session_data['session_duration_seconds'] = session_duration
 
-        timestamp = self.session_start_time.strftime("%Y%m%d_%H%M")
+        timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
         session_filename = f"session_subject_{self.subject_id}_{timestamp}.json"
         session_path = os.path.join(self.session_dir, session_filename)
 
@@ -393,7 +393,7 @@ class ExperimentDataLogger:
 
             # Save survey responses
             if hasattr(self, 'survey_responses') and self.survey_responses:
-                survey_file = os.path.join(self.output_dir, f'{self.subject_id}/survey_responses_subject_{self.subject_id}.json')
+                survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
                 with open(survey_file, 'w') as f:
                     json.dump(self.survey_responses, f, indent=2)
                 print(f"Survey responses saved to: {survey_file}")
