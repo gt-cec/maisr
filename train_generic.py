@@ -1622,8 +1622,8 @@ if __name__ == "__main__":
         #vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
     elif version == 'mixed-1seed':
-        note = 'fcp_mixed' + machine[0].upper()
-        config['num_timesteps'] = 4e5
+        note = 'placeholder' #'fcp_mixed' + machine[0].upper()
+        config['num_timesteps'] = 7e5
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
 
@@ -1631,46 +1631,23 @@ if __name__ == "__main__":
 
         hyperparams = {
             # 'seed': [21, 623, 33, 82],
-            'threat_reward_scaling': [0.3],
+            'threat_reward_scaling': [0.25],
             "teammate_reward_scale": [0.75],
             "potential_ratio": [0.5],
             "gamma": [0.985],
-            "team_spread_bonus_coeff": [0.015],
-            "shaping_coeff_earlyfinish": [0.16],
-            'league_type': ['mixed50','strategy_diverse', 'selfplay']# Later: mixed25, mixed75
+            "team_spread_bonus_coeff": [0.02],
+            "shaping_coeff_earlyfinish": [0.2],
+            "quick_id_shaping_coeff": [1.5],
+            'league_type': ['strategy_diverse', 'selfplay', 'mixed50']# Later: mixed25, mixed75
 
         }
         config['seed'] = int(args.seed)
         overfit_test = None
         load_path, vecnorm_load_path = None, None
 
-    elif version == 'index':
-        note = 'index' + machine[0].upper()
-        config['num_timesteps'] = 7e5
-        config['league_type'] = 'selfplay'
-        config['teammate_active_at_start'] = True
-        project_name = 'maisr-rl-index'
-        config['action_type'] = 'target_index'
-
-        hyperparams = {
-            # 'seed': [21, 623, 33, 82],
-            'threat_reward_scaling': [0.3],
-            "teammate_reward_scale": [0.75],
-            "potential_ratio": [0.5, 1],
-            "gamma":[0.99, 0.985],
-            "team_spread_bonus_coeff": [0.005],
-            "shaping_coeff_earlyfinish":[0.11, 0.07]
-        }
-        config['seed'] = int(args.seed)
-        overfit_test = None
-
-        #load_path = None#load_paths[int(args.seed)]
-        #vecnorm_load_path = None#vecnorm_load_paths[int(args.seed)]
-        load_path, vecnorm_load_path = get_latest_checkpoint_and_vecnorm(seed=config['seed'], note_prefix=note)
-
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
-        config['num_timesteps'] = 3e5
+        config['num_timesteps'] = 5e5
         config['league_type'] = 'strategy_diverse'
         config['teammate_active_at_start'] = False
         project_name = 'maisr-rl-index'
@@ -1747,10 +1724,14 @@ if __name__ == "__main__":
             param_key = param_shorthand[param_name]
             param_strings.append(f'{param_key}-{param_value}')
 
+        if note == 'placeholder':
+            note = 'M1S_' + config['league_type']
+
         temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
         from datetime import datetime
         timestamp = datetime.now().strftime("%m%d_%H%M")
         run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}'
+
 
         print(f'\n--- Starting training run with params: {current_params} ---')
         train_generic(

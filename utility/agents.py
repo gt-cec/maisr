@@ -99,7 +99,9 @@ class Aircraft(Agent):
         elif self.appearance == 'red':
             self.color = (225, 25, 25)
         elif self.appearance == 'brown':
-            self.color = (150, 75, 0)
+            self.color = (255, 150, 0)
+        elif self.appearance == 'black':
+            self.color = (20, 20, 20)
 
         self.smoothed_direction = 0.0  # Smoothed direction in radians
         self.direction_smoothing_factor = 0.02  # Lower = more smoothing
@@ -209,11 +211,12 @@ class Aircraft(Agent):
             )
             pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
 
+
             # Backward lines from each wingtip
             def draw_backward_line(point):
                 end = (
-                    point[0] - math.cos(self.direction) * 5,
-                    point[1] - math.sin(self.direction) * 5
+                    point[0] - math.cos(self.direction) * 8,
+                    point[1] - math.sin(self.direction) * 8
                 )
                 pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
             draw_backward_line(left_wingtip_point)

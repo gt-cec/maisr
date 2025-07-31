@@ -286,7 +286,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Nice job! Please answer these questions about the last round:"
+        title = "Please answer these questions about the last round:"
         #if self.episode_config:
             #title = f"Please rate your workload in the last round:"
         self.draw_text_centered(window, title, 120, self.font_large)
@@ -570,7 +570,8 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         if icon_type == 'green': color = (76, 175, 80)
         elif icon_type == 'purple': color = (156, 39, 176)
         elif icon_type == 'red': color = (225, 25, 25)
-        elif icon_type == 'brown': color = (150, 75, 0)
+        elif icon_type == 'brown': color = (255, 150, 0)
+        elif icon_type == 'black': color = (30, 30, 30)
         else: color = (180, 180, 180)
 
 
@@ -608,6 +609,12 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
             for pt in [left_wing, right_wing]:
                 end = (pt[0] + math.cos(direction) * 5,
                        pt[1] + math.sin(direction) * 5)
+                pygame.draw.line(window, color, pt, end, LINE_WIDTH)
+
+        elif icon_type == 'brown':
+            for pt in [left_wing, right_wing]:
+                end = (pt[0] - math.cos(direction) * 8,
+                       pt[1] - math.sin(direction) * 8)
                 pygame.draw.line(window, color, pt, end, LINE_WIDTH)
 
         # Store for click detection
@@ -1333,13 +1340,13 @@ class Instruct7Screen(GameInstructionScreen):
                     "your score will be reduced.",
                     "",
                     "",
-                    "If you identify all 15 targets and at least 2 threats before",
-                    "the round timer ends, you will receive a bonus for finishing early.",
+                    "If you identify all 15 targets and at least 2 threats before the",
+                    "round timer ends, you will receive a bonus for finishing early.",
                     "",
                     "",
                     "Your final score is calculated as:",
                     "",
-                    "5 × (targets) - 30 × abs(2 - threats)",
+                    "5 × (targets) - 10 × abs(2 - threats)",
                     "+ 1.25 × (# of seconds early)",
                     "",
                     "",
@@ -1368,18 +1375,25 @@ class Instruct7Screen(GameInstructionScreen):
         #     self.draw_text_centered(window, line, y_pos, self.font_large)
         #     y_pos += 35
 
-class SecondPracticeIntroScreen(InstructionalScreen):
-    """Screen shown between the two practice rounds"""
+class SecondPracticeIntroScreen(GameInstructionScreen):
+    """Screen shown between the two practice rounds with navigation arrows"""
+
+    def __init__(self, window_width: int = 1000, window_height: int = 1100, sio=None):
+        # Set screen_number=1 and total_screens=1 since it's a single page
+        super().__init__(screen_number=1, total_screens=1,
+                         window_width=window_width, window_height=window_height, sio=sio)
 
     def draw_content(self, window: pygame.Surface) -> None:
-        top_text = ["Nice job! Let's do one more practice",
-                    "round just to get more familiar."
-                    ]
+        top_text = [
+            "Nice job! Let's do one more practice",
+            "round just to get more familiar."
+        ]
 
         y_pos = 150
         for line in top_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
+
 
 
 # class Instruct7Screen(GameInstructionScreen):

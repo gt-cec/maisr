@@ -232,7 +232,7 @@ def draw_progress_bar(window, font, current_index, total_configs):
         pygame.draw.rect(window, color, pygame.Rect(x, y, segment_width - 2, segment_height))
 
         # Label: "PRACTICE" for first, numbers for rest
-        label = "PRAC" if i == 0 else str(i)
+        label = "P1" if i == 0 else "P2" if i == 1 else str(i-1)
         label_surface = font.render(label, True, (0, 0, 0))
         label_rect = label_surface.get_rect(center=(x + segment_width // 2, y + segment_height // 2))
         window.blit(label_surface, label_rect)
@@ -283,28 +283,30 @@ def draw_status_info(window, font, current_config, config_index, total_configs, 
         y_offset += 25
 
 
-def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections, step_count, max_steps):
+def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections,
+                         step_count, max_steps, tick_rate=30):
     """Draw bottom bar with score and countdown timer"""
     regular_targets = targets_identified
     high_value_targets = threats_identified
 
     # Compute score: 5 × (# of targets) + 30 × abs(2 - # of threats)
-    score = 5 * regular_targets - 30 * abs(2 - high_value_targets)
+    score = 5 * regular_targets - 10 * abs(2 - high_value_targets)
 
     # Countdown timer: 971 steps ≈ 45 seconds
-    total_seconds = 40
-    time_left = max(0, total_seconds - int(step_count * (total_seconds / 971)))
+    total_seconds = int(max_steps / tick_rate)
+    time_left = max(0, int(total_seconds - (step_count / tick_rate)))
 
     bottom_texts = [
         f"Regular: {regular_targets}/15",
         f"High-value: {high_value_targets}/2",
         f"Score: {score}",
+        f"Steps: {step_count}/{round(max_steps/35, 0)}",
         f"Time left: {time_left}s"
     ]
 
     x_start = 50
     y_pos = 1060  # Just above the progress bar
-    spacing = 1000 / 4
+    spacing = 1000 / 5
 
     for i, text in enumerate(bottom_texts):
         text_surface = font.render(text, True, (0, 0, 0))
@@ -378,30 +380,37 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     frame_send_interval = 1  # Send every N frames (adjust for performance)
 
     # Draw static labels once
-    draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'])
+    draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified, base_env.detections, 0, base_env.config['max_steps'], tick_rate)
 
     countdown_length = 100
-
     countdown_steps = 0
+    sockets.delta_manager.last_frame = None
+    sockets.delta_manager.frame_count = 0
+    sockets.delta_manager.last_full_frame = 0
 
-    first_frame = True
+    #first_frame = True
+    skip_round = False
     while not done:
         if countdown_steps <= countdown_length:
             env.render()
             draw_countdown_overlay(window, font, countdown_steps, countdown_length)
             pygame.display.flip()
-            pygame.time.wait(33)
+            #pygame.time.wait(33)
             sockets.send_frame(window)
             countdown_steps += 1
             continue  # Skip the rest of the loop until countdown is done
 
+        #sockets.send_frame(window)
+        sockets.send_frame_with_delta(window, quality=75)  # will trigger full frame
+        pygame.time.wait(50)
+
         map_half_size = env.envs[0].env.config['gameboard_size']
         current_time = pygame.time.get_ticks()
-        skip_round = False
 
-        if first_frame:
-            sockets.send_frame(window)
-            first_frame = False
+
+        # if first_frame:
+        #     sockets.send_frame(window)
+        #     first_frame = False
 
         # Handle pygame events
         for event in pygame.event.get():
@@ -410,10 +419,11 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return True, episode_reward, step_count  # Signal to quit experiment
-                elif event.key == pygame.K_SPACE:
+                elif event.key == pygame.K_SPACE and admin:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
                 elif event.key == pygame.K_RETURN and admin:
+                    print('SKIP ROUND')
                     skip_round = True
                 else:
                     human_controller.handle_keypress(event.key)
@@ -451,6 +461,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         reward = rewards[0]
         info = infos[0]
         done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round # TODO testing
+        if skip_round:
+            print(f'SKIP ROUND')
+            done = True
+            break
 
         final_target_ids = base_env.targets_identified
         final_threat_ids = base_env.num_threats_identified
@@ -533,7 +547,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     # Configuration
     config_filename = 'configs/Monolith_index_August.json'
     tick_rate = 30
-    time_factor = 20
+    time_factor = 10
     config = load_env_config(config_filename)
 
     config['tick_rate'] = tick_rate
@@ -563,38 +577,42 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
 
     else:
-        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
-        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+        agent_a_name = 'index_selfplay'  # strategy_trained'#'selfplay_trained_jul18'
+        agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
 
 
     # Define RL agent model paths
     agent_models = {
         'A': f'./user_study/saved_agents/{agent_a_name}_model.zip',
         'B': f'./user_study/saved_agents/{agent_b_name}_model.zip',
-        'S': f'./user_study/saved_agents/{agent_b_name}_model.zip'
+        'S': f'./user_study/saved_agents/{agent_b_name}_model.zip', # Solo
+        'P': f'./user_study/saved_agents/{agent_b_name}_model.zip' # Practice
     }
 
     vecnorm_paths = {
         'A': f'./user_study/saved_agents/{agent_a_name}_vecnormalize.pkl',
         'B': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl',
-        'S': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
+        'S': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl',
+        'P': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
     }
 
-    levels = list(range(1, 8))
-    random.shuffle(levels)
+    #levels = list(range(1, 8))
+    #random.shuffle(levels)
+    # config_list = []
+    # for level in levels:
+    #     pair = [f"A{level}", f"B{level}"] if subject_id % 2 == 0 else [f"B{level}", f"A{level}"]
+    #     #random.shuffle(pair)  # Randomize whether A or B comes first for this level
+    #     config_list.extend(pair)
 
-    config_list = []
-    for level in levels:
-        pair = [f"A{level}", f"B{level}"]
-        random.shuffle(pair)  # Randomize whether A or B comes first for this level
-        config_list.extend(pair)
+    if subject_id % 2 == 0:
+        config_list = ['A1', 'B1', 'B2', 'A2', 'A3', 'B3', 'B4', 'A4', 'A5', 'B5', 'B6', 'A6', 'A7', 'B7']
+    else:
+        config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
 
-    practice_level = levels[0]
-    #practice_config = [f"C{practice_level}"]
+    practice_level = 1
     practice_config = [f"C{practice_level}", f"C{practice_level}"]
 
     full_config_list = practice_config + config_list
-    print(f"Randomized configuration order: {full_config_list}")
 
     # If start_level is specified, start from that index
     if start_level > 0:
@@ -607,6 +625,8 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     if collect_solo_trajectories:
         solo_configs = ['S1', 'S2','S3','S4','S5','S6','S7']
         full_config_list.extend(solo_configs)
+
+    print(f"Randomized configuration order: {full_config_list}")
 
     # Initialize pygame
     # if using windows, set DPI awareness to avoid scaling issues
@@ -683,22 +703,22 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
             if config_index == 0: # # Handle practice level special settings
                 print(f"\nPreparing for practice level (config: {current_config})")
-                agent_letter = 'S'
+                agent_letter = 'P'
                 level_number = 1
-                agent_appearance = 'brown'  # Practice agent color
+                agent_appearance = 'black'  # Practice agent color
             elif config_index == 1: # # Handle practice level special settings
                 screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
                 result = screen_manager.show_screen(screen)
                 if result.get("action") == "exit":
                     return
                 print(f"\nPreparing for practice level (config: {current_config})")
-                agent_letter = 'S'
+                agent_letter = 'P'
                 level_number = 1
-                agent_appearance = 'brown'  # Practice agent color
+                agent_appearance = 'black'  # Practice agent color
             else:
                 agent_letter = current_config[0]  # 'A', 'B', or 'S'
                 level_number = int(current_config[1:])
-                agent_appearance = appearance_map.get(config_index, 'black' if agent_letter == 'S' else 'red')
+                agent_appearance = appearance_map.get(config_index, 'black')
             #     if agent_letter == 'A':
             #         agent_appearance = 'purple' if config_index % 2 == 0 else 'red'
             #     elif agent_letter == 'B':
@@ -763,7 +783,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             env.close()
 
             # Workload survey and teammate survey logic (skip for practice)
-            if (not skip_instructions) and (agent_letter != 'S'):
+            level = agent_letter + str(level_number)
+            #if (not skip_instructions) and (agent_letter != 'S'):
+            if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7']:
                 workload_survey_screen = WorkloadSurveyScreen(
                     episode_config=current_config, window_width=window_width, window_height=window_height)
                 workload_survey_result = screen_manager.show_screen(workload_survey_screen)
@@ -778,7 +800,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
             print(f'config index = {config_index}')
             print(f'(config_index + 1) % 2 == 0: {(config_index) % 2 == 0}')
-            if (agent_letter != 'S') and (not skip_instructions) and config_index > 0 and (config_index) % 2 == 0:
+            if (agent_letter != 'S') and (not skip_instructions) and config_index > 0 and (config_index - 1) % 2 == 0:
                 teammate_compare_survey = TeammatePreferenceSurveyScreen(
                     window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
@@ -792,105 +814,6 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 print("Next episode starting in 2 seconds...")
                 pygame.time.wait(100)
 
-        # for config_index, current_config in enumerate(full_config_list):
-        # #for config_index, current_config in enumerate(full_config_list[1:]):
-        #     agent_letter = current_config[0]  # 'A' or 'B'
-        #     level_number = int(current_config[1:])  # Level number
-        #     if agent_letter == 'A':
-        #         #if level_number % 2 == 0: # Even levels
-        #         agent_appearance = 'purple'
-        #         # else: # Odd levels
-        #         #     agent_appearance = 'red'
-        #     elif agent_letter == 'B': # Agent B
-        #         # if level_number % 2 == 0: # Even levels
-        #         #     agent_appearance = 'brown'
-        #         # else: # Odd levels
-        #         agent_appearance = 'green'
-        #     else:
-        #         raise ValueError(f'Agent letter is {agent_letter}')
-        #
-        #     print(f"\nPreparing for config: {current_config}")
-        #     print(f"Agent: {agent_letter}, Level: {level_number}")
-        #
-        #     config['force_specific_level'] = level_number - 1  # Convert to 0-indexed
-        #
-        #     env_fns = [make_wrapped_env(config, clock, window, agent_appearance, subject_id) for _ in range(1)]
-        #     env = DummyVecEnv(env_fns)
-        #     vecnorm_path = vecnorm_paths[agent_letter]
-        #     print(f'Loaded vecnorm stats from {vecnorm_path}')
-        #     env = load_vecnormalize_wrapper(vecnorm_path, env)
-        #
-        #     # Load the appropriate agent
-        #     if agent_letter not in current_agents:
-        #         current_agents[agent_letter] = PPO.load(agent_models[agent_letter], env=env)
-        #     current_agent_name = current_agents[agent_letter]
-        #
-        #     # Initialize human controller for this episode
-        #     human_controller = HumanSubpolicyController(env)
-        #     sockets.human_controller = human_controller
-        #
-        #     should_quit, episode_reward, step_count = run_single_episode(
-        #         env, human_controller, current_config, config_index, len(full_config_list),
-        #         current_agent_name, window, font, clock, tick_rate, data_logger, time_factor
-        #     )
-        #
-        #     # Store results
-        #     result = {
-        #         'config': current_config,
-        #         'agent': agent_letter,
-        #         'level': level_number,
-        #         'reward': episode_reward,
-        #         'steps': step_count,
-        #         'config_index': config_index + start_level
-        #     }
-        #     experiment_results.append(result)
-        #
-        #     # Clean up environment
-        #     env.close()
-        #
-        #     print(f"\nEpisode {current_config} completed!")
-        #
-        #     if not skip_instructions:
-        #         workload_survey_screen = WorkloadSurveyScreen(episode_config=current_config, window_width=window_width, window_height=window_height)
-        #         workload_survey_result = screen_manager.show_screen(workload_survey_screen)
-        #         #survey_launched = launch_survey_url(survey_url, current_config, args.subject_id)
-        #
-        #         if workload_survey_result["action"] == "exit":
-        #             print("Experiment terminated by user")
-        #             break
-        #         elif workload_survey_result["action"] == "continue":
-        #             # Log the survey data
-        #             survey_data = workload_survey_result.get("survey_data", {})
-        #             print(f"Survey responses for {current_config}: {survey_data['responses']}")
-        #
-        #             # Add survey data to your data logger
-        #             if hasattr(data_logger, 'log_survey_data'):
-        #                 data_logger.log_survey_data(survey_data)
-        #             else:
-        #                 # Fallback: save to file or print
-        #                 print(f"Survey data: {survey_data}")
-        #
-        #     # Show the teammate preference survey
-        #
-        #     if (not skip_instructions) and config_index > 0 and (config_index+1) % 2 == 0:
-        #         teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
-        #         teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
-        #
-        #         if teammate_compare_result["action"] == "continue":
-        #             survey_data = teammate_compare_result["survey_data"]
-        #             data_logger.log_teammate_survey_data(survey_data)
-        #         elif teammate_compare_result["action"] == "exit": pass
-        #     last_agent_appearance = agent_appearance
-        #
-        #     # Check if user wants to quit
-        #     if should_quit:
-        #         print("Experiment terminated by user")
-        #         break
-        #
-        #     # Brief pause between episodes (unless it's the last one)
-        #     if config_index < len(full_config_list) - 1:
-        #         print("Next episode starting in 2 seconds...")
-        #         pygame.time.wait(100)
 
     except KeyboardInterrupt:
         print("\nExperiment interrupted by user")

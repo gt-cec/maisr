@@ -31,7 +31,7 @@
 	"action_type": "target_index",
 	"obs_noise_std_localsearch": 0.01,
 
-	"base_env_target_id_reward": 1,
+	"base_env_target_id_reward": 2,
 	"teammate_reward_scale": 0.75,
 	"threat_id_reward": 11,
 	"shaping_decay_rate":1,
