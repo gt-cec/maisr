@@ -1,0 +1,112 @@
+[
+  {
+    "episode_config": "A1",
+    "timestamp": 437474,
+    "mental_demand": 3,
+    "physical_demand": 1,
+    "temporal_demand": 4,
+    "effort": 4,
+    "performance": 6,
+    "frustration": 3
+  },
+  {
+    "episode_config": "B1",
+    "timestamp": 532572,
+    "mental_demand": 4,
+    "physical_demand": 1,
+    "temporal_demand": 3,
+    "effort": 3,
+    "performance": 6,
+    "frustration": 2
+  },
+  {
+    "episode_config": "A2",
+    "timestamp": 738889,
+    "mental_demand": 3,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 6,
+    "frustration": 4
+  },
+  {
+    "episode_config": "C5",
+    "timestamp": 839235,
+    "mental_demand": 2,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 2
+  },
+  {
+    "episode_config": "B3",
+    "timestamp": 950188,
+    "mental_demand": 2,
+    "physical_demand": 1,
+    "temporal_demand": 3,
+    "effort": 2,
+    "performance": 5,
+    "frustration": 3
+  },
+  {
+    "episode_config": "A4",
+    "timestamp": 1167205,
+    "mental_demand": 2,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 2
+  },
+  {
+    "episode_config": "B5",
+    "timestamp": 1421159,
+    "mental_demand": 3,
+    "physical_demand": 1,
+    "temporal_demand": 3,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 2
+  },
+  {
+    "episode_config": "C3",
+    "timestamp": 1499517,
+    "mental_demand": 4,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 3
+  },
+  {
+    "episode_config": "A6",
+    "timestamp": 1661080,
+    "mental_demand": 2,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 2
+  },
+  {
+    "episode_config": "B7",
+    "timestamp": 1860671,
+    "mental_demand": 3,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 3,
+    "performance": 7,
+    "frustration": 3
+  },
+  {
+    "episode_config": "C4",
+    "timestamp": 1909045,
+    "mental_demand": 2,
+    "physical_demand": 1,
+    "temporal_demand": 2,
+    "effort": 2,
+    "performance": 7,
+    "frustration": 1
+  }
+]

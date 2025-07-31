@@ -496,7 +496,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     #config['observe_teammate_priority'] = False # TODO switch to true with new agents
     print(f'LOADED CONFIG {config_filename}')
 
-    agent_a_name = 'M1S_indexstrategy'
+    agent_a_name = 'M1S_indexstrategy' # 'M1S_index_strategyresumed'
     agent_b_name = 'M1S_indexselfplay'
     agent_c_name = 'M1S_indexmixed50'
     agent_s_name = 'selfplay_seed77'
@@ -542,6 +542,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         'P': f'./user_study/saved_agents/{agent_p_name}_vecnormalize.pkl'
     }
 
+
     #levels = list(range(1, 8))
     #random.shuffle(levels)
     # config_list = []
@@ -552,13 +553,22 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
     if subject_id % 2 == 0:
         if run_third_agent:
-            config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
+            #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
+            #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
+            config_list = ['A1', 'B1', 'C7', 'A3', 'B3', 'C1', 'A4', 'B4', 'C5', 'A5', 'B5', 'C3', 'A7', 'B7']
+            # AB 3
+            # CA 2
+            # BC 2
+
         else:
+            raise NotImplementedError
             config_list = ['A1', 'B1', 'B2', 'A2', 'A3', 'B3', 'B4', 'A4', 'A5', 'B5', 'B6', 'A6', 'A7', 'B7']
     else:
         if run_third_agent:
             config_list = ['B1', 'A1', 'C7', 'A2', 'B2', 'C5', 'B3', 'A3', 'C1', 'A4', 'B4', 'C6', 'B5', 'A5', 'C3', 'A6', 'B6', 'C2' 'B7', 'A7', 'C4']
+            config_list = ['B1', 'A1', 'C7', 'B3', 'A3', 'C1', 'B4', 'A4', 'C5', 'B5', 'A5', 'C3', 'B7', 'A7']
         else:
+            raise NotImplementedError
             config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
 
 
@@ -750,7 +760,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             level = agent_letter + str(level_number)
 
 
-            if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4']:
+            #if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4']:
+            levels_for_workload_survey = ['A1', 'B1', 'B3', 'A4', 'B5', 'B7', 'C5', 'C3', 'C4']
+            if level in levels_for_workload_survey:
                 workload_survey_screen = WorkloadSurveyScreen(
                     episode_config=current_config, window_width=window_width, window_height=window_height)
                 workload_survey_result = screen_manager.show_screen(workload_survey_screen)
@@ -763,12 +775,12 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                     if hasattr(data_logger, 'log_survey_data'):
                         data_logger.log_survey_data(survey_data)
 
-            #print(f'config index = {config_index}')
-            #print(f'(config_index + 1) % 2 == 0: {(config_index) % 2 == 0}')
             if subject_id % 2 == 0:
-                levels_for_preference_survey = ['B1', 'A2', 'B3', 'C6', 'C3', 'C2', 'C4']
+                #levels_for_preference_survey = ['B1', 'A2', 'B3', 'C6', 'C3', 'C2', 'C4']
+                levels_for_preference_survey = ['B1', 'A3', 'C1', 'B4', 'A5', 'C3', 'B7']
             else:
-                raise NotImplementedError
+                levels_for_preference_survey = ['A1', 'B3', 'C1', 'A4', 'B5', 'C3', 'A7']
+
 
             if level in levels_for_preference_survey:
                 teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
@@ -779,7 +791,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
                 data_logger.save_session_data()
 
-            no_surveys = level not in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4'] and level not in levels_for_preference_survey
+            no_surveys = level not in levels_for_workload_survey and level not in levels_for_preference_survey
             if agent_letter not in ['P', 'S'] and no_surveys:
                 inter_screen = InterScreen()
                 screen_manager.show_screen(inter_screen)

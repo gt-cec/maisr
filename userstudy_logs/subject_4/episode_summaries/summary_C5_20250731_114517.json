@@ -1,0 +1,17 @@
+{
+  "subject_id": 4,
+  "config": "C5",
+  "agent_type": "C",
+  "level": 5,
+  "agent_model_name": "./user_study/saved_agents/M1S_indexmixed50_model.zip",
+  "episode_start_time": "2025-07-31T11:45:17.826801",
+  "episode_end_time": "2025-07-31T11:45:58.059945",
+  "episode_duration_seconds": 40.233144,
+  "final_targets_identified": 15,
+  "final_threats_identified": 2,
+  "total_detections": 0,
+  "total_timesteps": 242,
+  "all_targets_identified": true,
+  "all_threats_identified": false,
+  "mission_success": false
+}
