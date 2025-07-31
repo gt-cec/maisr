@@ -21,7 +21,7 @@ class ScreenType(Enum):
 class InstructionalScreen:
     """Base class for instructional screens"""
 
-    def __init__(self, window_width: int = 1000, window_height: int = 1100, sio = None):
+    def __init__(self, window_width: int = 1000, window_height: int = 1100, sio = None, admin=False):
 
         font_path = './user_study/AcPlus_IBM_VGA_8x16.ttf'
         #font_size = 16
@@ -41,6 +41,7 @@ class InstructionalScreen:
         self.cursor_visible = True
         self.cursor_timer = 0
         self.cursor_blink_rate = 500  # milliseconds
+        self.admin = admin
 
         self.sio = sio
 
@@ -66,7 +67,7 @@ class InstructionalScreen:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 return {"action": "continue", "text_input": self.text_input}
-            elif event.key == pygame.K_ESCAPE:
+            elif event.key == pygame.K_ESCAPE and self.admin:
                 return {"action": "exit"}
             elif event.key == pygame.K_LEFT:
                 return {"action": "previous"}
@@ -250,7 +251,7 @@ class BetweenEpisodesScreen(InstructionalScreen):
 class WorkloadSurveyScreen(InstructionalScreen):
     """NASA-TLX style workload survey screen"""
 
-    def __init__(self, episode_config: str = "", *args, **kwargs):
+    def __init__(self, episode_config: str = "", admin=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.episode_config = episode_config
 
@@ -280,6 +281,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.selected_color = (100, 150, 255)
         self.hover_color = (150, 150, 150)
         self.border_color = (200, 200, 200)
+        self.admin = admin
 
         # Mouse interaction
         self.hover_segment = None  # (question_index, segment_index)
@@ -394,7 +396,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
             if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 if self.all_questions_answered():
                     return {"action": "continue", "survey_data": self.get_survey_data()}
-            elif event.key == pygame.K_ESCAPE:
+            elif event.key == pygame.K_ESCAPE and self.admin:
                 return {"action": "exit"}
 
         return {"action": "none"}
@@ -464,7 +466,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
 class TeammatePreferenceSurveyScreen(InstructionalScreen):
     """Survey screen for teammate preference questions with clickable icons"""
 
-    def __init__(self, *args, agent_appearance=None, last_agent_appearance=None, **kwargs):
+    def __init__(self, *args, agent_appearance=None, last_agent_appearance=None, admin=False, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Survey questions
@@ -489,6 +491,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
         self.purple_color = (156, 39, 176)
         self.selected_bg_color = (255, 255, 255)
         self.icon_bg_color = (120, 120, 120)#(180, 180, 180)
+        self.admin = admin
 
         # Continue button
         self.continue_button_size = 80
@@ -607,14 +610,14 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
             pygame.draw.rect(window, color, rect)
         elif icon_type == 'green':
             for pt in [left_wing, right_wing]:
-                end = (pt[0] + math.cos(direction) * 5,
-                       pt[1] + math.sin(direction) * 5)
+                end = (pt[0] + math.cos(direction) * 15,
+                       pt[1] + math.sin(direction) * 15)
                 pygame.draw.line(window, color, pt, end, LINE_WIDTH)
 
-        elif icon_type == 'brown':
+        elif icon_type == 'red':
             for pt in [left_wing, right_wing]:
-                end = (pt[0] - math.cos(direction) * 8,
-                       pt[1] - math.sin(direction) * 8)
+                end = (pt[0] - math.cos(direction) * 18,
+                       pt[1] - math.sin(direction) * 18)
                 pygame.draw.line(window, color, pt, end, LINE_WIDTH)
 
         # Store for click detection
@@ -665,7 +668,7 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
             if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 if self.all_questions_answered():
                     return {"action": "continue", "survey_data": self.get_survey_data()}
-            elif event.key == pygame.K_ESCAPE:
+            elif event.key == pygame.K_ESCAPE and self.admin:
                 return {"action": "exit"}
 
         return {"action": "none"}
@@ -755,10 +758,12 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
 class GameInstructionScreen(InstructionalScreen):
     """Base class for game instruction screens with navigation"""
 
-    def __init__(self, screen_number: int, total_screens: int, *args, **kwargs):
+    #def __init__(self, screen_number: int, total_screens: int, admin=False, *args, **kwargs):
+    def __init__(self, screen_number: int, total_screens: int, *args, admin=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.screen_number = screen_number
         self.total_screens = total_screens
+        self.admin = admin
 
         # Arrow button properties
         self.arrow_button_size = 60
@@ -854,7 +859,7 @@ class GameInstructionScreen(InstructionalScreen):
                 return {"action": "previous"}
             elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                 return {"action": "continue"}
-            elif event.key == pygame.K_ESCAPE:
+            elif event.key == pygame.K_ESCAPE and self.admin:
                 return {"action": "exit"}
         return {"action": "none"}
 
@@ -1394,6 +1399,23 @@ class SecondPracticeIntroScreen(GameInstructionScreen):
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
+class InterScreen(GameInstructionScreen):
+    """Screen shown between the two practice rounds with navigation arrows"""
+
+    def __init__(self, window_width: int = 1000, window_height: int = 1100, sio=None):
+        # Set screen_number=1 and total_screens=1 since it's a single page
+        super().__init__(screen_number=1, total_screens=1,
+                         window_width=window_width, window_height=window_height, sio=sio)
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        top_text = [
+            "Nice job! Click the right arrow to start the next round.",
+        ]
+
+        y_pos = 300
+        for line in top_text:
+            self.draw_text_centered(window, line, y_pos, self.font_large)
+            y_pos += 35
 
 
 # class Instruct7Screen(GameInstructionScreen):
@@ -1428,7 +1450,7 @@ class Instruct8Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         instruction_text = [
-            "You will complete a total of 14 rounds in the game.",
+            "You will complete a total of 21 rounds in the game.",
             "",
             "Each round is approximately 1 minute long.",
             "",
@@ -1494,10 +1516,13 @@ class PracticeIntroScreen(GameInstructionScreen):
             "gameplay. There is no survey after this round.",
             "",
             "",
-            "Take your time and experiment with different control options.",
+            "In the practice round, you will play alongside an agent who",
+            "is still learning. It may not do as well as the other agents!"
             "",
             "",
-            "When you're ready, click the arrow to begin."
+            "When you're ready, click the arrow to begin.",
+            "Please only click once, and the level will begin loading."
+
         ]
         self.draw_text_block(window, intro_lines, 400, self.font_large, 40)
 
@@ -1545,11 +1570,12 @@ class InstructionSeriesManager:
                  map_image_path: str = None, sensor_image_path: str = None,
                  hvt_video_path: str = None, detection_video_path: str = None,
                  click_video_path: str = None,
-                 human_image_path: str = None, teammate_image_path: str = None, sio = None):
+                 human_image_path: str = None, teammate_image_path: str = None, sio = None, admin=False):
         self.window = window
         self.clock = clock
         self.screen_manager = ScreenManager(window, clock)
         self.sio = sio
+        self.admin = admin
 
         total_screens = 9
 
@@ -1586,7 +1612,7 @@ class InstructionSeriesManager:
 
                 # Handle events
                 for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
+                    if event.type == pygame.QUIT and self.admin:
                         result = {"action": "exit"}
                         running = False
                     else:
@@ -1677,7 +1703,7 @@ class ScreenManager:
         # Execute callbacks
         if result["action"] == "continue" and on_continue:
             on_continue(result)
-        elif result["action"] == "exit" and on_exit:
-            on_exit(result)
+        # elif result["action"] == "exit" and on_exit:
+        #     on_exit(result)
 
         return result

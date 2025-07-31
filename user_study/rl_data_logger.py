@@ -24,8 +24,8 @@ class TimestepData:
     agent_action: int
 
     # Environment state
-    reward: float
-    cumulative_reward: float
+    #reward: float
+    #cumulative_reward: float
     terminated: bool
     truncated: bool
 
@@ -56,12 +56,13 @@ class EpisodeSummary:
     config: str
     agent_type: str
     level: int
+    agent_model_name: str
     episode_start_time: str
     episode_end_time: str
     episode_duration_seconds: float
 
     # Performance metrics
-    total_reward: float
+    #total_reward: float
     final_targets_identified: int
     final_threats_identified: int
     total_detections: int
@@ -73,7 +74,7 @@ class EpisodeSummary:
     mission_success: bool
 
     # Behavioral metrics
-    average_reward_per_timestep: float
+    #average_reward_per_timestep: float
 
 
 class ExperimentDataLogger:
@@ -188,8 +189,8 @@ class ExperimentDataLogger:
             agent_position=agent_position,
             agent_observation=agent_obs_list,
             agent_action=agent_action,
-            reward=float(reward),
-            cumulative_reward=float(self.cumulative_reward),
+            #reward=float(reward),
+            #cumulative_reward=float(self.cumulative_reward),
             terminated=terminated,
             truncated=truncated,
             target_positions=target_positions,
@@ -224,7 +225,7 @@ class ExperimentDataLogger:
         self.current_episode_data['events'].append(asdict(event))
         print(f"Event logged: {event_type} at timestep {self.current_timestep}")
 
-    def end_episode(self, env, final_info, final_target_ids, final_threat_ids) -> EpisodeSummary:
+    def end_episode(self, env, final_info, final_target_ids, final_threat_ids, agent_letter) -> EpisodeSummary:
         """Finalize episode logging and create summary"""
         episode_end_time = datetime.now()
         episode_duration = (episode_end_time - self.episode_start_time).total_seconds()
@@ -235,11 +236,12 @@ class ExperimentDataLogger:
             subject_id=self.subject_id,
             config=self.current_episode_data['episode_info']['config'],
             agent_type=self.current_episode_data['episode_info']['agent_type'],
+            agent_model_name=agent_letter,
             level=self.current_episode_data['episode_info']['level'],
             episode_start_time=self.episode_start_time.isoformat(),
             episode_end_time=episode_end_time.isoformat(),
             episode_duration_seconds=episode_duration,
-            total_reward=float(self.cumulative_reward),
+            #total_reward=float(self.cumulative_reward),
             final_targets_identified=final_target_ids,#int(env.envs[0].env.targets_identified),
             final_threats_identified=final_threat_ids,#int(env.envs[0].env.num_threats_identified),
             total_detections=int(env.envs[0].env.detections),
@@ -247,7 +249,7 @@ class ExperimentDataLogger:
             all_targets_identified=bool(env.envs[0].env.all_targets_identified),
             all_threats_identified=bool(env.envs[0].env.all_threats_identified),
             mission_success=bool(env.envs[0].env.all_targets_identified and env.envs[0].env.all_threats_identified),
-            average_reward_per_timestep=float(self.cumulative_reward / max(1, self.current_timestep))
+            #average_reward_per_timestep=float(self.cumulative_reward / max(1, self.current_timestep))
         )
 
         # Save episode data
@@ -258,7 +260,7 @@ class ExperimentDataLogger:
 
         print(f"Episode completed: {summary.config}")
         print(f"  Duration: {episode_duration:.2f} seconds")
-        print(f"  Total reward: {summary.total_reward:.2f}")
+        #print(f"  Total reward: {summary.total_reward:.2f}")
         print(f"  Targets identified: {summary.final_targets_identified}")
         print(f"  Threats identified: {summary.final_threats_identified}")
 
@@ -382,7 +384,7 @@ class ExperimentDataLogger:
         session_duration = (datetime.now() - self.session_start_time).total_seconds()
         self.session_data['session_duration_seconds'] = session_duration
 
-        timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
+        timestamp = self.session_start_time.strftime("%Y%m%d_%H%M")
         session_filename = f"session_subject_{self.subject_id}_{timestamp}.json"
         session_path = os.path.join(self.session_dir, session_filename)
 
@@ -391,7 +393,7 @@ class ExperimentDataLogger:
 
             # Save survey responses
             if hasattr(self, 'survey_responses') and self.survey_responses:
-                survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+                survey_file = os.path.join(self.output_dir, f'{self.subject_id}/survey_responses_subject_{self.subject_id}.json')
                 with open(survey_file, 'w') as f:
                     json.dump(self.survey_responses, f, indent=2)
                 print(f"Survey responses saved to: {survey_file}")
@@ -435,8 +437,8 @@ class ExperimentDataLogger:
             'total_episodes': len(episodes),
             'total_session_duration': sum(ep['episode_duration_seconds'] for ep in episodes),
             'average_episode_duration': sum(ep['episode_duration_seconds'] for ep in episodes) / len(episodes),
-            'total_reward': sum(ep['total_reward'] for ep in episodes),
-            'average_reward_per_episode': sum(ep['total_reward'] for ep in episodes) / len(episodes),
+            #'total_reward': sum(ep['total_reward'] for ep in episodes),
+            #'average_reward_per_episode': sum(ep['total_reward'] for ep in episodes) / len(episodes),
             'total_targets_identified': sum(ep['final_targets_identified'] for ep in episodes),
             'total_threats_identified': sum(ep['final_threats_identified'] for ep in episodes),
             'successful_missions': sum(1 for ep in episodes if ep['mission_success']),
@@ -450,7 +452,7 @@ class ExperimentDataLogger:
             if agent_episodes:
                 summary['agent_performance'][agent_type] = {
                     'episodes': len(agent_episodes),
-                    'average_reward': sum(ep['total_reward'] for ep in agent_episodes) / len(agent_episodes),
+                    #'average_reward': sum(ep['total_reward'] for ep in agent_episodes) / len(agent_episodes),
                     'success_rate': sum(1 for ep in agent_episodes if ep['mission_success']) / len(agent_episodes),
                     'average_targets_identified': sum(ep['final_targets_identified'] for ep in agent_episodes) / len(
                         agent_episodes)
@@ -510,7 +512,7 @@ def analyze_timestep_data(timestep_data: List[Dict]) -> Dict[str, Any]:
 
     analysis = {
         'total_timesteps': len(timestep_data),
-        'reward_progression': [step['cumulative_reward'] for step in timestep_data],
+        #'reward_progression': [step['cumulative_reward'] for step in timestep_data],
         'position_trajectories': {
             'human': [(step['human_position'][0], step['human_position'][1]) for step in timestep_data],
             'rl': [(step['agent_position'][0], step['agent_position'][1]) for step in timestep_data]

@@ -136,19 +136,23 @@ class MaisrLocalSearchWrapper(gym.Env):
                     self.teammate_manager.reset_for_episode()
                     self.current_teammate = self.teammate_manager.select_random_teammate()
                     self.current_teammate.env = self.env
-                    print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+                    if self.env.tag != 'userstudy_0':
+                        print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
             else:
                 self.teammate_manager.reset_for_episode()
                 self.current_teammate = self.teammate_manager.select_random_teammate()
                 self.current_teammate.env = self.env
-                print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+                if self.env.tag != 'userstudy_0':
+                    print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
 
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
-            #print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate}')
+            if self.env.tag != 'userstudy_0':
+                print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate}')
         else:
             self.current_teammate = None
-            print(f'[localsearchwrapper] current teammate is {self.current_teammate}')
+            if self.env.tag != 'userstudy_0':
+                print(f'[localsearchwrapper] current teammate is {self.current_teammate}')
 
         return raw_obs, _
 

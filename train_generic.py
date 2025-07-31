@@ -1622,8 +1622,8 @@ if __name__ == "__main__":
         #vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
     elif version == 'mixed-1seed':
-        note = 'placeholder' #'fcp_mixed' + machine[0].upper()
-        config['num_timesteps'] = 7e5
+        #note = 'placeholder' #'fcp_mixed' + machine[0].upper()
+        config['num_timesteps'] = 3.5e6
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
 
@@ -1638,12 +1638,16 @@ if __name__ == "__main__":
             "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
-            'league_type': ['selfplay','strategy_diverse', 'mixed50']# Later: mixed25, mixed75
+            #'league_type': ['selfplay','strategy_diverse', 'mixed50']# Later: mixed25, mixed75
 
         }
         config['seed'] = int(args.seed)
         overfit_test = None
-        load_path, vecnorm_load_path = None, None
+        config['league_type'] = 'strategy_diverse'
+        note = 'M1S_strategy_resumed'
+        load_path = 'outputs/M1S_strategy_diverse_0730_1849_seed99/checkpoints/M1S_strategy_diverse_0730_1849_seed99_checkpoint_624990_steps.zip'
+        vecnorm_load_path = 'outputs/M1S_strategy_diverse_0730_1849_seed99/checkpoints/M1S_strategy_diverse_0730_1849_seed99_checkpoint_vecnormalize_624990_steps.pkl'
+
 
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
@@ -1713,6 +1717,10 @@ if __name__ == "__main__":
     import itertools
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
+    #
+    # if note == 'placeholder':
+    #     note = 'M1S_' + config['league_type']
+
 
     for param_combination in itertools.product(*param_values):
         current_params = dict(zip(param_names, param_combination))
@@ -1724,8 +1732,7 @@ if __name__ == "__main__":
             param_key = param_shorthand[param_name]
             param_strings.append(f'{param_key}-{param_value}')
 
-        if note == 'placeholder':
-            note = 'M1S_' + config['league_type']
+
 
         temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
         from datetime import datetime

@@ -93,7 +93,7 @@ class Aircraft(Agent):
         self.appearance = appearance  # one of "green", "purple", "red", "brown", or None
 
         if self.appearance == 'green':
-            self.color = (76, 175, 80)
+            self.color = (76, 225, 80)
         elif self.appearance == 'purple':
             self.color = (156, 39, 176)
         elif self.appearance == 'red':
@@ -172,7 +172,7 @@ class Aircraft(Agent):
         # === CUSTOM APPEARANCE RENDERING ===
         if self.appearance == 'purple':
             # Square at root (center of aircraft), half the wingspan
-            square_size = self.env.AIRCRAFT_WING_LENGTH
+            square_size = 13
             rect = pygame.Rect(0, 0, square_size, square_size)
             rect.center = (screen_x, screen_y)
             pygame.draw.rect(window, self.color, rect)  # black border
@@ -180,8 +180,8 @@ class Aircraft(Agent):
             # Forward lines from each wingtip
             def draw_forward_line(point):
                 end = (
-                    point[0] + math.cos(self.direction) * 5,
-                    point[1] + math.sin(self.direction) * 5
+                    point[0] + math.cos(self.direction) * 8,
+                    point[1] + math.sin(self.direction) * 8
                 )
                 pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
             draw_forward_line(left_wingtip_point)
@@ -190,14 +190,35 @@ class Aircraft(Agent):
             # Perpendicular line at nose
             perp_angle = self.direction + math.pi / 2
             start = (
-                nose_point[0] - math.cos(perp_angle) * 2.5,
-                nose_point[1] - math.sin(perp_angle) * 2.5
+                nose_point[0] - math.cos(perp_angle) * 3.5,
+                nose_point[1] - math.sin(perp_angle) * 3.5
             )
             end = (
-                nose_point[0] + math.cos(perp_angle) * 2.5,
-                nose_point[1] + math.sin(perp_angle) * 2.5
+                nose_point[0] + math.cos(perp_angle) * 3.5,
+                nose_point[1] + math.sin(perp_angle) * 3.5
             )
             pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
+
+            def draw_backward_line(point):
+                end = (
+                    point[0] - math.cos(self.direction) * 8,
+                    point[1] - math.sin(self.direction) * 8
+                )
+                pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
+            draw_backward_line(left_wingtip_point)
+            draw_backward_line(right_wingtip_point)
+
+            # Line 3px forward from tail, 5px long
+            offset_tail = (
+                tail_point[0] + math.cos(self.direction) * 3,
+                tail_point[1] + math.sin(self.direction) * 3
+            )
+            end = (
+                offset_tail[0] + math.cos(self.direction) * 5,
+                offset_tail[1] + math.sin(self.direction) * 5
+            )
+            pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
+
         elif self.appearance == 'brown':
             # Same nose line as red
             perp_angle = self.direction + math.pi / 2

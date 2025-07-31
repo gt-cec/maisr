@@ -15,7 +15,7 @@ from utility.data_logging import load_env_config
 from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
-    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen, SecondPracticeIntroScreen
+    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen, SecondPracticeIntroScreen, InterScreen
 from PIL import Image
 from io import BytesIO
 
@@ -50,7 +50,7 @@ def draw_countdown_overlay(window, font, countdown_steps, countdown_length, map_
     big_font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 100)
     countdown_text = str(seconds_left)
     text_surface = big_font.render(countdown_text, True, (255, 255, 255))
-    text_rect = text_surface.get_rect(center=(overlay_rect.centerx, overlay_rect.centery))
+    text_rect = text_surface.get_rect(center=(500, 500))
 
     # Draw black circle behind text
     circle_radius = max(text_rect.width, text_rect.height) // 2# + 20
@@ -239,52 +239,8 @@ def draw_progress_bar(window, font, current_index, total_configs):
 
 
 
-
-def draw_instructions(window, font):
-    """Draw instructions for the human player"""
-    instructions = [
-        "HUMAN CONTROL INSTRUCTIONS:",
-        "• Keys 1-7: Select subpolicy",
-        "  1 = Local Search, 2 = Goto NW",
-        "  3 = Go to Threat, 4 = Hold",
-        "  5 = Goto NE, 6 = Goto SE, 7 = Goto SW",
-        "• Click map: Direct waypoint control",
-        "• Green targets = identified, Orange = unknown",
-        "• Avoid gold threat circles",
-        "• ESC = quit, SPACE = pause"
-    ]
-
-    y_offset = 20
-    for instruction in instructions:
-        color = (255, 255, 255) if instruction.startswith("HUMAN") else (200, 200, 200)
-        text_surface = font.render(instruction, True, color)
-        window.blit(text_surface, (1050, y_offset))
-        y_offset += 25
-
-
-def draw_status_info(window, font, current_config, config_index, total_configs, step_count, episode_reward, controller):
-    """Draw current status information"""
-    subpolicy_names = ["Local Search", "Goto NW", "Go to Threat", "Hold", "Goto NE", "Goto SE", "Goto SW"]
-    current_mode = "Custom Waypoint" if controller.use_custom_waypoint else subpolicy_names[
-        controller.current_subpolicy]
-
-    status_info = [
-        f"Config: {current_config} ({config_index + 1}/{total_configs})",
-        #f"Current Agent: {current_agent_name}",
-        f"Step: {step_count}",
-        f"Reward: {episode_reward:.2f}",
-        f"Control Mode: {current_mode}",
-    ]
-
-    y_offset = 280
-    for info in status_info:
-        text_surface = font.render(info, True, (255, 255, 255))
-        window.blit(text_surface, (1050, y_offset))
-        y_offset += 25
-
-
 def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections,
-                         step_count, max_steps, tick_rate=30):
+                         step_count, max_steps, tick_rate):
     """Draw bottom bar with score and countdown timer"""
     regular_targets = targets_identified
     high_value_targets = threats_identified
@@ -300,50 +256,32 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
         f"Regular: {regular_targets}/15",
         f"High-value: {high_value_targets}/2",
         f"Score: {score}",
-        f"Steps: {step_count}/{round(max_steps/35, 0)}",
-        f"Time left: {time_left}s"
+        f"Steps: {step_count}/{int(round(max_steps/35, 0))}",
+        #f"Time left: {time_left}s"
     ]
 
     x_start = 50
     y_pos = 1060  # Just above the progress bar
-    spacing = 1000 / 5
+    spacing = 1000 / 4
 
     for i, text in enumerate(bottom_texts):
-        text_surface = font.render(text, True, (0, 0, 0))
+        if (i == 0 and regular_targets == 15) or (i == 1 and high_value_targets == 2):
+            color = (0,200,0)
+        elif i == 1 and high_value_targets > 2:
+            color = (225, 0, 0)
+        else:
+            color = (0,0,0)
+        text_surface = font.render(text, True, color)
         window.blit(text_surface, (x_start + i * spacing, y_pos))
 
 
-# def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections, step_count, max_steps):
-#     """Draw regular target, high-value target, step count, and detections"""
-#     regular_targets = targets_identified
-#     high_value_targets = threats_identified
-#     detections = detections
-#
-#     # Set total counts
-#     total_regular_targets = 15
-#     total_high_value_targets = 4
-#
-#     bottom_texts = [
-#         f"Regular targets: {regular_targets}/{total_regular_targets}",
-#         f"High-value targets: {high_value_targets}/{total_high_value_targets}",
-#         f"Steps: {step_count}/{round(max_steps/35, 0)}",
-#         f"Detections: {detections}"
-#     ]
-#
-#     x_start = 50
-#     y_pos = 1060  # Just above the progress bar
-#     spacing = 1000/4
-#
-#     for i, text in enumerate(bottom_texts):
-#         text_surface = font.render(text, True, (0, 0, 0))
-#         window.blit(text_surface, (x_start + i * spacing, y_pos))
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, admin=False):
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, admin=False):
     """Run a single episode of the experiment"""
-    print(f"\n{'=' * 50}")
+    #print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
-    print(f"Agent: {agent_model}")
+    print(f"Agent {agent_letter} (Model {agent_model_name}")
     print(f"{'=' * 50}")
 
     import sockets
@@ -365,10 +303,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
     #obs = env.reset()[0]
     obs = env.reset()
-    if config_index == 1:
-        base_env.max_steps = base_env.config['max_steps'] * 1.5
-    else:
-        base_env.max_steps = base_env.config['max_steps']
+
     #print(f'Obs: {obs} (shape {obs.shape}')
     episode_reward = 0
     step_count = 0
@@ -388,9 +323,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
     sockets.delta_manager.frame_count = 0
     sockets.delta_manager.last_full_frame = 0
 
-    #first_frame = True
+    first_countdown_frame = True
     skip_round = False
     while not done:
+
         if countdown_steps <= countdown_length:
             env.render()
             draw_countdown_overlay(window, font, countdown_steps, countdown_length)
@@ -415,10 +351,10 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         # Handle pygame events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return True, episode_reward, step_count  # Signal to quit experiment
+                return True, episode_reward, step_count, 0, 0  # Signal to quit experiment
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    return True, episode_reward, step_count  # Signal to quit experiment
+                if event.key == pygame.K_ESCAPE and admin:
+                    return True, episode_reward, step_count, 0, 0  # Signal to quit experiment
                 elif event.key == pygame.K_SPACE and admin:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
@@ -460,7 +396,8 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round # TODO testing
+        #short_round_triggered = False #step_count > 50 # TODO can remove this
+        done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round
         if skip_round:
             print(f'SKIP ROUND')
             done = True
@@ -486,9 +423,9 @@ def run_single_episode(env, human_controller, config, config_index, total_config
 
         # Render the environment
         env.render()
-        draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
+        #draw_status_info(window, font, config, config_index, total_configs, step_count, episode_reward, human_controller)
         draw_progress_bar(window, font, config_index, total_configs)
-        draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'])
+        draw_bottom_bar_info(window, font, base_env.num_threats_identified, base_env.targets_identified,base_env.detections, step_count, base_env.config['max_steps'], tick_rate)
 
         # Update display
         pygame.display.flip()
@@ -504,15 +441,16 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             #print(f"Step {step_count}: Reward = {episode_reward:.2f}, ")
 
     # End episode logging
-    episode_summary = data_logger.end_episode(env, info, int(info.get('target_ids', -1)), int(info.get('threat_ids', -1)))
+    episode_summary = data_logger.end_episode(env, info, int(info.get('target_ids', -1)), int(info.get('threat_ids', -1)), agent_model_name)
 
     print(f"\nConfig {config} Complete!")
-    print(f"Final Reward: {episode_reward:.2f}")
-    print(f"Steps Taken: {step_count}")
-    print(f"Targets Identified: {info.get('target_ids', -1)}")
-    print(f"Detections: {info.get('detections', -1)}")
+    print(f"    Final Reward: {episode_reward:.2f}")
+    print(f"    Steps Taken: {step_count}")
+    print(f"    Targets Identified: {info.get('target_ids', -1)}")
+    print(f"    Threats Identified: {info.get('threat_ids', -1)}")
+    #print(f"Detections: {info.get('detections', -1)}")
 
-    return False, episode_reward, step_count  # False = don't quit experiment
+    return False, episode_reward, step_count, info.get('target_ids', -1), info.get('threat_ids', -1)
 
 
 def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = None):
@@ -534,7 +472,7 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False, admin=False):
+def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_trajectories=False, admin=False, run_third_agent = False):
 
     import sockets
     sockets.connect()
@@ -555,45 +493,53 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     config['max_steps'] *= (1700 / 1500) * time_factor
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0#0.0003
-    config['observe_teammate_priority'] = False # TODO switch to true with new agents
+    #config['observe_teammate_priority'] = False # TODO switch to true with new agents
     print(f'LOADED CONFIG {config_filename}')
 
-    if subject_id == 90:
-        agent_a_name = 'index_selfplay'#strategy_trained'#'selfplay_trained_jul18'
-        agent_b_name = 'index_selfplay'#'strategy_trained_jul18'
-        config['action_type'] = 'target_index'
+    agent_a_name = 'M1S_indexstrategy'
+    agent_b_name = 'M1S_indexselfplay'
+    agent_c_name = 'M1S_indexmixed50'
+    agent_s_name = 'selfplay_seed77'
+    agent_p_name = 'bad_practice_agent'
 
-    elif subject_id == 91:
-        agent_a_name = 'index_strategy'  # strategy_trained'#'selfplay_trained_jul18'
-        agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
-        config['action_type'] = 'target_index'
-
-    elif subject_id == 92:
-        agent_a_name = 'strategy_trained'  # '#'selfplay_trained_jul18'
-        agent_b_name = 'strategy_trained'  # 'strategy_trained_jul18'
-
-    elif subject_id == 93:
-        agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
-        agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
-
-    else:
-        agent_a_name = 'index_selfplay'  # strategy_trained'#'selfplay_trained_jul18'
-        agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
+    # if subject_id == 90:
+    #     agent_a_name = 'index_selfplay'#strategy_trained'#'selfplay_trained_jul18'
+    #     agent_b_name = 'index_selfplay'#'strategy_trained_jul18'
+    #     config['action_type'] = 'target_index'
+    #
+    # elif subject_id == 91:
+    #     agent_a_name = 'index_strategy'  # strategy_trained'#'selfplay_trained_jul18'
+    #     agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
+    #     config['action_type'] = 'target_index'
+    #
+    # elif subject_id == 92:
+    #     agent_a_name = 'strategy_trained'  # '#'selfplay_trained_jul18'
+    #     agent_b_name = 'strategy_trained'  # 'strategy_trained_jul18'
+    #
+    # elif subject_id == 93:
+    #     agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
+    #     agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
+    #
+    # else:
+    #     agent_a_name = 'index_selfplay'  # strategy_trained'#'selfplay_trained_jul18'
+    #     agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
 
 
     # Define RL agent model paths
     agent_models = {
         'A': f'./user_study/saved_agents/{agent_a_name}_model.zip',
         'B': f'./user_study/saved_agents/{agent_b_name}_model.zip',
-        'S': f'./user_study/saved_agents/{agent_b_name}_model.zip', # Solo
-        'P': f'./user_study/saved_agents/{agent_b_name}_model.zip' # Practice
+        'C': f'./user_study/saved_agents/{agent_c_name}_model.zip',
+        'S': f'./user_study/saved_agents/{agent_s_name}_model.zip', # Solo
+        'P': f'./user_study/saved_agents/{agent_p_name}_model.zip' # Practice
     }
 
     vecnorm_paths = {
         'A': f'./user_study/saved_agents/{agent_a_name}_vecnormalize.pkl',
         'B': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl',
-        'S': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl',
-        'P': f'./user_study/saved_agents/{agent_b_name}_vecnormalize.pkl'
+        'C': f'./user_study/saved_agents/{agent_c_name}_vecnormalize.pkl',
+        'S': f'./user_study/saved_agents/{agent_s_name}_vecnormalize.pkl',
+        'P': f'./user_study/saved_agents/{agent_p_name}_vecnormalize.pkl'
     }
 
     #levels = list(range(1, 8))
@@ -605,12 +551,19 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     #     config_list.extend(pair)
 
     if subject_id % 2 == 0:
-        config_list = ['A1', 'B1', 'B2', 'A2', 'A3', 'B3', 'B4', 'A4', 'A5', 'B5', 'B6', 'A6', 'A7', 'B7']
+        if run_third_agent:
+            config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
+        else:
+            config_list = ['A1', 'B1', 'B2', 'A2', 'A3', 'B3', 'B4', 'A4', 'A5', 'B5', 'B6', 'A6', 'A7', 'B7']
     else:
-        config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
+        if run_third_agent:
+            config_list = ['B1', 'A1', 'C7', 'A2', 'B2', 'C5', 'B3', 'A3', 'C1', 'A4', 'B4', 'C6', 'B5', 'A5', 'C3', 'A6', 'B6', 'C2' 'B7', 'A7', 'C4']
+        else:
+            config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
+
 
     practice_level = 1
-    practice_config = [f"C{practice_level}", f"C{practice_level}"]
+    practice_config = [f"P{practice_level}", f"P{practice_level}"]
 
     full_config_list = practice_config + config_list
 
@@ -622,9 +575,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         full_config_list = full_config_list[start_level:]
         print(f"Starting from level {start_level}: {full_config_list}")
 
-    if collect_solo_trajectories:
-        solo_configs = ['S1', 'S2','S3','S4','S5','S6','S7']
-        full_config_list.extend(solo_configs)
+    # if collect_solo_trajectories:
+    #     solo_configs = ['S1', 'S2','S3','S4','S5','S6','S7']
+    #     full_config_list.extend(solo_configs)
 
     print(f"Randomized configuration order: {full_config_list}")
 
@@ -638,14 +591,12 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
     pygame.font.init()
     clock = pygame.time.Clock()
 
-
     window_width, window_height = config['window_size'][0], config['window_size'][1]
     global window
     window = pygame.display.set_mode((window_width, window_height))
     pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
     # Create font for instructions
-    #font = pygame.font.SysFont(None, 24)
     font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
 
     # Store results
@@ -673,7 +624,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             )
             instruction_result = instruction_manager.run_instruction_series()
 
-            if instruction_result["action"] == "exit":
+            if admin and instruction_result["action"] == "exit":
                 print("User exited during instructions")
                 return
         else:
@@ -683,22 +634,37 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         last_agent_appearance = None
 
         appearance_map = {
-            2: 'red',
-            3: 'green',
-            4: 'red',
-            5: 'brown',
-            6: 'red',
-            7: 'purple',
-            8: 'green',
-            9: 'brown',
-            10: 'green',
-            11: 'purple',
-            12: 'brown',
-            13: 'purple',
-            14: 'red',
-            15: 'purple',
+            'A': 'red',
+            'B': 'purple',
+            'C': 'green',
+            'S': 'black',
+            'P': 'black'
         }
 
+        # appearance_map = {
+        #     2: 'red',
+        #     3: 'green',
+        #     4: 'red',
+        #     5: 'brown',
+        #     6: 'red',
+        #     7: 'purple',
+        #     8: 'green',
+        #     9: 'brown',
+        #     10: 'green',
+        #     11: 'purple',
+        #     12: 'brown',
+        #     13: 'purple',
+        #     14: 'red',
+        #     15: 'purple',
+        #     16:
+        #     17:
+        #     18:
+        #     19:
+        #     20:
+        #     21:
+        #     22:
+        #
+        # }
         for config_index, current_config in enumerate(full_config_list):
 
             if config_index == 0: # # Handle practice level special settings
@@ -709,8 +675,8 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             elif config_index == 1: # # Handle practice level special settings
                 screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
                 result = screen_manager.show_screen(screen)
-                if result.get("action") == "exit":
-                    return
+                # if result.get("action") == "exit":
+                #     return
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'P'
                 level_number = 1
@@ -718,16 +684,10 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             else:
                 agent_letter = current_config[0]  # 'A', 'B', or 'S'
                 level_number = int(current_config[1:])
-                agent_appearance = appearance_map.get(config_index, 'black')
-            #     if agent_letter == 'A':
-            #         agent_appearance = 'purple' if config_index % 2 == 0 else 'red'
-            #     elif agent_letter == 'B':
-            #         agent_appearance = 'green' if config_index % 2 == 0 else 'brown'
-            #     elif agent_letter == 'S':
-            #         agent_appearance = 'black'
-            #     else:
-            #         raise ValueError(f"Unexpected agent letter {agent_letter}")
+                #agent_appearance = appearance_map.get(config_index, 'black')
+                agent_appearance = appearance_map.get(agent_letter, 'black')
 
+            print('\n\n=====================================================================')
             print(f"\nPreparing for config: {current_config}")
             if agent_letter == 'S':
                 print(f'%%% PILOT STUDY ONLY - RUNNING SOLO ROUND {level_number} %%%')
@@ -750,11 +710,13 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
             human_controller = HumanSubpolicyController(env)
             sockets.human_controller = human_controller
 
+            agent_model_name = agent_models[agent_letter] # For logging
+
             # Run the episode
-            should_quit, episode_reward, step_count = run_single_episode(
+            should_quit, episode_reward, step_count, target_ids, threat_ids, = run_single_episode(
                         env, human_controller, current_config, config_index, len(full_config_list),
-                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, admin=admin
-                    )
+                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, admin=admin)
+
             if should_quit:
                 print("Experiment terminated by user")
                 break
@@ -765,9 +727,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 #if self.sio is not None:
                 #sockets.send_frame(window)
                 after_practice_result = screen_manager.show_screen(after_practice_screen)
-                if after_practice_result["action"] == "exit":
-                    print("User exited after practice screen")
-                    return
+                # if after_practice_result["action"] == "exit":
+                #     print("User exited after practice screen")
+                #     return
                 continue  # skip survey for practice
 
             # Store results
@@ -775,7 +737,9 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 'config': current_config,
                 'agent': agent_letter,
                 'level': level_number,
-                'reward': episode_reward,
+                'target_ids': target_ids,
+                'threat_ids': threat_ids,
+                #'reward': episode_reward,
                 'steps': step_count,
                 'config_index': config_index + start_level
             })
@@ -784,12 +748,13 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
 
             # Workload survey and teammate survey logic (skip for practice)
             level = agent_letter + str(level_number)
-            #if (not skip_instructions) and (agent_letter != 'S'):
-            if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7']:
+
+
+            if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4']:
                 workload_survey_screen = WorkloadSurveyScreen(
                     episode_config=current_config, window_width=window_width, window_height=window_height)
                 workload_survey_result = screen_manager.show_screen(workload_survey_screen)
-                if workload_survey_result["action"] == "exit":
+                if admin and workload_survey_result["action"] == "exit":
                     print("Experiment terminated by user")
                     break
                 elif workload_survey_result["action"] == "continue":
@@ -798,21 +763,34 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                     if hasattr(data_logger, 'log_survey_data'):
                         data_logger.log_survey_data(survey_data)
 
-            print(f'config index = {config_index}')
-            print(f'(config_index + 1) % 2 == 0: {(config_index) % 2 == 0}')
-            if (agent_letter != 'S') and (not skip_instructions) and config_index > 0 and (config_index - 1) % 2 == 0:
-                teammate_compare_survey = TeammatePreferenceSurveyScreen(
-                    window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+            #print(f'config index = {config_index}')
+            #print(f'(config_index + 1) % 2 == 0: {(config_index) % 2 == 0}')
+            if subject_id % 2 == 0:
+                levels_for_preference_survey = ['B1', 'A2', 'B3', 'C6', 'C3', 'C2', 'C4']
+            else:
+                raise NotImplementedError
+
+            if level in levels_for_preference_survey:
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
                 if teammate_compare_result["action"] == "continue":
                     survey_data = teammate_compare_result["survey_data"]
                     data_logger.log_teammate_survey_data(survey_data)
+
+                data_logger.save_session_data()
+
+            no_surveys = level not in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4'] and level not in levels_for_preference_survey
+            if agent_letter not in ['P', 'S'] and no_surveys:
+                inter_screen = InterScreen()
+                screen_manager.show_screen(inter_screen)
 
             last_agent_appearance = agent_appearance
 
             if config_index < len(full_config_list) - 1:
                 print("Next episode starting in 2 seconds...")
                 pygame.time.wait(100)
+
+
 
 
     except KeyboardInterrupt:
@@ -832,16 +810,16 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
         print(f"Subject ID: {subject_id}")
         print(f"Completed configurations: {len(experiment_results)}")
 
-        if experiment_results:
-            total_reward = sum(r['reward'] for r in experiment_results)
-            avg_reward = total_reward / len(experiment_results)
-            print(f"Total reward: {total_reward:.2f}")
-            print(f"Average reward: {avg_reward:.2f}")
+        #if experiment_results:
+            #total_reward = sum(r['reward'] for r in experiment_results)
+            #avg_reward = total_reward / len(experiment_results)
+            #print(f"Total reward: {total_reward:.2f}")
+            #print(f"Average reward: {avg_reward:.2f}")
 
-            print("\nDetailed results:")
-            for result in experiment_results:
-                print(f"  {result['config']}: Reward = {result['reward']:.2f}, "
-                      f"Steps = {result['steps']}")
+            # print("\nDetailed results:")
+            # for result in experiment_results:
+            #     print(f"  {result['config']}: Reward = {result['reward']:.2f}, "
+            #           f"Steps = {result['steps']}")
 
         # Print session summary from data logger
         if session_summary:
@@ -858,7 +836,7 @@ def main(subject_id=None, start_level=None, skip_instructions=None,collect_solo_
                 for agent, performance in session_summary['agent_performance'].items():
                     print(f"  Agent {agent}:")
                     print(f"    Episodes: {performance['episodes']}")
-                    print(f"    Average reward: {performance['average_reward']:.2f}")
+                    #print(f"    Average reward: {performance['average_reward']:.2f}")
                     print(f"    Success rate: {performance['success_rate']:.2%}")
                     print(f"    Average targets identified: {performance['average_targets_identified']:.1f}")
 
@@ -877,4 +855,4 @@ if __name__ == "__main__":
     subject_id = args.subject_id
     start_level = args.start_level
     skip_instructions = args.skip
-    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = args.pilot)
+    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = args.pilot)
