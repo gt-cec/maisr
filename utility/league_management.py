@@ -59,7 +59,7 @@ class TeammateManager:
         self.fcp_ratio = fcp_ratio
 
         # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'mixed50','mixed25','mixed75']
+        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
         if league_type not in valid_league_types:
             raise ValueError(f"league_type must be one of {valid_league_types}")
 
@@ -165,9 +165,12 @@ class TeammateManager:
         elif self.league_type in ['mixed50', 'mixed25', 'mixed75']:
             ratio = int(self.league_type[-2:])/100
             if random.random() < ratio:
-                print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
-                #return self._create_pretrained_rl_teammate()
+                #if random.random() < 0.5:
+                print(f'[Teammate Manager - {self.league_type}] Creating selfplay teammate')
                 return self._create_selfplay_teammate()
+                # else:
+                #     print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
+                #     return self._create_pretrained_rl_teammate()
             else:
                 print(f'[Teammate Manager - {self.league_type}] Creating strategy heuristic teammate')
                 return self._create_strategy_diverse_heuristic_teammate()
@@ -177,15 +180,15 @@ class TeammateManager:
                 return self._create_pretrained_rl_teammate()
             else:
                 return self._create_selfplay_teammate()
-
-        elif self.league_type == 'mixed':
-            if random.random() < self.fcp_ratio:
-                print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')
-                #return self._create_pretrained_rl_teammate()
-                return self._create_selfplay_teammate() # TODO TEMP CHANGED
-            else:
-                print(f'[Teammate Manager - Mixed] Creating strategy heuristic teammate')
-                return self._create_strategy_diverse_heuristic_teammate()
+        #
+        # elif self.league_type == 'mixed':
+        #     if random.random() < self.fcp_ratio:
+        #         print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')
+        #         #return self._create_pretrained_rl_teammate()
+        #         return self._create_selfplay_teammate() # TODO TEMP CHANGED
+        #     else:
+        #         print(f'[Teammate Manager - Mixed] Creating strategy heuristic teammate')
+        #         return self._create_strategy_diverse_heuristic_teammate()
 
         else:
             raise ValueError(f"Unknown league_type: {self.league_type}")
@@ -273,7 +276,7 @@ class TeammateManager:
         # Select checkpoint based on type
         if selection_strategy_enabled:  # Selfplay strategy
             selection_strategy = random.random()
-            selection_strategy = 0.4 # TODO temp force
+            #selection_strategy = 0.4 # TODO temp force
 
             if selection_strategy < 0.5:
                 # Select from most recent 3 checkpoints
@@ -1073,6 +1076,7 @@ class RLTeammatePolicy(TeammatePolicy):
 
                 epsilon = 1e-8
                 clip_obs = 10.0
+
 
                 normalized_obs = np.clip(
                     (observation - obs_mean) / np.sqrt(obs_var + epsilon),

@@ -447,7 +447,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
                 num_trajectories = len(recorded_teammate_indices)
 
-                #try:
                 target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
                 mean_reward, std_reward, total_eval_reward = 0, 0, 0
                 eval_lengths = []
@@ -470,17 +469,9 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     # Pick a random json trajectory file
                     trajectory_file = random.choice(candidate_files)
 
-                    # Set eval env to this level
-
                     base_human_env.level_idx = level
                     base_human_env.config['force_specific_level'] = level
-                    # Load as recorded teammate
-                    #recorded_teammate = RecordedTrajectoryTeammate(trajectory_file, self.eval_env.envs[0].env.env, timescale_correction)
-                    #self.eval_env.envs[0].current_teammate = recorded_teammate
-                    #self.eval_env.envs[0].env.current_teammate = recorded_teammate
 
-                    #self.eval_env.envs[0].current_teammate = None
-                    #self.eval_env.envs[0].env.current_teammate = None
 
                     with open(trajectory_file, 'r') as f:
                         data = json.load(f)
@@ -1622,8 +1613,8 @@ if __name__ == "__main__":
         #vecnorm_load_path = vecnorm_load_paths[int(args.seed)]
 
     elif version == 'mixed-1seed':
-        #note = 'placeholder' #'fcp_mixed' + machine[0].upper()
-        config['num_timesteps'] = 3.5e6
+        note = 'placeholder' #'fcp_mixed' + machine[0].upper()
+        config['num_timesteps'] = 1.5e6
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
 
@@ -1638,15 +1629,12 @@ if __name__ == "__main__":
             "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
-            #'league_type': ['selfplay','strategy_diverse', 'mixed50']# Later: mixed25, mixed75
-
+            'league_type': ['strategy_diverse', 'mixed50']# Later: mixed25, mixed75
         }
         config['seed'] = int(args.seed)
         overfit_test = None
-        config['league_type'] = 'strategy_diverse'
-        note = 'M1S_strategy_resumed'
-        load_path = 'outputs/M1S_strategy_diverse_0730_1849_seed99/checkpoints/M1S_strategy_diverse_0730_1849_seed99_checkpoint_624990_steps.zip'
-        vecnorm_load_path = 'outputs/M1S_strategy_diverse_0730_1849_seed99/checkpoints/M1S_strategy_diverse_0730_1849_seed99_checkpoint_vecnormalize_624990_steps.pkl'
+        load_path = None
+        vecnorm_load_path = None
 
 
     elif version == 'index-strategy':
@@ -1717,9 +1705,7 @@ if __name__ == "__main__":
     import itertools
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
-    #
-    # if note == 'placeholder':
-    #     note = 'M1S_' + config['league_type']
+
 
 
     for param_combination in itertools.product(*param_values):
@@ -1732,7 +1718,8 @@ if __name__ == "__main__":
             param_key = param_shorthand[param_name]
             param_strings.append(f'{param_key}-{param_value}')
 
-
+        if note == 'placeholder':
+            note = 'M1S-2_' + config['league_type']
 
         temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
         from datetime import datetime

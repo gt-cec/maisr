@@ -410,6 +410,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
             teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
             teammate_target_index = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+
             teammate_target_index = self._unwrap_action(teammate_target_index)
             return self.env._index_to_waypoint(int(teammate_target_index))
 

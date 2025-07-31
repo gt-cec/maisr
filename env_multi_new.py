@@ -734,11 +734,6 @@ class MAISREnvVec(gym.Env):
         max_bonus_distance = self.config["team_max_bonus_distance"]  # Distance for maximum bonus
 
         fail_penalty = 0
-        # if self.failed:
-        #     if self.just_failed:
-        #         fail_penalty = -25
-        #         self.just_failed = False
-
 
         # Calculate spread-out bonus between aircraft
         spread_bonus = 0
@@ -816,7 +811,7 @@ class MAISREnvVec(gym.Env):
         if self.num_threats_identified <= self.config['max_threat_ids']:
             threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward'] * self.config['threat_reward_scaling']
         else:
-            threat_id_reward = -1.5 * new_reward['threat_identification'] * self.config['threat_id_reward']
+            threat_id_reward = -2.2 * new_reward['threat_identification'] * self.config['threat_id_reward']
 
         reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
                  (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
