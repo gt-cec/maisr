@@ -1638,7 +1638,7 @@ if __name__ == "__main__":
             "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
-            'league_type': ['strategy_diverse', 'selfplay', 'mixed50']# Later: mixed25, mixed75
+            'league_type': ['selfplay','strategy_diverse', 'mixed50']# Later: mixed25, mixed75
 
         }
         config['seed'] = int(args.seed)
