@@ -170,35 +170,19 @@ class MaisrLocalSearchWrapper(gym.Env):
             if self.env.tag == 'human_eval0':
                 pass
 
-            # if hasattr(self.current_teammate, 'name'):
-            #     if self.current_teammate.name == 'Recorded_Human_Teammate':
-            #         self.teammate_action = self.current_teammate.get_action()
-            #         self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y = self.current_teammate.get_action()
-            #     else:
             else:
                 self.teammate_action = self.get_teammate_action()
                 if isinstance(self.teammate_action, np.ndarray):
                     self.teammate_action = (self.teammate_action[0], self.teammate_action[1])
                 self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
 
-            # elif self.env.tag != 'human_eval0':
-            #     self.teammate_action = self.get_teammate_action()
-            #     #print(f'[Wrapper] Teammate action is {self.teammate_action} (type {type(self.teammate_action)}')
-            #     if isinstance(self.teammate_action, np.ndarray):
-            #         self.teammate_action = (self.teammate_action[0],self.teammate_action[1])
-            #         #print(f'converted teammate action to tuple: {self.teammate_action}')
-            #     self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
-            # else:
-            #     raise ValueError(f'Current teammate does not have .name but env tag is not human_eval0 (tag is {self.env.tag}')
 
-        ############ Stuck detection ############
-
+        ############################################### Stuck detection ################################################
         if self.env.config['use_stuck_detection']:
             self.recent_actions.append(action)
             if len(self.recent_actions) > self.action_history_length:
                 self.recent_actions.pop(0)
 
-        if self.env.config['use_stuck_detection']:# and self.env.episode_counter >= 500:
             current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
             self.position_history.append(current_pos.copy())
 
@@ -212,7 +196,6 @@ class MaisrLocalSearchWrapper(gym.Env):
                 self.override_target_pos = self.get_nearest_unknown_target()
                 if self.override_target_pos is not None:
                     self.override_active = True
-                    #print(f"Agent stuck detected! Taking control - moving to target at {self.override_target_pos}")
 
             # Use override action if active
             if self.override_active:
@@ -227,13 +210,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                         self.override_target_pos = None
                         self.override_step_counter = 0
 
-                #
-                # if override_action is not None:
-                #     action = override_action
-                #     print(f"Override action: {action} (distance to target: {np.linalg.norm(current_pos - self.override_target_pos):.1f})")
-                # else: print("Override deactivated")
-
-        ####################################
+        ###############################################################################################################
 
         # Step the environment
         base_obs, base_reward, base_terminated, base_truncated, base_info = self.env.step(action)
@@ -251,21 +228,18 @@ class MaisrLocalSearchWrapper(gym.Env):
         truncated = base_truncated
 
         if terminated or truncated:
-            info["teammate_name"] = self.teammate_manager.current_teammate.name if (
-                    self.teammate_manager and
-                    self.teammate_manager.current_teammate and
-                    hasattr(self.teammate_manager.current_teammate, 'name')
+            info["teammate_name"] = self.teammate_manager.current_teammate.name if (self.teammate_manager and
+                    self.teammate_manager.current_teammate and hasattr(self.teammate_manager.current_teammate, 'name')
             ) else "No_Teammate"
 
             # Pass teammate info directly to environment for plotting
-            if self.teammate_manager and self.teammate_manager.current_teammate:
-                self.env.teammate_name = self.teammate_manager.current_teammate.name
-            else:
-                self.env.teammate_name = "No_Teammate"
+            if self.teammate_manager and self.teammate_manager.current_teammate: self.env.teammate_name = self.teammate_manager.current_teammate.name
+            else: self.env.teammate_name = "No_Teammate"
 
         self.env.final_wrapper_reward += reward
 
         return observation, reward, terminated, truncated, info
+
 
     def render(self):
         self.env.render()
@@ -365,83 +339,47 @@ class MaisrLocalSearchWrapper(gym.Env):
         return obs
 
     def _unwrap_action(self, action):
-        teammate_info = "Unavailable"
-        # subpolicy_map = {
-        #     0: "LocalSearch",
-        #     1: "ChangeRegion",
-        #     2: "GoToThreat",
-        #     3: "HoldPosition",
-        #     4: "ChangeRegion_NE",
-        #     5: "ChangeRegion_SE",
-        #     6: "ChangeRegion_SW"
-        # }
-        #
-        # if self.current_teammate:
-        #     name = getattr(self.current_teammate, 'name', 'Unknown')
-        #     policy_type = type(self.current_teammate).__name__
-        #     stability = getattr(self.current_teammate, 'action_stability', 'N/A')
-        #     decision_speed = getattr(self.current_teammate, 'decision_speed', 'N/A')
-        #     subpolicy_idx = getattr(self, 'teammate_subpolicy_choice', 'N/A')
-        #     subpolicy_name = subpolicy_map.get(subpolicy_idx, f"Unknown({subpolicy_idx})")
-        #
-        #     teammate_info = (
-        #         f"name={name}, type={policy_type}, stability={stability}, speed={decision_speed}, "
-        #         f"subpolicy={subpolicy_name} (index={subpolicy_idx})"
-        #     )
         if isinstance(action, tuple):
-            # warnings.warn(
-            #     f"WARNING: Teammate action is a tuple {action}. Unwrapping first element.\n"
-            #     f"Teammate debug info: {teammate_info}"
-            # )
             return action[0]
         #print(f"NOT A TUPLE - WARNING: Teammate action is NOT a tuple {action}. Unwrapping first element.\n", f"Teammate debug info: {teammate_info}\n")
         return action
 
     def get_teammate_action(self):
-        #if self.env.tag == 'human_eval0':
-        # if hasattr(self.current_teammate, 'name'):
-        #     if self.current_teammate.name == 'Recorded_Human_Teammate':
-        #         return self.env.agents[self.env.aircraft_ids[1]].x, self.env.agents[self.env.aircraft_ids[1]].y
 
+        #obs_agent1_raw = self.env.get_observation_nearest_n(1)
+        #obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
 
-        obs_agent1_raw = self.env.get_observation_nearest_n(1)
-        obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
-
+        # Get action from RL teammates
         if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
-            teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
-            teammate_target_index = self.current_teammate.model.predict(teammate_obs, deterministic=True)
+            raw_teammate_obs = self.env.get_observation_nearest_n(1)
+            teammate_obs = self.current_teammate._normalize_observation(raw_teammate_obs)
 
-            teammate_target_index = self._unwrap_action(teammate_target_index)
+            try:
+                teammate_target_index = self._unwrap_action(self.current_teammate.model.predict(teammate_obs, deterministic=True))
+            except:
+                teammate_target_index = self._unwrap_action(self.current_teammate.model.predict(teammate_obs[:-1], deterministic=True))
+                #print(f'Teammate obs was wrong size, dropped the last element')
+
             return self.env._index_to_waypoint(int(teammate_target_index))
 
-        #if self.env.step_count_outer % 50 == 0:
-            #print(f"\n    &&&&& Step {self.env.step_count_outer} Teammate obs Raw:", obs_agent1_raw[:3])
-            #print("    &&&&&          Teammate obs Norm:", obs_agent1_norm[:3])
-
-        if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
-            return self.current_teammate.get_action()
+        # if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
+        #     return self.current_teammate.get_action()
 
         elif self.teammate_manager or self.teammate_policy:
-            # if hasattr(self.current_teammate, 'env') and self.current_teammate.env is None: # TODO potential problem 1
-            #     self.current_teammate.env = self.env
-
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] == 'selfplay':
-
                 # If using a selfplay model
                 if hasattr(self.current_teammate, 'model'):
-                    teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1)) # TODO temp
+                    teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
                     #teammate_obs = self.env.get_observation_nearest_n(1)
                     direction_to_move = self.current_teammate.model.predict(teammate_obs, deterministic=True)
                     direction_to_move = self._unwrap_action(direction_to_move)
-
 
                 else:
                     teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
                     direction_to_move = self.current_teammate.local_search_policy.act(teammate_subpolicy_observation,env=self.env, agent_id=1)
                     direction_to_move = self._unwrap_action(direction_to_move)
 
-                #print(f'Teammate action is {direction_to_move}')
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
                 return teammate_action
 
@@ -564,15 +502,6 @@ class MaisrLocalSearchWrapper(gym.Env):
             else:
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
-        # Add subpolicy noise
-        # if self.teammate_subpolicy_choice in [0, 2] and self.current_teammate.action_stability == 'noisy' and random.random() < 0.4:
-        #     old_teammate_action = teammate_action
-        #     noise = random.choice([-2, -1, 1, 2])
-        #     print(f'Noise: {noise}')
-        #     print(f'Teammate action: {teammate_action}')
-        #     teammate_action = (teammate_action + noise) % 16
-        #     print(f'[DEBUG - LocalSearchWrapper.get_teammate_action] Applying noise to teammate action ({old_teammate_action} + {noise} -> {teammate_action})')
-
         else: # Fallback greedy search
             # Access teammate location
             teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
@@ -599,7 +528,6 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_action = (teammate_x, teammate_y)
 
         return teammate_action
-
 
 ########################################################################################################################
 ###############################################    Helper functions     ################################################
@@ -912,6 +840,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return unknown_positions[nearest_idx]
 
+
     def get_override_action(self, agent_id=0):
         """Get action to move towards override target"""
         if self.override_target_pos is None:
@@ -987,42 +916,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return None
 
-    # def get_override_action(self, agent_id=0):
-    #     """Get action to move towards override target"""
-    #     if self.override_target_pos is None:
-    #         return None
-    #
-    #     agent_pos = np.array([
-    #         self.env.agents[self.env.aircraft_ids[agent_id]].x,
-    #         self.env.agents[self.env.aircraft_ids[agent_id]].y
-    #     ])
-    #
-    #     # Calculate direction to target
-    #     direction_vector = self.override_target_pos - agent_pos
-    #     distance_to_target = np.linalg.norm(direction_vector)
-    #
-    #     # Check if we've arrived at target
-    #     if distance_to_target < self.override_arrival_threshold:
-    #         self.override_active = False
-    #         self.override_target_pos = None
-    #         print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
-    #         return None
-    #
-    #     # Normalize direction and convert to action
-    #     if distance_to_target > 0:
-    #         unit_direction = direction_vector / distance_to_target
-    #
-    #         # Convert to discrete action (find closest direction)
-    #         if self.env.config['action_type'] in ['Discrete8', 'Discrete16']:
-    #             angle = np.arctan2(unit_direction[1], unit_direction[0])
-    #             # Convert to discrete action (8 or 16 directions)
-    #             num_directions = 8 if self.env.config['action_type'] == 'Discrete8' else 16
-    #             action = int(((angle + np.pi) / (2 * np.pi)) * num_directions) % num_directions
-    #             return action
-    #         else: # For continuous actions, return normalized direction
-    #             return unit_direction
-    #
-    #     return None
 
     def update_progress_tracking(self):
         """Update progress tracking for stuck detection"""

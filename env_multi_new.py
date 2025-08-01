@@ -266,6 +266,8 @@ class MAISREnvVec(gym.Env):
         self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
         self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
 
+        self.teammate_going_to_threat = False
+
         if self.config['use_curriculum']:
             self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
 
@@ -714,6 +716,8 @@ class MAISREnvVec(gym.Env):
             # Keep individual plots for specific episodes if needed
             if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0", "human_eval0"] and self.episode_counter in self.episodes_to_plot:
                 self.save_action_history_plot()
+            if self.tag == 'heuristictests0':
+                self.save_action_history_plot()
 
             if self.render_mode == 'human':
                 pygame.time.wait(50)
@@ -760,10 +764,17 @@ class MAISREnvVec(gym.Env):
             if distance < min_distance: # Penalty increases as aircraft get closer
                 proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
 
-        if self.num_threats_identified < self.config['max_threat_ids']:
+
+        # Apply threat potential reward
+        if (self.num_threats_identified >= self.config['max_threat_ids'] or (self.num_threats_identified == 1 and self.teammate_going_to_threat and self.config['use_teammate_priority_shaping'])):
+            threats_are_good = False
+        else: threats_are_good = True
+
+        if threats_are_good:
             threat_potential_reward = threat_potential_gain * self.config.get("potential_ratio", 1) * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
         else:
-            threat_potential_reward = - 0.05 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+            threat_potential_reward = - 0.15 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+
 
         # Add debugging print statements
         if False and self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
@@ -821,12 +832,6 @@ class MAISREnvVec(gym.Env):
                  (self.config['shaping_time_penalty']) + \
                  proximity_penalty + spread_bonus + fail_penalty + threat_id_reward
 
-        # if agent_target_ids > 0:
-        #     # Reward decreases as episode progresses (encourages early discovery)
-        #     time_factor = 1.0 - (self.step_count_inner / self.max_steps)
-        #     shaping_reward = agent_target_ids * self.config['quick_id_shaping_coeff'] * time_factor
-        #     reward += shaping_reward
-
         return reward
 
     def get_potential(self, observation):
@@ -834,22 +839,22 @@ class MAISREnvVec(gym.Env):
         Calculate potential as negative distance to nearest unknown target.
         Returns a higher (less negative) value when closer to unknown targets.
         """
-        if self.running_experiment:
-            return 0, 0
+        # if self.running_experiment:
+        #     return 0, 0
 
-        # Get agent position from observation (first 2 elements, normalized)
         map_half_size = self.config["gameboard_size"] / 2
-
         agent_x = self.agents[self.aircraft_ids[0]].x
         agent_y = self.agents[self.aircraft_ids[0]].y
         agent_pos = np.array([agent_x, agent_y])
 
         # Get target positions and info levels
         target_positions = self.targets[:, 3:5]  # x,y coordinates
-        target_info_levels = self.targets[:, 2]  # info levels
+        unidentified_mask = self.targets[:, 2] < 1.0
 
-        # Create mask for unidentified targets (info_level < 1.0)
-        unidentified_mask = target_info_levels < 1.0
+        if self.config['use_dynamic_potential']:
+            teammate_targets = self._get_teammate_flying_targets()
+            if teammate_targets: # Exclude all targets the teammate is flying toward
+                unidentified_mask[teammate_targets] = False
 
         if not np.any(unidentified_mask): # No unidentified targets remaining
             nearest_target_distance = 0
@@ -858,24 +863,16 @@ class MAISREnvVec(gym.Env):
             target_distances = np.sqrt(np.sum((unidentified_target_positions - agent_pos) ** 2, axis=1))
             nearest_target_distance = np.min(target_distances)
 
-
+        # Calculate threat potential
         threat_positions = self.threats
-        #threat_info_levels = self.threat_identified
-        #unidentified_threat_mask = threat_info_levels == False
-        #unidentified_threat_mask = threat_info_levels < 1.0
-
         unidentified_threat_mask = ~self.threat_identified
-        #print(f"Unidentified threat mask: {unidentified_threat_mask}")
 
-        if not np.any(unidentified_threat_mask):  # No unidentified targets remaining
+        if not np.any(unidentified_threat_mask):
             nearest_threat_distance = 0
-            #print("All threats identified.")
         else:
             unidentified_threat_positions = threat_positions[unidentified_threat_mask]
             threat_distances = np.sqrt(np.sum((unidentified_threat_positions - agent_pos) ** 2, axis=1))
             nearest_threat_distance = np.min(threat_distances)
-         #   print(f"Distances to unidentified threats: {threat_distances}")
-         #   print(f"Nearest unidentified threat distance: {nearest_threat_distance}")
 
         return -nearest_target_distance, -nearest_threat_distance
 
@@ -1047,8 +1044,7 @@ class MAISREnvVec(gym.Env):
                 heading_unit = np.array([0.0, 0.0])
 
             # Combine threats and targets with labels
-            entities = [(pos, "threat") for pos in self.threats] + \
-                       [(pos, "target") for pos in self.targets[:, 3:5]]
+            entities = [(pos, "threat") for pos in self.threats] + [(pos, "target") for pos in self.targets[:, 3:5]]
 
             closest_entity_type = None
             closest_forward_dist = float("inf")
@@ -1069,7 +1065,12 @@ class MAISREnvVec(gym.Env):
                         closest_entity_type = etype
 
             # 1 if teammate is flying toward a threat, else 0
-            self.observation[-1] = 1.0 if closest_entity_type == "threat" else 0.0
+            if closest_entity_type == "threat":
+                self.observation[-1] = 1.0
+                self.teammate_going_to_threat = True
+            else:
+                self.observation[-1] = 0.0
+                self.teammate_going_to_threat = False
 
 
         if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
@@ -2653,6 +2654,52 @@ class MAISREnvVec(gym.Env):
 
         return agent_x, agent_y, teammate_x, teammate_y
 
+    def _get_teammate_flying_targets(self):
+        """Return indices of all unknown targets that the teammate is currently flying toward.
+        A target is considered 'flying toward' if it is within a 25-pixel-wide and
+        300-pixel-long beam extending from the teammate along its waypoint heading.
+        """
+        teammate_agent = self.agents[self.aircraft_ids[1]]
+        teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+        # Compute heading unit vector
+        if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+            waypoint = np.array(teammate_agent.waypoint_override)
+            heading_vec = waypoint - teammate_pos
+            heading_dist = np.linalg.norm(heading_vec)
+            heading_unit = heading_vec / heading_dist if heading_dist > 0 else np.array([0.0, 0.0])
+        else:
+            heading_unit = np.array([0.0, 0.0])
+
+        # Only consider unknown targets
+        unknown_target_mask = self.targets[:, 2] < 1.0
+        target_positions = self.targets[:, 3:5]
+
+        beam_half_width = 25.0  # Half-width → 50-pixel wide beam
+        beam_length = 300.0  # Maximum forward reach
+
+        flying_target_indices = []
+
+        for idx, pos in enumerate(target_positions):
+            if not unknown_target_mask[idx]:
+                continue
+
+            vec_to_target = pos - teammate_pos
+            forward_dist = np.dot(vec_to_target, heading_unit)
+
+            # Must be in front and within beam length
+            if forward_dist <= 0 or forward_dist > beam_length:
+                continue
+
+            # Check perpendicular distance to heading line
+            perp_dist = np.linalg.norm(vec_to_target - forward_dist * heading_unit)
+            if perp_dist <= beam_half_width:
+                flying_target_indices.append(idx)
+
+        if flying_target_indices:
+            print(f'[Dynamic Shaping] excluding indices {flying_target_indices} from potential shaping')
+        return flying_target_indices
+
 
 def interpolate_trajectory(trajectory, num_microsteps):
     """
@@ -2667,3 +2714,5 @@ def interpolate_trajectory(trajectory, num_microsteps):
     y_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 1])
 
     return np.stack([x_interp, y_interp], axis=1)
+
+

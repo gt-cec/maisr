@@ -152,7 +152,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         # Entropy decay parameters
         self.use_entropy_decay_schedule = env_config['use_entropy_decay_schedule']
         self.entropy_decay_enabled = False
-        self.entropy_decay_trigger_threshold = 0.25  # mean_target_ids_per_step threshold
+        self.entropy_decay_trigger_threshold = 0.34  # mean_target_ids_per_step threshold
         self.entropy_decay_threat_threshold = 1.5 # eval/mean_threat_ids threshold
         self.entropy_decay_steps = env_config['entropy_decay_steps'] # Decay over this many steps
         self.entropy_final_ratio = 0.5  # Final entropy = 50% of original
@@ -1481,10 +1481,13 @@ def train_generic(
 
 if __name__ == "__main__":
 
+    import itertools
+
     parser = argparse.ArgumentParser(description='Training script')
     parser.add_argument('--version', required=True, help='Version type to run')
+    parser.add_argument('--condition', required=False, help='Condition to run for aug1 version')
     parser.add_argument('--seed', required=True, help='Seed to run')
-    parser.add_argument('--fcp_letter', required=False, help='Which fictitious coplay config to use')
+    #parser.add_argument('--fcp_letter', required=False, help='Which fictitious coplay config to use')
     parser.add_argument('--testing', action='store_true', help='')
 
     #parser.add_argument('--entropy_regularization', required=True, help='')
@@ -1492,6 +1495,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     version = args.version
+    condition = args.condition
 
     print(f'\n############################ STARTING TRAINING ############################')
 
@@ -1504,11 +1508,10 @@ if __name__ == "__main__":
     machine = ('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace')
     #note = 'index_1' + machine[0].upper() # R8H
 
-    # Define hyperparameter sweep
 
     config = load_env_config(config_filename)
 
-
+    # Define hyperparameter sweep
     if version == 'overfit':
         note = 'overfit' + machine[0].upper()
         hyperparams = {
@@ -1538,8 +1541,9 @@ if __name__ == "__main__":
 
     elif version == 'strategy':
         note = 'strat5' + machine[0].upper()
-        config['num_timesteps'] = 8e6
-        config['teammate_active_at_start'] = False
+        config['num_timesteps'] = 2e6
+        config['action_type'] = 'target_index'
+        config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-exp2'
         hyperparams = {
             # "network_size": [128, 196],
@@ -1629,13 +1633,52 @@ if __name__ == "__main__":
             "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
-            'league_type': ['strategy_diverse', 'selfplay', 'mixed50']# Later: mixed25, mixed75
+            'league_type': ['selfplay', 'mixed50']# Later: mixed25, mixed75 strategy_diverse
         }
+        #config['league_type'] = 'fcp'
         config['seed'] = int(args.seed)
         overfit_test = None
         load_path = None
         vecnorm_load_path = None
 
+    elif version == 'aug1':
+        note = 'aug1'
+        config['num_timesteps'] = 4e6
+        config['teammate_active_at_start'] = True
+        project_name = 'maisr-rl-mixedtraining'
+
+        config['action_type'] = 'target_index'
+
+        sweep_conditions = {
+            'entropy_regularization': [0.07, 0.09],
+            'entropy_decay_steps': [6e6, 3e6],
+            'use_dynamic_potential': [True, False],
+            'use_teammate_priority_shaping': [True, False],
+        }
+
+        keys = list(sweep_conditions.keys())
+        values = list(sweep_conditions.values())
+        combinations = [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+
+        config['entropy_regularization'] = combinations[condition]['entropy_regularization']
+        config['entropy_decay_steps'] = combinations[condition]['entropy_decay_steps']
+        config['use_dynamic_potential'] = combinations[condition]['use_dynamic_potential']
+        config['use_teammate_priority_shaping'] = combinations[condition]['use_teammate_priority_shaping']
+
+        hyperparams = {
+            'threat_reward_scaling': [0.25],
+            "teammate_reward_scale": [0.75],
+            "potential_ratio": [0.5],
+            "gamma": [0.985],
+            "team_spread_bonus_coeff": [0.02],
+            "shaping_coeff_earlyfinish": [0.2],
+            "quick_id_shaping_coeff": [1.5],
+            'league_type': ['strategy_diverse']  # Later: mixed25, mixed75
+        }
+        config['seed'] = int(args.seed)
+        overfit_test = None
+        load_path = None
+        vecnorm_load_path = None
 
     elif version == 'index-strategy':
         note = 'index_strategy' + machine[0].upper()
@@ -1702,11 +1745,9 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-    import itertools
+
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
-
-
 
     for param_combination in itertools.product(*param_values):
         current_params = dict(zip(param_names, param_combination))

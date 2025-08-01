@@ -113,8 +113,7 @@ class TeammateManager:
 
         elif self.balance_method == "uniform":
             return self._select_uniform_teammate()
-        #elif self.balance_method == "complex":
-            #return self._select_complex_teammate()
+
         else:
             raise ValueError(f"Unknown balance_method: {self.balance_method}")
 
@@ -165,30 +164,21 @@ class TeammateManager:
         elif self.league_type in ['mixed50', 'mixed25', 'mixed75']:
             ratio = int(self.league_type[-2:])/100
             if random.random() < ratio:
-                #if random.random() < 0.5:
-                print(f'[Teammate Manager - {self.league_type}] Creating selfplay teammate')
-                return self._create_selfplay_teammate()
-                # else:
-                #     print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
-                #     return self._create_pretrained_rl_teammate()
+                if random.random() < 0.25:
+                    print(f'[Teammate Manager - {self.league_type}] Creating selfplay teammate')
+                    return self._create_selfplay_teammate()
+                else:
+                    print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
+                    return self._create_pretrained_rl_teammate()
             else:
                 print(f'[Teammate Manager - {self.league_type}] Creating strategy heuristic teammate')
                 return self._create_strategy_diverse_heuristic_teammate()
 
         elif self.league_type == 'fcp':
-            if random.random() < 0.5:
+            if random.random() < 0.75:
                 return self._create_pretrained_rl_teammate()
             else:
                 return self._create_selfplay_teammate()
-        #
-        # elif self.league_type == 'mixed':
-        #     if random.random() < self.fcp_ratio:
-        #         print(f'[Teammate Manager - Mixed] Creating pretrained RL teammate')
-        #         #return self._create_pretrained_rl_teammate()
-        #         return self._create_selfplay_teammate() # TODO TEMP CHANGED
-        #     else:
-        #         print(f'[Teammate Manager - Mixed] Creating strategy heuristic teammate')
-        #         return self._create_strategy_diverse_heuristic_teammate()
 
         else:
             raise ValueError(f"Unknown league_type: {self.league_type}")
@@ -325,18 +315,6 @@ class TeammateManager:
                         norm_stats_path = stat_path
                         break
 
-            # if checkpoint_filename.endswith("_model.zip"):
-            #     prefix = checkpoint_filename.replace("_model.zip", "")
-            # else:
-            #     prefix = checkpoint_filename.replace(".zip", "")  # fallback for _100_steps.zip style
-            #
-            # # Look for matching .pkl
-            # for stat_path in all_normstats:
-            #     stat_filename = os.path.basename(stat_path)
-            #     if stat_filename.startswith(prefix) and stat_filename.endswith("_vecnormalize.pkl"):
-            #         norm_stats_path = stat_path
-            #         break
-
             # Create RL teammate policy using the loaded model
             rl_teammate = RLTeammatePolicy(
                 model=model,
@@ -352,7 +330,6 @@ class TeammateManager:
                 print('No teammate normstats file found. Using live stats')
                 print(f'Debug: norm_stats_path = {norm_stats_path}')
                 rl_teammate.set_live_normalization_stats(self.obs_rms, self.ret_rms)
-
 
             # Set name based on type
             checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
@@ -370,7 +347,6 @@ class TeammateManager:
             teammate = self._create_baseline_teammate()
             teammate.name = f"{fallback_prefix}_LoadError_Fallback"
             return teammate
-
 
 
     def _create_overfit_test_teammate(self):
@@ -634,165 +610,6 @@ class TeammateManager:
             self.current_teammate = teammate
             return teammate
 
-    # def _create_selfplay_teammate(self):
-    #     """
-    #     Create self-play teammate by loading a previous checkpoint of the current agent
-    #     """
-    #     import os
-    #     import glob
-    #     import random
-    #     from stable_baselines3 import PPO
-    #
-    #     if self.selfplay_checkpoint_dir is None:
-    #         print("Warning: No selfplay_checkpoint_dir specified, falling back to baseline teammate")
-    #         raise ValueError
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
-    #         return teammate
-    #
-    #     if not os.path.exists(self.selfplay_checkpoint_dir):
-    #         print(f"Warning: Checkpoint directory {self.selfplay_checkpoint_dir} does not exist, falling back to baseline")
-    #         raise ValueError
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "SelfPlay_NoCheckpointDir_Fallback"
-    #         return teammate
-    #
-    #     # Find all checkpoint files (assuming .zip format for stable-baselines3)
-    #     checkpoint_patterns = [
-    #         os.path.join(self.selfplay_checkpoint_dir, "*.zip"),
-    #         os.path.join(self.selfplay_checkpoint_dir, "**/*.zip"),  # Search subdirectories
-    #         os.path.join(self.selfplay_checkpoint_dir, "checkpoint_*.zip"),
-    #         os.path.join(self.selfplay_checkpoint_dir, "model_*.zip"),
-    #     ]
-    #
-    #     all_checkpoints = []
-    #     for pattern in checkpoint_patterns:
-    #         all_checkpoints.extend(glob.glob(pattern, recursive=True))
-    #
-    #     # Remove duplicates and sort by modification time (newest first)
-    #     all_checkpoints = list(set(all_checkpoints))
-    #     if not all_checkpoints:
-    #         print(f"Warning: No checkpoint files found in {self.selfplay_checkpoint_dir}, falling back to baseline")
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "SelfPlay_NoCheckpoints_Fallback"
-    #         return teammate
-    #
-    #     # Sort by modification time (newest first)
-    #     all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-    #
-    #     # Strategy for checkpoint selection:
-    #     # - 50% chance: select from most recent 3 checkpoints (if available)
-    #     # - 30% chance: select from recent 25% of all checkpoints
-    #     # - 20% chance: select randomly from any checkpoint
-    #
-    #     selection_strategy = random.random()
-    #
-    #     if selection_strategy < 0.5:
-    #         # Select from most recent 3 checkpoints
-    #         recent_checkpoints = all_checkpoints[:min(3, len(all_checkpoints))]
-    #         selected_checkpoint = random.choice(recent_checkpoints)
-    #         strategy_name = "Recent3"
-    #
-    #     elif selection_strategy < 0.8:
-    #         # Select from recent 25% of checkpoints
-    #         recent_count = max(1, len(all_checkpoints) // 4)
-    #         recent_checkpoints = all_checkpoints[:recent_count]
-    #         selected_checkpoint = random.choice(recent_checkpoints)
-    #         strategy_name = "Recent25pct"
-    #
-    #     else:
-    #         # Select randomly from any checkpoint
-    #         selected_checkpoint = random.choice(all_checkpoints)
-    #         strategy_name = "Random"
-    #
-    #     try:
-    #         # Load the selected checkpoint
-    #         print(f"Loading self-play checkpoint: {os.path.basename(selected_checkpoint)} (strategy: {strategy_name})")
-    #         selfplay_model = PPO.load(selected_checkpoint)
-    #
-    #         # Create RL teammate policy using the loaded model
-    #         selfplay_teammate = RLTeammatePolicy(
-    #             model=selfplay_model,
-    #             env=None,  # Will be set later if needed
-    #             local_search_policy=self.subpolicies.get('local_search'),
-    #             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-    #             change_region_subpolicy=self.subpolicies.get('change_region'),
-    #         )
-    #
-    #         # Extract checkpoint identifier for naming
-    #         checkpoint_name = os.path.splitext(os.path.basename(selected_checkpoint))[0]
-    #         selfplay_teammate.name = f"SelfPlay_{strategy_name}_{checkpoint_name}"
-    #
-    #         self.current_teammate = selfplay_teammate
-    #         return selfplay_teammate
-    #
-    #     except Exception as e:
-    #         print(f"Error loading checkpoint {selected_checkpoint}: {e}")
-    #         print("Falling back to baseline teammate")
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "SelfPlay_LoadError_Fallback"
-    #         return teammate
-    #
-    # def _create_pretrained_rl_teammate(self):
-    #     """
-    #     Create pretrained RL mode selector teammate
-    #     """
-    #
-    #     if self.pretrained_teammate_dir is None:
-    #         print("Warning: No pretrained_teammate_dir specified, falling back to baseline teammate")
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "Pretrained_NoPretrainedDir_Fallback"
-    #         return teammate
-    #
-    #     if not os.path.exists(self.pretrained_teammate_dir):
-    #         print(f"Warning: Pretrained directory {self.pretrained_teammate_dir} does not exist, falling back to baseline")
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "Pretrained_NoPretrainedDir_Fallback"
-    #         return teammate
-    #
-    #     # Find all checkpoint files (assuming .zip format for stable-baselines3)
-    #     checkpoint_patterns = [
-    #         os.path.join(self.pretrained_teammate_dir, "*.zip"),
-    #         os.path.join(self.pretrained_teammate_dir, "**/*.zip"),  # Search subdirectories
-    #         os.path.join(self.pretrained_teammate_dir, "checkpoint_*.zip"),
-    #         os.path.join(self.pretrained_teammate_dir, "model_*.zip"),
-    #     ]
-    #
-    #     all_pretrained_teammates = []
-    #     for pattern in checkpoint_patterns:
-    #         all_pretrained_teammates.extend(glob.glob(pattern, recursive=True))
-    #
-    #     # Remove duplicates and sort by modification time (newest first)
-    #     all_pretrained_teammates = list(set(all_pretrained_teammates))
-    #     if not all_pretrained_teammates:
-    #         print(f"Warning: No pretrained files found in {self.pretrained_teammate_dir}, falling back to baseline")
-    #         teammate = self._create_baseline_teammate()
-    #         teammate.name = "Pretrained_NoPretrained_Fallback"
-    #         return teammate
-    #
-    #     all_pretrained_teammates.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-    #     selected_teammate = random.choice(all_pretrained_teammates)
-    #
-    #     # Load the selected pretrained teammate
-    #     print(f"Loading pretrained agent: {os.path.basename(selected_teammate)}")
-    #     selfplay_model = PPO.load(selected_teammate)
-    #
-    #     # Create RL teammate policy using the loaded model
-    #     pretrained_teammate = RLTeammatePolicy(
-    #         model=selfplay_model,
-    #         env=None,  # Will be set later if needed
-    #         local_search_policy=self.subpolicies.get('local_search'),
-    #         go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-    #         change_region_subpolicy=self.subpolicies.get('change_region'),
-    #     )
-    #
-    #     # Extract teammate identifier for naming
-    #     pretrained_name = os.path.splitext(os.path.basename(selected_teammate))[0]
-    #     pretrained_teammate.name = f"Pretrained_{pretrained_name}"
-    #
-    #     self.current_teammate = pretrained_teammate
-    #     return pretrained_teammate
-
 
     def _create_baseline_teammate(self):
         """Create baseline teammate: always heuristic with conservative settings"""
@@ -828,22 +645,6 @@ class TeammateManager:
             decision_speed=decision_speed
         )
 
-        # heuristic_agent = HeuristicAgent(
-        #     mode_selector=mode_selector,
-        #     risk_tolerance=risk_tolerance,
-        #     spatial_coord=spatial_coord
-        # )
-        #
-        # teammate = GenericTeammatePolicy(
-        #     env=None,  # Will be set later if needed
-        #     local_search_policy=self.subpolicies.get(target_search_policy),
-        #     go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
-        #     change_region_subpolicy=self.subpolicies.get('change_region'),
-        #     mode_selector_agent=heuristic_agent,
-        #     use_collision_avoidance=False,
-        #     action_stability='stable'
-        # )
-
         teammate.name = "Baseline_Greedy_noMS_lowrisk_nospatialcoord"
         self.current_teammate = teammate
         return teammate
@@ -857,21 +658,6 @@ class TeammateManager:
         planning_horizon = random.choice(self.planning_horizon_options['vanilla'])
         action_stability = random.choice(self.action_stability_options['vanilla'])
         decision_speed = random.choice(self.decision_speed_options['vanilla'])
-
-        # if planning_horizon == 'short':
-        #     target_search_policy = self.subpolicies.get('local_search')
-        # elif planning_horizon == 'medium':
-        #     if spatial_coord == 'true':
-        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-        #     else:
-        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        # elif planning_horizon == 'long':
-        #     if spatial_coord == 'true':
-        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-        #     else:
-        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        # else:
-        #     raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         target_search_policy = TargetSearchLocalTSP(
             search_radius=1000,
@@ -911,20 +697,6 @@ class TeammateManager:
         action_stability = random.choice(self.action_stability_options['strategy_diverse'])
         planning_horizon = random.choice(self.planning_horizon_options['strategy_diverse'])
         decision_speed = random.choice(self.decision_speed_options['strategy_diverse'])
-
-        # if planning_horizon == 'short':
-        #     target_search_policy = self.subpolicies.get('local_search')
-        # elif planning_horizon == 'medium':
-        #     if spatial_coord == 'true':
-        #         target_search_policy = self.subpolicies.get('local_tsp_yescoord')
-        #     else:
-        #         target_search_policy = self.subpolicies.get('local_tsp_nocoord')
-        # elif planning_horizon == 'long':
-        #     if spatial_coord == 'true':
-        #         target_search_policy = self.subpolicies.get('global_tsp_yescoord')
-        #     else:
-        #         target_search_policy = self.subpolicies.get('global_tsp_nocoord')
-        # else: raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
         target_search_policy = TargetSearchLocalTSP(
             search_radius=1000,
@@ -985,7 +757,6 @@ class RLTeammatePolicy(TeammatePolicy):
     """
     Teammate policy that uses a trained RL model for mode selection
     """
-
     def __init__(self,
                  model,
                  env,
@@ -1021,15 +792,6 @@ class RLTeammatePolicy(TeammatePolicy):
         #self.norm_stats = None
         self.live_obs_rms = None  # For live stats from training env
         self.live_ret_rms = None
-
-        # Try to load from file first
-        # if norm_stats_path and os.path.exists(norm_stats_path):
-        #     try:
-        #         self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
-        #         print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
-        #     except Exception as e:
-        #         print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
-        #         self.norm_stats = None
 
         # Default name
         self.name = "RL_Teammate"
@@ -1074,6 +836,10 @@ class RLTeammatePolicy(TeammatePolicy):
                 #print('norm stats means:')
                 #print(obs_mean)
 
+                if observation.shape != obs_mean.shape:
+                    #print(f'OBSERVATION IS WRONG SHAPE: {observation.shape} vs {obs_mean.shape}')
+                    observation = observation[-1]
+
                 epsilon = 1e-8
                 clip_obs = 10.0
 
@@ -1083,10 +849,6 @@ class RLTeammatePolicy(TeammatePolicy):
                     -clip_obs,
                     clip_obs
                 )
-                #if self.env.step_count_outer % 50 == 0:
-                #print("[Teammate] Normstats mean (first 3):", self.norm_stats.obs_rms.mean[:3])
-                #print("[Teammate] Obs (first 3):", observation[:3])
-                #print("[Teammate] Normalized Obs (first 3):", normalized_obs[:3])
 
                 return normalized_obs.astype(np.float32)
             except Exception as e:
@@ -1207,11 +969,9 @@ class HeuristicAgent:
     def _choose_base_subpolicy(self, env, agent_id=0):
         """
         Choose a subpolicy based on the agent's configuration and current environment state.
-
         Args:
             env: The environment instance (MAISREnvVec)
             agent_id (int): ID of the agent making the decision (default 0)
-
         Returns:
             int: Subpolicy choice (0=localsearch, 1=changeregion, 2=gotothreat)
         """
@@ -1339,70 +1099,16 @@ class HeuristicAgent:
         else:
             self._debug_counter = 0
 
-        #if self._debug_counter % 50 == 0:  # Log every 50 calls
-            #print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
+        if self._debug_counter % 10 == 0:  # Log every 50 calls
+            print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
 
         return should_go
-
-    def _apply_action_jitter(self, base_subpolicy):
-        """Apply directional jitter to the chosen subpolicy"""
-        # TODO need to fix. Currently disabled
-        # Random chance to apply jitter
-        if random.random() > self.jitter_frequency:
-            return base_subpolicy
-
-        # Map subpolicies to their "directional" equivalents for jittering
-        # 1=NW, 4=NE, 5=SE, 6=SW
-        direction_map = {1: 0, 4: 1, 6: 2, 5: 3}  # Map to 0-3 for easier math
-        reverse_map = {0: 1, 1: 4, 2: 6, 3: 5}
-
-        jitter = random.choice(self.jitter_steps)
-
-        if base_subpolicy in direction_map:
-            current_dir = direction_map[base_subpolicy]
-
-            # Apply jitter (±1 direction, wrapping around)
-            jitter = random.choice(self.jitter_steps)
-            new_dir = (current_dir + jitter) % 4
-
-            jittered_subpolicy = reverse_map[new_dir]
-
-            # print(f"[HeuristicAgent] Jittered subpolicy {base_subpolicy} -> {jittered_subpolicy}")
-            return jittered_subpolicy
-
-        return base_subpolicy
 
 
     def _choose_search_strategy(self, env, agent_id):
         """Choose between local search and specific quadrant goto policies"""
         if self.spatial_coord == False:
             return 0  # Always choose localsearch
-
-        # elif self.spatial_coord == "some":
-        #     # Use existing hysteresis logic but return specific quadrant policies
-        #     quadrant_choice = self._check_target_rich_quadrant_with_hysteresis(env, agent_id)
-        #     if quadrant_choice == 1:  # Original logic returned 1 for changeregion
-        #         # Now we need to determine WHICH quadrant has the most targets
-        #         target_rich_quadrant_id = self._find_best_quadrant(env, agent_id)
-        #         # Map quadrant ID to subpolicy: 0=NW->1, 1=NE->4, 2=SW->6, 3=SE->5
-        #         quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
-        #         return quadrant_to_subpolicy.get(target_rich_quadrant_id, 0)
-        #     return 0
-        #
-        # elif self.spatial_coord == "high":
-        #     if self._agents_in_same_quadrant(env, agent_id):
-        #         # Choose a different quadrant to go to
-        #         current_quadrant_name = self._get_agent_quadrant(env, agent_id)
-        #         # Convert quadrant name to ID
-        #         quadrant_name_to_id = {"NW": 0, "NE": 1, "SW": 2, "SE": 3}
-        #         current_quadrant_id = quadrant_name_to_id.get(current_quadrant_name, 0)
-        #
-        #         # Go to opposite quadrant
-        #         opposite_quadrant_id = (current_quadrant_id + 2) % 4
-        #         quadrant_to_subpolicy = {0: 1, 1: 4, 2: 6, 3: 5}
-        #         return quadrant_to_subpolicy.get(opposite_quadrant_id, 0)
-        #     return 0
-
         return 0
 
     def _find_best_quadrant(self, env, agent_id):
@@ -1446,11 +1152,9 @@ class HeuristicAgent:
     def _check_target_rich_quadrant_with_hysteresis(self, env, agent_id):
         """
         Check if there's a target-rich quadrant with hysteresis to prevent oscillation.
-
         Args:
             env: The environment instance
             agent_id (int): ID of the agent making the decision
-
         Returns:
             int: 1 for changeregion if target-rich quadrant found, 0 for localsearch otherwise
         """
@@ -1817,7 +1521,6 @@ class GoToNearestThreat(SubPolicy):
         self._current_target_pos = None
         self._last_action = None
         self._action_repeat_count = 0
-
 
 
 class EvadeDetection(SubPolicy):
