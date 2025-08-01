@@ -16,7 +16,8 @@ from utility.data_logging import load_env_config
 from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 from user_study.rl_data_logger import ExperimentDataLogger
 from user_study.instructional_screens import ScreenManager, WorkloadSurveyScreen, TeammatePreferenceSurveyScreen, \
-    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen, SecondPracticeIntroScreen, InterScreen
+    InstructionSeriesManager, FinalSummaryScreen, AfterPracticeScreen, SecondPracticeIntroScreen, InterScreen, \
+    BeforeSoloScreen
 from PIL import Image
 from io import BytesIO
 
@@ -260,13 +261,14 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
     bottom_texts = [
         f"Regular: {regular_targets}/15",
         f"High-value: {high_value_targets}/2",
-        f"Score: {score}",
-        f"Steps: {step_count}/{int(round(max_steps/35, 0))}",
+        f"SCORE: {score}",
+        f"Steps: {step_count} / {int(round(max_steps/35, 0))}",
         #f"Time left: {time_left}s"
     ]
 
     x_start = 50
-    y_pos = 1060  # Just above the progress bar
+    y_pos = 1060
+    x_positions = [10, 200, 450, 800]
     spacing = 1000 / 4
 
     for i, text in enumerate(bottom_texts):
@@ -277,12 +279,17 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
         else:
             color = (0,0,0)
         text_surface = font.render(text, True, color)
-        window.blit(text_surface, (x_start + i * spacing, y_pos))
+        x = x_positions[i]
+        window.blit(text_surface, (x, y_pos))
+        #window.blit(text_surface, (x_start + i * spacing, y_pos))
+
+    pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 125, 40), width = 3)
 
 
 
 
-def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, admin=False):
+
+def run_single_episode(env, human_controller, config, config_index, total_configs, agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, short_rounds, admin=False):
     """Run a single episode of the experiment"""
     #print(f"\n{'=' * 50}")
     print(f"Starting Config: {config} ({config_index + 1}/{total_configs})")
@@ -426,7 +433,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
         obs = obses[0]
         reward = rewards[0]
         info = infos[0]
-        short_round_triggered = False #step_count > 10 # TODO can remove this
+        short_round_triggered = step_count > 5 and short_rounds
         done = dones[0] or (np.sum(base_env.threat_identified) >= 2.0 and base_env.targets_identified >= 15) or skip_round or short_round_triggered
         if skip_round:
             print(f'SKIP ROUND')
@@ -502,7 +509,7 @@ def launch_survey_url(url, level_id: int, agent_type: str, subject_id: int = Non
         return False
 
 
-def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_trajectories=False, admin=False, run_third_agent = False):
+def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_trajectories=False, admin=False, run_third_agent = False, short_rounds = False):
 
     import sockets
     sockets.connect()
@@ -523,36 +530,15 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
     config['max_steps'] *= (1700 / 1500) * time_factor
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0#0.0003
-    #config['observe_teammate_priority'] = False # TODO switch to true with new agents
+    config['action_type'] = 'Discrete16'
+    config['observe_teammate_priority'] = False # TODO switch to true with new agents
     print(f'LOADED CONFIG {config_filename}')
 
-    agent_a_name = 'M1S_indexstrategy' # 'M1S_index_strategyresumed'
-    agent_b_name = 'M1S_indexselfplay'
-    agent_c_name = 'M1S_indexmixed50'
-    agent_s_name = 'selfplay_seed77'
-    agent_p_name = 'bad_practice_agent'
-
-    # if subject_id == 90:
-    #     agent_a_name = 'index_selfplay'#strategy_trained'#'selfplay_trained_jul18'
-    #     agent_b_name = 'index_selfplay'#'strategy_trained_jul18'
-    #     config['action_type'] = 'target_index'
-    #
-    # elif subject_id == 91:
-    #     agent_a_name = 'index_strategy'  # strategy_trained'#'selfplay_trained_jul18'
-    #     agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
-    #     config['action_type'] = 'target_index'
-    #
-    # elif subject_id == 92:
-    #     agent_a_name = 'strategy_trained'  # '#'selfplay_trained_jul18'
-    #     agent_b_name = 'strategy_trained'  # 'strategy_trained_jul18'
-    #
-    # elif subject_id == 93:
-    #     agent_a_name = 'selfplay_seed77'  # strategy_trained'#'selfplay_trained_jul18'
-    #     agent_b_name = 'selfplay_seed77'  # 'strategy_trained_jul18'
-    #
-    # else:
-    #     agent_a_name = 'index_selfplay'  # strategy_trained'#'selfplay_trained_jul18'
-    #     agent_b_name = 'index_strategy'  # 'strategy_trained_jul18'
+    agent_a_name = 'strategy_trained' #'M1S_indexstrategy'
+    agent_b_name = 'selfplay_seed77' #'M1S-2_selfplay_750ksteps' # 'M1S_indexselfplay'
+    agent_c_name = 'selfplay_seed77' #'M1S_indexmixed50'
+    agent_s_name = 'selfplay_seed77'# 'bad_practice_agent'
+    agent_p_name = 'selfplay_seed77'# 'bad_practice_agent'
 
 
     # Define RL agent model paths
@@ -572,38 +558,36 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
         'P': f'./user_study/saved_agents/{agent_p_name}_vecnormalize.pkl'
     }
 
-
-    #levels = list(range(1, 8))
-    #random.shuffle(levels)
-    # config_list = []
-    # for level in levels:
-    #     pair = [f"A{level}", f"B{level}"] if subject_id % 2 == 0 else [f"B{level}", f"A{level}"]
-    #     #random.shuffle(pair)  # Randomize whether A or B comes first for this level
-    #     config_list.extend(pair)
-
     if subject_id % 2 == 0:
         if run_third_agent:
             #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
             #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
-            config_list = ['A1', 'B1', 'C7', 'A3', 'B3', 'C1', 'A4', 'B4', 'C5', 'A5', 'B5', 'C3', 'A7', 'B7']
-            # AB 3
-            # CA 2
-            # BC 2
+            config_list = ['A1', 'B1', 'C7', 'A3', 'S3', 'S7', 'B3', 'C1', 'A4', 'B4', 'C5', 'A5', 'B5', 'C3', 'A7', 'B7']
 
         else:
-            raise NotImplementedError
-            config_list = ['A1', 'B1', 'B2', 'A2', 'A3', 'B3', 'B4', 'A4', 'A5', 'B5', 'B6', 'A6', 'A7', 'B7']
+            config_list = ['A1', 'B1',
+                           'B3', 'A3',
+                           'A4', 'B4',
+                           'S3', 'S7',
+                           'B5', 'A5',
+                           'A7', 'B7'
+                           ]
     else:
         if run_third_agent:
-            config_list = ['B1', 'A1', 'C7', 'A2', 'B2', 'C5', 'B3', 'A3', 'C1', 'A4', 'B4', 'C6', 'B5', 'A5', 'C3', 'A6', 'B6', 'C2' 'B7', 'A7', 'C4']
-            config_list = ['B1', 'A1', 'C7', 'B3', 'A3', 'C1', 'B4', 'A4', 'C5', 'B5', 'A5', 'C3', 'B7', 'A7']
+            #config_list = ['B1', 'A1', 'C7', 'A2', 'B2', 'C5', 'B3', 'A3', 'C1', 'A4', 'B4', 'C6', 'B5', 'A5', 'C3', 'A6', 'B6', 'C2' 'B7', 'A7', 'C4']
+            config_list = ['B1', 'A1', 'C7', 'B3', 'S3', 'S7', 'A3', 'C1', 'B4', 'A4', 'C5', 'B5', 'A5', 'C3', 'B7', 'A7']
         else:
-            raise NotImplementedError
-            config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
+            config_list = ['B1', 'A1',
+                           'A3', 'B3',
+                           'B4', 'A4',
+                           'S3', 'S7',
+                           'A5', 'B5',
+                           'B7', 'A7'
+                           ]  #
+            #config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
 
-
-    practice_level = 1
-    practice_config = [f"P{practice_level}", f"P{practice_level}"]
+    #practice_level = 1
+    practice_config = [f"P1", f"P4"]
 
     full_config_list = practice_config + config_list
 
@@ -615,9 +599,6 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
         full_config_list = full_config_list[start_level:]
         print(f"Starting from level {start_level}: {full_config_list}")
 
-    # if collect_solo_trajectories:
-    #     solo_configs = ['S1', 'S2','S3','S4','S5','S6','S7']
-    #     full_config_list.extend(solo_configs)
 
     print(f"Randomized configuration order: {full_config_list}")
 
@@ -637,7 +618,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
     pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
 
     # Create font for instructions
-    font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 24)  # pygame.font.SysFont('Arial', 36, bold=True)
+    font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 26)  # pygame.font.SysFont('Arial', 36, bold=True)
 
     # Store results
     experiment_results = []
@@ -677,33 +658,36 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             'A': 'red',
             'B': 'purple',
             'C': 'green',
-            'S': 'black',
-            'P': 'black'
+            'S': 'invisible',
+            'P': 'invisible'
         }
 
+        before_solo_screen = BeforeSoloScreen(window_width=window_width, window_height=window_height, sio=sockets)
+
         for config_index, current_config in enumerate(full_config_list):
+
+            agent_letter = current_config[0]  # 'A', 'B', or 'S'
+            level_number = int(current_config[1:])
 
             if config_index == 0 and start_level == 0: # # Handle practice level special settings
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'P'
                 level_number = 1
-                #agent_appearance = 'black'  # Practice agent color
                 agent_appearance = appearance_map.get(agent_letter, 'black')
             elif config_index == 1 and start_level == 0: # # Handle practice level special settings
                 screen = SecondPracticeIntroScreen(window_width=window_width, window_height=window_height, sio=sockets)
                 result = screen_manager.show_screen(screen)
-                # if result.get("action") == "exit":
-                #     return
                 print(f"\nPreparing for practice level (config: {current_config})")
                 agent_letter = 'P'
-                level_number = 1
+                level_number = 4
                 agent_appearance = appearance_map.get(agent_letter, 'black')
-                #agent_appearance = 'black'  # Practice agent color
 
+            elif agent_letter == 'S':
+                result = screen_manager.show_screen(before_solo_screen)
+                print(f'\n Preparing for solo round')
+                agent_appearance = 'invisible'
+                before_solo_screen.second = True
             else:
-                agent_letter = current_config[0]  # 'A', 'B', or 'S'
-                level_number = int(current_config[1:])
-                #agent_appearance = appearance_map.get(config_index, 'black')
                 agent_appearance = appearance_map.get(agent_letter, 'black')
 
             print('\n\n=====================================================================')
@@ -734,7 +718,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             # Run the episode
             should_quit, episode_reward, step_count, target_ids, threat_ids, = run_single_episode(
                         env, human_controller, current_config, config_index, len(full_config_list),
-                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, admin=admin)
+                        current_agent_model, window, font, clock, tick_rate, data_logger, time_factor, agent_letter, agent_model_name, start_level, short_rounds, admin=admin)
 
             if should_quit:
                 print("Experiment terminated by user")
@@ -743,12 +727,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             # After second practice episode, show the after-practice screen
             if config_index == 1:
                 after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
-                #if self.sio is not None:
-                #sockets.send_frame(window)
                 after_practice_result = screen_manager.show_screen(after_practice_screen)
-                # if after_practice_result["action"] == "exit":
-                #     print("User exited after practice screen")
-                #     return
                 continue  # skip survey for practice
 
             # Store results
@@ -768,8 +747,6 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             # Workload survey and teammate survey logic (skip for practice)
             level = agent_letter + str(level_number)
 
-
-            #if level in ['A1', 'B1', 'A2', 'B3', 'A4', 'B5', 'A6', 'B7', 'C5', 'C3', 'C4']:
             levels_for_workload_survey = ['A1', 'B1', 'B3', 'A4', 'B5', 'B7', 'C5', 'C3', 'C4']
             if level in levels_for_workload_survey:
                 workload_survey_screen = WorkloadSurveyScreen(
@@ -784,11 +761,16 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
                     if hasattr(data_logger, 'log_survey_data'):
                         data_logger.log_survey_data(survey_data)
 
-            if subject_id % 2 == 0:
-                #levels_for_preference_survey = ['B1', 'A2', 'B3', 'C6', 'C3', 'C2', 'C4']
-                levels_for_preference_survey = ['B1', 'A3', 'C1', 'B4', 'A5', 'C3', 'B7']
+            if run_third_agent:
+                if subject_id % 2 == 0:
+                    levels_for_preference_survey = ['B1', 'A3', 'C1', 'B4', 'A5', 'C3', 'B7']
+                else:
+                    levels_for_preference_survey = ['A1', 'B3', 'C1', 'A4', 'B5', 'C3', 'A7']
             else:
-                levels_for_preference_survey = ['A1', 'B3', 'C1', 'A4', 'B5', 'C3', 'A7']
+                if subject_id % 2 == 0:
+                    levels_for_preference_survey = ['B1', 'A3', 'B7', 'A5', 'B4']
+                else:
+                    levels_for_preference_survey = ['A1', 'B3', 'A7', 'B5', 'A4']
 
 
             if level in levels_for_preference_survey:
@@ -877,12 +859,14 @@ if __name__ == "__main__":
     parser.add_argument('--skip', action='store_true', help='Skip instructional screens')
     parser.add_argument('--pilot', action='store_true', help='Set to true if running pilot studies. Appends solo configs after main rounds.')
     parser.add_argument('--admin', action='store_true',help='Allows skipping sections with ENTER')
+    parser.add_argument('--short', action='store_true', help='')
     args = parser.parse_args()
 
     subject_id = args.subject_id
     start_level = args.start_level
     skip_instructions = args.skip
+    short_rounds = args.short
 
 
 
-    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = args.pilot)
+    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = args.pilot, short_rounds=short_rounds)

@@ -274,7 +274,7 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.segment_width = self.bar_width // 7
         self.bar_start_x = 200#(self.window_width - self.bar_width) // 2
         self.bar_spacing = 135
-        self.first_bar_y = 230
+        self.first_bar_y = 245
 
         # Colors
         self.unselected_color = (100, 100, 100)
@@ -288,10 +288,12 @@ class WorkloadSurveyScreen(InstructionalScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
-        title = "Please answer these questions about the last round:"
+        title = "Please answer these questions about the last round,"
         #if self.episode_config:
             #title = f"Please rate your workload in the last round:"
         self.draw_text_centered(window, title, 120, self.font_large)
+
+        self.draw_text_centered(window, "with 1 being the lowest and 7 being the highest.", 155, self.font_large)
 
         # Draw rating bars
         for i, question in enumerate(self.questions):
@@ -1234,6 +1236,12 @@ class Instruct5Screen(GameInstructionScreen):
 
         text_surface = self.font_large.render("There are 4 HIGH-VALUE targets on the map.", True, self.text_color)
         window.blit(text_surface, (300, 430))
+
+        text_surface = self.font_large.render("To be identified, the high value target's", True, self.text_color)
+        window.blit(text_surface, (300, 465))
+
+        text_surface = self.font_large.render("TRIANGLE must enter your sensor range", True,self.text_color)
+        window.blit(text_surface, (300, 465+35))
         #
         # bottom_text = ["Each level has 15 regular",
         #                "targets and 4 high-value targets."]
@@ -1358,6 +1366,9 @@ class Instruct7Screen(GameInstructionScreen):
                     "and exactly 2 high-value targets.",
                     "",
                     "",
+                    "You have about 75 seconds per round."
+                    "",
+                    "",
                     "If you identify more or less than 2 high-",
                     "value targets, your score will be reduced.",
                     "",
@@ -1406,7 +1417,7 @@ class SecondPracticeIntroScreen(GameInstructionScreen):
             "round just to get more familiar."
         ]
 
-        y_pos = 150
+        y_pos = 350
         for line in top_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
@@ -1462,7 +1473,7 @@ class Instruct8Screen(GameInstructionScreen):
 
     def draw_content(self, window: pygame.Surface) -> None:
         instruction_text = [
-            "You will complete 16 rounds in the game.",
+            "You will complete 14 rounds in the game.",
             "",
             "Each round is approximately 1 minute long.",
             "",
@@ -1514,6 +1525,33 @@ class AfterPracticeScreen(GameInstructionScreen):
             import sockets
             sockets.send_frame(window)
 
+class BeforeSoloScreen(GameInstructionScreen):
+    """Placeholder screen for later editing"""
+    def __init__(self, window_width: int, window_height: int, sio=None):
+        super().__init__(screen_number=1, total_screens=1,
+                         window_width=window_width, window_height=window_height)
+        self.sio = sio
+        self.second = False
+
+    def draw_content(self, window):
+        self.draw_text_centered(window, "", 250, self.font_large)
+        if self.second is False:
+            placeholder_lines = [
+                "Now you'll complete two solo rounds, without a teammate.",
+                "",
+                "After these rounds, you'll continue playing with teammates."
+            ]
+        else:
+            placeholder_lines = [
+                "The next round will be solo as well.",
+                "",
+                "After this round, you'll continue playing with teammates."
+            ]
+        self.draw_text_block(window, placeholder_lines, 400, self.font_large, 40)
+
+        if self.sio is not None:
+            import sockets
+            sockets.send_frame(window)
 
 
 class PracticeIntroScreen(GameInstructionScreen):
@@ -1528,8 +1566,9 @@ class PracticeIntroScreen(GameInstructionScreen):
             "gameplay. There is no survey after this round.",
             "",
             "",
-            "In the practice round, you will play alongside an agent who",
-            "is still learning. It may not do as well as the other agents!"
+            "You will also play this round solo, without a teammate."
+            #"In the practice round, you will play alongside an agent who",
+            #"is still learning. It may not do as well as the other agents!"
             "",
             "",
             "When you're ready, click the arrow to begin.",

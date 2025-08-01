@@ -553,7 +553,6 @@ class MAISREnvVec(gym.Env):
             else:
                 waypoint = self._direction_to_waypoint(action)
 
-
         self.agents[self.aircraft_ids[0]].waypoint_override = waypoint  # Changed from self.agents[0]
 
         if hasattr(self, "interpolated_teammate_positions"):
@@ -576,10 +575,12 @@ class MAISREnvVec(gym.Env):
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
+
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             aircraft_idx = aircraft.agent_idx  # Get the aircraft's index (0 or 1)
 
-            aircraft.move() # Move using the waypoint override set above
+            if not aircraft.appearance == 'invisible':
+                aircraft.move() # Move using the waypoint override set above
 
             # # Calculate distances to all targets
             #aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
@@ -2696,8 +2697,8 @@ class MAISREnvVec(gym.Env):
             if perp_dist <= beam_half_width:
                 flying_target_indices.append(idx)
 
-        if flying_target_indices:
-            print(f'[Dynamic Shaping] excluding indices {flying_target_indices} from potential shaping')
+        #if flying_target_indices:
+            #print(f'[Dynamic Shaping] excluding indices {flying_target_indices} from potential shaping')
         return flying_target_indices
 
 

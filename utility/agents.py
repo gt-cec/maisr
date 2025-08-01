@@ -102,6 +102,8 @@ class Aircraft(Agent):
             self.color = (255, 150, 0)
         elif self.appearance == 'black':
             self.color = (20, 20, 20)
+        elif self.appearance == 'invisible':
+            self.color = (255, 255, 255)
 
         self.smoothed_direction = 0.0  # Smoothed direction in radians
         self.direction_smoothing_factor = 0.02  # Lower = more smoothing
@@ -110,213 +112,186 @@ class Aircraft(Agent):
 
 
     def draw(self, window):
-        # if self.is_visible:
-        #     # Convert from centered coordinates to screen coordinates for rendering
-        #     map_half_size = self.env.config['gameboard_size'] / 2
-        #     screen_x = self.x + map_half_size
-        #     screen_y = self.y + map_half_size
-        #
-        #     # Calculate all points using screen coordinates
-        #     nose_point = (screen_x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,
-        #                   screen_y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
-        #     tail_point = (screen_x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,
-        #                   screen_y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
-        #
-        #     left_wingtip_point = (screen_x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,
-        #                           screen_y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
-        #     right_wingtip_point = (screen_x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,
-        #                            screen_y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
-        #
-        #     left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,
-        #                        tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-        #     right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,
-        #                         tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-        #
-        #     # Draw all the aircraft components
-        #     pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
-        #     pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        #     pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
-        #     pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        #     pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        #     pygame.draw.line(window, self.color, left_wingtip_point, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH)
-        #     pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        #     pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+
+        if self.appearance == 'invisible':
+            return
 
         if not self.is_visible:
             return
 
-        map_half_size = self.env.config['gameboard_size'] / 2
-        screen_x = self.x + map_half_size
-        screen_y = self.y + map_half_size
+        if not self.appearance == 'invisible':
+            map_half_size = self.env.config['gameboard_size'] / 2
+            screen_x = self.x + map_half_size
+            screen_y = self.y + map_half_size
 
-        # Calculate all points using screen coordinates
-        nose_point = (screen_x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,screen_y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
-        tail_point = (screen_x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,screen_y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
+            # Calculate all points using screen coordinates
+            nose_point = (screen_x + math.cos(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH,screen_y + math.sin(self.direction) * self.env.AIRCRAFT_NOSE_LENGTH)
+            tail_point = (screen_x - math.cos(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH,screen_y - math.sin(self.direction) * self.env.AIRCRAFT_TAIL_LENGTH)
 
-        left_wingtip_point = (screen_x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,screen_y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
-        right_wingtip_point = (screen_x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,screen_y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            left_wingtip_point = (screen_x - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,screen_y - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
+            right_wingtip_point = (screen_x + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH,screen_y + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_WING_LENGTH)
 
-        left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
-        right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            left_tail_point = (tail_point[0] - math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] - math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
+            right_tail_point = (tail_point[0] + math.cos(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH,tail_point[1] + math.sin(self.direction - math.pi / 2) * self.env.AIRCRAFT_TAIL_WIDTH)
 
-        # Draw waypoint line and marker
-        if self.target_point is not None:
-            if self.show_agent_waypoint >= 1:
-                # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
-                waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
+            # Draw waypoint line and marker
+            if self.target_point is not None:
+                if self.show_agent_waypoint >= 1:
+                    # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
+                    waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
 
-                # Calculate direction from aircraft to smoothed waypoint
-                dx = waypoint_to_draw[0] - self.x
-                dy = waypoint_to_draw[1] - self.y
-                distance = math.hypot(dx, dy)
+                    # Calculate direction from aircraft to smoothed waypoint
+                    dx = waypoint_to_draw[0] - self.x
+                    dy = waypoint_to_draw[1] - self.y
+                    distance = math.hypot(dx, dy)
 
-                if distance > 0:
-                    # Extend the line to a fixed length (e.g., same as original target distance)
-                    original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
-                    extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
+                    if distance > 0:
+                        # Extend the line to a fixed length (e.g., same as original target distance)
+                        original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
+                        extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
 
-                    extended_x = self.x + (dx / distance) * original_distance
-                    extended_y = self.y + (dy / distance) * original_distance
+                        extended_x = self.x + (dx / distance) * original_distance
+                        extended_y = self.y + (dy / distance) * original_distance
 
-                    # Convert to screen coordinates
-                    target_screen_x = extended_x + map_half_size
-                    target_screen_y = extended_y + map_half_size
-                else:
-                    # Fallback if distance is zero
-                    target_screen_x = waypoint_to_draw[0] + map_half_size
-                    target_screen_y = waypoint_to_draw[1] + map_half_size
+                        # Convert to screen coordinates
+                        target_screen_x = extended_x + map_half_size
+                        target_screen_y = extended_y + map_half_size
+                    else:
+                        # Fallback if distance is zero
+                        target_screen_x = waypoint_to_draw[0] + map_half_size
+                        target_screen_y = waypoint_to_draw[1] + map_half_size
 
-                pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
-                pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
+                    pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+                    pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
 
-        # Draw all the aircraft components
-        pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
-        pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
-        pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        pygame.draw.line(window, self.color, left_wingtip_point, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH)
-        pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
-        pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            # Draw all the aircraft components
+            pygame.draw.line(window, self.color, tail_point, nose_point, self.env.AIRCRAFT_LINE_WIDTH)
+            pygame.draw.circle(window, self.color, nose_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.line(window, self.color, left_tail_point, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH)
+            pygame.draw.circle(window, self.color, left_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.circle(window, self.color, right_tail_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.line(window, self.color, left_wingtip_point, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH)
+            pygame.draw.circle(window, self.color, left_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
+            pygame.draw.circle(window, self.color, right_wingtip_point, self.env.AIRCRAFT_LINE_WIDTH // 2)
 
-        # === CUSTOM APPEARANCE RENDERING ===
-        if self.appearance == 'purple':
-            # Square at root (center of aircraft), half the wingspan
-            square_size = 13
-            rect = pygame.Rect(0, 0, square_size, square_size)
-            rect.center = (screen_x, screen_y)
-            pygame.draw.rect(window, self.color, rect)  # black border
-        elif self.appearance == 'green':
-            # Forward lines from each wingtip
-            def draw_forward_line(point):
-                end = (
-                    point[0] + math.cos(self.direction) * 8,
-                    point[1] + math.sin(self.direction) * 8
+            # === CUSTOM APPEARANCE RENDERING ===
+            if self.appearance == 'purple':
+                # Square at root (center of aircraft), half the wingspan
+                square_size = 13
+                rect = pygame.Rect(0, 0, square_size, square_size)
+                rect.center = (screen_x, screen_y)
+                pygame.draw.rect(window, self.color, rect)  # black border
+            elif self.appearance == 'green':
+                # Forward lines from each wingtip
+                def draw_forward_line(point):
+                    end = (
+                        point[0] + math.cos(self.direction) * 8,
+                        point[1] + math.sin(self.direction) * 8
+                    )
+                    pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
+                draw_forward_line(left_wingtip_point)
+                draw_forward_line(right_wingtip_point)
+            elif self.appearance == 'red':
+                # Perpendicular line at nose
+                perp_angle = self.direction + math.pi / 2
+                start = (
+                    nose_point[0] - math.cos(perp_angle) * 4.5,
+                    nose_point[1] - math.sin(perp_angle) * 4.5
                 )
-                pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
-            draw_forward_line(left_wingtip_point)
-            draw_forward_line(right_wingtip_point)
-        elif self.appearance == 'red':
-            # Perpendicular line at nose
-            perp_angle = self.direction + math.pi / 2
-            start = (
-                nose_point[0] - math.cos(perp_angle) * 4.5,
-                nose_point[1] - math.sin(perp_angle) * 4.5
-            )
-            end = (
-                nose_point[0] + math.cos(perp_angle) * 4.5,
-                nose_point[1] + math.sin(perp_angle) * 4.5
-            )
-            pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
-
-            def draw_backward_line(point):
                 end = (
-                    point[0] - math.cos(self.direction) * 8,
-                    point[1] - math.sin(self.direction) * 8
+                    nose_point[0] + math.cos(perp_angle) * 4.5,
+                    nose_point[1] + math.sin(perp_angle) * 4.5
                 )
-                pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
-            draw_backward_line(left_wingtip_point)
-            draw_backward_line(right_wingtip_point)
+                pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
 
-            # Line 3px forward from tail, 5px long
-            offset_tail = (
-                tail_point[0] + math.cos(self.direction) * 3,
-                tail_point[1] + math.sin(self.direction) * 3
-            )
-            end = (
-                offset_tail[0] + math.cos(self.direction) * 5,
-                offset_tail[1] + math.sin(self.direction) * 5
-            )
-            #pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
+                def draw_backward_line(point):
+                    end = (
+                        point[0] - math.cos(self.direction) * 8,
+                        point[1] - math.sin(self.direction) * 8
+                    )
+                    pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
+                draw_backward_line(left_wingtip_point)
+                draw_backward_line(right_wingtip_point)
 
-        elif self.appearance == 'brown':
-            # Same nose line as red
-            perp_angle = self.direction + math.pi / 2
-            start = (
-                nose_point[0] - math.cos(perp_angle) * 2.5,
-                nose_point[1] - math.sin(perp_angle) * 2.5
-            )
-            end = (
-                nose_point[0] + math.cos(perp_angle) * 2.5,
-                nose_point[1] + math.sin(perp_angle) * 2.5
-            )
-            pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
-
-
-            # Backward lines from each wingtip
-            def draw_backward_line(point):
+                # Line 3px forward from tail, 5px long
+                offset_tail = (
+                    tail_point[0] + math.cos(self.direction) * 3,
+                    tail_point[1] + math.sin(self.direction) * 3
+                )
                 end = (
-                    point[0] - math.cos(self.direction) * 8,
-                    point[1] - math.sin(self.direction) * 8
+                    offset_tail[0] + math.cos(self.direction) * 5,
+                    offset_tail[1] + math.sin(self.direction) * 5
                 )
-                pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
-            draw_backward_line(left_wingtip_point)
-            draw_backward_line(right_wingtip_point)
+                #pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
 
-            # Line 3px forward from tail, 5px long
-            offset_tail = (
-                tail_point[0] + math.cos(self.direction) * 3,
-                tail_point[1] + math.sin(self.direction) * 3
-            )
-            end = (
-                offset_tail[0] + math.cos(self.direction) * 5,
-                offset_tail[1] + math.sin(self.direction) * 5
-            )
-            pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
+            elif self.appearance == 'brown':
+                # Same nose line as red
+                perp_angle = self.direction + math.pi / 2
+                start = (
+                    nose_point[0] - math.cos(perp_angle) * 2.5,
+                    nose_point[1] - math.sin(perp_angle) * 2.5
+                )
+                end = (
+                    nose_point[0] + math.cos(perp_angle) * 2.5,
+                    nose_point[1] + math.sin(perp_angle) * 2.5
+                )
+                pygame.draw.line(window, self.color, start, end, self.env.AIRCRAFT_LINE_WIDTH)
 
 
-        # Draw the engagement radius (using screen coordinates)
-        pygame.draw.circle(window, self.color, (int(screen_x), int(screen_y)), self.env.AIRCRAFT_ENGAGEMENT_RADIUS,2)
+                # Backward lines from each wingtip
+                def draw_backward_line(point):
+                    end = (
+                        point[0] - math.cos(self.direction) * 8,
+                        point[1] - math.sin(self.direction) * 8
+                    )
+                    pygame.draw.line(window, self.color, point, end, self.env.AIRCRAFT_LINE_WIDTH)
+                draw_backward_line(left_wingtip_point)
+                draw_backward_line(right_wingtip_point)
 
-        # # Draw waypoint line and marker
-        # if self.target_point is not None:
-        #     if self.show_agent_waypoint >= 1:
-        #         # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
-        #         waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
-        #
-        #         # Calculate direction from aircraft to smoothed waypoint
-        #         dx = waypoint_to_draw[0] - self.x
-        #         dy = waypoint_to_draw[1] - self.y
-        #         distance = math.hypot(dx, dy)
-        #
-        #         if distance > 0:
-        #             # Extend the line to a fixed length (e.g., same as original target distance)
-        #             original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
-        #             extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
-        #
-        #             extended_x = self.x + (dx / distance) * original_distance
-        #             extended_y = self.y + (dy / distance) * original_distance
-        #
-        #             # Convert to screen coordinates
-        #             target_screen_x = extended_x + map_half_size
-        #             target_screen_y = extended_y + map_half_size
-        #         else:
-        #             # Fallback if distance is zero
-        #             target_screen_x = waypoint_to_draw[0] + map_half_size
-        #             target_screen_y = waypoint_to_draw[1] + map_half_size
-        #
-        #         pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
-        #         pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
+                # Line 3px forward from tail, 5px long
+                offset_tail = (
+                    tail_point[0] + math.cos(self.direction) * 3,
+                    tail_point[1] + math.sin(self.direction) * 3
+                )
+                end = (
+                    offset_tail[0] + math.cos(self.direction) * 5,
+                    offset_tail[1] + math.sin(self.direction) * 5
+                )
+                pygame.draw.line(window, (0, 0, 0), offset_tail, end, self.env.AIRCRAFT_LINE_WIDTH)
+
+
+            # Draw the engagement radius (using screen coordinates)
+            pygame.draw.circle(window, self.color, (int(screen_x), int(screen_y)), self.env.AIRCRAFT_ENGAGEMENT_RADIUS,2)
+
+            # # Draw waypoint line and marker
+            # if self.target_point is not None:
+            #     if self.show_agent_waypoint >= 1:
+            #         # Use smoothed waypoint for rendering if available, otherwise fall back to target_point
+            #         waypoint_to_draw = self.smoothed_waypoint if self.smoothed_waypoint is not None else self.target_point
+            #
+            #         # Calculate direction from aircraft to smoothed waypoint
+            #         dx = waypoint_to_draw[0] - self.x
+            #         dy = waypoint_to_draw[1] - self.y
+            #         distance = math.hypot(dx, dy)
+            #
+            #         if distance > 0:
+            #             # Extend the line to a fixed length (e.g., same as original target distance)
+            #             original_distance = math.hypot(self.target_point[0] - self.x, self.target_point[1] - self.y)
+            #             extension_factor = max(1.0, original_distance / distance) if distance > 0 else 1.0
+            #
+            #             extended_x = self.x + (dx / distance) * original_distance
+            #             extended_y = self.y + (dy / distance) * original_distance
+            #
+            #             # Convert to screen coordinates
+            #             target_screen_x = extended_x + map_half_size
+            #             target_screen_y = extended_y + map_half_size
+            #         else:
+            #             # Fallback if distance is zero
+            #             target_screen_x = waypoint_to_draw[0] + map_half_size
+            #             target_screen_y = waypoint_to_draw[1] + map_half_size
+            #
+            #         pygame.draw.line(window, (0, 0, 0), (screen_x, screen_y), (target_screen_x, target_screen_y), 2)
+            #         pygame.draw.rect(window, self.color, pygame.Rect(target_screen_x - 5, target_screen_y - 5, 10, 10))
 
 
     def draw_damage(self):

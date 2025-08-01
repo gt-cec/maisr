@@ -1633,7 +1633,7 @@ if __name__ == "__main__":
             "team_spread_bonus_coeff": [0.02],
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
-            'league_type': ['selfplay', 'mixed50']# Later: mixed25, mixed75 strategy_diverse
+            'league_type': ['strategy_diverse', 'mixed50']# Later: mixed25, mixed75 strategy_diverse
         }
         #config['league_type'] = 'fcp'
         config['seed'] = int(args.seed)
@@ -1674,6 +1674,33 @@ if __name__ == "__main__":
             "shaping_coeff_earlyfinish": [0.2],
             "quick_id_shaping_coeff": [1.5],
             'league_type': ['strategy_diverse']  # Later: mixed25, mixed75
+        }
+        config['seed'] = int(args.seed)
+        overfit_test = None
+        load_path = None
+        vecnorm_load_path = None
+
+    elif version == 'aug2':
+        note = 'aug2'
+        config['num_timesteps'] = 8e6
+        config['teammate_active_at_start'] = True
+        project_name = 'maisr-rl-mixedtraining'
+
+        config['action_type'] = 'Discrete16'
+
+        hyperparams = {
+            #'threat_reward_scaling': [0.25],
+            'entropy_regularization': [0.07],
+            #"teammate_reward_scale": [0.75],
+            #"potential_ratio": [0.5],
+            #"gamma": [0.985],
+            #"team_spread_bonus_coeff": [0.02],
+            #"shaping_coeff_earlyfinish": [0.2],
+            #"entropy_decay_steps": [3e6],
+            "use_dynamic_potential": [True],
+            "use_teammate_priority_shaping": [False],
+            "quick_id_shaping_coeff": [1.5],
+            #'league_type': ['strategy_diverse']  # Later: mixed25, mixed75
         }
         config['seed'] = int(args.seed)
         overfit_test = None
@@ -1730,7 +1757,9 @@ if __name__ == "__main__":
         'seed': 'seed',
         "gamma":"gamma",
         'league_type':'lgtype',
-        'quick_id_shaping_coeff':'quick_id_cf'
+        'quick_id_shaping_coeff':'quick_id_cf',
+        'use_dynamic_potential':'dynpotential',
+        "use_teammate_priority_shaping":"tmtprishaping"
     }
 
     if args.testing:
@@ -1745,45 +1774,91 @@ if __name__ == "__main__":
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
-
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
 
-    for param_combination in itertools.product(*param_values):
-        current_params = dict(zip(param_names, param_combination))
-        for param_name, param_value in current_params.items():
-            config[param_name] = param_value
+    # TODO temporary workaround to league type not setting correctly
+    if version == 'aug2':
+        for league_type in ['selfplay', 'strategy_diverse', 'mixed50', 'mixed25', 'mixed75']:
+            for param_combination in itertools.product(*param_values):
+                current_params = dict(zip(param_names, param_combination))
+                for param_name, param_value in current_params.items():
+                    config[param_name] = param_value
 
-        param_strings = []
-        for param_name, param_value in current_params.items():
-            param_key = param_shorthand[param_name]
-            param_strings.append(f'{param_key}-{param_value}')
+                param_strings = []
+                for param_name, param_value in current_params.items():
+                    param_key = param_shorthand[param_name]
+                    param_strings.append(f'{param_key}-{param_value}')
 
-        if note == 'placeholder':
-            note = 'M1S-2_' + config['league_type']
+                if note == 'placeholder':
+                    note = 'M1S-2_' + config['league_type']
 
-        temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%m%d_%H%M")
-        run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}'
+                temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+                from datetime import datetime
+
+                timestamp = datetime.now().strftime("%m%d_%H%M")
+                run_name = f'{note}_' + league_type + timestamp + f'_seed{str(args.seed)}'# + temp_identifier
+
+                config['league_type'] = league_type
+
+                print(f'\n--- Starting training run with params: {current_params} ---')
+                train_generic(
+                    config,
+                    run_name=run_name,
+                    use_normalize=True,
+                    use_teammate_manager=True,
+                    train_type=train_type,
+                    render=False,
+                    n_envs=num_envs,
+                    load_path=load_path,
+                    vecnorm_load_path=vecnorm_load_path,
+                    machine_name=(
+                        'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                    project_name=project_name,
+                    save_model=True,
+                    save_checkpoints=True,
+                    overfit_test=overfit_test,
+                    # save_dir=f'./outputs/trained_models/',
+                )
+                print(f"✓ Completed training run")
+
+    else:
+
+        for param_combination in itertools.product(*param_values):
+            current_params = dict(zip(param_names, param_combination))
+            for param_name, param_value in current_params.items():
+                config[param_name] = param_value
+
+            param_strings = []
+            for param_name, param_value in current_params.items():
+                param_key = param_shorthand[param_name]
+                param_strings.append(f'{param_key}-{param_value}')
+
+            if note == 'placeholder':
+                note = 'M1S-2_' + config['league_type']
+
+            temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%m%d_%H%M")
+            run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}' + temp_identifier
 
 
-        print(f'\n--- Starting training run with params: {current_params} ---')
-        train_generic(
-            config,
-            run_name=run_name,
-            use_normalize=True,
-            use_teammate_manager=True,
-            train_type = train_type,
-            render=False,
-            n_envs=num_envs,
-            load_path=load_path,
-            vecnorm_load_path=vecnorm_load_path,
-            machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-            project_name=project_name,
-            save_model = True,
-            save_checkpoints = True,
-            overfit_test = overfit_test,
-            #save_dir=f'./outputs/trained_models/',
-        )
-        print(f"✓ Completed training run")
+            print(f'\n--- Starting training run with params: {current_params} ---')
+            train_generic(
+                config,
+                run_name=run_name,
+                use_normalize=True,
+                use_teammate_manager=True,
+                train_type = train_type,
+                render=False,
+                n_envs=num_envs,
+                load_path=load_path,
+                vecnorm_load_path=vecnorm_load_path,
+                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+                project_name=project_name,
+                save_model = True,
+                save_checkpoints = True,
+                overfit_test = overfit_test,
+                #save_dir=f'./outputs/trained_models/',
+            )
+            print(f"✓ Completed training run")

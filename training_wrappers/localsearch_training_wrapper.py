@@ -367,8 +367,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         elif self.teammate_manager or self.teammate_policy:
             # Get teammate observation (and normalize it)
-            if self.env.config['league_type'] == 'selfplay':
-                # If using a selfplay model
+            if self.env.config['league_type'] in ['selfplay','fcp']:
                 if hasattr(self.current_teammate, 'model'):
                     teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
                     #teammate_obs = self.env.get_observation_nearest_n(1)
