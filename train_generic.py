@@ -1,38 +1,39 @@
-import copy
-import ctypes
-import glob
-import json
-import warnings
-import random
+import_complete = False
+while not import_complete:
+    try:
+        import copy
+        import ctypes
+        import json
+        import warnings
+        import random
+        import os, glob
+        import pygame
+        from PIL import Image
 
-import pygame
-from PIL import Image
+        from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
+        import gymnasium as gym
+        import numpy as np
+        import multiprocessing
+        import socket
+        import torch
+        import argparse
+        import wandb
+        from wandb.integration.sb3 import WandbCallback
+        from stable_baselines3 import PPO, SAC
+        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
+        from stable_baselines3.common.callbacks import CheckpointCallback
+        from stable_baselines3.common.monitor import Monitor
+        from stable_baselines3.common.evaluation import evaluate_policy
+        from stable_baselines3.common.callbacks import BaseCallback
 
-from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-warnings.filterwarnings("ignore", message="Your system is avx2 capable but pygame was not built with support for it")
-warnings.filterwarnings("ignore", message="RuntimeWarning: Your system is avx2 capable but pygame was not built with support for it")
-import gymnasium as gym
-import os
-import numpy as np
-import multiprocessing
-import socket
-import torch
-import argparse
-import wandb
-from wandb.integration.sb3 import WandbCallback
-from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
-from stable_baselines3.common.callbacks import CheckpointCallback
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.evaluation import evaluate_policy
-from stable_baselines3.common.callbacks import BaseCallback
+        from env_multi_new import MAISREnvVec
+        from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
+        from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
+        from utility.data_logging import load_env_config
+        import_complete = True
+    except:
+        import_complete = False
 
-from env_multi_new import MAISREnvVec
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
-from utility.data_logging import load_env_config
-
-import os, glob
 
 
 def get_latest_checkpoint_and_vecnorm(seed: int, note_prefix: str = "pretrain") -> tuple[str, str]:
@@ -83,6 +84,125 @@ def get_latest_checkpoint_and_vecnorm(seed: int, note_prefix: str = "pretrain") 
 
     return latest_zip, latest_pkl
 
+
+class LeagueTypeTransitionCallback(BaseCallback):
+    """
+    Custom callback that transitions the league type after a preset number of timesteps.
+    This allows for curriculum-style league training where you start with one league type
+    and transition to another (e.g., start with selfplay, then transition to mixed training).
+    """
+
+    def __init__(self,
+                 transition_timesteps: float,
+                 initial_league_type: str,
+                 target_league_type: str,
+                 eval_env=None,
+                 run=None,
+                 verbose: int = 1):
+        """
+        Args:
+            transition_timesteps (int): Number of timesteps after which to transition
+            initial_league_type (str): Starting league type (e.g., 'selfplay')
+            target_league_type (str): League type to transition to (e.g., 'mixed50')
+            eval_env: Evaluation environment (optional)
+            run: WandB run object for logging (optional)
+            verbose (int): Verbosity level
+        """
+        super(LeagueTypeTransitionCallback, self).__init__(verbose)
+
+        self.transition_timesteps = transition_timesteps
+        self.initial_league_type = initial_league_type
+        self.target_league_type = target_league_type
+        self.eval_env = eval_env
+        self.run = run
+
+        self.transition_completed = False
+        self.transition_logged = False
+
+        # Validate league types
+        valid_league_types = ['selfplay', 'strategy_diverse', 'mixed25', 'mixed50', 'mixed75', 'fcp']
+        if initial_league_type not in valid_league_types:
+            raise ValueError(f"Invalid initial_league_type: {initial_league_type}. Must be one of {valid_league_types}")
+        if target_league_type not in valid_league_types:
+            raise ValueError(f"Invalid target_league_type: {target_league_type}. Must be one of {valid_league_types}")
+
+        print(
+            f"[League Transition] Initialized: {initial_league_type} → {target_league_type} at step {transition_timesteps}")
+
+    # def _on_training_start(self) -> None:
+    #     """Called at the start of training to ensure initial league type is set."""
+    #     try:
+    #         # Set initial league type for training environment
+    #         self.model.get_env().env_method("set_league_type", self.initial_league_type)
+    #
+    #         # Set initial league type for eval environment if provided
+    #         if self.eval_env is not None:
+    #             self.eval_env.env_method("set_league_type", self.initial_league_type)
+    #
+    #         # Log initial state
+    #         if self.run is not None:
+    #             self.run.log({
+    #                 "league_transition/current_league_type": self.initial_league_type,
+    #                 "league_transition/transition_timesteps": self.transition_timesteps,
+    #                 "league_transition/target_league_type": self.target_league_type
+    #             }, step=0)
+    #
+    #         if self.verbose >= 1:
+    #             print(f"[League Transition] Set initial league type to: {self.initial_league_type}")
+    #
+    #     except Exception as e:
+    #         print(f"[League Transition] Warning: Failed to set initial league type: {e}")
+
+    def _on_step(self) -> bool:
+        """Called at each training step to check if transition should occur."""
+
+        # Check if it's time to transition
+        if not self.transition_completed and self.num_timesteps >= self.transition_timesteps:
+            self._execute_transition()
+
+        return True
+
+    def _execute_transition(self):
+        """Execute the league type transition."""
+        try:
+            print(f'\n{"=" * 80}')
+            print(f'LEAGUE TYPE TRANSITION TRIGGERED! (step {self.num_timesteps})')
+            print(f'Transitioning from {self.initial_league_type} to {self.target_league_type}')
+            print(f'{"=" * 80}\n')
+
+            # Transition training environment
+            self.model.get_env().env_method("set_league_type", self.target_league_type)
+
+            # Transition eval environment if provided
+            if self.eval_env is not None:
+                self.eval_env.env_method("set_league_type", self.target_league_type)
+
+            # Mark transition as completed
+            self.transition_completed = True
+
+            # Log the transition
+            if self.run is not None:
+                self.run.log({
+                    #"league_transition/transition_executed": True,
+                    "league_transition/transition_step": self.num_timesteps,
+                    #"league_transition/current_league_type": self.target_league_type,
+                    #"league_transition/previous_league_type": self.initial_league_type
+                }, step=self.num_timesteps // self.model.get_env().num_envs)
+
+            if self.verbose >= 1:
+                print(f"[League Transition] Successfully transitioned to: {self.target_league_type}")
+
+        except Exception as e:
+            print(f"[League Transition] Error during transition: {e}")
+            raise ValueError
+            # Don't mark as completed if there was an error, so it can retry
+
+    def get_current_league_type(self) -> str:
+        """Get the currently active league type."""
+        if self.transition_completed:
+            return self.target_league_type
+        else:
+            return self.initial_league_type
 
 class PrintObsEvery50Steps(BaseCallback):
     """
@@ -183,54 +303,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         self.teammate_manager = teammate_manager
 
     def _on_step(self):
-
-        #if self.num_timesteps % 50 == 0:
-            # if self.eval_env.envs[0].current_teammate is not None:
-            #     if self.eval_env.envs[0].current_teammate.norm_stats is not None:
-            #
-            #         teammate_obs_mean = self.eval_env.envs[0].current_teammate.norm_stats.obs_rms.mean
-            #         teammate_obs_var = self.eval_env.envs[0].current_teammate.norm_stats.obs_rms.var
-            #
-            #         agent_obs_mean = self.eval_env.obs_rms.mean
-            #         agent_obs_var = self.eval_env.obs_rms.var
-            #
-            #         mean_diffs = []
-            #         var_diffs = []
-            #         for i in range(len(teammate_obs_mean)):
-            #             mean_diff = teammate_obs_mean[i] - agent_obs_mean[i]
-            #             mean_diffs.append(mean_diff)
-            #
-            #         for j in range(len(teammate_obs_var)):
-            #             var_diff = teammate_obs_var[j] - agent_obs_var[j]
-            #             var_diffs.append(var_diff)
-            #
-            #         avg_mean_diff = sum(mean_diffs)/len(mean_diffs)
-            #         avg_var_diff = sum(var_diffs) / len(var_diffs)
-            #         #print(f'    DIAGNOSTIC Avg normstat mean diff: {avg_mean_diff} ({mean_diffs}')
-            #         #print(f'    DIAGNOSTIC Avg normstat var diff: {avg_var_diff} ({var_diffs}')
-            #
-            #         self.avg_mean_diffs.append(avg_mean_diff)
-            #         self.avg_var_diffs.append(avg_var_diff)
-            #
-            #         diff_log = {
-            #             "step": self.num_timesteps,
-            #             "avg_mean_diff": avg_mean_diff,
-            #             "avg_var_diff": avg_var_diff,
-            #             "mean_diffs": mean_diffs,
-            #             "var_diffs": var_diffs
-            #         }
-            #         diff_log_path = f"outputs/logs/normstat_diffs.json"
-            #         try:
-            #             if os.path.exists(diff_log_path):
-            #                 with open(diff_log_path, "r") as f:
-            #                     existing_data = json.load(f)
-            #             else:
-            #                 existing_data = []
-            #             existing_data.append(diff_log)
-            #             with open(diff_log_path, "w") as f:
-            #                 json.dump(existing_data, f, indent=2)
-            #         except Exception as e:
-            #             print(f"[Callback] Failed to write normstat diffs: {e}")
 
         # Only log on the specified frequency
         should_log_episode_data = self.num_timesteps % self.log_freq == 0
@@ -687,23 +759,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 else:
                     print(f'CURRICULUM: Maintaining difficulty at level {self.current_difficulty} '
                           f'(avg target_ids: {avg_target_ids} < threshold: {self.min_target_ids_to_advance})')
-
-
-
-        # === Periodically log latest episode plot ===
-        if self.num_timesteps % (self.log_freq * 5) == 0:  # log less frequently than stats
-            plot_dir = f"outputs/{self.run_name}/episode_plots"
-            list_of_files = glob.glob(f"{plot_dir}/*.png")
-            if list_of_files:
-                latest_file = max(list_of_files, key=os.path.getmtime)
-                try:
-                    image = Image.open(latest_file)
-                    self.run.log({"plots/latest_episode_plot": wandb.Image(image)}, step=self.num_timesteps)
-                except Exception as e:
-                    print(f"[WandB] Failed to log latest episode plot: {e}")
-
         return True
-
 
 
 class EnhancedWandbCallback_MS(BaseCallback):
@@ -1331,24 +1387,9 @@ def train_generic(
     print('        Envs created')
 
     ################################################# Setup callbacks #################################################
-    checkpoint_callback = CheckpointCallback(
-        save_freq=env_config['save_freq'] // n_envs,
-        save_path=f"outputs/{run_name}/checkpoints",
-        #save_path=paths["checkpoints"],
-        name_prefix=f"{run_name}_checkpoint",
-        save_replay_buffer=True, save_vecnormalize=True,
-    )
+
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
-    # if train_type == 'mode_selector':
-    #     enhanced_wandb_callback = EnhancedWandbCallback_MS(
-    #         env_config,
-    #         eval_env=eval_env,
-    #         run=run,
-    #         log_freq=75,
-    #         run_name = run_name
-    #         #teammate_manager=teammate_manager  # ADD THIS
-    #     )
-    #elif train_type == 'monolith':
+
     enhanced_wandb_callback = EnhancedWandbCallback_Monolith(
         env_config,
         eval_env=eval_env,
@@ -1360,8 +1401,30 @@ def train_generic(
 
     printcallback = PrintObsEvery50Steps(verbose=1)
 
-    callbacks = [wandb_callback, enhanced_wandb_callback] # printcallback
+    callbacks = [wandb_callback, enhanced_wandb_callback, ]  # printcallback
+
+    if env_config['switch_leagues']:
+        league_transition_callback = LeagueTypeTransitionCallback(
+            transition_timesteps=1.5e6,  # Transition after 1M steps
+            initial_league_type='selfplay',
+            target_league_type='strategy_diverse',
+            eval_env=eval_env,
+            run=run,
+            verbose=1
+        )
+
+        callbacks.append(league_transition_callback)
+
+
     if save_checkpoints:
+        checkpoint_callback = CheckpointCallback(
+            save_freq=env_config['save_freq'] // n_envs,
+            save_path=f"outputs/{run_name}/checkpoints",
+            # save_path=paths["checkpoints"],
+            name_prefix=f"{run_name}_checkpoint",
+            save_replay_buffer=True, save_vecnormalize=True,
+        )
+
         callbacks.append(checkpoint_callback)
     print('        Callbacks created')
 
@@ -1402,9 +1465,6 @@ def train_generic(
         if use_normalize and hasattr(env, 'obs_rms'):
             teammate_manager.set_normalization_stats(env.obs_rms, env.ret_rms)
 
-    #print(f'Initial entropy coefficient: {model.ent_coef}')
-    #run.log({"entropy_decay/initial_coeff": model.ent_coef}, step=0)
-
     ################################################# Load checkpoint ##################################################
     if load_path:
         print(f'        Checkpoint: Loading from {load_path}')
@@ -1415,7 +1475,6 @@ def train_generic(
     # Log initial difficulty
     run.log({"curriculum/difficulty_level": 0}, step=0)
     #print(f'Starting with difficulty level {0}')
-
 
     # === Save initial checkpoint immediately ===
     if save_checkpoints:
@@ -1444,7 +1503,6 @@ def train_generic(
         'ret_mean': env.ret_rms.mean,
         'ret_var': env.ret_rms.var,
     }
-
 
     print("Training Normalization Stats:")
     print(f"Obs mean: {env.obs_rms.mean}")
@@ -1681,8 +1739,8 @@ if __name__ == "__main__":
         vecnorm_load_path = None
 
     elif version == 'aug2':
-        note = 'aug2'
-        config['num_timesteps'] = 8e6
+        note = 'aug2b'
+        config['num_timesteps'] = 3e6
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
 
@@ -1690,16 +1748,17 @@ if __name__ == "__main__":
 
         hyperparams = {
             #'threat_reward_scaling': [0.25],
-            'entropy_regularization': [0.07],
+            #'entropy_regularization': [0.07],
             #"teammate_reward_scale": [0.75],
             #"potential_ratio": [0.5],
             #"gamma": [0.985],
             #"team_spread_bonus_coeff": [0.02],
             #"shaping_coeff_earlyfinish": [0.2],
             #"entropy_decay_steps": [3e6],
-            "use_dynamic_potential": [True],
-            "use_teammate_priority_shaping": [False],
-            "quick_id_shaping_coeff": [1.5],
+            "use_dynamic_potential": [True, False],
+            "switch_leagues":[True, False]
+            #"use_teammate_priority_shaping": [False],
+            #"quick_id_shaping_coeff": [1],
             #'league_type': ['strategy_diverse']  # Later: mixed25, mixed75
         }
         config['seed'] = int(args.seed)
@@ -1777,88 +1836,42 @@ if __name__ == "__main__":
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
 
-    # TODO temporary workaround to league type not setting correctly
-    if version == 'aug2':
-        for league_type in ['selfplay', 'strategy_diverse', 'mixed50', 'mixed25', 'mixed75']:
-            for param_combination in itertools.product(*param_values):
-                current_params = dict(zip(param_names, param_combination))
-                for param_name, param_value in current_params.items():
-                    config[param_name] = param_value
 
-                param_strings = []
-                for param_name, param_value in current_params.items():
-                    param_key = param_shorthand[param_name]
-                    param_strings.append(f'{param_key}-{param_value}')
+    for param_combination in itertools.product(*param_values):
+        current_params = dict(zip(param_names, param_combination))
+        for param_name, param_value in current_params.items():
+            config[param_name] = param_value
 
-                if note == 'placeholder':
-                    note = 'M1S-2_' + config['league_type']
+        param_strings = []
+        for param_name, param_value in current_params.items():
+            param_key = param_shorthand[param_name]
+            param_strings.append(f'{param_key}-{param_value}')
 
-                temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-                from datetime import datetime
+        if note == 'placeholder':
+            note = 'M1S-2_' + config['league_type']
 
-                timestamp = datetime.now().strftime("%m%d_%H%M")
-                run_name = f'{note}_' + league_type + timestamp + f'_seed{str(args.seed)}'# + temp_identifier
-
-                config['league_type'] = league_type
-
-                print(f'\n--- Starting training run with params: {current_params} ---')
-                train_generic(
-                    config,
-                    run_name=run_name,
-                    use_normalize=True,
-                    use_teammate_manager=True,
-                    train_type=train_type,
-                    render=False,
-                    n_envs=num_envs,
-                    load_path=load_path,
-                    vecnorm_load_path=vecnorm_load_path,
-                    machine_name=(
-                        'home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                    project_name=project_name,
-                    save_model=True,
-                    save_checkpoints=True,
-                    overfit_test=overfit_test,
-                    # save_dir=f'./outputs/trained_models/',
-                )
-                print(f"✓ Completed training run")
-
-    else:
-
-        for param_combination in itertools.product(*param_values):
-            current_params = dict(zip(param_names, param_combination))
-            for param_name, param_value in current_params.items():
-                config[param_name] = param_value
-
-            param_strings = []
-            for param_name, param_value in current_params.items():
-                param_key = param_shorthand[param_name]
-                param_strings.append(f'{param_key}-{param_value}')
-
-            if note == 'placeholder':
-                note = 'M1S-2_' + config['league_type']
-
-            temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%m%d_%H%M")
-            run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}' + temp_identifier
+        temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        run_name = f'{note}_' + timestamp + f'_seed{str(args.seed)}' + temp_identifier
 
 
-            print(f'\n--- Starting training run with params: {current_params} ---')
-            train_generic(
-                config,
-                run_name=run_name,
-                use_normalize=True,
-                use_teammate_manager=True,
-                train_type = train_type,
-                render=False,
-                n_envs=num_envs,
-                load_path=load_path,
-                vecnorm_load_path=vecnorm_load_path,
-                machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
-                project_name=project_name,
-                save_model = True,
-                save_checkpoints = True,
-                overfit_test = overfit_test,
-                #save_dir=f'./outputs/trained_models/',
-            )
-            print(f"✓ Completed training run")
+        print(f'\n--- Starting training run with params: {current_params} ---')
+        train_generic(
+            config,
+            run_name=run_name,
+            use_normalize=True,
+            use_teammate_manager=True,
+            train_type = train_type,
+            render=False,
+            n_envs=num_envs,
+            load_path=load_path,
+            vecnorm_load_path=vecnorm_load_path,
+            machine_name=('home' if socket.gethostname() == 'DESKTOP-3Q1FTUP' else 'lab' if socket.gethostname() == 'isye-ae-2023pc3' else 'pace'),
+            project_name=project_name,
+            save_model = True,
+            save_checkpoints = True,
+            overfit_test = overfit_test,
+            #save_dir=f'./outputs/trained_models/',
+        )
+        print(f"✓ Completed training run")

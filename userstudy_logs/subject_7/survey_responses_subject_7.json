@@ -1,0 +1,56 @@
+[
+  {
+    "episode_config": "B1",
+    "timestamp": 631663,
+    "mental_demand": 2.0,
+    "temporal_demand": 3.0,
+    "effort": 2.0,
+    "performance": 4.0,
+    "frustration": 6.0
+  },
+  {
+    "episode_config": "A1",
+    "timestamp": 720595,
+    "mental_demand": 2.0,
+    "temporal_demand": 3.0,
+    "effort": 2.0,
+    "performance": 4.0,
+    "frustration": 6.0
+  },
+  {
+    "episode_config": "B3",
+    "timestamp": 847398,
+    "mental_demand": 2.0,
+    "temporal_demand": 2.0,
+    "effort": 2.0,
+    "performance": 6.0,
+    "frustration": 4.0
+  },
+  {
+    "episode_config": "A4",
+    "timestamp": 967706,
+    "mental_demand": 2.0,
+    "temporal_demand": 2.0,
+    "effort": 2.0,
+    "performance": 6.0,
+    "frustration": 4.0
+  },
+  {
+    "episode_config": "B5",
+    "timestamp": 1245588,
+    "mental_demand": 2.0,
+    "temporal_demand": 2.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 4.0
+  },
+  {
+    "episode_config": "B7",
+    "timestamp": 1312683,
+    "mental_demand": 2.0,
+    "temporal_demand": 2.0,
+    "effort": 2.0,
+    "performance": 3.0,
+    "frustration": 6.0
+  }
+]

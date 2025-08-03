@@ -1099,8 +1099,8 @@ class HeuristicAgent:
         else:
             self._debug_counter = 0
 
-        if self._debug_counter % 10 == 0:  # Log every 50 calls
-            print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
+        #if self._debug_counter % 10 == 0:  # Log every 50 calls
+            #print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
 
         return should_go
 

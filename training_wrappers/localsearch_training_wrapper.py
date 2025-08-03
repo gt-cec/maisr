@@ -137,22 +137,22 @@ class MaisrLocalSearchWrapper(gym.Env):
                     self.current_teammate = self.teammate_manager.select_random_teammate()
                     self.current_teammate.env = self.env
                     if self.env.tag != 'userstudy_0':
-                        print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+                        print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate.name}')
             else:
                 self.teammate_manager.reset_for_episode()
                 self.current_teammate = self.teammate_manager.select_random_teammate()
                 self.current_teammate.env = self.env
                 if self.env.tag != 'userstudy_0':
-                    print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate}')
+                    print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate.name}')
 
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
             if self.env.tag != 'userstudy_0':
-                print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate}')
+                print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate.name}')
         else:
             self.current_teammate = None
             if self.env.tag != 'userstudy_0':
-                print(f'[localsearchwrapper] current teammate is {self.current_teammate}')
+                print(f'[localsearchwrapper] current teammate is {self.current_teammate.name}')
 
         return raw_obs, _
 
@@ -915,6 +915,9 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return None
 
+
+    def set_league_type(self, new_league_type):
+        self.teammate_manager.league_type = new_league_type
 
     def update_progress_tracking(self):
         """Update progress tracking for stuck detection"""
