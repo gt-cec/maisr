@@ -88,6 +88,28 @@ class ExperimentDataLogger:
         # Create output directory structure
         self._setup_directories()
 
+        # Load existing survey data if resuming
+        survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+        teammate_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
+
+        self.survey_responses = []
+        if os.path.exists(survey_file):
+            with open(survey_file, 'r') as f:
+                try:
+                    self.survey_responses = json.load(f)
+                    print(f"Loaded {len(self.survey_responses)} previous survey responses")
+                except json.JSONDecodeError:
+                    print(f"Warning: Could not parse existing survey file {survey_file}, starting fresh")
+
+        self.teammate_survey_responses = []
+        if os.path.exists(teammate_file):
+            with open(teammate_file, 'r') as f:
+                try:
+                    self.teammate_survey_responses = json.load(f)
+                    print(f"Loaded {len(self.teammate_survey_responses)} previous teammate survey responses")
+                except json.JSONDecodeError:
+                    print(f"Warning: Could not parse existing teammate survey file {teammate_file}, starting fresh")
+
         # Current episode data
         self.current_episode_data = {
             'timesteps': [],
@@ -101,6 +123,24 @@ class ExperimentDataLogger:
             'session_start_time': self.session_start_time.isoformat(),
             'episodes': []
         }
+
+        session_dir = os.path.join(self.output_dir, f"subject_{self.subject_id}", "session_data")
+        previous_sessions = [
+            f for f in os.listdir(session_dir)
+            if f.startswith("session_subject_") and f.endswith(".json")
+        ]
+        if previous_sessions:
+            previous_sessions.sort()  # chronological
+            last_session_path = os.path.join(session_dir, previous_sessions[-1])
+            try:
+                with open(last_session_path, 'r') as f:
+                    prev_data = json.load(f)
+                    if 'episodes' in prev_data:
+                        self.session_data['episodes'] = prev_data['episodes']
+                        print(f"Loaded {len(prev_data['episodes'])} episodes from previous session")
+            except Exception as e:
+                print(f"Warning: Could not load previous session JSON ({e}), starting new session")
+
 
         self.current_timestep = 0
         self.episode_start_time = None
@@ -355,82 +395,137 @@ class ExperimentDataLogger:
                 if hasattr(obj, 'shape'):
                     print(f"  Numpy shape: {obj.shape}")
 
-    # def _save_episode_data(self, summary: EpisodeSummary):
-    #     """Save episode data to files"""
-    #     config_safe = summary.config.replace('/', '_')
-    #     timestamp = self.episode_start_time.strftime("%Y%m%d_%H%M%S")
-    #
-    #     # Save detailed timestep data
-    #     timestep_filename = f"timesteps_{config_safe}_{timestamp}.json"
-    #     timestep_path = os.path.join(self.timestep_dir, timestep_filename)
-    #
-    #     with open(timestep_path, 'w') as f:
-    #         json.dump(self.current_episode_data, f, indent=2)
-    #
-    #     # Save episode summary
-    #     summary_filename = f"summary_{config_safe}_{timestamp}.json"
-    #     summary_path = os.path.join(self.summary_dir, summary_filename)
-    #
-    #     with open(summary_path, 'w') as f:
-    #         json.dump(asdict(summary), f, indent=2)
-    #
-    #     print(f"Episode data saved:")
-    #     print(f"  Timesteps: {timestep_path}")
-    #     print(f"  Summary: {summary_path}")
 
     def save_session_data(self):
-        """Save complete session data"""
+        """Save complete session data and surveys without overwriting."""
         self.session_data['session_end_time'] = datetime.now().isoformat()
         session_duration = (datetime.now() - self.session_start_time).total_seconds()
         self.session_data['session_duration_seconds'] = session_duration
 
+        # Save session JSON
         timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
         session_filename = f"session_subject_{self.subject_id}_{timestamp}.json"
         session_path = os.path.join(self.session_dir, session_filename)
 
         with open(session_path, 'w') as f:
             json.dump(self.session_data, f, indent=2)
-
-            # Save survey responses
-            if hasattr(self, 'survey_responses') and self.survey_responses:
-                survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
-                with open(survey_file, 'w') as f:
-                    json.dump(self.survey_responses, f, indent=2)
-                print(f"Survey responses saved to: {survey_file}")
-
-        if hasattr(self, 'teammate_survey_responses') and self.teammate_survey_responses:
-            teammate_survey_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
-            with open(teammate_survey_file, 'w') as f:
-                    json.dump(self.teammate_survey_responses, f, indent=2)
-            print(f"Teammate survey responses saved to: {teammate_survey_file}")
-
-        
         print(f"Session data saved: {session_path}")
 
-        # Also save a summary CSV for quick analysis
+        # Save survey responses
+        if self.survey_responses:
+            survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+            with open(survey_file, 'w') as f:
+                json.dump(self.survey_responses, f, indent=2)
+            print(f"Survey responses saved: {survey_file}")
+
+        if self.teammate_survey_responses:
+            teammate_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
+            with open(teammate_file, 'w') as f:
+                json.dump(self.teammate_survey_responses, f, indent=2)
+            print(f"Teammate survey responses saved: {teammate_file}")
+
         self._save_session_summary_csv()
 
+    # def save_session_data(self):
+    #     """Save complete session data"""
+    #     self.session_data['session_end_time'] = datetime.now().isoformat()
+    #     session_duration = (datetime.now() - self.session_start_time).total_seconds()
+    #     self.session_data['session_duration_seconds'] = session_duration
+    #
+    #     timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
+    #     session_filename = f"session_subject_{self.subject_id}_{timestamp}.json"
+    #     session_path = os.path.join(self.session_dir, session_filename)
+    #
+    #     with open(session_path, 'w') as f:
+    #         json.dump(self.session_data, f, indent=2)
+    #
+    #         # Save survey responses
+    #         if hasattr(self, 'survey_responses') and self.survey_responses:
+    #             survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+    #             with open(survey_file, 'w') as f:
+    #                 json.dump(self.survey_responses, f, indent=2)
+    #             print(f"Survey responses saved to: {survey_file}")
+    #
+    #     if hasattr(self, 'teammate_survey_responses') and self.teammate_survey_responses:
+    #         teammate_survey_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
+    #         with open(teammate_survey_file, 'w') as f:
+    #                 json.dump(self.teammate_survey_responses, f, indent=2)
+    #         print(f"Teammate survey responses saved to: {teammate_survey_file}")
+    #
+    #
+    #     print(f"Session data saved: {session_path}")
+    #
+    #     # Also save a summary CSV for quick analysis
+    #     self._save_session_summary_csv()
+
     def _save_session_summary_csv(self):
-        """Save a CSV summary of all episodes for quick analysis"""
+        """Save a CSV summary of all episodes and teammate surveys for quick analysis"""
         import csv
 
         timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
         csv_filename = f"session_summary_subject_{self.subject_id}_{timestamp}.csv"
         csv_path = os.path.join(self.session_dir, csv_filename)
 
+        # === EPISODE SUMMARY CSV ===
         if self.session_data['episodes']:
             fieldnames = list(self.session_data['episodes'][0].keys())
-
             with open(csv_path, 'w', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-
                 for episode in self.session_data['episodes']:
-                    # Convert complex fields to strings for CSV
-                    episode_copy = episode.copy()
-                    writer.writerow(episode_copy)
-
+                    writer.writerow(episode)
             print(f"Session summary CSV saved: {csv_path}")
+
+        # === TEAMMATE PREFERENCE SURVEY CSV ===
+        if self.teammate_survey_responses:
+            survey_csv_filename = f"teammate_surveys_subject_{self.subject_id}_{timestamp}.csv"
+            survey_csv_path = os.path.join(self.session_dir, survey_csv_filename)
+
+            # Ensure all responses have the new fields
+            fieldnames = [
+                'timestamp', 'survey_type', 'episode_config',
+                'compared_agents', 'preferred_overall', 'performed_better', 'adapted_better'
+            ]
+
+            with open(survey_csv_path, 'w', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+
+                for survey in self.teammate_survey_responses:
+                    row = {
+                        'timestamp': survey.get('timestamp'),
+                        'survey_type': survey.get('survey_type'),
+                        'episode_config': survey.get('episode_config'),
+                        'compared_agents': str(survey.get('compared_agents')),  # stringify tuple/list
+                        'preferred_overall': survey.get('preferred_overall'),
+                        'performed_better': survey.get('performed_better'),
+                        'adapted_better': survey.get('adapted_better'),
+                    }
+                    writer.writerow(row)
+
+            print(f"Teammate survey summary CSV saved: {survey_csv_path}")
+
+    # def _save_session_summary_csv(self):
+    #     """Save a CSV summary of all episodes for quick analysis"""
+    #     import csv
+    #
+    #     timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
+    #     csv_filename = f"session_summary_subject_{self.subject_id}_{timestamp}.csv"
+    #     csv_path = os.path.join(self.session_dir, csv_filename)
+    #
+    #     if self.session_data['episodes']:
+    #         fieldnames = list(self.session_data['episodes'][0].keys())
+    #
+    #         with open(csv_path, 'w', newline='') as csvfile:
+    #             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    #             writer.writeheader()
+    #
+    #             for episode in self.session_data['episodes']:
+    #                 # Convert complex fields to strings for CSV
+    #                 episode_copy = episode.copy()
+    #                 writer.writerow(episode_copy)
+    #
+    #         print(f"Session summary CSV saved: {csv_path}")
 
     def get_session_summary(self) -> Dict[str, Any]:
         """Get summary statistics for the entire session"""
@@ -495,7 +590,9 @@ class ExperimentDataLogger:
             'preferred_overall': survey_data['responses']['preferred_overall'],
             'performed_better': survey_data['responses']['performed_better'],
             'adapted_better': survey_data['responses']['adapted_better'],
-            'timestamp': survey_data['timestamp']
+            'timestamp': survey_data['timestamp'],
+            'episode_config': survey_data.get('episode_config', None),
+            'compared_agents': survey_data.get('compared_agents', None)
         })
 
         print(f"Logged teammate preference survey data")

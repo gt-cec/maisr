@@ -1,0 +1,117 @@
+---
+title: "maisr-rl-notebook"
+author: "Ryan Bowers"
+date: "2025-08-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load required packages
+library(tidyverse)
+#library(ggplot2)
+library(jsonlite)
+```
+
+## Data Loading and Processing
+
+```{r config}
+data_dir <- "../userstudy_logs"
+
+```
+
+```{r load}
+
+# Find all JSON files under session_data folders
+json_files <- list.files(
+  path = data_dir,
+  pattern = "\\.json$",
+  full.names = TRUE,
+  recursive = TRUE
+) %>%
+  str_subset("session_data/") # Only keep files under 'session_data'
+
+# Read all files into one dataframe
+all_data <- map_dfr(json_files, function(file) {
+  json <- fromJSON(file)
+  as_tibble(json$episodes)
+})
+head(all_data)
+
+
+summary_data <- all_data %>%
+  group_by(subject_id) %>%
+  summarise(
+    avg_episode_timesteps = mean(total_timesteps, na.rm = TRUE),
+    avg_final_targets = mean(final_targets_identified, na.rm = TRUE),
+    avg_final_threats = mean(final_threats_identified, na.rm = TRUE),
+    .groups = "drop"
+  )
+summary_data
+
+
+agent_summary <- all_data %>%
+  filter(agent_type %in% c("A", "B", "C")) %>%
+  group_by(subject_id, agent_type) %>%
+  summarise(
+    avg_timesteps = mean(total_timesteps, na.rm = TRUE),
+    avg_targets = mean(final_targets_identified, na.rm = TRUE),
+    avg_threats = mean(final_threats_identified, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = agent_type,
+    values_from = c(avg_timesteps, avg_targets, avg_threats),
+    names_glue = "agent{agent_type}_{.value}"
+  )
+agent_summary
+
+
+final_dataset <- summary_data %>%
+  left_join(agent_summary, by = "subject_id")
+final_dataset
+
+```
+
+## Performance Comparison
+
+```{r viz}
+## 5. Visualize Performance Metrics for Agent A vs B vs C
+
+# Reshape the dataset to a long format for ggplot
+plot_data <- final_dataset %>%
+  select(subject_id,
+         agentA_avg_timesteps, agentA_avg_targets, agentA_avg_threats,
+         agentB_avg_timesteps, agentB_avg_targets, agentB_avg_threats,
+         agentC_avg_timesteps, agentC_avg_targets, agentC_avg_threats) %>%
+  pivot_longer(
+    cols = -subject_id,
+    names_to = c("agent", "metric"),
+    names_pattern = "agent([ABC])_avg_(.*)"
+  )
+
+# Make the metric names more descriptive for plotting
+plot_data <- plot_data %>%
+  mutate(
+    metric = case_when(
+      metric == "timesteps" ~ "Mission Duration (Timesteps)",
+      metric == "targets" ~ "Targets Identified",
+      metric == "threats" ~ "Threats Identified"
+    ),
+    agent = paste("Agent", agent)
+  )
+
+# Plot all three metrics with facets
+ggplot(plot_data, aes(x = agent, y = value, fill = agent)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  facet_wrap(~ metric, scales = "free_y") +
+  labs(
+    title = "Performance Metrics by Agent Type",
+    x = "Agent",
+    y = "Average Value"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+
+```

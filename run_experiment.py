@@ -10,7 +10,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import gymnasium as gym
 from env_multi_new import MAISREnvVec
 from server import socketio
-from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
+from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config import subject_id
 from utility.data_logging import load_env_config
 from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
@@ -245,13 +245,50 @@ def draw_progress_bar(window, font, current_index, total_configs, start_level):
 
 
 
+# def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections,
+#                          step_count, max_steps, tick_rate):
+#     """Draw bottom bar with score and countdown timer"""
+#     regular_targets = targets_identified
+#     high_value_targets = threats_identified
+#
+#     # Compute score: 5 × (# of targets) + 30 × abs(2 - # of threats)
+#     score = 5 * regular_targets - 10 * abs(2 - high_value_targets)
+#
+#     # Timer: Counts down from 75 seconds
+#     total_seconds = 75
+#     elapsed_seconds = (step_count / 486) * 75
+#     time_left = max(0, int(total_seconds - elapsed_seconds))
+#
+#     bottom_texts = [
+#         f"Regular: {regular_targets}/15",
+#         f"High-value: {high_value_targets}/2",
+#         f"SCORE: {score}",
+#         f"Steps: {step_count} / {int(round(max_steps/35, 0))}",
+#     ]
+#
+#     x_positions = [10, 200, 450, 800]
+#     y_pos = 1060
+#
+#     for i, text in enumerate(bottom_texts):
+#         if (i == 0 and regular_targets == 15) or (i == 1 and high_value_targets == 2):
+#             color = (0, 200, 0)
+#         elif i == 1 and high_value_targets > 2:
+#             color = (225, 0, 0)
+#         else:
+#             color = (0, 0, 0)
+#         text_surface = font.render(text, True, color)
+#         window.blit(text_surface, (x_positions[i], y_pos))
+#
+#     # Outline box around SCORE and timer
+#     pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 200, 40), width=3)
+
 def draw_bottom_bar_info(window, font, threats_identified, targets_identified, detections,
                          step_count, max_steps, tick_rate):
     """Draw bottom bar with score and countdown timer"""
     regular_targets = targets_identified
     high_value_targets = threats_identified
 
-    # Compute score: 5 × (# of targets) + 30 × abs(2 - # of threats)
+    # Compute score: 5 × (# of targets) - 10 × |2 - (# of threats)|
     score = 5 * regular_targets - 10 * abs(2 - high_value_targets)
 
     # Timer: Counts down from 75 seconds
@@ -259,11 +296,37 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
     elapsed_seconds = (step_count / 486) * 75
     time_left = max(0, int(total_seconds - elapsed_seconds))
 
+    # Convert to M:SS format
+    minutes = time_left // 60
+    seconds = time_left % 60
+    timer_text = f"{minutes}:{seconds:02d}"
+
+    # --- Draw Top Timer ---
+    timer_color = (255, 0, 0) if time_left < 20 else (0, 0, 0)
+    big_font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 40)  # Bigger font
+    timer_surface = big_font.render(timer_text, True, timer_color)
+    timer_rect = timer_surface.get_rect(center=(500, 20))
+
+    # Draw outline box around timer (bigger than text)
+    padding_x, padding_y = 20, 10
+    outline_rect = pygame.Rect(
+        timer_rect.left - padding_x,
+        timer_rect.top - padding_y,
+        timer_rect.width + 2 * padding_x,
+        timer_rect.height + 2 * padding_y - 10
+    )
+    pygame.draw.rect(window, (255, 255, 255), outline_rect)  # White background
+    pygame.draw.rect(window, (0, 0, 0), outline_rect, width=4)  # Black border
+
+    # Draw timer text on top
+    window.blit(timer_surface, timer_rect)
+
+    # --- Draw Bottom Bar Info ---
     bottom_texts = [
         f"Regular: {regular_targets}/15",
         f"High-value: {high_value_targets}/2",
-        f"SCORE: {score}  ({time_left}s)",
-        f"Steps: {step_count} / {int(round(max_steps/35, 0))}",
+        f"SCORE: {score}",
+        #f"Steps: {step_count} / {int(round(max_steps/35, 0))}",
     ]
 
     x_positions = [10, 200, 450, 800]
@@ -279,8 +342,8 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
         text_surface = font.render(text, True, color)
         window.blit(text_surface, (x_positions[i], y_pos))
 
-    # Outline box around SCORE and timer
-    pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 200, 40), width=3)
+    # Outline box around SCORE
+    pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 140, 40), width=3)
 
 
 
@@ -773,10 +836,17 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
 
 
             if level in levels_for_preference_survey:
-                teammate_compare_survey = TeammatePreferenceSurveyScreen(window_width, window_height, agent_appearance=agent_appearance, last_agent_appearance=last_agent_appearance)
+                teammate_compare_survey = TeammatePreferenceSurveyScreen(
+                    window_width, window_height,
+                    agent_appearance=agent_appearance,
+                    last_agent_appearance=last_agent_appearance
+                )
+
                 teammate_compare_result = screen_manager.show_screen(teammate_compare_survey)
                 if teammate_compare_result["action"] == "continue":
                     survey_data = teammate_compare_result["survey_data"]
+                    survey_data['episode_config'] = current_config
+                    survey_data['compared_agents'] = (agent_appearance, last_agent_appearance)
                     data_logger.log_teammate_survey_data(survey_data)
 
                 data_logger.save_session_data()

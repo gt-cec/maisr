@@ -1369,7 +1369,7 @@ class Instruct7Screen(GameInstructionScreen):
                     "and exactly 2 high-value targets.",
                     "",
                     "",
-                    "You have about 75 seconds per round."
+                    "You have about 75 seconds per round.",
                     "",
                     "",
                     "If you identify more or less than 2 high-",
@@ -1425,9 +1425,8 @@ class SecondPracticeIntroScreen(GameInstructionScreen):
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
-        if self.sio is not None:
-                import sockets
-                sockets.send_frame(window)
+        # if self.sio is not None:
+        #         self.sio.send_frame(window)
 
 class InterScreen(GameInstructionScreen):
     """Screen shown between the two practice rounds with navigation arrows"""
@@ -1502,6 +1501,35 @@ class Instruct8Screen(GameInstructionScreen):
         self.draw_text_block(window, instruction_text, 200, self.font_large, 40)
 
 
+class InstructTLXScreen(GameInstructionScreen):
+    """Instruction screen explaining the NASA-TLX workload survey questions"""
+
+    def draw_content(self, window: pygame.Surface) -> None:
+        title_text = "Understanding the Workload Survey (NASA-TLX)"
+        self.draw_text_centered(window, title_text, 120, self.font_large, self.highlight_color)
+
+        explanation_lines = [
+            "After some rounds, you will answer 5 questions:",
+            "",
+            "1. MENTAL DEMAND – How mentally challenging was the round?",
+            "",
+            "2. TIME PRESSURE – Did you feel rushed to finish the round?",
+            "",
+            "3. EFFORT – How much effort did it take to perform well?",
+            "",
+            "4. PERFORMANCE – How well do you think you performed?",
+            "",
+            "5. FRUSTRATION – How stressed or annoyed did you feel?",
+            "",
+            "",
+            "You will rate each from 1 (very low) to 7 (very high).",
+            "Please rate each round relative to the others."
+        ]
+
+        self.draw_text_block(window, explanation_lines, 220, self.font_large, 38)
+
+
+
 class PlaceholderScreen(GameInstructionScreen):
     """Placeholder screen for later editing"""
     def draw_content(self, window):
@@ -1529,8 +1557,8 @@ class AfterPracticeScreen(GameInstructionScreen):
         self.draw_text_block(window, placeholder_lines, 400, self.font_large, 40)
 
         if self.sio is not None:
-            import sockets
-            sockets.send_frame(window)
+            #import sockets
+            self.sio.send_frame(window)
 
 class BeforeSoloScreen(GameInstructionScreen):
     """Placeholder screen for later editing"""
@@ -1556,9 +1584,9 @@ class BeforeSoloScreen(GameInstructionScreen):
             ]
         self.draw_text_block(window, placeholder_lines, 400, self.font_large, 40)
 
-        if self.sio is not None:
-            import sockets
-            sockets.send_frame(window)
+        # if self.sio is not None:
+        #     #import sockets
+        #     self.sio.send_frame(window)
 
 
 class PracticeIntroScreen(GameInstructionScreen):
@@ -1635,18 +1663,24 @@ class InstructionSeriesManager:
         self.sio = sio
         self.admin = admin
 
-        total_screens = 9
+        total_screens = 10
 
         self.screens = [
             Instruct1Screen(1, total_screens, window.get_width(), window.get_height()),
-            Instruct2Screen(map_image_path or "map_image.jpg", 2, total_screens, window.get_width(), window.get_height()),
-            Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, total_screens, window.get_width(), window.get_height()),
-            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 4, total_screens, window.get_width(), window.get_height()),
-            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 5, total_screens, window.get_width(), window.get_height()),
-            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 6, total_screens, window.get_width(), window.get_height()),
+            Instruct2Screen(map_image_path or "map_image.jpg", 2, total_screens, window.get_width(),
+                            window.get_height()),
+            Instruct3Screen(human_image_path, click_video_path or "img/click_control.mp4", 3, total_screens,
+                            window.get_width(), window.get_height()),
+            Instruct5Screen(sensor_image_path or "sensor_image.jpg", 4, total_screens, window.get_width(),
+                            window.get_height()),
+            Instruct6Screen(hvt_video_path or "img/target_id_video.mp4", 5, total_screens, window.get_width(),
+                            window.get_height()),
+            Instruct7Screen(detection_video_path or "img/detection_video.mp4", 6, total_screens, window.get_width(),
+                            window.get_height()),
             Instruct4Screen(teammate_image_path, 7, total_screens, window.get_width(), window.get_height()),
             Instruct8Screen(8, total_screens, window.get_width(), window.get_height()),
-            PracticeIntroScreen(9, total_screens, window.get_width(), window.get_height()),
+            InstructTLXScreen(9, total_screens, window.get_width(), window.get_height()),  # <-- New screen
+            PracticeIntroScreen(10, total_screens, window.get_width(), window.get_height()),
         ]
 
         self.current_screen_index = 0
@@ -1656,9 +1690,9 @@ class InstructionSeriesManager:
         while 0 <= self.current_screen_index < len(self.screens):
             current_screen = self.screens[self.current_screen_index]
             if self.sio is not None:
-                import sockets
-                sockets.instruction_controller = current_screen
-                sockets.pyg = pygame.event
+                #import sockets
+                self.sio.instruction_controller = current_screen
+                self.sio.pyg = pygame.event
 
             # Run the screen manually to ensure proper event handling
             running = True
@@ -1685,7 +1719,7 @@ class InstructionSeriesManager:
                 current_screen.render(self.screen_manager.window)
                 pygame.display.flip()
                 if self.sio is not None:
-                    sockets.send_frame(self.window)
+                    self.sio.send_frame(self.window)
 
             # Process the result
             if result["action"] == "next":
