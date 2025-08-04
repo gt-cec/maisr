@@ -254,38 +254,33 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
     # Compute score: 5 × (# of targets) + 30 × abs(2 - # of threats)
     score = 5 * regular_targets - 10 * abs(2 - high_value_targets)
 
-    # Countdown timer: 971 steps ≈ 45 seconds
-    total_seconds = int(max_steps / tick_rate)
-    time_left = max(0, int(total_seconds - (step_count / tick_rate)))
+    # Timer: Counts down from 75 seconds
+    total_seconds = 75
+    elapsed_seconds = step_count / tick_rate
+    time_left = max(0, int(total_seconds - elapsed_seconds))
 
     bottom_texts = [
         f"Regular: {regular_targets}/15",
         f"High-value: {high_value_targets}/2",
-        f"SCORE: {score}",
+        f"SCORE: {score}  ({time_left}s)",
         f"Steps: {step_count} / {int(round(max_steps/35, 0))}",
-        #f"Time left: {time_left}s"
     ]
 
-    x_start = 50
-    y_pos = 1060
     x_positions = [10, 200, 450, 800]
-    spacing = 1000 / 4
+    y_pos = 1060
 
     for i, text in enumerate(bottom_texts):
         if (i == 0 and regular_targets == 15) or (i == 1 and high_value_targets == 2):
-            color = (0,200,0)
+            color = (0, 200, 0)
         elif i == 1 and high_value_targets > 2:
             color = (225, 0, 0)
         else:
-            color = (0,0,0)
+            color = (0, 0, 0)
         text_surface = font.render(text, True, color)
-        x = x_positions[i]
-        window.blit(text_surface, (x, y_pos))
-        #window.blit(text_surface, (x_start + i * spacing, y_pos))
+        window.blit(text_surface, (x_positions[i], y_pos))
 
-    pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 125, 40), width = 3)
-
-
+    # Outline box around SCORE and timer
+    pygame.draw.rect(window, (0, 0, 0), pygame.Rect(440, 1050, 200, 40), width=3)
 
 
 
