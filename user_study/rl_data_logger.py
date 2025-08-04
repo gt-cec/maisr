@@ -398,6 +398,13 @@ class ExperimentDataLogger:
                     json.dump(self.survey_responses, f, indent=2)
                 print(f"Survey responses saved to: {survey_file}")
 
+        if hasattr(self, 'teammate_survey_responses') and self.teammate_survey_responses:
+            teammate_survey_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
+            with open(teammate_survey_file, 'w') as f:
+                    json.dump(self.teammate_survey_responses, f, indent=2)
+            print(f"Teammate survey responses saved to: {teammate_survey_file}")
+
+        
         print(f"Session data saved: {session_path}")
 
         # Also save a summary CSV for quick analysis
