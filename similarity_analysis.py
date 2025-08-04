@@ -26,6 +26,39 @@ from scipy.stats import mannwhitneyu, pearsonr
 # For action distribution comparison
 from scipy.stats import chisquare
 
+# TODO edit to set no-op teammate
+def make_wrapped_env(env_config, run_name='no_name', render=False):
+    def _init():
+
+        base_env = MAISREnvVec( # Create base environment
+            config=env_config,
+            render_mode='headless',
+            run_name=run_name,
+            tag=f'train_mp{rank}',
+            seed=seed + rank,
+        )
+
+        local_search_policy = LocalSearch()
+        go_to_highvalue_policy = GoToNearestThreat(model_path=None)
+        change_region_subpolicy = ChangeRegions(model_path=None)
+        evade_policy = None
+
+        wrapped_env = MaisrLocalSearchWrapper(
+            base_env,
+            env_config['obs_noise_std_localsearch'],
+            local_search_policy,
+            go_to_highvalue_policy,
+            change_region_subpolicy,
+            evade_policy,
+            teammate_manager=None
+        )
+
+        wrapped_env = Monitor(wrapped_env)
+        wrapped_env.reset()
+        return wrapped_env
+
+    return _init
+
 
 @dataclass
 class Trajectory:
@@ -51,8 +84,7 @@ class SimilarityAnalysis()
 		self.strategy_agent_trajectories = None
 		self.rl_agent_trajectories = None
 
-    # Ready to test
-    # TODO  use vectors 
+    # Ready to test    
     def process_human_trajectories(self):
         direction_vectors = [
             (0, 1), (0.383, 0.924), (0.707, 0.707), (0.924, 0.383),
@@ -61,14 +93,23 @@ class SimilarityAnalysis()
             (-1, 0), (-0.924, 0.383), (-0.707, 0.707), (-0.383, 0.924)
         ]
 
+        def normalize(vx, vy):
+            mag = math.sqrt(vx**2 + vy**2)
+            return (vx / mag, vy / mag) if mag > 1e-8 else (0.0, 0.0)
+        
         def vector_to_action(dx, dy):
-            angle = math.atan2(dy, dx)  # radians [-pi, pi], 0 along +x
-            angle_deg = (math.degrees(angle) + 360) % 360
-            # map 0 deg = east (index 4), but we want 0 deg = north (index 0)
-            # shift so that 0 deg = north
-            angle_deg = (angle_deg - 90) % 360
-            sector = int((angle_deg + 11.25) // 22.5) % 16
-            return sector
+        # Normalize the movement vector
+        ndx, ndy = normalize(dx, dy)
+
+        # Compute cosine similarity with each direction vector
+        best_idx = 0
+        best_dot = -float("inf")
+        for i, (vx, vy) in enumerate(direction_vectors):
+            dot = ndx * vx + ndy * vy  # cosine similarity since all are normalized
+            if dot > best_dot:
+                best_dot = dot
+                best_idx = i
+        return best_idx
 
         self.human_trajectories = []
 
@@ -120,9 +161,7 @@ class SimilarityAnalysis()
 
         return self.human_trajectories
 
-    # TODO:
-    # - Decide what agent 1 is. Nonexistent?
-    # - Test
+    # TODO: Test
     def generate_rl_trajectories(self):
         
         rl_trajectories = []
@@ -260,7 +299,6 @@ class SimilarityAnalysis()
         
         return strategy_agent_trajectories
         
-    
     
     ################################################ Helper functions ################################################
     
