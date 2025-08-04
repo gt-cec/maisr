@@ -21,7 +21,7 @@
 	"threat_radius": 30,
 	"max_threat_ids": 2,
     
-    "league_type": "baseline",
+    "league_type": "selfplay",
 	"switch_leagues": false,
 	"balance_method": "uniform",
 	"obs_type": "nearest",

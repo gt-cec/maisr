@@ -1137,7 +1137,7 @@ class Instruct4Screen(GameInstructionScreen):
         self.image = None
         try:
             self.image = pygame.image.load(image_path)
-            self.image = pygame.transform.scale(self.image, (855*.8, 200*1.2))
+            self.image = pygame.transform.scale(self.image, (855*.8*.9, 200*1.2*.9))
         except pygame.error:
             print(f"Could not load image: {image_path}")
 
@@ -1174,7 +1174,7 @@ class Instruct4Screen(GameInstructionScreen):
                        "There is no risk of collision."
                        ]
 
-        y_pos = 500
+        y_pos = 450
         for line in bottom_text:
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
@@ -1515,7 +1515,7 @@ class PlaceholderScreen(GameInstructionScreen):
 
 class AfterPracticeScreen(GameInstructionScreen):
     """Placeholder screen for later editing"""
-    def __init__(self, window_width: int, window_height: int):
+    def __init__(self, window_width: int, window_height: int, sio=None):
         super().__init__(screen_number=1, total_screens=1,
                          window_width=window_width, window_height=window_height)
 
@@ -1573,7 +1573,7 @@ class PracticeIntroScreen(GameInstructionScreen):
             "gameplay. There is no survey after this round.",
             "",
             "",
-            "You will also play this round solo, without a teammate."
+            "You will also play this round solo, without a teammate.",
             #"In the practice round, you will play alongside an agent who",
             #"is still learning. It may not do as well as the other agents!"
             "",

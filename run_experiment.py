@@ -256,7 +256,7 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
 
     # Timer: Counts down from 75 seconds
     total_seconds = 75
-    elapsed_seconds = step_count / tick_rate
+    elapsed_seconds = (step_count / 486) * 75
     time_left = max(0, int(total_seconds - elapsed_seconds))
 
     bottom_texts = [
@@ -526,14 +526,14 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0#0.0003
     config['action_type'] = 'Discrete16'
-    config['observe_teammate_priority'] = False # TODO switch to true with new agents
+    #config['observe_teammate_priority'] = False # TODO switch to true with new agents
     print(f'LOADED CONFIG {config_filename}')
 
-    agent_a_name = 'strategy_trained' #'M1S_indexstrategy'
-    agent_b_name = 'selfplay_seed77' #'M1S-2_selfplay_750ksteps' # 'M1S_indexselfplay'
-    agent_c_name = 'selfplay_seed77' #'M1S_indexmixed50'
-    agent_s_name = 'selfplay_seed77'# 'bad_practice_agent'
-    agent_p_name = 'selfplay_seed77'# 'bad_practice_agent'
+    agent_a_name = 'aug2b_finetuned'#'strategy_trained' #'M1S_indexstrategy'
+    agent_b_name = 'aug2b_baseline'#'selfplay_seed77' #'M1S-2_selfplay_750ksteps' # 'M1S_indexselfplay'
+    agent_c_name = 'aug2b_mixed75_35e5steps' #'M1S_indexmixed50'
+    agent_s_name = 'bad_practice_agent'
+    agent_p_name = 'bad_practice_agent'
 
 
     # Define RL agent model paths
@@ -556,8 +556,14 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
     if subject_id % 2 == 0:
         if run_third_agent:
             #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
-            #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
-            config_list = ['A1', 'B1', 'C7', 'A3', 'S3', 'S7', 'B3', 'C1', 'A4', 'B4', 'C5', 'A5', 'B5', 'C3', 'A7', 'B7']
+            config_list = ['A1', 'B1',  # A first
+                           'C3', 'A3',  # C first
+                           'S3', 'S7',
+                           'B3', 'C1',  # B first
+                           'A4', 'B4',  # A first
+                           'C5', 'A5', # C first
+                           'B5', 'C7', # B first
+                           'A7', 'B7'] # A first
 
         else:
             config_list = ['A1', 'B1',
@@ -569,8 +575,14 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
                            ]
     else:
         if run_third_agent:
-            #config_list = ['B1', 'A1', 'C7', 'A2', 'B2', 'C5', 'B3', 'A3', 'C1', 'A4', 'B4', 'C6', 'B5', 'A5', 'C3', 'A6', 'B6', 'C2' 'B7', 'A7', 'C4']
-            config_list = ['B1', 'A1', 'C7', 'B3', 'S3', 'S7', 'A3', 'C1', 'B4', 'A4', 'C5', 'B5', 'A5', 'C3', 'B7', 'A7']
+            config_list = ['B1', 'A1',
+                           'C3', 'B3',
+                           'S3', 'S7',
+                           'A3', 'C1',
+                           'B4', 'A4',
+                           'C5', 'B5',
+                           'A5', 'C7',
+                           'B7', 'A7']
         else:
             config_list = ['B1', 'A1',
                            'A3', 'B3',
@@ -579,11 +591,8 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
                            'A5', 'B5',
                            'B7', 'A7'
                            ]  #
-            #config_list = ['B1', 'A1', 'A2', 'B2', 'B3', 'A3', 'A4', 'B4', 'B5', 'A5', 'A6', 'B6', 'B7', 'A7']
 
-    #practice_level = 1
     practice_config = [f"P1", f"P4"]
-
     full_config_list = practice_config + config_list
 
     # If start_level is specified, start from that index
@@ -594,15 +603,10 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
         full_config_list = full_config_list[start_level:]
         print(f"Starting from level {start_level}: {full_config_list}")
 
-
     print(f"Randomized configuration order: {full_config_list}")
 
     # Initialize pygame
-    # if using windows, set DPI awareness to avoid scaling issues
-    if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'):
-        ctypes.windll.user32.SetProcessDPIAware()
-    else:
-        print("Not running on Windows, skipping DPI awareness setting")
+    if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
     pygame.display.init()
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -721,7 +725,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
 
             # After second practice episode, show the after-practice screen
             if config_index == 1:
-                after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height())
+                after_practice_screen = AfterPracticeScreen(window.get_width(), window.get_height(), sio=sockets)
                 after_practice_result = screen_manager.show_screen(after_practice_screen)
                 continue  # skip survey for practice
 
@@ -864,4 +868,4 @@ if __name__ == "__main__":
 
 
 
-    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = args.pilot, short_rounds=short_rounds)
+    main(subject_id=subject_id, start_level=start_level, skip_instructions=skip_instructions, collect_solo_trajectories = False, run_third_agent = True, short_rounds=short_rounds)

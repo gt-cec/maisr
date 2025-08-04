@@ -10,7 +10,7 @@ while not import_complete:
         import pygame
         from PIL import Image
 
-        from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
+        from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
         import gymnasium as gym
         import numpy as np
         import multiprocessing
@@ -1405,7 +1405,7 @@ def train_generic(
 
     if env_config['switch_leagues']:
         league_transition_callback = LeagueTypeTransitionCallback(
-            transition_timesteps=1.5e6,  # Transition after 1M steps
+            transition_timesteps=2e6,  # Transition after this many steps
             initial_league_type='selfplay',
             target_league_type='strategy_diverse',
             eval_env=eval_env,
@@ -1740,7 +1740,7 @@ if __name__ == "__main__":
 
     elif version == 'aug2':
         note = 'aug2b'
-        config['num_timesteps'] = 3e6
+        config['num_timesteps'] = 4e6
         config['teammate_active_at_start'] = True
         project_name = 'maisr-rl-mixedtraining'
 
@@ -1756,7 +1756,7 @@ if __name__ == "__main__":
             #"shaping_coeff_earlyfinish": [0.2],
             #"entropy_decay_steps": [3e6],
             "use_dynamic_potential": [True, False],
-            "switch_leagues":[True, False]
+            "switch_leagues":[False]
             #"use_teammate_priority_shaping": [False],
             #"quick_id_shaping_coeff": [1],
             #'league_type': ['strategy_diverse']  # Later: mixed25, mixed75
@@ -1818,7 +1818,8 @@ if __name__ == "__main__":
         'league_type':'lgtype',
         'quick_id_shaping_coeff':'quick_id_cf',
         'use_dynamic_potential':'dynpotential',
-        "use_teammate_priority_shaping":"tmtprishaping"
+        "use_teammate_priority_shaping":"tmtprishaping",
+        "switch_leagues":"switch_lgs"
     }
 
     if args.testing:
@@ -1844,7 +1845,10 @@ if __name__ == "__main__":
 
         param_strings = []
         for param_name, param_value in current_params.items():
-            param_key = param_shorthand[param_name]
+            try:
+                param_key = param_shorthand[param_name]
+            except:
+                param_key = param_name
             param_strings.append(f'{param_key}-{param_value}')
 
         if note == 'placeholder':

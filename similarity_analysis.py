@@ -1,16 +1,19 @@
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import os, json, math
 from glob import glob
+
+from scipy.optimize import linear_sum_assignment
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
+
 import re
 import itertools
 import pickle
 import numpy as np
 import pandas as pd
 from scipy.stats import wasserstein_distance
-
 import matplotlib.pyplot as plt
 
 # For target-threat cluster analysis
@@ -26,6 +29,12 @@ from scipy.stats import mannwhitneyu, pearsonr
 # For action distribution comparison
 from scipy.stats import chisquare
 
+from env_multi_new import MAISREnvVec
+from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, \
+    TargetSearchLocalTSP, HeuristicAgent
+from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper 
+
+
 # TODO edit to set no-op teammate
 def make_wrapped_env(env_config, run_name='no_name', render=False):
     def _init():
@@ -34,8 +43,7 @@ def make_wrapped_env(env_config, run_name='no_name', render=False):
             config=env_config,
             render_mode='headless',
             run_name=run_name,
-            tag=f'train_mp{rank}',
-            seed=seed + rank,
+            tag=f'trajectorygen',
         )
 
         local_search_policy = LocalSearch()
@@ -72,17 +80,17 @@ class Trajectory:
     threat_ids: List[int]                 # History of threats identified per timestep
 
 
-class SimilarityAnalysis()
-	def __init__():
-		self.human_trajectories_path = '/placeholderpath/' # Where the human trajectory json files are stored
-		self.rl_agents_path = '/trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
-		
-		self.num_rl_agents = 32
+class SimilarityAnalysis():
+    def __init__(self):
+        self.human_trajectories_path = '/placeholderpath/' # Where the human trajectory json files are stored
+        self.rl_agents_path = '/trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+         
+        self.num_rl_agents = 32
         self.level_list = [1, 3, 5, 6, 7]
-		
-		self.human_trajectories = None
-		self.strategy_agent_trajectories = None
-		self.rl_agent_trajectories = None
+	
+        self.human_trajectories = []
+        self.heuristic_trajectories = []
+        self.rl_trajectories = []
 
     # Ready to test    
     def process_human_trajectories(self):
@@ -98,18 +106,18 @@ class SimilarityAnalysis()
             return (vx / mag, vy / mag) if mag > 1e-8 else (0.0, 0.0)
         
         def vector_to_action(dx, dy):
-        # Normalize the movement vector
-        ndx, ndy = normalize(dx, dy)
-
-        # Compute cosine similarity with each direction vector
-        best_idx = 0
-        best_dot = -float("inf")
-        for i, (vx, vy) in enumerate(direction_vectors):
-            dot = ndx * vx + ndy * vy  # cosine similarity since all are normalized
-            if dot > best_dot:
-                best_dot = dot
-                best_idx = i
-        return best_idx
+            # Normalize the movement vector
+            ndx, ndy = normalize(dx, dy)
+    
+            # Compute cosine similarity with each direction vector
+            best_idx = 0
+            best_dot = -float("inf")
+            for i, (vx, vy) in enumerate(direction_vectors):
+                dot = ndx * vx + ndy * vy  # cosine similarity since all are normalized
+                if dot > best_dot:
+                    best_dot = dot
+                    best_idx = i
+            return best_idx
 
         self.human_trajectories = []
 
@@ -171,21 +179,21 @@ class SimilarityAnalysis()
         agent_pairs = []
         for zip_path in rl_files:
         # Extract prefix up to and including 'checkpoint_'
-        filename = os.path.basename(zip_path)
-        match = re.match(r"(.+_checkpoint_)\d+_steps\.zip$", filename)
-        if not match:
-            print(f"Skipping unrecognized zip name: {filename}")
-            continue
+            filename = os.path.basename(zip_path)
+            match = re.match(r"(.+_checkpoint_)\d+_steps\.zip$", filename)
+            if not match:
+                print(f"Skipping unrecognized zip name: {filename}")
+                continue
 
-        prefix = match.group(1)  # e.g., "pretrainP_0731_1530_seed42_checkpoint_"
-
-        # Construct search pattern for pkl
-        pkl_pattern = os.path.join(self.rl_agents_path, prefix + "*_vecnormalize_*.pkl")
-        pkl_files = glob(pkl_pattern)
-
-        if not pkl_files:
-            raise ValueError(f"Warning: No pkl found for {zip_path}")
-            continue
+            prefix = match.group(1)  # e.g., "pretrainP_0731_1530_seed42_checkpoint_"
+    
+            # Construct search pattern for pkl
+            pkl_pattern = os.path.join(self.rl_agents_path, prefix + "*_vecnormalize_*.pkl")
+            pkl_files = glob(pkl_pattern)
+    
+            if not pkl_files:
+                raise ValueError(f"Warning: No pkl found for {zip_path}")
+                #continue
 
         # Pair the first match (or choose based on step count if multiple)
         agent_pairs.append((zip_path, pkl_files[0]))
@@ -200,9 +208,9 @@ class SimilarityAnalysis()
             seed_match = re.search(r"seed(\d+)", zip_path)
             seed = seed_match.group(1) if seed_match else "000"
             
-            for level in range(7):
+            for level in self.level_list:
                 config = self.config.copy()
-                config['force_specific_level'] = level_idx
+                config['force_specific_level'] = level
                 
                 env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
                 
@@ -217,13 +225,12 @@ class SimilarityAnalysis()
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
-                    short_round_triggered = step_count > 5 and short_rounds
                     done = dones[0]
                         
                     trajectory.actions.append(agent_action)
-                    trajectory.positions.append((env.agents[0].x, env.agents[0].y))
-                    trajectory.target_ids.append(env.num_targets_identified)
-                    trajectory.threat_ids.append(env.num_threat_ids)
+                    trajectory.positions.append((base_env.agents[0].x, base_env.agents[0].y))
+                    trajectory.target_ids.append(base_env.num_targets_identified)
+                    trajectory.threat_ids.append(base_env.num_threat_ids)
                     step_count += 1
                         
                 rl_trajectories.append(trajectory)
@@ -240,6 +247,7 @@ class SimilarityAnalysis()
     # - Adapt get_teammate_action for agent action selection
     # Hackiest way is to set the agent as the env teammate, set it inactive, but use get_teammate_action to get action and stpe env
     # - Test 
+    # TODO: Decision speed still a thing?
     def generate_strategy_trajectories(self):
         # Step 1: Create list of heuristic agent parameter combinations. Each element in the list is itself a list of three strings (risk_tolerance, action_noise, spatial_coordination)
         risk_tolerance = ["low", "medium", "high", "max_greedy"]
@@ -247,57 +255,58 @@ class SimilarityAnalysis()
         spatial_coordination = [False, True]
         combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination)]
 
+        
+
         # Step 2: Generate game trajectories for each heuristic combination for each level
-        for combination in combinations
+        for combination in combinations:
             
             # Instantiate agent with <combination> strategy settings		
             risk_tolerance, action_noise, spatial_coordination = combination
             
             teammate = GenericTeammatePolicy(env=None,
-                local_search_policy=TargetSearchLocalTSP(search_radius=1000, spatial_coord=spatial_coord, model_path=None, norm_stats_filepath=None, search_method=planning_horizon),
+                local_search_policy=TargetSearchLocalTSP(search_radius=1000, spatial_coord=spatial_coordination, model_path=None, norm_stats_filepath=None, search_method=planning_horizon),
                 go_to_highvalue_policy=GoToNearestThreat(model_path=None),
                 change_region_subpolicy=ChangeRegions(model_path=None),
-                mode_selector_agent=HeuristicAgent(mode_selector='heuristic', risk_tolerance=risk_tolerance, spatial_coord=spatial_coord),
+                mode_selector_agent=HeuristicAgent(mode_selector='heuristic', risk_tolerance=risk_tolerance, spatial_coord=spatial_coordination),
                 use_collision_avoidance=False,
-                action_stability=action_stability,
+                action_stability=action_noise,
                 decision_speed=decision_speed)
             
             # Run the agent in all 7 levels
             for level in self.level_list:
                 config = self.config.copy()
-                config['force_specific_level'] = level_idx
+                config['force_specific_level'] = level
                 
                 env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
                 
-                trajectory = Trajectory(name = f'{risk_tolerance}-{action_stability}_{spatial_coordination}', level = level, category = 'heuristic') # instantiate the trajectory 
+                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}', level = level, category = 'heuristic') # instantiate the trajectory 
                 step_count = 0
                 obs = env.reset()
                 base_env = env.envs[0].env # TODO confirm that this will update live as the original env does. Is it a shallow copy?
-                print(f'base_env is {base_env} (should be MaisrEnvVec, NOT LocalSearchWrapper\n\n%%%'}
+                print(f'base_env is {base_env} (should be MaisrEnvVec, NOT LocalSearchWrapper\n\n%%%')
                 
                 while not done:
                     agent_waypoint = env.envs[0].get_teammate_action() # TODO this is wrong. 
                     agent_action = 
-                    self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
+                    base_env.agents[base_env.aircraft_ids[1]].waypoint_override = self.teammate_action
                     
                     obses, rewards, dones, infos = env.step([agent_action])
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
-                    short_round_triggered = step_count > 5 and short_rounds
                     done = dones[0]
                         
                     trajectory.actions.append(agent_action)
-                    trajectory.positions.append((env.agents[0].x, env.agents[0].y))
-                    trajectory.target_ids.append(env.num_targets_identified)
-                    trajectory.threat_ids.append(env.num_threat_ids)
+                    trajectory.positions.append((base_env.agents[0].x, base_env.agents[0].y))
+                    trajectory.target_ids.append(base_env.num_targets_identified)
+                    trajectory.threat_ids.append(base_env.num_threat_ids)
                     step_count += 1
                         
-                strategy_agent_trajectories.append(trajectory)
+                self.heuristic_trajectories.append(trajectory)
 
         # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
         
-        return strategy_agent_trajectories
+        return self.heuristic_trajectories
         
     
     ################################################ Helper functions ################################################
@@ -337,24 +346,18 @@ class SimilarityAnalysis()
         # Compute mean cost = EMD
         emd = d[row_ind, col_ind].sum() / n
         return emd
-        
-        
     
-    ################################################ Analysis function ################################################
+    ################################################ Analysis functions ################################################
     
     # Ready to test
-    # 
-    def compare_position_heatmaps_2d(human_trajectories: List[Trajectory],
-                                 rl_trajectories: List[Trajectory],
-                                 heuristic_trajectories: List[Trajectory],
-                                 bins: int = 50,
-                                 output_csv: str = "heatmap_emd_results_2d.csv"):
-        """
-        References/justification for using 2D EMD for this analysis:
+    def compare_position_heatmaps_2d(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory], 
+                                     heuristic_trajectories: List[Trajectory], bins: int = 50, 
+                                     output_csv: str = "heatmap_emd_results_2d.csv"):
+        """ References/justification for using 2D EMD for this analysis:
             https://stats.stackexchange.com/questions/404775/calculate-earth-movers-distance-for-two-grayscale-images
             https://stats.stackexchange.com/questions/659384/compute-p-value-of-earth-movers-distance-score-comparing-two-heatmaps-in-r
-            
         """
+        
         # --- 1. Aggregate positions ---
         def extract_positions(trajs: List[Trajectory]) -> np.ndarray:
             return np.array([pos for t in trajs for pos in t.positions])
@@ -382,9 +385,9 @@ class SimilarityAnalysis()
 
         # --- 3. Compute pairwise 2D EMD ---
         emd_results = {
-            'human_vs_rl': compute_2d_emd(human_heatmap, rl_heatmap),
-            'human_vs_heuristic': compute_2d_emd(human_heatmap, heuristic_heatmap),
-            'rl_vs_heuristic': compute_2d_emd(rl_heatmap, heuristic_heatmap),
+            'human_vs_rl': self.compute_2d_emd(human_heatmap, rl_heatmap),
+            'human_vs_heuristic': self.compute_2d_emd(human_heatmap, heuristic_heatmap),
+            'rl_vs_heuristic': self.compute_2d_emd(rl_heatmap, heuristic_heatmap),
         }
 
         # --- 4. Output results ---
@@ -415,7 +418,7 @@ class SimilarityAnalysis()
         
     
     # Ready to test
-    def compute_silhouette_scores(
+    def compute_silhouette_scores(self,
         human_trajectories: List[Trajectory],
         rl_trajectories: List[Trajectory],
         heuristic_trajectories: List[Trajectory],
@@ -500,12 +503,8 @@ class SimilarityAnalysis()
         return silhouette_results       
 
     # Ready to test
-    def compare_progress_rates(
-                human_trajectories: List[Trajectory],
-                rl_trajectories: List[Trajectory],
-                heuristic_trajectories: List[Trajectory],
-                save_dir: str = "analysis_outputs"
-            ):
+    def compare_progress_rates(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
+                heuristic_trajectories: List[Trajectory], save_dir: str = "analysis_outputs"):
         """
         1. Compute DTW distances for intra- and inter-group pairs based on target identification histories.
         2. Compare human-vs-heuristic vs human-vs-rl with Mann-Whitney U test.
@@ -599,17 +598,12 @@ class SimilarityAnalysis()
         }
 
     # Ready to test
-    def analyze_action_distributions(
-            human_trajectories,
-            rl_agent_trajectories,
-            strategy_agent_trajectories,
-            save_dir="analysis_outputs"
-        ):
+    def analyze_action_distributions(self, human_trajectories, rl_trajectories, heuristic_trajectories, save_dir="analysis_outputs"):
         """
         Input: 
             human_trajectories: list of Trajectory objects
-            rl_agent_trajectories: list of Trajectory objects
-            strategy_agent_trajectories: list of Trajectory objects
+            rl_trajectories: list of Trajectory objects
+            heuristic_trajectories: list of Trajectory objects
             
         Process:
             1. Generate histograms of action distributions (Frequency of each discrete action 0–15) for 
@@ -635,8 +629,8 @@ class SimilarityAnalysis()
 
         # Compute histograms
         human_hist = get_action_hist(human_trajectories)
-        rl_hist = get_action_hist(rl_agent_trajectories)
-        strategy_hist = get_action_hist(strategy_agent_trajectories)
+        rl_hist = get_action_hist(rl_trajectories)
+        strategy_hist = get_action_hist(heuristic_trajectories)
 
         # Normalize for chi-squared to avoid zeros
         # (Add small epsilon to avoid division by zero)
@@ -715,7 +709,6 @@ class SimilarityAnalysis()
         }
 
         all_trajectories = self.human_trajectories + self.rl_trajectories + self.heuristic_trajectories
-
         for traj in all_trajectories:
             actions = np.array(traj.actions)
             if len(actions) < 2:
@@ -788,9 +781,9 @@ class SimilarityAnalysis()
     
     def run_analysis(self):
         # Load trajectories
-        self.human_trajectories = self.load_human_trajectories()
-        self.strategy_agent_trajectories = self.generate_strategy_trajectories()
-        self.rl_agent_trajectories = self.generate_rl_trajectories()
+        self.human_trajectories = self.process_human_trajectories()
+        self.heuristic_trajectories = self.generate_strategy_trajectories()
+        self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
         self.compare_position_heatmaps_2d() # Ready to test
