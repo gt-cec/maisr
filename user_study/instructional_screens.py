@@ -1422,6 +1422,10 @@ class SecondPracticeIntroScreen(GameInstructionScreen):
             self.draw_text_centered(window, line, y_pos, self.font_large)
             y_pos += 35
 
+        if self.sio is not None:
+                import sockets
+                sockets.send_frame(window)
+
 class InterScreen(GameInstructionScreen):
     """Screen shown between the two practice rounds with navigation arrows"""
 
