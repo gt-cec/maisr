@@ -1169,6 +1169,9 @@ class Instruct4Screen(GameInstructionScreen):
                        "",
                        "You will need to coordinate with your teammate to succeed.",
                        "Try to search the map efficiently and balance your risk.",
+                       "",
+                       "Note: you can fly as close to your teammate as you want.",
+                       "There is no risk of collision."
                        ]
 
         y_pos = 500
