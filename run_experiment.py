@@ -620,9 +620,9 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
         if run_third_agent:
             #config_list = ['A1', 'B1', 'C7', 'B2', 'A2', 'C5', 'A3', 'B3', 'C1', 'B4', 'A4', 'C6', 'A5', 'B5', 'C3', 'B6', 'A6', 'C2', 'A7', 'B7', 'C4']
             config_list = ['A1', 'B1',  # A first
-                           'C3', 'A3',  # C first
+                           'C1', 'A3',  # C first
                            'S3', 'S7',
-                           'B3', 'C1',  # B first
+                           'B3', 'C3',  # B first
                            'A4', 'B4',  # A first
                            'C5', 'A5', # C first
                            'B5', 'C7', # B first
@@ -639,9 +639,9 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
     else:
         if run_third_agent:
             config_list = ['B1', 'A1',
-                           'C3', 'B3',
+                           'C1', 'B3',
                            'S3', 'S7',
-                           'A3', 'C1',
+                           'A3', 'C3',
                            'B4', 'A4',
                            'C5', 'B5',
                            'A5', 'C7',
@@ -809,7 +809,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             # Workload survey and teammate survey logic (skip for practice)
             level = agent_letter + str(level_number)
 
-            levels_for_workload_survey = ['A1', 'B1', 'B3', 'A4', 'B5', 'B7', 'C5', 'C3', 'C4']
+            levels_for_workload_survey = ['A1', 'A3', 'B1', 'C1', 'B3', 'A4', 'B5', 'B7', 'C5', 'C3', 'C4', 'A7']
             if level in levels_for_workload_survey:
                 workload_survey_screen = WorkloadSurveyScreen(
                     episode_config=current_config, window_width=window_width, window_height=window_height)

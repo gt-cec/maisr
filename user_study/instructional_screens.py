@@ -1,4 +1,5 @@
 import math
+import random
 
 import numpy as np
 import pygame
@@ -256,13 +257,15 @@ class WorkloadSurveyScreen(InstructionalScreen):
         self.episode_config = episode_config
 
         # Survey questions and their labels
+        self.i = random.randint(1,7)
         self.questions = [
             "How MENTALLY demanding was the task?",
             #"How PHYSICALLY demanding was the task?",
             "How much TIME PRESSURE did you feel?",
             "How much EFFORT did the task take?",
             "How would you rate your PERFORMANCE?",
-            "How much FRUSTRATION did you feel?"
+            "How much FRUSTRATION did you feel?",
+            #f"Check: Please select {self.i} below:"
         ]
 
         # User responses (1-7 scale, None = not answered)
@@ -456,7 +459,8 @@ class WorkloadSurveyScreen(InstructionalScreen):
         return {
             "episode_config": self.episode_config,
             "responses": self.responses.copy(),
-            "timestamp": pygame.time.get_ticks()
+            "timestamp": pygame.time.get_ticks(),
+            "check_number": self.i
         }
 
     def draw_navigation_hints(self, window: pygame.Surface) -> None:
@@ -508,16 +512,25 @@ class TeammatePreferenceSurveyScreen(InstructionalScreen):
     def draw_content(self, window: pygame.Surface) -> None:
         # Title
         title = 'What did you think of the last two teammates you flew with?'
-        self.draw_text_centered(window, title, 150, self.font_large)
+        self.draw_text_centered(window, title, 120, self.font_large)
 
         #self.draw_teammate_icon(window, 300, 300, self.agent_appearance, -1, True, self.icon_size * 2.2,scale=2.5)
         self.draw_teammate_icon(window, 300, 225, self.agent_appearance, -1, True, 0, scale=2.5)
         #self.draw_teammate_icon(window, 700, 300, self.last_agent_appearance, -1, True,self.icon_size * 2.2, scale=2.5)
         self.draw_teammate_icon(window, 700, 225, self.last_agent_appearance, -1, True, 0, scale=2.5)
 
+        # Draw labels above the teammate icons
+        left_label_surface = self.font_medium.render("LAST ROUND", True, self.text_color)
+        left_label_rect = left_label_surface.get_rect(center=(300, 225 - 60))  # 80 px above icon
+        window.blit(left_label_surface, left_label_rect)
+
+        right_label_surface = self.font_medium.render("2 ROUNDS AGO", True, self.text_color)
+        right_label_rect = right_label_surface.get_rect(center=(700, 225 - 60))
+        window.blit(right_label_surface, right_label_rect)
+
         middle_text = "Answer each question below by clicking the boxes."
 
-        self.draw_text_centered(window, middle_text, 340, self.font_large)
+        self.draw_text_centered(window, middle_text, 350, self.font_large)
 
         # Draw each question with teammate icons
         for i, question in enumerate(self.questions):
@@ -1240,10 +1253,10 @@ class Instruct5Screen(GameInstructionScreen):
         text_surface = self.font_large.render("There are 4 HIGH-VALUE targets on the map.", True, self.text_color)
         window.blit(text_surface, (300, 430))
 
-        text_surface = self.font_large.render("To be identified, the high value target's", True, self.text_color)
+        text_surface = self.font_large.render("You must identify exactly TWO high-value", True, self.text_color)
         window.blit(text_surface, (300, 465))
 
-        text_surface = self.font_large.render("TRIANGLE must enter your sensor range", True,self.text_color)
+        text_surface = self.font_large.render("targets (>2 results in a penalty).", True,self.text_color)
         window.blit(text_surface, (300, 465+35))
         #
         # bottom_text = ["Each level has 15 regular",
@@ -1284,7 +1297,21 @@ class Instruct6Screen(GameInstructionScreen):
         instruction_text = [
             "To identify a target, you must",
             "fly close enough that your",
-            "sensor overlaps the target."
+            "sensor overlaps the target.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "","",
+            "","",
+            "","",
+            "","",
+            "","",
+            "","",
+
+            "To identify HIGH VALUE targets, the",
+            "yellow triangle must enter your sensor range."
         ]
         y_pos = 150
         for line in instruction_text:
@@ -1293,7 +1320,7 @@ class Instruct6Screen(GameInstructionScreen):
 
         frame_surface = self.get_next_video_frame()
         if frame_surface:
-            rect = frame_surface.get_rect(center=(self.window_width // 2, 600))
+            rect = frame_surface.get_rect(center=(self.window_width // 2, 500))
             window.blit(frame_surface, rect)
         else:
             pygame.draw.rect(window, (100, 100, 100), (200, 300, 600, 400))
@@ -1369,15 +1396,15 @@ class Instruct7Screen(GameInstructionScreen):
                     "and exactly 2 high-value targets.",
                     "",
                     "",
-                    "You have about 75 seconds per round.",
+                    "You have 75 seconds to finish each round.",
                     "",
                     "",
                     "If you identify more or less than 2 high-",
                     "value targets, your score will be reduced.",
                     "",
                     "",
-                    "If you complete your goals before the round timer",
-                    "ends, you will receive a bonus for finishing early.",
+                    "If you complete your goals before the timer ends,",
+                    "you will receive a bonus for finishing early.",
                     "",
                     "",
                     "Your final score is calculated as:",
@@ -1386,7 +1413,7 @@ class Instruct7Screen(GameInstructionScreen):
                     "+ 1.25 × (# of seconds early)",
                     "",
                     "",
-                    "Good luck!"
+                    #"Good luck!"
                     ]
 
         y_pos = 150
@@ -1481,8 +1508,6 @@ class Instruct8Screen(GameInstructionScreen):
         instruction_text = [
             "You will complete 14 rounds in the game.",
             "",
-            "Each round is approximately 1 minute long.",
-            "",
             "",
             "After each round, you will answer",
             "a few questions about the teammate",
@@ -1505,11 +1530,12 @@ class InstructTLXScreen(GameInstructionScreen):
     """Instruction screen explaining the NASA-TLX workload survey questions"""
 
     def draw_content(self, window: pygame.Surface) -> None:
-        title_text = "Understanding the Workload Survey (NASA-TLX)"
+        title_text = "Post-Round Workload Surveys"
         self.draw_text_centered(window, title_text, 120, self.font_large, self.highlight_color)
 
         explanation_lines = [
             "After some rounds, you will answer 5 questions:",
+            "",
             "",
             "1. MENTAL DEMAND – How mentally challenging was the round?",
             "",
@@ -1601,7 +1627,7 @@ class PracticeIntroScreen(GameInstructionScreen):
             "gameplay. There is no survey after this round.",
             "",
             "",
-            "You will also play this round solo, without a teammate.",
+            "You will play this round solo, without a teammate.",
             #"In the practice round, you will play alongside an agent who",
             #"is still learning. It may not do as well as the other agents!"
             "",

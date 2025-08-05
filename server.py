@@ -6,11 +6,56 @@ from flask import Flask, render_template, send_from_directory, request
 from flask_socketio import SocketIO, emit, disconnect
 import atexit
 
+from functools import wraps
+import logging
+
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+#socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_timeout=60,           # Wait 60s for ping response before disconnect
+    ping_interval=25,          # Send ping every 25s
+    max_http_buffer_size=10**6, # 1MB buffer for large frames
+    transport=['websocket', 'polling'],  # Fallback transports
+    logger=False,              # Disable SocketIO logging
+    engineio_logger=False      # Disable Engine.IO logging
+)
 
 COMPLETED_FILE = "completed_participants.json"
 completed_participants = set()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logging.getLogger('socketio').setLevel(logging.WARNING)
+logging.getLogger('engineio').setLevel(logging.WARNING)
+
+def rate_limit(max_calls=30, window=1):
+    """Simple rate limiting decorator"""
+    calls = {}
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            client_id = request.sid
+            now = time.time()
+
+            # Clean old entries
+            calls[client_id] = [t for t in calls.get(client_id, []) if now - t < window]
+
+            # Check rate limit
+            if len(calls.get(client_id, [])) >= max_calls:
+                logger.warning(f"Rate limit exceeded for client {client_id}")
+                return False
+
+            # Record this call
+            calls.setdefault(client_id, []).append(now)
+            return f(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 def load_completed_participants():
     global completed_participants
@@ -37,7 +82,7 @@ def handle_connect():
         print(f"Rejected repeat connection from {client_ip}")
         # Disconnect the client
         return False
-    print(f"Client connected: {client_ip}")
+    print(f"\nClient connected: {client_ip}")
 
 @app.route('/')
 def index():
@@ -50,6 +95,7 @@ def serve_pako():
 
 
 @socketio.on('frame',namespace='/')
+@rate_limit(max_calls=60, window=1)  # Max 60 frames per second
 def handle_frame(data):
     start_time = time.time()
     emit('frame', data, broadcast=True, binary=True)
@@ -63,12 +109,14 @@ def handle_frame(data):
 #     emit('frame', data, broadcast=True, binary=True)
 
 @socketio.on('click',namespace='/')
+@rate_limit(max_calls=10, window=1)  # Max 60 frames per second
 def handle_click(data):
     print(f"Click received: {data}")
     emit('click_response', data, broadcast=True)
 
 
 @socketio.on('keydown',namespace='/')
+@rate_limit(max_calls=20, window=1)  # Max 60 frames per second
 def handle_keydown(data):
     print(f"Key down received: {data}")
     emit('keydown_response', data, broadcast=True)

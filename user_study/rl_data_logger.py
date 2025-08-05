@@ -89,7 +89,7 @@ class ExperimentDataLogger:
         self._setup_directories()
 
         # Load existing survey data if resuming
-        survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+        survey_file = os.path.join(self.output_dir, f'tlx_survey_responses_subject_{self.subject_id}.json')
         teammate_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
 
         self.survey_responses = []
@@ -413,7 +413,7 @@ class ExperimentDataLogger:
 
         # Save survey responses
         if self.survey_responses:
-            survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
+            survey_file = os.path.join(self.output_dir, f'tlx_survey_responses_subject_{self.subject_id}.json')
             with open(survey_file, 'w') as f:
                 json.dump(self.survey_responses, f, indent=2)
             print(f"Survey responses saved: {survey_file}")
@@ -426,37 +426,6 @@ class ExperimentDataLogger:
 
         self._save_session_summary_csv()
 
-    # def save_session_data(self):
-    #     """Save complete session data"""
-    #     self.session_data['session_end_time'] = datetime.now().isoformat()
-    #     session_duration = (datetime.now() - self.session_start_time).total_seconds()
-    #     self.session_data['session_duration_seconds'] = session_duration
-    #
-    #     timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
-    #     session_filename = f"session_subject_{self.subject_id}_{timestamp}.json"
-    #     session_path = os.path.join(self.session_dir, session_filename)
-    #
-    #     with open(session_path, 'w') as f:
-    #         json.dump(self.session_data, f, indent=2)
-    #
-    #         # Save survey responses
-    #         if hasattr(self, 'survey_responses') and self.survey_responses:
-    #             survey_file = os.path.join(self.output_dir, f'survey_responses_subject_{self.subject_id}.json')
-    #             with open(survey_file, 'w') as f:
-    #                 json.dump(self.survey_responses, f, indent=2)
-    #             print(f"Survey responses saved to: {survey_file}")
-    #
-    #     if hasattr(self, 'teammate_survey_responses') and self.teammate_survey_responses:
-    #         teammate_survey_file = os.path.join(self.output_dir, f'teammate_survey_subject_{self.subject_id}.json')
-    #         with open(teammate_survey_file, 'w') as f:
-    #                 json.dump(self.teammate_survey_responses, f, indent=2)
-    #         print(f"Teammate survey responses saved to: {teammate_survey_file}")
-    #
-    #
-    #     print(f"Session data saved: {session_path}")
-    #
-    #     # Also save a summary CSV for quick analysis
-    #     self._save_session_summary_csv()
 
     def _save_session_summary_csv(self):
         """Save a CSV summary of all episodes and teammate surveys for quick analysis"""
@@ -575,7 +544,7 @@ class ExperimentDataLogger:
             'temporal_demand': survey_data['responses']["How much TIME PRESSURE did you feel?"],
             'effort': survey_data['responses']["How much EFFORT did the task take?"],
             'performance': survey_data['responses']["How would you rate your PERFORMANCE?"],
-            'frustration': survey_data['responses']["How much FRUSTRATION did you feel?"]
+            'frustration': survey_data['responses']["How much FRUSTRATION did you feel?"],
         })
 
         print(f"Logged survey data for {survey_data['episode_config']}")

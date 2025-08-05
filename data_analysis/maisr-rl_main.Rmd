@@ -8,18 +8,22 @@ output: html_document
 ```{r setup, include=FALSE}
 # Load required packages
 library(tidyverse)
-#library(ggplot2)
 library(jsonlite)
+library(stringr)
 ```
 
 ## Data Loading and Processing
 
-```{r config}
+```{r load}
+# READY TO TEST
+
 data_dir <- "../userstudy_logs"
 
-```
+tlx_survey_dir <- "C:/Users/Ryan/PycharmProjects/maisr/userstudy_logs"
 
-```{r load}
+preference_dir <- "C:/Users/Ryan/PycharmProjects/maisr/userstudy_logs"
+
+
 
 # Find all JSON files under session_data folders
 json_files <- list.files(
@@ -46,7 +50,7 @@ summary_data <- all_data %>%
     avg_final_threats = mean(final_threats_identified, na.rm = TRUE),
     .groups = "drop"
   )
-summary_data
+#summary_data
 
 
 agent_summary <- all_data %>%
@@ -63,7 +67,7 @@ agent_summary <- all_data %>%
     values_from = c(avg_timesteps, avg_targets, avg_threats),
     names_glue = "agent{agent_type}_{.value}"
   )
-agent_summary
+#agent_summary
 
 
 final_dataset <- summary_data %>%
@@ -73,9 +77,9 @@ final_dataset
 ```
 
 ## Performance Comparison
-
+### Overall (Average of rounds)
 ```{r viz}
-## 5. Visualize Performance Metrics for Agent A vs B vs C
+# READY TO TEST
 
 # Reshape the dataset to a long format for ggplot
 plot_data <- final_dataset %>%
@@ -93,7 +97,7 @@ plot_data <- final_dataset %>%
 plot_data <- plot_data %>%
   mutate(
     metric = case_when(
-      metric == "timesteps" ~ "Mission Duration (Timesteps)",
+      metric == "timesteps" ~ "Mission Duration (Steps)",
       metric == "targets" ~ "Targets Identified",
       metric == "threats" ~ "Threats Identified"
     ),
@@ -113,5 +117,305 @@ ggplot(plot_data, aes(x = agent, y = value, fill = agent)) +
   theme_minimal(base_size = 14) +
   theme(legend.position = "none")
 
+```
+
+
+### Per-round
+### Per-round
+```{r agent_level_performance}
+
+# Create dataset with agent and level breakdown
+agent_level_data <- all_data %>%
+  filter(agent_type %in% c("A", "B", "C")) %>%
+  mutate(
+    agent_letter = agent_type,
+    level_num = level
+  ) %>%
+  group_by(subject_id, agent_letter, level_num) %>%
+  summarise(
+    avg_timesteps = mean(total_timesteps, na.rm = TRUE),
+    avg_targets = mean(final_targets_identified, na.rm = TRUE),
+    avg_threats = mean(final_threats_identified, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Calculate summary statistics for error bars
+agent_level_summary <- agent_level_data %>%
+  group_by(agent_letter, level_num) %>%
+  summarise(
+    mean_timesteps = mean(avg_timesteps, na.rm = TRUE),
+    se_timesteps = sd(avg_timesteps, na.rm = TRUE) / sqrt(n()),
+    mean_targets = mean(avg_targets, na.rm = TRUE),
+    se_targets = sd(avg_targets, na.rm = TRUE) / sqrt(n()),
+    mean_threats = mean(avg_threats, na.rm = TRUE),
+    se_threats = sd(avg_threats, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Reshape for plotting (combine mean and SE correctly)
+plot_summary <- agent_level_summary %>%
+  pivot_longer(
+    cols = c(mean_timesteps, mean_targets, mean_threats),
+    names_to = "metric",
+    values_to = "mean_value",
+    names_prefix = "mean_"
+  ) %>%
+  left_join(
+    agent_level_summary %>%
+      pivot_longer(
+        cols = c(se_timesteps, se_targets, se_threats),
+        names_to = "metric",
+        values_to = "se_value",
+        names_prefix = "se_"
+      ),
+    by = c("agent_letter", "level_num", "metric")
+  ) %>%
+  mutate(
+    metric = case_when(
+      metric == "timesteps" ~ "Mission Duration (steps)",
+      metric == "targets" ~ "Targets Identified",
+      metric == "threats" ~ "Threats Identified"
+    ),
+    agent_label = paste("Agent", agent_letter),
+    level_label = paste("Level", level_num)
+  )
+
+# Create bar charts for each level
+levels_to_plot <- c(1, 3, 4, 5, 7)
+
+for (level in levels_to_plot) {
+  level_data <- plot_summary %>% filter(level_num == level)
+  
+  p <- ggplot(level_data, aes(x = agent_label, y = mean_value, fill = agent_label)) +
+    geom_col(alpha = 0.7, width = 0.6) +
+    geom_errorbar(
+      aes(ymin = mean_value - se_value, ymax = mean_value + se_value),
+      width = 0.2, color = "black"
+    ) +
+    facet_wrap(~ metric, scales = "free_y", ncol = 3) +
+    labs(
+      title = paste("Performance Metrics by Agent - Level", level),
+      x = "Agent",
+      y = "Mean Value",
+      caption = "Error bars represent standard error"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      strip.text = element_text(size = 10, face = "bold")
+    ) +
+    scale_fill_brewer(type = "qual", palette = "Set2")
+  
+  print(p)
+  cat("\n\n")
+}
+
+# Optional: Combined plot
+combined_plot <- ggplot(plot_summary %>% filter(level_num %in% levels_to_plot), 
+                       aes(x = agent_label, y = mean_value, fill = agent_label)) +
+  geom_col(alpha = 0.7, width = 0.6) +
+  geom_errorbar(
+    aes(ymin = mean_value - se_value, ymax = mean_value + se_value),
+    width = 0.2, color = "black"
+  ) +
+  facet_grid(level_num ~ metric, scales = "free_y", 
+             labeller = labeller(level_num = function(x) paste("Level", x))) +
+  labs(
+    title = "Performance Metrics by Agent and Level",
+    x = "Agent",
+    y = "Mean Value",
+    caption = "Error bars represent standard error"
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    strip.text = element_text(size = 9, face = "bold")
+  ) +
+  scale_fill_brewer(type = "qual", palette = "Set2")
+
+print(combined_plot)
+
+```
+## Workload Surveys
+### Load
+```{r tlx_load}
+# Load all survey files matching the pattern
+survey_files <- list.files(
+  tlx_survey_dir,
+  pattern = "^tlx_survey_responses_subject_.*\\.json$",
+  full.names = TRUE
+)
+
+# Read and combine all survey responses
+survey_data <- map_dfr(survey_files, function(file) {
+  # Extract subject_id from filename
+  subject_id <- str_extract(basename(file), "\\d+")
+  
+  # Read JSON as tibble and add subject_id
+  fromJSON(file) %>%
+    as_tibble() %>%
+    mutate(subject_id = as.integer(subject_id))
+})
+
+# Pivot to wide format: one row per subject, 5 columns per episode config
+tlx_wide <- survey_data %>%
+  pivot_wider(
+    id_cols = subject_id,
+    names_from = config,
+    values_from = c(mental_demand, temporal_demand, effort, performance, frustration),
+    names_glue = "{episode_config}_{.value}"
+  )
+
+```
+### Plot
+```{r tlx_plots}
+# Compute composite TLX per episode
+tlx_long <- survey_data %>%
+  mutate(
+    agent_letter = str_sub(config, 1, 1),
+    level_num = as.integer(str_sub(config, 2, 2)),
+    composite_tlx = (mental_demand + temporal_demand + effort + performance + frustration) / 5
+  )
+
+### 8.1 Composite TLX vs Agent Letter
+ggplot(tlx_long, aes(x = agent_letter, y = composite_tlx, fill = agent_letter)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  labs(
+    title = "Composite TLX vs Agent Letter",
+    x = "Agent Letter",
+    y = "Composite TLX Score"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+### 8.2 Effort and Frustration vs Agent Letter
+tlx_long %>%
+  pivot_longer(cols = c(effort, frustration), names_to = "metric", values_to = "score") %>%
+  ggplot(aes(x = agent_letter, y = score, fill = agent_letter)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  facet_wrap(~ metric, scales = "free_y") +
+  labs(
+    title = "Effort and Frustration vs Agent Letter",
+    x = "Agent Letter",
+    y = "Score"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+### 8.3 Composite TLX vs Level Number
+ggplot(tlx_long, aes(x = factor(level_num), y = composite_tlx, fill = factor(level_num))) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  labs(
+    title = "Composite TLX vs Level Number",
+    x = "Level Number",
+    y = "Composite TLX Score"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+
+```
+
+## Preference Surveys
+### Heatmap
+``` {r preference-load}
+
+# Load all teammate survey JSON files
+teammate_files <- list.files(
+  preference_dir,
+  pattern = "^teammate_survey_subject_.*\\.json$",
+  full.names = TRUE
+)
+
+# Map colors to agent letters
+color_to_agent <- c(
+  "red" = "A",
+  "purple" = "B",
+  "green" = "C"
+)
+
+# Combine all survey responses into a single dataframe
+teammate_data <- map_dfr(teammate_files, function(file) {
+  subject_id <- str_extract(basename(file), "\\d+")
+  json <- fromJSON(file)
+  as_tibble(json) %>%
+    mutate(subject_id = as.integer(subject_id))
+}) %>%
+  # Map colors to agents
+  mutate(
+    compared_agents = map(compared_agents, ~ color_to_agent[.x]),
+    agent1 = map_chr(compared_agents, 1),
+    agent2 = map_chr(compared_agents, 2),
+    preferred_overall = color_to_agent[preferred_overall]
+  ) %>%
+  select(subject_id, config, agent1, agent2, preferred_overall)
+
+# ---- Create confusion-matrix style table ----
+# Initialize all combinations of agents
+agent_levels <- c("A", "B", "C")
+pairs <- expand.grid(agent1 = agent_levels, agent2 = agent_levels, stringsAsFactors = FALSE)
+
+# Compute preference scores: +1 if first agent preferred, -1 if second preferred
+pref_scores <- teammate_data %>%
+  mutate(score = ifelse(preferred_overall == agent1, 1,
+                        ifelse(preferred_overall == agent2, -1, 0))) %>%
+  group_by(agent1, agent2) %>%
+  summarise(mean_score = mean(score, na.rm = TRUE), .groups = "drop")
+
+# Merge with all pairs to ensure full matrix
+pref_matrix <- pairs %>%
+  left_join(pref_scores, by = c("agent1", "agent2")) %>%
+  replace_na(list(mean_score = 0))
+
+# Heatmap using ggplot
+ggplot(pref_matrix, aes(x = agent2, y = agent1, fill = mean_score)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(mean_score, 2)), color = "black") +
+  scale_fill_gradient2(low = "brown", mid = "white", high = "blue", midpoint = 0) +
+  labs(
+    title = "Teammate Preference Confusion Matrix",
+    x = "Agent (Column)",
+    y = "Agent (Row)",
+    fill = "Preference"
+  ) +
+  theme_minimal(base_size = 14) +
+  coord_fixed()
+
+```
+
+## Statistical Tests
+### Performance
+```{r stat}
+metrics <- unique(plot_data$metric)
+
+for (m in metrics) {
+  cat("\n### Metric:", m, "\n")
+  
+  # Subset data for this metric
+  df_metric <- plot_data %>% filter(metric == m)
+  
+  # One-way ANOVA
+  aov_res <- aov(value ~ agent, data = df_metric)
+  cat("\n--- ANOVA ---\n")
+  print(summary(aov_res))
+  
+  # Kruskal-Wallis Test (non-parametric)
+  cat("\n--- Kruskal-Wallis Test ---\n")
+  print(kruskal.test(value ~ agent, data = df_metric))
+  
+  # Pairwise t-tests with Holm correction
+  cat("\n--- Pairwise t-tests (Holm corrected) ---\n")
+  print(pairwise.t.test(df_metric$value, df_metric$agent, p.adjust.method = "holm"))
+}
+
+
+```
+
+### TLX
+``` {r tlx-stat}
 
 ```
