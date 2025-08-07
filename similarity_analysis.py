@@ -246,16 +246,16 @@ class SimilarityAnalysis():
     # TODO:
     # - Adapt get_teammate_action for agent action selection
     # Hackiest way is to set the agent as the env teammate, set it inactive, but use get_teammate_action to get action and stpe env
-    # - Test 
-    # TODO: Decision speed still a thing?
+    # - Test
     def generate_strategy_trajectories(self):
         # Step 1: Create list of heuristic agent parameter combinations. Each element in the list is itself a list of three strings (risk_tolerance, action_noise, spatial_coordination)
         risk_tolerance = ["low", "medium", "high", "max_greedy"]
         action_noise = ["stable", "noisy", "very_noisy"]
+        planning_horizon = ['greedy', 'clusters']
         spatial_coordination = [False, True]
+        decision_speed = ['fast', 'slow']
         combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination)]
 
-        
 
         # Step 2: Generate game trajectories for each heuristic combination for each level
         for combination in combinations:
@@ -411,7 +411,7 @@ class SimilarityAnalysis():
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plt.tight_layout()
-        plt.savefig(output_plot, dpi=300)
+        plt.savefig('/data_analysis/position_heatmaps.png', dpi=300)
         plt.close(fig)
             
         return emd_results

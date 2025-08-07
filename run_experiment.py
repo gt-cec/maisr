@@ -307,6 +307,13 @@ def draw_bottom_bar_info(window, font, threats_identified, targets_identified, d
     timer_surface = big_font.render(timer_text, True, timer_color)
     timer_rect = timer_surface.get_rect(center=(500, 20))
 
+    if high_value_targets > 2:
+        warning_font = pygame.font.Font('./user_study/AcPlus_IBM_VGA_8x16.ttf', 28)
+        warning_text = "TOO MANY HIGH VALUE TARGETS"
+        warning_surface = warning_font.render(warning_text, True, (255, 0, 0))
+        # Left edge at x=550, same top as timer
+        window.blit(warning_surface, (565, timer_rect.top + 5))
+
     # Draw outline box around timer (bigger than text)
     padding_x, padding_y = 20, 10
     outline_rect = pygame.Rect(
@@ -425,7 +432,7 @@ def run_single_episode(env, human_controller, config, config_index, total_config
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE and admin:
                     return True, episode_reward, step_count, 0, 0  # Signal to quit experiment
-                elif event.key == pygame.K_SPACE and admin:
+                elif event.key == pygame.K_p:
                     paused = not paused
                     print("Game paused" if paused else "Game resumed")
                 elif event.key == pygame.K_RETURN and admin:
@@ -716,10 +723,18 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
 
         last_agent_appearance = None
 
+        # appearance_map = {
+        #     'A': 'red',
+        #     'B': 'purple',
+        #     'C': 'green',
+        #     'S': 'invisible',
+        #     'P': 'invisible'
+        # }
+
         appearance_map = {
-            'A': 'red',
-            'B': 'purple',
-            'C': 'green',
+            'A': 'green',
+            'B': 'red',
+            'C': 'purple',
             'S': 'invisible',
             'P': 'invisible'
         }

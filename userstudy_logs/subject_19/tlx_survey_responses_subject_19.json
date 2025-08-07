@@ -1,0 +1,101 @@
+[
+  {
+    "episode_config": "B1",
+    "timestamp": 683469,
+    "mental_demand": 2.0,
+    "temporal_demand": 5.0,
+    "effort": 3.0,
+    "performance": 4.0,
+    "frustration": 2.0
+  },
+  {
+    "episode_config": "A1",
+    "timestamp": 777017,
+    "mental_demand": 2.0,
+    "temporal_demand": 5.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 5.0
+  },
+  {
+    "episode_config": "C1",
+    "timestamp": 849766,
+    "mental_demand": 2.0,
+    "temporal_demand": 4.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 1.0
+  },
+  {
+    "episode_config": "B3",
+    "timestamp": 922474,
+    "mental_demand": 2.0,
+    "temporal_demand": 4.0,
+    "effort": 2.0,
+    "performance": 6.0,
+    "frustration": 2.0
+  },
+  {
+    "episode_config": "A3",
+    "timestamp": 1164797,
+    "mental_demand": 2.0,
+    "temporal_demand": 6.0,
+    "effort": 3.0,
+    "performance": 6.0,
+    "frustration": 3.0
+  },
+  {
+    "episode_config": "C3",
+    "timestamp": 1230459,
+    "mental_demand": 2.0,
+    "temporal_demand": 4.0,
+    "effort": 2.0,
+    "performance": 6.0,
+    "frustration": 1.0
+  },
+  {
+    "episode_config": "A4",
+    "timestamp": 1381485,
+    "mental_demand": 1.0,
+    "temporal_demand": 4.0,
+    "effort": 2.0,
+    "performance": 6.0,
+    "frustration": 2.0
+  },
+  {
+    "episode_config": "C5",
+    "timestamp": 1453644,
+    "mental_demand": 1.0,
+    "temporal_demand": 3.0,
+    "effort": 1.0,
+    "performance": 6.0,
+    "frustration": 1.0
+  },
+  {
+    "episode_config": "B5",
+    "timestamp": 1547288,
+    "mental_demand": 1.0,
+    "temporal_demand": 6.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 7.0
+  },
+  {
+    "episode_config": "B7",
+    "timestamp": 1741614,
+    "mental_demand": 2.0,
+    "temporal_demand": 4.0,
+    "effort": 2.0,
+    "performance": 5.0,
+    "frustration": 3.0
+  },
+  {
+    "episode_config": "A7",
+    "timestamp": 1802464,
+    "mental_demand": 2.0,
+    "temporal_demand": 4.0,
+    "effort": 1.0,
+    "performance": 6.0,
+    "frustration": 1.0
+  }
+]

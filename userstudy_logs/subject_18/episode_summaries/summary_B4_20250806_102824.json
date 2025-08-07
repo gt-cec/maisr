@@ -1,0 +1,17 @@
+{
+  "subject_id": 18,
+  "config": "B4",
+  "agent_type": "B",
+  "level": 4,
+  "agent_model_name": "./user_study/saved_agents/aug2b_baseline_model.zip",
+  "episode_start_time": "2025-08-06T10:28:24.470533",
+  "episode_end_time": "2025-08-06T10:29:05.149259",
+  "episode_duration_seconds": 40.678726,
+  "final_targets_identified": 15,
+  "final_threats_identified": 2,
+  "total_detections": 0,
+  "total_timesteps": 232,
+  "all_targets_identified": true,
+  "all_threats_identified": false,
+  "mission_success": false
+}
