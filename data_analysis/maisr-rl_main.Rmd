@@ -15,23 +15,17 @@ agent_colors <- c(
   "A" = rgb(225, 25, 25, maxColorValue = 255),      # red
   "B" = rgb(156, 39, 176, maxColorValue = 255),     # purple
   "C" = rgb(61, 180, 64, maxColorValue = 255),       # green
-  "Finetuned" = rgb(225, 25, 25, maxColorValue = 255),      # red
+  "SBPD-FT" = rgb(225, 25, 25, maxColorValue = 255),      # red
   "SP" = rgb(156, 39, 176, maxColorValue = 255),     # purple
-  "Mixed" = rgb(61, 180, 64, maxColorValue = 255)       # green
+  "SBPD-M" = rgb(61, 180, 64, maxColorValue = 255)       # green
 )
 
-```
-
-## Data Loading and Processing
-
-```{r load}
-# READY TO TEST
 
 data_dir <- "../userstudy_logs"
 
-tlx_survey_dir <- "C:/Users/Ryan/PycharmProjects/maisr/userstudy_logs"
+tlx_survey_dir <- "../userstudy_logs"
 
-preference_dir <- "C:/Users/Ryan/PycharmProjects/maisr/userstudy_logs"
+preference_dir <- "../userstudy_logs"
 
 exclude_subjects <- c(17, 9)
 
@@ -337,9 +331,9 @@ survey_data <- survey_data %>%
     level = substr(episode_config, 2, 2),
     # Rename agents
     agent = case_when(
-      agent == "A" ~ "Finetuned",
+      agent == "A" ~ "SBPD-FT",
       agent == "B" ~ "SP",
-      agent == "C" ~ "Mixed",
+      agent == "C" ~ "SBPD-M",
       TRUE ~ agent  # Keep original if none match
     )
   )
@@ -592,31 +586,35 @@ anova_results <- performance_long %>%
 print("=== Mission Performance ANOVA Results ===")
 print(anova_results)
 
-
-# 2. ----- Composite Workload vs Agent Type -----
-
-# Compute composite workload per subject/agent
-composite_workload <- survey_data %>%
-  mutate(
-    composite_workload = mental_demand + temporal_demand + effort + frustration,
-    agent = factor(agent, levels = c("A", "B", "C"))
-  )
-
-# Run ANOVA for composite workload
-workload_anova <- aov(composite_workload ~ agent, data = composite_workload)
-print("=== Composite Workload ANOVA Result ===")
-print(summary(workload_anova))
-
-# Optional: Tukey post-hoc test if ANOVA is significant
-tukey_workload <- TukeyHSD(workload_anova)
-print("=== Tukey Post-hoc for Composite Workload ===")
-print(tukey_workload)
-
-
+# Get all unique metrics
+metrics <- unique(performance_long$metric)
+results <- list()
+for(metric in metrics) {
+  data_subset <- performance_long %>% filter(metric == !!metric)
+  results[[metric]] <- pairwise.wilcox.test(data_subset$value, data_subset$agent, p.adjust.method = "holm")
+}
+results
 
 ```
 
 ### TLX
 ``` {r tlx-stat}
+# 2. ----- Composite Workload vs Agent Type -----
 
+# Compute composite workload per subject/agent
+# composite_workload <- survey_data %>%
+#   mutate(
+#     composite_workload = mental_demand + temporal_demand + effort + frustration,
+#     agent = factor(agent, levels = c("A", "B", "C"))
+#   )
+
+# Run ANOVA for composite workload
+# workload_anova <- aov(composite_workload ~ agent, data = composite_workload)
+# print("=== Composite Workload ANOVA Result ===")
+# print(summary(workload_anova))
+# 
+# # Optional: Tukey post-hoc test if ANOVA is significant
+# tukey_workload <- TukeyHSD(workload_anova)
+# print("=== Tukey Post-hoc for Composite Workload ===")
+# print(tukey_workload)
 ```
