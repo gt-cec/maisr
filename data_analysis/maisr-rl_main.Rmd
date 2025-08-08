@@ -14,7 +14,10 @@ library(stringr)
 agent_colors <- c(
   "A" = rgb(225, 25, 25, maxColorValue = 255),      # red
   "B" = rgb(156, 39, 176, maxColorValue = 255),     # purple
-  "C" = rgb(61, 180, 64, maxColorValue = 255)       # green
+  "C" = rgb(61, 180, 64, maxColorValue = 255),       # green
+  "Finetuned" = rgb(225, 25, 25, maxColorValue = 255),      # red
+  "SP" = rgb(156, 39, 176, maxColorValue = 255),     # purple
+  "Mixed" = rgb(61, 180, 64, maxColorValue = 255)       # green
 )
 
 ```
@@ -90,9 +93,8 @@ final_dataset
 ## Performance Comparison
 ### Overall (Average of rounds)
 ```{r viz}
-# READY TO TEST
 
-# Reshape the dataset to a long format for ggplot
+# Prepare plot data
 plot_data <- final_dataset %>%
   select(subject_id,
          agentA_avg_timesteps, agentA_avg_targets, agentA_avg_threats,
@@ -102,89 +104,75 @@ plot_data <- final_dataset %>%
     cols = -subject_id,
     names_to = c("agent", "metric"),
     names_pattern = "agent([ABC])_avg_(.*)"
-  )
-
-
-plot_data <- plot_data %>%
+  ) %>%
   mutate(
     metric = case_when(
       metric == "timesteps" ~ "Mission Duration (Steps)",
       metric == "targets" ~ "Targets Identified",
       metric == "threats" ~ "Threats Identified"
     ),
-    #agent = paste("Agent", agent)
-    agent = factor(agent, levels = c("A", "B", "C"))  # keep order
+    agent = factor(agent, levels = c("A", "B", "C"))
   )
 
-################ Userstudy_performanceVsAgent ################################
-
-pbox <- ggplot(plot_data, aes(x = agent, y = value, fill = agent)) +
-  geom_boxplot(alpha = 0.9) + # outlier.shape = NA
-  geom_jitter(width = 0.15, alpha = 0.9) +
-  facet_wrap(~ metric, scales = "free_y") +
-  scale_fill_manual(values = agent_colors) +
-  labs(
-    #title = "Performance Metrics per Agent",
-    x = "Agent",
-    y = "Average Value"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    plot.title = element_text(hjust = 0.5, size=17),
-    panel.border = element_blank(),
-    axis.line.x = element_line(color = "black", linewidth = 0.5),
-    axis.line.y = element_line(color = "black", linewidth = 0.5),
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    panel.grid.minor.y = element_blank(),
-    panel.grid.major.y = element_line(color = "gray80"),
-    axis.text = element_text(size = 15, color='black'),
-    axis.title = element_text(size = 18),
-    legend.position = 'None',
-    legend.text = element_text(size = 15),
-    legend.title = element_blank())
-pbox
-
-ggsave("outputs/userstudy_performanceVsAgent.png",
-       plot = pbox,
-       width = dev.size()[1],      # Use current width
-       height = dev.size()[2],    # Use current height
-       dpi = 300,                  # High resolution
-       bg = "white")
-
-
-# Compute mean and standard error per agent and metric
-plot_summary <- plot_data %>%
-  group_by(agent, metric) %>%
-  summarise(
-    mean_value = mean(value, na.rm = TRUE),
-    se_value = sd(value, na.rm = TRUE) / sqrt(n()),
-    .groups = "drop"
+# Define plot specifications
+plot_specs <- list(
+  list(
+    metric = "Mission Duration (Steps)",
+    y_label = "Average Steps",
+    y_limits = c(0, 400)  # or c(min_val, max_val) for custom bounds
+  ),
+  list(
+    metric = "Targets Identified", 
+    y_label = "Average Targets",
+    y_limits = c(12, 15)  # or c(min_val, max_val) for custom bounds # NULL
+  ),
+  list(
+    metric = "Threats Identified",
+    y_label = "Average Threats", 
+    y_limits = c(1.5, 2)  # or c(min_val, max_val) for custom bounds
   )
+)
 
-# Bar chart with error bars
-pbar <- ggplot(plot_summary, aes(x = agent, y = mean_value, fill = agent)) +
-  geom_col(alpha = 0.9, width = 0.6) +
-  geom_errorbar(
-    aes(ymin = mean_value - se_value, ymax = mean_value + se_value),
-    width = 0.2
-  ) +
-  facet_wrap(~ metric, scales = "free_y") +
-  scale_fill_manual(values = agent_colors) +
-  labs(
-    title = "Mission Performance per Agent",
-    x = "Agent",
-    y = "Mean Value"
-  ) +
-  theme_minimal(base_size = 14) +
-  theme(
-    legend.position = "none",
-    plot.title = element_text(hjust = 0.5)   # <-- centers the title
-  )
+# Create plots using loop
+plots <- map(plot_specs, function(spec) {
+  p <- plot_data %>%
+    filter(metric == spec$metric) %>%
+    ggplot(aes(x = agent, y = value, fill = agent)) +
+    #geom_boxplot(alpha = 0.9) +
+    stat_summary(fun = mean, geom = "bar", alpha = 0.9) +
+    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0, linewidth = 1.5) +
+    scale_fill_manual(values = agent_colors) +
+    labs(
+      title = spec$metric,
+      x = "Agent",
+      y = spec$y_label
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 17),
+      panel.border = element_blank(),
+      axis.line.x = element_line(color = "black", linewidth = 0.5),
+      axis.line.y = element_line(color = "black", linewidth = 0.5),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      panel.grid.major.y = element_line(color = "gray80"),
+      axis.text = element_text(size = 15, color = 'black'),
+      axis.title = element_text(size = 18),
+      legend.position = 'none',
+      aspect.ratio = 1
+    )
+  
+  # Add y-axis limits if specified
+  if (!is.null(spec$y_limits)) {
+    p <- p + coord_cartesian(ylim = spec$y_limits)
+  }
+  
+  return(p)
+})
 
-# Save
-
-
+# Display the plots
+walk(plots, print)
 
 # ggsave("outputs/userstudy_performanceVsAgent.png",
 #        plot = pbar,
@@ -194,7 +182,6 @@ pbar <- ggplot(plot_summary, aes(x = agent, y = mean_value, fill = agent)) +
 #        bg = "white")
 
 ```
-
 
 ### Per-round
 ```{r agent_level_performance}
@@ -319,6 +306,7 @@ for (level in levels_to_plot) {
 
 ## Workload Surveys
 ```{r tlx_load}
+
 # Load all survey files from subdirectories
 survey_files <- list.files(
   tlx_survey_dir,
@@ -340,49 +328,88 @@ survey_data <- map_dfr(survey_files, function(file) {
     mutate(subject_id = as.integer(subject_id))
 })
 
-# Check column names
-print(names(survey_data))
 
-# Pivot to wide format: one row per subject
-tlx_wide <- survey_data %>%
-  pivot_wider(
-    id_cols = subject_id,
-    names_from = episode_config,  # assuming JSON has this field
-    values_from = c(mental_demand, temporal_demand, effort, performance, frustration),
-    names_glue = "{episode_config}_{.value}"
+# 1. Compute composite workload and extract agent/level
+survey_data <- survey_data %>%
+  mutate(
+    composite_workload = mental_demand + temporal_demand + effort + frustration, # performance
+    agent = substr(episode_config, 1, 1),
+    level = substr(episode_config, 2, 2),
+    # Rename agents
+    agent = case_when(
+      agent == "A" ~ "Finetuned",
+      agent == "B" ~ "SP",
+      agent == "C" ~ "Mixed",
+      TRUE ~ agent  # Keep original if none match
+    )
   )
 
-head(tlx_wide)
+
+# 2. Composite workload per agent
+agent_summary <- survey_data %>%
+  group_by(agent) %>%
+  summarise(
+    mean_workload = mean(composite_workload, na.rm = TRUE),
+    se_workload = sd(composite_workload, na.rm = TRUE) / sqrt(n())
+  )
+
+ggplot(agent_summary, aes(x = agent, y = mean_workload, fill = agent)) +
+  geom_bar(stat = "identity", alpha = 1.0) +
+  geom_errorbar(aes(ymin = mean_workload - se_workload,
+                    ymax = mean_workload + se_workload),
+                width = 0, linewidth = 1.2) +
+  scale_fill_manual(values = agent_colors) +
+  scale_y_continuous(breaks = seq(0, 15, by = 3), 
+                     limits = c(0, 15),
+                     expand = c(0, 0)) +
+  labs(title = "Composite Workload", x = "Agent", y = "Composite Workload") +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 17),
+    panel.border = element_blank(),
+    axis.line.x = element_line(color = "black", linewidth = 0.5),
+    axis.line.y = element_line(color = "black", linewidth = 0.5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(color = "gray80"),
+    axis.text = element_text(size = 15, color = 'black'),
+    axis.title = element_text(size = 18),
+    legend.position = 'none',
+    aspect.ratio = 1
+  )
 
 
-################## Plot ##################
 
-# 1. Add composite workload to long format
+```
+
+```{r workloadother}
+# 3. Composite workload per level
+level_summary <- survey_data %>%
+  group_by(level) %>%
+  summarise(
+    mean_workload = mean(composite_workload, na.rm = TRUE),
+    se_workload = sd(composite_workload, na.rm = TRUE) / sqrt(n())
+  )
+
+ggplot(level_summary, aes(x = level, y = mean_workload, fill = level)) +
+  geom_bar(stat = "identity", alpha = 0.7) +
+  geom_errorbar(aes(ymin = mean_workload - se_workload,
+                    ymax = mean_workload + se_workload),
+                width = 0.2) +
+  labs(title = "Composite Workload by Level", x = "Level", y = "Composite Workload") +
+  theme_minimal(base_size = 14)
+
 tlx_long <- survey_data %>%
   select(subject_id, episode_config, agent, level,
-         mental_demand, temporal_demand, effort, performance, frustration, composite_workload) %>%
+         mental_demand, temporal_demand, effort, performance, frustration) %>%
   pivot_longer(
-    cols = c(mental_demand, temporal_demand, effort, performance, frustration, composite_workload),
+    cols = c(mental_demand, temporal_demand, effort, performance, frustration),
     names_to = "component",
     values_to = "score"
   )
 
-# 2. Set factor order so composite is first
-tlx_long$component <- factor(
-  tlx_long$component,
-  levels = c("composite_workload", "mental_demand", "temporal_demand", 
-             "effort", "performance", "frustration")
-)
-
-tlx_long$component <- factor(
-  tlx_long$component,
-  levels = c("composite_workload", "mental_demand", "temporal_demand", 
-             "effort", "performance", "frustration"),
-  labels = c("Composite", "Mental Demand", "Temporal Demand", 
-             "Effort", "Performance", "Frustration")
-)
-
-# 3. Compute summary stats for plotting
+# 2. Faceted plot: mean ± SE per agent for each component
 tlx_summary <- tlx_long %>%
   group_by(agent, component) %>%
   summarise(
@@ -391,107 +418,18 @@ tlx_summary <- tlx_long %>%
     .groups = "drop"
   )
 
-# 4. Faceted plot with composite first
-ptlx <- ggplot(tlx_summary, aes(x = agent, y = mean_score, fill = agent)) +
-  geom_bar(stat = "identity", alpha = 0.9) +
+ggplot(tlx_summary, aes(x = agent, y = mean_score, fill = agent)) +
+  geom_bar(stat = "identity", alpha = 0.7) +
   geom_errorbar(aes(ymin = mean_score - se_score, ymax = mean_score + se_score),
                 width = 0.2) +
   facet_wrap(~ component, scales = "free_y") +
   scale_fill_manual(values = agent_colors) +
-  scale_y_continuous(breaks = scales::pretty_breaks(n = 6)) + 
   labs(
     title = "TLX Workload Scores Per Agent",
     x = "Agent",
     y = "Score"
   ) +
-  theme_minimal(base_size = 14) + 
-  theme(
-    panel.grid.major.x = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    legend.position = "none",
-    plot.title = element_text(hjust = 0.5),   # <-- centers the title
-  )
-
-ggsave("outputs/workloadfacet.png",
-       plot = ptlx,
-       width = dev.size()[1],      # Use current width
-       height = dev.size()[2],    # Use current height
-       dpi = 300,                  # High resolution
-       bg = "white")
-
-
-
-# # 1. Compute composite workload and extract agent/level
-# survey_data <- survey_data %>%
-#   mutate(
-#     composite_workload = mental_demand + temporal_demand + effort + frustration, # performance
-#     agent = substr(episode_config, 1, 1),
-#     level = substr(episode_config, 2, 2)
-#   )
-# 
-# # 2. Composite workload per agent
-# agent_summary <- survey_data %>%
-#   group_by(agent) %>%
-#   summarise(
-#     mean_workload = mean(composite_workload, na.rm = TRUE),
-#     se_workload = sd(composite_workload, na.rm = TRUE) / sqrt(n())
-#   )
-# 
-# ggplot(agent_summary, aes(x = agent, y = mean_workload, fill = agent)) +
-#   geom_bar(stat = "identity", alpha = 0.7) +
-#   geom_errorbar(aes(ymin = mean_workload - se_workload,
-#                     ymax = mean_workload + se_workload),
-#                 width = 0.2) +
-#   scale_fill_manual(values = agent_colors) +
-#   labs(title = "Composite Workload by Agent", x = "Agent", y = "Composite Workload") +
-#   theme_minimal(base_size = 14)
-# 
-# # 3. Composite workload per level
-# level_summary <- survey_data %>%
-#   group_by(level) %>%
-#   summarise(
-#     mean_workload = mean(composite_workload, na.rm = TRUE),
-#     se_workload = sd(composite_workload, na.rm = TRUE) / sqrt(n())
-#   )
-# 
-# ggplot(level_summary, aes(x = level, y = mean_workload, fill = level)) +
-#   geom_bar(stat = "identity", alpha = 0.7) +
-#   geom_errorbar(aes(ymin = mean_workload - se_workload,
-#                     ymax = mean_workload + se_workload),
-#                 width = 0.2) +
-#   labs(title = "Composite Workload by Level", x = "Level", y = "Composite Workload") +
-#   theme_minimal(base_size = 14)
-# 
-# tlx_long <- survey_data %>%
-#   select(subject_id, episode_config, agent, level,
-#          mental_demand, temporal_demand, effort, performance, frustration) %>%
-#   pivot_longer(
-#     cols = c(mental_demand, temporal_demand, effort, performance, frustration),
-#     names_to = "component",
-#     values_to = "score"
-#   )
-# 
-# # 2. Faceted plot: mean ± SE per agent for each component
-# tlx_summary <- tlx_long %>%
-#   group_by(agent, component) %>%
-#   summarise(
-#     mean_score = mean(score, na.rm = TRUE),
-#     se_score = sd(score, na.rm = TRUE) / sqrt(n()),
-#     .groups = "drop"
-#   )
-# 
-# ggplot(tlx_summary, aes(x = agent, y = mean_score, fill = agent)) +
-#   geom_bar(stat = "identity", alpha = 0.7) +
-#   geom_errorbar(aes(ymin = mean_score - se_score, ymax = mean_score + se_score),
-#                 width = 0.2) +
-#   facet_wrap(~ component, scales = "free_y") +
-#   scale_fill_manual(values = agent_colors) +
-#   labs(
-#     title = "TLX Workload Scores Per Agent",
-#     x = "Agent",
-#     y = "Score"
-#   ) +
-#   theme_minimal(base_size = 14)
+  theme_minimal(base_size = 14)
 
 ```
 
