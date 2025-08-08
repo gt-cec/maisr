@@ -101,28 +101,34 @@ plot_data <- final_dataset %>%
   ) %>%
   mutate(
     metric = case_when(
-      metric == "timesteps" ~ "Mission Duration (Steps)",
+      metric == "timesteps" ~ "Episode Duration",
       metric == "targets" ~ "Targets Identified",
       metric == "threats" ~ "Threats Identified"
     ),
-    agent = factor(agent, levels = c("A", "B", "C"))
+    #agent = factor(agent, levels = c("A", "B", "C"))
+    agent = case_when(
+      agent == "A" ~ "SBPD-FT",
+      agent == "B" ~ "SP",
+      agent == "C" ~ "SBPD-M",
+      TRUE ~ agent  # Keep original if none match
+    )
   )
 
 # Define plot specifications
 plot_specs <- list(
   list(
-    metric = "Mission Duration (Steps)",
-    y_label = "Average Steps",
+    metric = "Episode Duration",
+    y_label = "Steps",
     y_limits = c(0, 400)  # or c(min_val, max_val) for custom bounds
   ),
   list(
     metric = "Targets Identified", 
-    y_label = "Average Targets",
+    y_label = "# Targets",
     y_limits = c(12, 15)  # or c(min_val, max_val) for custom bounds # NULL
   ),
   list(
     metric = "Threats Identified",
-    y_label = "Average Threats", 
+    y_label = "# Threats", 
     y_limits = c(1.5, 2)  # or c(min_val, max_val) for custom bounds
   )
 )
@@ -132,13 +138,13 @@ plots <- map(plot_specs, function(spec) {
   p <- plot_data %>%
     filter(metric == spec$metric) %>%
     ggplot(aes(x = agent, y = value, fill = agent)) +
-    #geom_boxplot(alpha = 0.9) +
-    stat_summary(fun = mean, geom = "bar", alpha = 0.9) +
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 0, linewidth = 1.5) +
+    geom_boxplot(alpha = 0.9) +
+    #stat_summary(fun = mean, geom = "bar", alpha = 0.9) +
+    #stat_summary(fun.data = mean_se, geom = "errorbar", width = 0, linewidth = 1.5) +
     scale_fill_manual(values = agent_colors) +
     labs(
       title = spec$metric,
-      x = "Agent",
+      x = "",
       y = spec$y_label
     ) +
     theme_minimal(base_size = 14) +
@@ -295,6 +301,97 @@ for (level in levels_to_plot) {
 ## Performance vs. Training
 ```{r trainingperf}
 
+# Hardcode training values for each agent and metric
+training_values <- data.frame(
+  Agent = c("A", "B", "C"),
+  Training_Timesteps = c(430, 430, 430),
+  Training_Targets = c(14.7, 14.3, 13),
+  Training_Threats = c(1.85, 1.85, 1.71),
+  Training_Target_Rate = c(0.345, 0.335, 0.29),
+  Training_Threat_Error = c(0.15, 0.15, 0.29)
+)
+
+# Target IDs - Training
+# A (FT): 14.7
+# B (SP): 14.3
+# C (M): 13
+
+# Target IDs - User study
+# A (FT): 14.91
+# B (SP): 14.93
+# C (M): 15
+
+
+# Targets per timestep - Training
+# A (FT): 0.345
+# B (SP): 0.335
+# C (M): 0.29
+
+# Targets per timestep - User study
+# A (FT): 14.91/354
+# B (SP): 14.93/332
+# C (M): 15/282
+
+
+# Avg threat IDs - training
+# A (FT): 1.85
+# B (SP): 1.85
+# C (M): 1.71
+
+# Avg threat IDs - user study
+# A (FT): 2.17
+# B (SP): 2.07
+# C (M): 2.05
+
+# Calculate current means (from previous code)
+current_means <- data.frame(
+  Agent = c("A", "B", "C"),
+  Current_Timesteps = c(
+    mean(final_dataset$agentA_avg_timesteps),
+    mean(final_dataset$agentB_avg_timesteps),
+    mean(final_dataset$agentC_avg_timesteps)
+  ),
+  Current_Targets = c(
+    mean(final_dataset$agentA_avg_targets),
+    mean(final_dataset$agentB_avg_targets),
+    mean(final_dataset$agentC_avg_targets)
+  ),
+  Current_Threats = c(
+    mean(final_dataset$agentA_avg_threats),
+    mean(final_dataset$agentB_avg_threats),
+    mean(final_dataset$agentC_avg_threats)
+  ),
+  Current_Target_Rate = c(
+    mean(final_dataset$agentA_avg_targets) / mean(final_dataset$agentA_avg_timesteps),
+    mean(final_dataset$agentB_avg_targets) / mean(final_dataset$agentB_avg_timesteps),
+    mean(final_dataset$agentC_avg_targets) / mean(final_dataset$agentC_avg_timesteps)
+  ),
+  Threat_ID_Error = c(
+    abs(2 - mean(final_dataset$agentA_avg_threats)),
+    abs(2 - mean(final_dataset$agentB_avg_threats)),
+    abs(2 - mean(final_dataset$agentC_avg_threats))
+  )
+)
+
+
+# Calculate ratios (current/training)
+ratio_table <- data.frame(
+  Agent = c("A", "B", "C"),
+  Timesteps_Ratio = current_means$Current_Timesteps / training_values$Training_Timesteps,
+  Targets_Ratio = current_means$Current_Targets / training_values$Training_Targets,
+  Threats_Ratio = current_means$Current_Threats / training_values$Training_Threats,
+  Target_Rate_Ratio = current_means$Current_Target_Rate / training_values$Training_Target_Rate,
+  Threat_Error_Ratio = current_means$Threat_ID_Error / training_values$Training_Threat_Error
+)
+
+# Print the results
+print(training_values)
+print(current_means)
+print(ratio_table)
+
+ratio_table_rounded <- ratio_table
+ratio_table_rounded[, 2:4] <- round(ratio_table_rounded[, 2:4], 3)
+print(ratio_table_rounded)
 
 ```
 
@@ -356,7 +453,7 @@ ggplot(agent_summary, aes(x = agent, y = mean_workload, fill = agent)) +
   scale_y_continuous(breaks = seq(0, 15, by = 3), 
                      limits = c(0, 15),
                      expand = c(0, 0)) +
-  labs(title = "Composite Workload", x = "Agent", y = "Composite Workload") +
+  labs(title = "Composite Workload", x = "", y = "Workload") +
   theme_minimal(base_size = 14) +
   theme(
     plot.title = element_text(hjust = 0.5, size = 17),
@@ -585,6 +682,17 @@ anova_results <- performance_long %>%
 
 print("=== Mission Performance ANOVA Results ===")
 print(anova_results)
+
+kruskal_results <- performance_long %>%
+  group_by(metric) %>%
+  do({
+    tidy(kruskal.test(value ~ agent, data = .))
+  }) %>%
+  ungroup()
+
+print("=== Mission Performance Kruskal-Wallis Results ===")
+print(kruskal_results)
+
 
 # Get all unique metrics
 metrics <- unique(performance_long$metric)
