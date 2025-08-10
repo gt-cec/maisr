@@ -27,7 +27,7 @@ tlx_survey_dir <- "../userstudy_logs"
 
 preference_dir <- "../userstudy_logs"
 
-exclude_subjects <- c(17, 9)
+exclude_subjects <- c() #c(17, 9, 24)
 
 ################################################################################
 
@@ -85,7 +85,9 @@ final_dataset
 ```
 
 ## Performance Comparison
+
 ### Overall (Average of rounds)
+
 ```{r viz}
 
 # Prepare plot data
@@ -184,6 +186,7 @@ walk(plots, print)
 ```
 
 ### Per-round
+
 ```{r agent_level_performance}
 
 # Create dataset with agent and level breakdown
@@ -298,7 +301,9 @@ for (level in levels_to_plot) {
 
 
 ```
+
 ## Performance vs. Training
+
 ```{r trainingperf}
 
 # Hardcode training values for each agent and metric
@@ -396,6 +401,7 @@ print(ratio_table_rounded)
 ```
 
 ## Workload Surveys
+
 ```{r tlx_load}
 
 # Load all survey files from subdirectories
@@ -525,7 +531,8 @@ ggplot(tlx_summary, aes(x = agent, y = mean_score, fill = agent)) +
 ```
 
 ## Preference Survey heatmap
-``` {r preference-load}
+
+```{r preference-load}
 
 # Load teammate survey JSON files
 teammate_files <- list.files(
@@ -540,6 +547,8 @@ get_color_mapping <- function(subject_id) {
     return(c("red" = "A", "purple" = "B", "green" = "C"))
   } else if (subject_id >= 24 & subject_id <= 32) {
     return(c("green" = "A", "red" = "B", "purple" = "C"))
+  } else if (subject_id >= 33 & subject_id <= 40) {
+    return(c("green" = "A", "purple" = "B", "red" = "C"))
   } else {
     # Default mapping for subjects > 32 (you can adjust this as needed)
     return(c("red" = "A", "purple" = "B", "green" = "C"))
@@ -643,7 +652,9 @@ ggsave("outputs/preference_matrices.png",
 ```
 
 ## Statistical Tests
+
 ### Performance
+
 ```{r stat}
 
 
@@ -706,7 +717,8 @@ results
 ```
 
 ### TLX
-``` {r tlx-stat}
+
+```{r tlx-stat}
 # 2. ----- Composite Workload vs Agent Type -----
 
 # Compute composite workload per subject/agent
