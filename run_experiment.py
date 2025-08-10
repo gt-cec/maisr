@@ -733,8 +733,8 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
 
         appearance_map = {
             'A': 'green',
-            'B': 'red',
-            'C': 'purple',
+            'B': 'purple',
+            'C': 'red',
             'S': 'invisible',
             'P': 'invisible'
         }
