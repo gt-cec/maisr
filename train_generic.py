@@ -27,7 +27,7 @@ while not import_complete:
         from stable_baselines3.common.callbacks import BaseCallback
 
         from env_multi_new import MAISREnvVec
-        from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
+        #from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
         from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
         from utility.data_logging import load_env_config
         import_complete = True

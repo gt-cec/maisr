@@ -76,30 +76,51 @@ class TeammateManager:
         self.mode_selector_options = {
             'baseline': ["none"],
             'vanilla': ["none", "heuristic"],
-            'strategy_diverse': ["heuristic"]}
+            'strategy_diverse': ["heuristic"],
+            'strategy_diverse_nohighrisk': ["heuristic"],
+            'strategy_diverse_nolowrisk': ["heuristic"],
+            'strategy_diverse_nonoisy': ["heuristic"]
+        }
         self.risk_tolerance_options = {
             'baseline': ["none"],
             "vanilla": ["none"],
-            "strategy_diverse": ["low", "medium", "high", "max_greedy"]}
+            "strategy_diverse": ["low", "medium", "high", "max_greedy"],
+            "strategy_diverse_nohighrisk": ["low", "medium", "max_greedy"],
+            "strategy_diverse_nolowrisk": ["high", "medium", "max_greedy"],
+            "strategy_diverse_nonoisy": ["low", "medium", "high", "max_greedy"]
+        }
         self.spatial_coord_options = {
             'baseline': [False],
             "vanilla": [False],
-            "strategy_diverse": [False, True]}
+            "strategy_diverse": [False, True],
+            "strategy_diverse_nohighrisk": [False, True],
+            "strategy_diverse_nolowrisk": [False, True],
+            "strategy_diverse_nonoisy": [False, True]
+        }
         self.action_stability_options = {
             'baseline': ["stable"],
             'vanilla': ["stable"],
-            'strategy_diverse': ["stable", "noisy", "very_noisy", "periodic_stopping"]
+            'strategy_diverse': ["stable", "noisy", "very_noisy", "periodic_stopping"],
+            'strategy_diverse_nohighrisk': ["stable", "noisy", "very_noisy", "periodic_stopping"],
+            'strategy_diverse_nolowrisk': ["stable", "noisy", "very_noisy", "periodic_stopping"],
+            'strategy_diverse_nonoisy': ["stable"]
         }
         self.planning_horizon_options = {
             'baseline': ["greedy"],
             'vanilla': ["greedy"],
-            'strategy_diverse': ["greedy", "clusters"]
+            'strategy_diverse': ["greedy", "clusters"],
+            'strategy_diverse_nohighrisk': ["greedy", "clusters"],
+            'strategy_diverse_nolowrisk': ["greedy", "clusters"],
+            'strategy_diverse_nonoisy': ["greedy", "clusters"]
         }
 
         self.decision_speed_options = {
             'baseline': ["fast"],
             'vanilla': ["fast"],
-            'strategy_diverse': ["fast", "slow"]
+            'strategy_diverse': ["fast", "slow"],
+            'strategy_diverse_nohighrisk': ["fast", "slow"],
+            'strategy_diverse_nolowrisk': ["fast", "slow"],
+            'strategy_diverse_nonoisy': ["fast", "slow"]
         }
 
         print(f"\nTeammateManager initialized: \n        league_type: {league_type}\n        balance_method: {balance_method}\n        selfplay_checkpoint_dir: {selfplay_checkpoint_dir}")
