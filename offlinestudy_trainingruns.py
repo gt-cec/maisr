@@ -49,20 +49,20 @@ def create_config_variations(base_config):
     config_3['seed'] = 500
     variations.append((3, "selfplay_seed500", config_3))
     
-    # Variation 4: league_type = strategy_diverse_nohighrisk
-    config_4 = copy.deepcopy(base_config)
-    config_4['league_type'] = 'strategy_diverse_nohighrisk'
-    variations.append((4, "strategy_diverse_nohighrisk", config_4))
-    
-    # Variation 5: league_type = strategy_diverse_nolowrisk
-    config_5 = copy.deepcopy(base_config)
-    config_5['league_type'] = 'strategy_diverse_nolowrisk'
-    variations.append((5, "strategy_diverse_nolowrisk", config_5))
-    
-    # Variation 6: league_type = strategy_diverse_nonoisy
-    config_6 = copy.deepcopy(base_config)
-    config_6['league_type'] = 'strategy_diverse_nonoisy'
-    variations.append((6, "strategy_diverse_nonoisy", config_6))
+    # # Variation 4: league_type = strategy_diverse_nohighrisk
+    # config_4 = copy.deepcopy(base_config)
+    # config_4['league_type'] = 'strategy_diverse_nohighrisk'
+    # variations.append((4, "strategy_diverse_nohighrisk", config_4))
+    #
+    # # Variation 5: league_type = strategy_diverse_nolowrisk
+    # config_5 = copy.deepcopy(base_config)
+    # config_5['league_type'] = 'strategy_diverse_nolowrisk'
+    # variations.append((5, "strategy_diverse_nolowrisk", config_5))
+    #
+    # # Variation 6: league_type = strategy_diverse_nonoisy
+    # config_6 = copy.deepcopy(base_config)
+    # config_6['league_type'] = 'strategy_diverse_nonoisy'
+    # variations.append((6, "strategy_diverse_nonoisy", config_6))
     
     # Variation 7: league_type = SP, network_size = 2x32 (reduced from default 128)
     config_7 = copy.deepcopy(base_config)
@@ -132,7 +132,6 @@ def run_training_sweep(variations, args):
         
         # Set additional config parameters
         config['n_envs'] = num_envs
-        config['config_filename'] = args.config_path
         config['training_variation'] = description
         
         # Generate run name with timestamp
