@@ -1,0 +1,101 @@
+[
+  {
+    "episode_config": "B1",
+    "timestamp": 827838,
+    "mental_demand": 1,
+    "temporal_demand": 2,
+    "effort": 1,
+    "performance": 3,
+    "frustration": 1
+  },
+  {
+    "episode_config": "A1",
+    "timestamp": 913629,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 4,
+    "frustration": 1
+  },
+  {
+    "episode_config": "C1",
+    "timestamp": 1003646,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 2,
+    "frustration": 1
+  },
+  {
+    "episode_config": "B3",
+    "timestamp": 1084305,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 5,
+    "frustration": 2
+  },
+  {
+    "episode_config": "A3",
+    "timestamp": 1353870,
+    "mental_demand": 3,
+    "temporal_demand": 1,
+    "effort": 3,
+    "performance": 5,
+    "frustration": 2
+  },
+  {
+    "episode_config": "C3",
+    "timestamp": 1425809,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 5,
+    "frustration": 1
+  },
+  {
+    "episode_config": "A4",
+    "timestamp": 1591403,
+    "mental_demand": 1,
+    "temporal_demand": 4,
+    "effort": 2,
+    "performance": 3,
+    "frustration": 4
+  },
+  {
+    "episode_config": "C5",
+    "timestamp": 1676392,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 5,
+    "frustration": 1
+  },
+  {
+    "episode_config": "B5",
+    "timestamp": 1739305,
+    "mental_demand": 1,
+    "temporal_demand": 1,
+    "effort": 1,
+    "performance": 5,
+    "frustration": 1
+  },
+  {
+    "episode_config": "B7",
+    "timestamp": 1919598,
+    "mental_demand": 2,
+    "temporal_demand": 1,
+    "effort": 3,
+    "performance": 5,
+    "frustration": 2
+  },
+  {
+    "episode_config": "A7",
+    "timestamp": 2016630,
+    "mental_demand": 2,
+    "temporal_demand": 1,
+    "effort": 4,
+    "performance": 2,
+    "frustration": 3
+  }
+]

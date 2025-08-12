@@ -551,7 +551,7 @@ get_color_mapping <- function(subject_id) {
     return(c("green" = "A", "purple" = "B", "red" = "C"))
   } else {
     # Default mapping for subjects > 32 (you can adjust this as needed)
-    return(c("red" = "A", "purple" = "B", "green" = "C"))
+    return(c("purple" = "A", "red" = "B", "green" = "C"))
   }
 }
 
@@ -719,20 +719,27 @@ results
 ### TLX
 
 ```{r tlx-stat}
-# 2. ----- Composite Workload vs Agent Type -----
+# # 2. ----- Composite Workload vs Agent Type -----
 
 # Compute composite workload per subject/agent
-# composite_workload <- survey_data %>%
-#   mutate(
-#     composite_workload = mental_demand + temporal_demand + effort + frustration,
-#     agent = factor(agent, levels = c("A", "B", "C"))
-#   )
+composite_workload <- survey_data %>%
+  mutate(
+    composite_workload = mental_demand + temporal_demand + effort + frustration,
+    agent = factor(agent, levels = c("A", "B", "C"))
+  )
+
+composite_workload <- composite_workload %>%
+  mutate(agent = str_extract(episode_config, "^[A-C]"))
 
 # Run ANOVA for composite workload
-# workload_anova <- aov(composite_workload ~ agent, data = composite_workload)
-# print("=== Composite Workload ANOVA Result ===")
-# print(summary(workload_anova))
-# 
+workload_anova <- aov(composite_workload ~ agent, data = composite_workload)
+print("=== Composite Workload ANOVA Result ===")
+print(summary(workload_anova))
+
+kw_workload <- kruskal.test(composite_workload ~ agent, data = composite_workload)
+print(kw_workload)
+
+#
 # # Optional: Tukey post-hoc test if ANOVA is significant
 # tukey_workload <- TukeyHSD(workload_anova)
 # print("=== Tukey Post-hoc for Composite Workload ===")
