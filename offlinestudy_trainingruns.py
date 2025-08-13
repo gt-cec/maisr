@@ -198,7 +198,7 @@ def main():
     
     # Load base configuration
     try:
-        base_config = load_base_config('Monolith_index_August.json')
+        base_config = load_base_config('configs/Monolith_index_August.json')
         print(f"Loaded base configuration from: {'Monolith_index_August.json'}")
     except Exception as e:
         print(f"Error loading configuration: {e}")

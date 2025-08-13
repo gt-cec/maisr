@@ -17,6 +17,8 @@ while not import_complete:
         import socket
         import torch
         import argparse
+        import time
+
         import wandb
         from wandb.integration.sb3 import WandbCallback
         from stable_baselines3 import PPO, SAC
@@ -83,6 +85,32 @@ def get_latest_checkpoint_and_vecnorm(seed: int, note_prefix: str = "pretrain") 
     print(f"[AutoLoad] Using latest vecnorm stats: {latest_pkl}")
 
     return latest_zip, latest_pkl
+
+
+class TrainingWatchdog(BaseCallback):
+    def __init__(self, timeout_minutes=2, verbose=1):
+        super().__init__(verbose)
+        self.timeout_minutes = timeout_minutes
+        self.last_step_time = time.time()
+        self.last_timestep = 0
+
+    def _on_step(self):
+        current_time = time.time()
+
+        # Check if we're making progress
+        if self.num_timesteps > self.last_timestep:
+            self.last_step_time = current_time
+            self.last_timestep = self.num_timesteps
+
+        # Check for timeout
+        time_since_progress = (current_time - self.last_step_time) / 60  # minutes
+        if time_since_progress > self.timeout_minutes:
+            print(f"WARNING: No progress for {time_since_progress:.1f} minutes!")
+            # Force save and potentially restart
+            self.model.save(f"timeout_checkpoint_{self.num_timesteps}.zip")
+            return False  # Stop training
+
+        return True
 
 
 class LeagueTypeTransitionCallback(BaseCallback):
@@ -1401,7 +1429,9 @@ def train_generic(
 
     printcallback = PrintObsEvery50Steps(verbose=1)
 
-    callbacks = [wandb_callback, enhanced_wandb_callback, ]  # printcallback
+    watchdogcallback = TrainingWatchdog(verbose=1)
+
+    callbacks = [wandb_callback, enhanced_wandb_callback, watchdogcallback]  # printcallback
 
     if env_config['switch_leagues']:
         league_transition_callback = LeagueTypeTransitionCallback(
