@@ -42,12 +42,18 @@ def create_config_variations(base_config):
     config_2['league_type'] = 'selfplay'
     config_2['seed'] = 42
     variations.append((2, "selfplay_seed42", config_2))
-    
-    # Variation 3: league_type = SP (selfplay), seed 500
+
+    # # Variation
     config_3 = copy.deepcopy(base_config)
-    config_3['league_type'] = 'selfplay'
-    config_3['seed'] = 500
-    variations.append((3, "selfplay_seed500", config_3))
+    config_3['league_type'] = 'fcp'
+    config_3['seed'] = 42
+    variations.append((3, "fcp_seed42", config_3))
+
+    # # Variation
+    config_4 = copy.deepcopy(base_config)
+    config_4['league_type'] = 'fcp'
+    config_4['seed'] = 500
+    variations.append((4, "fcp_seed500", config_4))
     
     # # Variation 4: league_type = strategy_diverse_nohighrisk
     # config_4 = copy.deepcopy(base_config)
@@ -65,30 +71,30 @@ def create_config_variations(base_config):
     # variations.append((6, "strategy_diverse_nonoisy", config_6))
     
     # Variation 7: league_type = SP, network_size = 2x32 (reduced from default 128)
-    config_7 = copy.deepcopy(base_config)
-    config_7['league_type'] = 'selfplay'
-    config_7['network_size'] = 32  # 2x32 architecture (pi=[32,32], vf=[32,32])
-    variations.append((7, "selfplay_smallnet_2x32", config_7))
+    config_5 = copy.deepcopy(base_config)
+    config_5['league_type'] = 'selfplay'
+    config_5['network_size'] = 32  # 2x32 architecture (pi=[32,32], vf=[32,32])
+    variations.append((5, "selfplay_smallnet_2x32", config_5))
     
     # Variation 8: league_type = mixed75, network_size = 2x32
-    config_8 = copy.deepcopy(base_config)
-    config_8['league_type'] = 'mixed75'
-    config_8['network_size'] = 32  # 2x32 architecture
-    variations.append((8, "mixed75_smallnet_2x32", config_8))
+    config_6 = copy.deepcopy(base_config)
+    config_6['league_type'] = 'mixed75'
+    config_6['network_size'] = 32  # 2x32 architecture
+    variations.append((6, "mixed75_smallnet_2x32", config_6))
     
     # Variation 9: league_type = SP, threat_id_reward = 0, threat_potential_coeff = 0
-    config_9 = copy.deepcopy(base_config)
-    config_9['league_type'] = 'selfplay'
-    config_9['threat_id_reward'] = 0
-    config_9['threat_potential_coeff'] = 0.0
-    variations.append((9, "selfplay_no_threat_rewards", config_9))
+    config_7 = copy.deepcopy(base_config)
+    config_7['league_type'] = 'selfplay'
+    config_7['threat_id_reward'] = 0
+    config_7['threat_potential_coeff'] = 0.0
+    variations.append((7, "selfplay_no_threat_rewards", config_7))
     
     # Variation 10: league_type = SP, target_potential_coeff = 0, base_env_target_id_reward = 0
-    config_10 = copy.deepcopy(base_config)
-    config_10['league_type'] = 'selfplay'
-    config_10['target_potential_coeff'] = 0.0
-    config_10['base_env_target_id_reward'] = 0
-    variations.append((10, "selfplay_no_target_rewards", config_10))
+    config_8 = copy.deepcopy(base_config)
+    config_8['league_type'] = 'selfplay'
+    config_8['target_potential_coeff'] = 0.0
+    config_8['base_env_target_id_reward'] = 0
+    variations.append((8, "selfplay_no_target_rewards", config_8))
     
     return variations
 
@@ -116,7 +122,7 @@ def run_training_sweep(variations, args):
         variations = [(vid, desc, config) for vid, desc, config in variations 
                      if vid in requested_ids]
         print(f"Running only variations: {requested_ids}")
-    
+
     # Run each variation
     for variation_id, description, config in variations:
         print(f"\n{'='*80}")
@@ -185,15 +191,11 @@ def run_training_sweep(variations, args):
 def main():
     parser = argparse.ArgumentParser(description='Run training sweep across 11 config variations')
 
-    parser.add_argument('--variations', type=str, default=None,
-                       help='Comma-separated list of variation IDs to run (e.g., "0,2,5"). If not specified, runs all.')
-    parser.add_argument('--testing', action='store_true',
-                       help='Run in testing mode with reduced timesteps and evaluation frequency')
-    parser.add_argument('--continue-on-error', action='store_true',
-                       help='Continue to next variation if one fails')
-    parser.add_argument('--list-variations', action='store_true',
-                       help='List all variations and exit')
-    
+    parser.add_argument('--variations', type=str, default=None, help='Comma-separated list of variation IDs to run (e.g., "0,2,5"). If not specified, runs all.')
+    parser.add_argument('--testing', action='store_true', help='Run in testing mode with reduced timesteps and evaluation frequency')
+    parser.add_argument('--continue-on-error', action='store_true', help='Continue to next variation if one fails')
+    parser.add_argument('--list-variations', action='store_true', help='List all variations and exit')
+
     args = parser.parse_args()
     
     # Load base configuration
