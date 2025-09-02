@@ -30,12 +30,10 @@ from scipy.stats import mannwhitneyu, pearsonr
 from scipy.stats import chisquare
 
 from env_multi_new import MAISREnvVec
-from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, \
-    TargetSearchLocalTSP, HeuristicAgent
+from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, TargetSearchLocalTSP, HeuristicAgent
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper 
 
 
-# TODO edit to set no-op teammate
 def make_wrapped_env(env_config, run_name='no_name', render=False):
     def _init():
 
@@ -45,6 +43,8 @@ def make_wrapped_env(env_config, run_name='no_name', render=False):
             run_name=run_name,
             tag=f'trajectorygen',
         )
+
+        base_env.teammate_active = False # TODO make sure this is good
 
         local_search_policy = LocalSearch()
         go_to_highvalue_policy = GoToNearestThreat(model_path=None)

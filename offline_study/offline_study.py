@@ -19,6 +19,8 @@ from utility.config import subject_id
 from utility.data_logging import load_env_config
 from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, EvadeDetection, TeammateManager, RLTeammatePolicy)
 
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def populate_agent_list(agent_dir, label='nolabel'):
     model_patterns = [
@@ -268,7 +270,8 @@ def main():
     print(f'[Human trajectories] Loaded {len(dual_trajectory_files)} dual trajectories and {len(solo_trajectory_files)} solo trajectories')
 
 
-    results = {}
+    rl_results = {}
+    human_results = {}
     for agent_tuple in testing_agents:
         agent_model = agent_tuple[0]
         agent_vecnorm = agent_tuple[1]
@@ -285,8 +288,8 @@ def main():
         base_env.teammate_active = True
 
         #################################### Run RL agent evals ####################################
-        for teammate_tuple in testing_agents + heldout_agents:
-            for run in range(num_repeats):
+        for teammate_tuple in heldout_agents + testing_agents:
+            for run in range(20):
                 teammate_model = teammate_tuple[0]
                 teammate_vecnorm = teammate_tuple[1]
                 teammate_name = teammate_tuple[2]
@@ -297,21 +300,131 @@ def main():
 
                 print(f'\nRunning single RL eval with agent {agent_name} (model {agent_model}, vecnorm stats {agent_vecnorm}). Teammate is {teammate_name} (model {teammate_model}, vecnorm {teammate_vecnorm})')
                 reward, target_ids, threat_ids, num_steps = run_single_rl_eval(env, agent_model, render)
-                results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
+                rl_results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
 
 
         #################################### Run human trajectory evals ####################################
-        # for trajectory_file in dual_trajectory_files + solo_trajectory_files:
-        #     for run in range(num_repeats):
-        #         level = int(trajectory_file.split('_')[4][1])
-        #
-        #         print(f'Running human eval with level {level} and trajectory {trajectory_file}')
-        #         teammate_name = trajectory_file
-        #         reward, target_ids, threat_ids, num_steps = run_single_human_eval(env, agent_model, trajectory_file, level, render)
-        #         results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
+        all_human_trajectories = dual_trajectory_files + solo_trajectory_files
+        for trajectory_file in all_human_trajectories[0:160]:
+            for run in range(1):
+                level = int(trajectory_file.split('_')[4][1])
 
-    print(f'====== ====== FINAL RESULTS ====== ====== ')
-    print(results)
+                print(f'Running human eval with level {level} and trajectory {trajectory_file}')
+                teammate_name = trajectory_file
+                reward, target_ids, threat_ids, num_steps = run_single_human_eval(env, agent_model, trajectory_file, level, render)
+                human_results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
+
+    #print(f'====== ====== FINAL RESULTS ====== ====== ')
+    #print(results)
+
+    def extract_agent_info(agent_name):
+        """Extract agent type and seed from agent name."""
+        # Remove path components
+        name = agent_name.split('/')[-1] if '/' in agent_name else agent_name
+
+        # Extract agent type
+        if 'mixed75' in name.lower():
+            agent_type = 'mixed75'
+        elif 'selfplay' in name.lower():
+            agent_type = 'selfplay'
+        elif 'fcp' in name.lower():
+            agent_type = 'fcp'
+        elif 'strategyfinetuned' in name.lower():
+            agent_type = 'strat-finetuned'
+        else:
+            agent_type = 'unknown'
+
+        # Extract seed
+        seed_match = re.search(r'seed(\d+)', name.lower())
+        if seed_match:
+            seed = f"seed{seed_match.group(1)}"
+        else:
+            seed = 'unknown'
+
+        return f"{agent_type}"
+
+    # Separate RL and human results
+    rl_data_rows = []
+    human_data_rows = []
+
+    for (agent_name, teammate_name, run), (reward, target_ids, threat_ids, num_steps) in rl_results.items():
+        #agent_id = agent_name.split('/')[-1] if '/' in agent_name else agent_name
+        agent_id = extract_agent_info(agent_name)
+        rl_data_rows.append({
+            'agent': agent_id,
+            'teammate': teammate_name,
+            'run': run,
+            'reward': reward,
+            'target_ids': target_ids,
+            'threat_ids': threat_ids,
+            'num_steps': num_steps
+        })
+
+    for (agent_name, teammate_name, run), (reward, target_ids, threat_ids, num_steps) in human_results.items():
+        #agent_id = agent_name.split('/')[-1] if '/' in agent_name else agent_name
+        agent_id = extract_agent_info(agent_name)
+        human_data_rows.append({
+            'agent': agent_id,
+            'teammate': teammate_name,
+            'run': run,
+            'reward': reward,
+            'target_ids': target_ids,
+            'threat_ids': threat_ids,
+            'num_steps': num_steps
+        })
+
+    # Create DataFrames
+    rl_df = pd.DataFrame(rl_data_rows)
+    human_df = pd.DataFrame(human_data_rows)
+
+    # Calculate statistics
+    rl_stats = rl_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
+    human_stats = human_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
+
+    # Create 2-subplot figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 10))
+
+    # Top subplot: RL results
+    bars1 = ax1.bar(range(len(rl_stats)), rl_stats['mean'],
+                    yerr=rl_stats['std'], capsize=5, alpha=0.7, color='skyblue')
+    ax1.set_xlabel('Testing Agents')
+    ax1.set_ylabel('Average Reward')
+    ax1.set_title('RL Agent Performance: Testing Agents vs RL Teammates')
+    ax1.set_xticks(range(len(rl_stats)))
+    ax1.set_xticklabels(rl_stats['agent'], rotation=45, ha='right')
+    ax1.grid(axis='y', alpha=0.3)
+
+    # Add value labels on RL bars
+    for i, (bar, mean_val) in enumerate(zip(bars1, rl_stats['mean'])):
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + rl_stats['std'][i] / 2,
+                 f'{mean_val:.1f}', ha='center', va='bottom')
+
+    # Bottom subplot: Human results
+    bars2 = ax2.bar(range(len(human_stats)), human_stats['mean'],
+                    yerr=human_stats['std'], capsize=5, alpha=0.7, color='lightcoral')
+    ax2.set_xlabel('Testing Agents')
+    ax2.set_ylabel('Average Reward')
+    ax2.set_title('Human Trajectory Performance: Testing Agents vs Human Teammates')
+    ax2.set_xticks(range(len(human_stats)))
+    ax2.set_xticklabels(human_stats['agent'], rotation=45, ha='right')
+    ax2.grid(axis='y', alpha=0.3)
+
+    # Add value labels on Human bars
+    for i, (bar, mean_val) in enumerate(zip(bars2, human_stats['mean'])):
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + human_stats['std'][i] / 2,
+                 f'{mean_val:.1f}', ha='center', va='bottom')
+
+    plt.tight_layout()
+    plt.show()
+
+    # Print summary statistics
+    print(f'\n====== RL AGENT PERFORMANCE SUMMARY ======')
+    for _, row in rl_stats.iterrows():
+        print(f'{row["agent"]}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    print(f'\n====== HUMAN TRAJECTORY PERFORMANCE SUMMARY ======')
+    for _, row in human_stats.iterrows():
+        print(f'{row["agent"]}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
 
 
 if __name__ == '__main__':
