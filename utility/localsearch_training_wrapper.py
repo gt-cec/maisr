@@ -151,8 +151,8 @@ class MaisrLocalSearchWrapper(gym.Env):
                 print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate.name}')
         else:
             self.current_teammate = None
-            if self.env.tag != 'userstudy_0':
-                print(f'[localsearchwrapper] current teammate is {self.current_teammate.name}')
+            #if self.env.tag != 'userstudy_0':
+                #print(f'[localsearchwrapper] current teammate is {self.current_teammate.name}')
 
         return raw_obs, _
 

@@ -786,7 +786,8 @@ class RLTeammatePolicy(TeammatePolicy):
                  go_to_highvalue_policy,
                  change_region_subpolicy,
                  use_collision_avoidance: bool = False,
-                 norm_stats_path: str = None):
+                 norm_stats_path: str = None,
+                 ):
 
         self.model = model
         self.env = env

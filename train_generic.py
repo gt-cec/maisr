@@ -597,7 +597,6 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                     step_idx = 0
 
                     while not done:
-
                         if step_idx < len(waypoints):
                             base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
                         else:
@@ -1325,26 +1324,15 @@ def train_generic(
             change_region_subpolicy = ChangeRegions(model_path=None)
             evade_policy = None
 
-            if train_type == 'mode_selector':
-                wrapped_env = MaisrModeSelectorWrapper(
-                    base_env,
-                    local_search_policy,
-                    go_to_highvalue_policy,
-                    change_region_subpolicy,
-                    evade_policy,
-                    teammate_manager = teammate_manager,
-                    observation_noise_std = env_config['obs_noise_std_localsearch']
-                )
-            elif train_type == 'monolith':
-                wrapped_env = MaisrLocalSearchWrapper(
-                    base_env,
-                    env_config['obs_noise_std_localsearch'],
-                    local_search_policy,
-                    go_to_highvalue_policy,
-                    change_region_subpolicy,
-                    evade_policy,
-                    teammate_manager=teammate_manager
-                )
+            wrapped_env = MaisrLocalSearchWrapper(
+                base_env,
+                env_config['obs_noise_std_localsearch'],
+                local_search_policy,
+                go_to_highvalue_policy,
+                change_region_subpolicy,
+                evade_policy,
+                teammate_manager=teammate_manager
+            )
 
             wrapped_env = Monitor(wrapped_env)
             wrapped_env.reset()

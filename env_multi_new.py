@@ -2634,8 +2634,12 @@ class MAISREnvVec(gym.Env):
         self.wrapper_observations = wrapper_observations
 
     def load_level_from_json(self, level_data_path="./utility/level_layouts.json"):
-        with open(level_data_path, 'r') as f:
-            level_data = json.load(f)['levels']
+        try:
+            with open(level_data_path, 'r') as f:
+                level_data = json.load(f)['levels']
+        except: # TODO clean up
+            with open("../utility/level_layouts.json", 'r') as f:
+                level_data = json.load(f)['levels']
 
         # Map level index to level name
         level_names = list(level_data.keys())
