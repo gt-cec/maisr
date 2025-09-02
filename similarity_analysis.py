@@ -1,11 +1,13 @@
+import ctypes
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
 import os, json, math
-from glob import glob
+import glob
 
+import pygame
 from scipy.optimize import linear_sum_assignment
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
 
 import re
@@ -23,25 +25,163 @@ from sklearn.cluster import KMeans
 
 # For compare_progress_rate
 from scipy.spatial.distance import cdist
-from fastdtw import fastdtw
+#from fastdtw import fastdtw
 from scipy.stats import mannwhitneyu, pearsonr
 
 # For action distribution comparison
 from scipy.stats import chisquare
 
 from env_multi_new import MAISREnvVec
+from utility.data_logging import load_env_config
 from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, TargetSearchLocalTSP, HeuristicAgent
-from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper 
+from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 
 
-def make_wrapped_env(env_config, run_name='no_name', render=False):
+def load_vecnormalize_wrapper(vecnorm_path, env):
+    """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
+    print(f"Loading VecNormalize stats from: {vecnorm_path}")
+
+    vec_normalize = VecNormalize.load(vecnorm_path, venv=env)
+    vec_normalize.training = False  # Disable further normalization updates
+    vec_normalize.norm_reward = False
+    return vec_normalize
+
+def save_trajectories_to_json(trajectories, output_file):
+    """Save trajectories to JSON with proper numpy array handling"""
+    serializable_data = []
+    for traj in trajectories:
+        traj_dict = {
+            'category': traj.category,
+            'level': traj.level,
+            'name': traj.name,
+            'positions': [list(pos) if hasattr(pos, '__iter__') else pos for pos in (traj.positions or [])],
+            'actions': [int(action) if hasattr(action, 'item') else action for action in (traj.actions or [])],
+            'target_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.target_ids or [])],
+            'threat_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.threat_ids or [])]
+        }
+        serializable_data.append(traj_dict)
+
+    with open(output_file, "w") as f:
+        json.dump(serializable_data, f, indent=2)
+
+
+def load_saved_trajectories(trajectory_type: str):
+    """
+    Load saved trajectories from JSON files.
+
+    Args:
+        trajectory_type: str - One of 'human', 'rl', or 'heuristic'/'strategy'
+
+    Returns:
+        List[Trajectory] - List of loaded trajectory objects
+    """
+    # Map trajectory types to file names and class attributes
+    trajectory_mapping = {
+        'human': {
+            'file': 'human_trajectories.json',
+            'attr': 'human_trajectories'
+        },
+        'rl': {
+            'file': 'rl_trajectories.json',
+            'attr': 'rl_trajectories'
+        },
+        'heuristic': {
+            'file': 'strategy_trajectories.json',
+            'attr': 'strategy_trajectories'
+        },
+        'strategy': {  # Allow both 'heuristic' and 'strategy' as aliases
+            'file': 'strategy_trajectories.json',
+            'attr': 'strategy_trajectories'
+        }
+    }
+
+    if trajectory_type not in trajectory_mapping:
+        raise ValueError(
+            f"Invalid trajectory_type: {trajectory_type}. Must be one of: {list(trajectory_mapping.keys())}")
+
+    file_info = trajectory_mapping[trajectory_type]
+    file_path = os.path.join('./similarity_analysis', file_info['file'])
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Trajectory file not found: {file_path}")
+
+    with open(file_path, 'r') as f:
+        trajectory_data = json.load(f)
+
+    # Convert JSON data back to Trajectory objects
+    trajectories = []
+    for traj_dict in trajectory_data:
+        trajectory = Trajectory(
+            category=traj_dict['category'],
+            level=traj_dict['level'],
+            name=traj_dict['name'],
+            positions=[tuple(pos) if isinstance(pos, list) else pos for pos in traj_dict.get('positions', [])],
+            actions=traj_dict.get('actions', []),
+            target_ids=traj_dict.get('target_ids', []),
+            threat_ids=traj_dict.get('threat_ids', [])
+        )
+        trajectories.append(trajectory)
+
+    print(f"Successfully loaded {len(trajectories)} {trajectory_type} trajectories from {file_path}")
+    return trajectories
+
+
+
+def waypoint_to_direction_index(current_pos, target_waypoint):
+    """
+    Convert a waypoint to a direction index (0-15) based on the agent's current position.
+
+    Args:
+        current_pos: tuple (x, y) of current agent position
+        target_waypoint: tuple (x, y) of target waypoint
+
+    Returns:
+        int: Direction index (0-15) where:
+        0: North, 1: NNE, 2: NE, 3: ENE, 4: East, etc.
+    """
+    import math
+
+    # Direction vectors for 16 discrete directions
+    direction_vectors = [
+        (0, 1), (0.383, 0.924), (0.707, 0.707), (0.924, 0.383),
+        (1, 0), (0.924, -0.383), (0.707, -0.707), (0.383, -0.924),
+        (0, -1), (-0.383, -0.924), (-0.707, -0.707), (-0.924, -0.383),
+        (-1, 0), (-0.924, 0.383), (-0.707, 0.707), (-0.383, 0.924)
+    ]
+
+    def normalize(vx, vy):
+        """Normalize a vector to unit length"""
+        mag = math.sqrt(vx ** 2 + vy ** 2)
+        return (vx / mag, vy / mag) if mag > 1e-8 else (0.0, 0.0)
+
+    # Calculate movement vector from current position to waypoint
+    dx = target_waypoint[0] - current_pos[0]
+    dy = target_waypoint[1] - current_pos[1]
+
+    # Normalize the movement vector
+    ndx, ndy = normalize(dx, dy)
+
+    # Find the direction index with highest cosine similarity
+    best_idx = 0
+    best_dot = -float("inf")
+    for i, (vx, vy) in enumerate(direction_vectors):
+        dot = ndx * vx + ndy * vy  # cosine similarity
+        if dot > best_dot:
+            best_dot = dot
+            best_idx = i
+
+    return best_idx
+
+
+def make_wrapped_env(env_config, clock = None, window = None, run_name='no_name', teammate=None):
     def _init():
-
         base_env = MAISREnvVec( # Create base environment
             config=env_config,
-            render_mode='headless',
+            clock=clock,
+            window=window,
+            render_mode='headless' if clock is None else 'human',
             run_name=run_name,
-            tag=f'trajectorygen',
+            tag=f'trajectorygen0',
         )
 
         base_env.teammate_active = False # TODO make sure this is good
@@ -58,7 +198,8 @@ def make_wrapped_env(env_config, run_name='no_name', render=False):
             go_to_highvalue_policy,
             change_region_subpolicy,
             evade_policy,
-            teammate_manager=None
+            teammate_manager=None,
+            teammate_policy=teammate
         )
 
         wrapped_env = Monitor(wrapped_env)
@@ -74,16 +215,16 @@ class Trajectory:
     level: int     # Integer level index
     name: str        # Subject ID or agent strategy identifier
 
-    positions: List[Tuple[float, float]]  # List of (x, y) tuples per timestep
-    actions: List[int]                    # List of actions (0–15) per timestep
-    target_ids: List[int]                 # History of targets identified per timestep. 
-    threat_ids: List[int]                 # History of threats identified per timestep
+    positions: List[Tuple[float, float]] = None  # List of (x, y) tuples per timestep
+    actions: List[int] = None                    # List of actions (0–15) per timestep
+    target_ids: List[int] = None                 # History of targets identified per timestep.
+    threat_ids: List[int] = None                 # History of threats identified per timestep
 
 
-class SimilarityAnalysis():
+class SimilarityAnalysis:
     def __init__(self):
-        self.human_trajectories_path = '/placeholderpath/' # Where the human trajectory json files are stored
-        self.rl_agents_path = '/trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+        self.human_trajectories_path = './userstudy_logs/' # Where the human trajectory json files are stored
+        self.rl_agents_path = './similarity_analysis/rl_agents'      #'./offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
          
         self.num_rl_agents = 32
         self.level_list = [1, 3, 5, 6, 7]
@@ -94,6 +235,10 @@ class SimilarityAnalysis():
 
     # Ready to test    
     def process_human_trajectories(self):
+        """
+        Process human trajectory data from JSON files.
+        The JSON structure contains a list of timesteps, each with human_position, human_action, etc.
+        """
         direction_vectors = [
             (0, 1), (0.383, 0.924), (0.707, 0.707), (0.924, 0.383),
             (1, 0), (0.924, -0.383), (0.707, -0.707), (0.383, -0.924),
@@ -102,13 +247,13 @@ class SimilarityAnalysis():
         ]
 
         def normalize(vx, vy):
-            mag = math.sqrt(vx**2 + vy**2)
+            mag = math.sqrt(vx ** 2 + vy ** 2)
             return (vx / mag, vy / mag) if mag > 1e-8 else (0.0, 0.0)
-        
+
         def vector_to_action(dx, dy):
             # Normalize the movement vector
             ndx, ndy = normalize(dx, dy)
-    
+
             # Compute cosine similarity with each direction vector
             best_idx = 0
             best_dot = -float("inf")
@@ -122,143 +267,256 @@ class SimilarityAnalysis():
         self.human_trajectories = []
 
         for subject_dir in sorted(os.listdir(self.human_trajectories_path)):
-            subject_path = os.path.join(self.human_trajectories_path, subject_dir)
+            subject_path = os.path.join(self.human_trajectories_path, subject_dir, 'timestep_data')
             if not os.path.isdir(subject_path):
                 continue
 
-            for json_file in sorted(glob(os.path.join(subject_path, "*.json"))):
-                level_str = os.path.basename(json_file).split("_")[1]  # e.g. A1
-                level = int(level_str[1:])
+            for json_file in sorted(glob.glob(os.path.join(subject_path, "*.json"))):
+                #print(f"Processing: {json_file}")
 
-                with open(json_file, "r") as f:
-                    data = json.load(f)
+                # Extract level from filename (assuming format like "level_A1_data.json")
+                filename = os.path.basename(json_file)
+                level_match = re.search(r'[ABCPS](\d+)', filename)
+                if not level_match:
+                    print(f"Could not extract level from filename: {filename}")
+                    continue
+                level = int(level_match.group(1))
 
-                positions, actions = [], []
-                target_counts, threat_counts = [], []
-                cumulative_targets = 0
-                cumulative_threats = 0
+                try:
+                    with open(json_file, "r") as f:
+                        data = json.load(f)
 
-                for step in data:
-                    pos = tuple(step["human_position"])
-                    positions.append(pos)
+                    # The JSON structure is {"timesteps": [list of timestep objects]}
+                    if "timesteps" not in data:
+                        print(f"No 'timesteps' key found in {json_file}")
+                        continue
 
-                    # compute action
-                    wp = step.get("human_custom_waypoint", pos)
-                    dx, dy = wp[0] - pos[0], wp[1] - pos[1]
-                    action_idx = vector_to_action(dx, dy)
-                    actions.append(action_idx)
+                    timesteps = data["timesteps"]
+                    if not timesteps:
+                        print(f"Empty timesteps in {json_file}")
+                        continue
 
-                    # count events
-                    t_events = sum(1 for val in step.get("target_identified", []) if val)
-                    h_events = sum(1 for val in step.get("threat_identified", []) if val)
-                    cumulative_targets += t_events
-                    cumulative_threats += h_events
-                    target_counts.append(cumulative_targets)
-                    threat_counts.append(cumulative_threats)
+                    positions, actions = [], []
+                    target_counts, threat_counts = [], []
 
-                traj = Trajectory(
-                    category="human",
-                    level=level,
-                    name=subject_dir,
-                    positions=positions,
-                    actions=actions,
-                    target_ids=target_counts,
-                    threat_ids=threat_counts,
-                )
-                self.human_trajectories.append(traj)
+                    prev_pos = None
+                    for i, step in enumerate(timesteps):
+                        # Extract human position
+                        if "human_position" not in step:
+                            print(f"Missing human_position in timestep {i} of {json_file}")
+                            continue
 
+                        pos = tuple(step["human_position"])
+                        positions.append(pos)
+
+                        # Compute action based on movement
+                        if prev_pos is not None:
+                            dx = pos[0] - prev_pos[0]
+                            dy = pos[1] - prev_pos[1]
+
+                            # If there's no movement, use the stored human_action if available
+                            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+                                if "human_action" in step and step["human_action"] is not None:
+                                    action_idx = step["human_action"]
+                                else:
+                                    action_idx = 0  # Default to "no action" or "stay"
+                            else:
+                                action_idx = vector_to_action(dx, dy)
+                        else:
+                            # First timestep - use stored action or default
+                            if "human_action" in step and step["human_action"] is not None:
+                                action_idx = step["human_action"]
+                            else:
+                                action_idx = 0
+
+                        actions.append(action_idx)
+
+                        # Extract target and threat identification counts
+                        # Use the cumulative totals if available
+                        if "targets_identified_total" in step:
+                            target_count = step["targets_identified_total"]
+                        else:
+                            # Fallback: count True values in target_identified array
+                            target_identified = step.get("target_identified", [])
+                            target_count = sum(1 for val in target_identified if val)
+
+                        if "threats_identified_total" in step:
+                            threat_count = step["threats_identified_total"]
+                        else:
+                            # Fallback: count True values in threat_identified array
+                            threat_identified = step.get("threat_identified", [])
+                            threat_count = sum(1 for val in threat_identified if val)
+
+                        target_counts.append(target_count)
+                        threat_counts.append(threat_count)
+
+                        prev_pos = pos
+
+                    # Create trajectory object
+                    traj = Trajectory(
+                        category="human",
+                        level=level,
+                        name=subject_dir,
+                        positions=positions,
+                        actions=actions,
+                        target_ids=target_counts,
+                        threat_ids=threat_counts,
+                    )
+                    self.human_trajectories.append(traj)
+                    print(
+                        f"Successfully processed trajectory: {subject_dir}, level {level}, {len(positions)} timesteps")
+
+                except Exception as e:
+                    print(f"Error processing {json_file}: {str(e)}")
+                    continue
+
+        print(f"Total human trajectories processed: {len(self.human_trajectories)}")
+
+        out_file = os.path.join('./similarity_analysis', "human_trajectories.json")
+        save_trajectories_to_json(self.human_trajectories, out_file)
         return self.human_trajectories
 
-    # TODO: Test
+
     def generate_rl_trajectories(self):
-        
+        render = False
+
         rl_trajectories = []
+        agent_pairs = []
 
         # Step 1: Find all RL agent .zip and .pkl pairs
-        rl_files = glob(os.path.join(self.rl_agents_path, "*.zip"))
-        agent_pairs = []
-        for zip_path in rl_files:
-        # Extract prefix up to and including 'checkpoint_'
-            filename = os.path.basename(zip_path)
-            match = re.match(r"(.+_checkpoint_)\d+_steps\.zip$", filename)
-            if not match:
-                print(f"Skipping unrecognized zip name: {filename}")
-                continue
+        model_patterns = [
+            os.path.join(self.rl_agents_path, "*_model.zip"),
+            os.path.join(self.rl_agents_path, "**/*_model.zip")
+        ]
 
-            prefix = match.group(1)  # e.g., "pretrainP_0731_1530_seed42_checkpoint_"
-    
-            # Construct search pattern for pkl
-            pkl_pattern = os.path.join(self.rl_agents_path, prefix + "*_vecnormalize_*.pkl")
-            pkl_files = glob(pkl_pattern)
-    
-            if not pkl_files:
-                raise ValueError(f"Warning: No pkl found for {zip_path}")
-                #continue
+        normstats_patterns = [
+            os.path.join(self.rl_agents_path, "*_vecnormalize.pkl"),
+            os.path.join(self.rl_agents_path, "**/*_vecnormalize.pkl")
+        ]
 
-        # Pair the first match (or choose based on step count if multiple)
-        agent_pairs.append((zip_path, pkl_files[0]))
+        all_checkpoints = []
+        for pattern in model_patterns:
+            all_checkpoints.extend(glob.glob(pattern, recursive=True))
+
+        all_normstats = []
+        for pattern in normstats_patterns:
+            all_normstats.extend(glob.glob(pattern, recursive=True))
+
+        all_checkpoints = list(set(all_checkpoints))  # Remove duplicates and sort by modification time (newest first)
+        all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        all_normstats.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+
+        if render:
+            if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
+            pygame.display.init()
+            pygame.font.init()
+            clock = pygame.time.Clock()
+
+            window_width, window_height = 1000, 1100
+            window = pygame.display.set_mode((window_width, window_height))
+        else:
+            pygame.font.init()
+            window = None
+            clock = None
+
+        agent_list = []
+        for agent_model_filename in all_checkpoints:
+            model = PPO.load(agent_model_filename)
+
+            # Extract the prefix by removing '_model.zip' suffix
+            prefix = agent_model_filename.replace('_model.zip', '')
+            expected_vecnorm_filename = f"{prefix}_vecnormalize.pkl"
+
+            norm_stats_path = None
+            if os.path.exists(expected_vecnorm_filename):
+                norm_stats_path = expected_vecnorm_filename
+
+            agent_pairs.append((model, norm_stats_path))
             
         # Step 2: Run each agent in each level and save the trajectory
-        for zip_path, pkl_path in agent_pairs:
-            
-            # Load RL model
-            agent_model = PPO.load(zip_path)
+        for agent_model, pkl_path in agent_pairs:
+            print(f'Generating trajectory for RL agent {agent_model}, {pkl_path}')
             
             # Extract seed (number after "seed")
-            seed_match = re.search(r"seed(\d+)", zip_path)
+            seed_match = re.search(r"seed(\d+)", pkl_path)
             seed = seed_match.group(1) if seed_match else "000"
             
             for level in self.level_list:
                 config = self.config.copy()
                 config['force_specific_level'] = level
-                
-                env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
-                
-                trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl') # instantiate the trajectory 
+
+                if render:
+                    env = DummyVecEnv([make_wrapped_env(config, clock=clock, window=window) for _ in range(1)])
+                else:
+                    env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
+
+                env = load_vecnormalize_wrapper(pkl_path, env)
+
+                trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
                 step_count = 0
                 obs = env.reset()
-                base_env = env.envs[0].env # TODO confirm that this will update live as the original env does. Is it a shallow copy?
+                done = False
+                base_env = env.envs[0].env
+                base_env.env.agents[1].appearance = 'invisible'  # Forces a hold # TODO see if this is consistent with the others
+
                 while not done:
-                    agent_action = agent_model.predict(obs, deterministic=True)
+                    agent_action, _ = agent_model.predict(obs, deterministic=True)
                     
                     obses, rewards, dones, infos = env.step([agent_action])
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
+
+                    if render: base_env.env.render()
                         
                     trajectory.actions.append(agent_action)
-                    trajectory.positions.append((base_env.agents[0].x, base_env.agents[0].y))
-                    trajectory.target_ids.append(base_env.num_targets_identified)
-                    trajectory.threat_ids.append(base_env.num_threat_ids)
+                    trajectory.positions.append((base_env.env.agents[0].x, base_env.env.agents[0].y))
+                    trajectory.target_ids.append(base_env.env.targets_identified)
+                    trajectory.threat_ids.append(base_env.env.num_threats_identified)
                     step_count += 1
                         
                 rl_trajectories.append(trajectory)
             
         # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
-        out_file = os.path.join(self.rl_agents_path, "rl_trajectories.json")
-        with open(out_file, "w") as f:
-            json.dump([traj.__dict__ for traj in rl_trajectories], f, indent=2)
+        out_file = os.path.join('./similarity_analysis', "rl_trajectories.json")
+
+        save_trajectories_to_json(rl_trajectories, out_file)
+
+        #with open(out_file, "w") as f:
+            #json.dump([traj.__dict__ for traj in rl_trajectories], f, indent=2)
         
         return rl_trajectories
         
         
-    # TODO:
-    # - Adapt get_teammate_action for agent action selection
-    # Hackiest way is to set the agent as the env teammate, set it inactive, but use get_teammate_action to get action and stpe env
-    # - Test
+    # TODO test
     def generate_strategy_trajectories(self):
         # Step 1: Create list of heuristic agent parameter combinations. Each element in the list is itself a list of three strings (risk_tolerance, action_noise, spatial_coordination)
-        risk_tolerance = ["low", "medium", "high", "max_greedy"]
+        risk_tolerance = ['high'] #["low", "medium", "high", "max_greedy"]
         action_noise = ["stable", "noisy", "very_noisy"]
         planning_horizon = ['greedy', 'clusters']
         spatial_coordination = [False, True]
         decision_speed = ['fast', 'slow']
         combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination)]
+        print(f'Generated {len(combinations)} strategy combinations')
 
+        render = True
+        if render:
+            if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
+            pygame.display.init()
+            pygame.font.init()
+            clock = pygame.time.Clock()
+
+            window_width, window_height = 1000, 1100
+            window = pygame.display.set_mode((window_width, window_height))
+        else:
+            pygame.font.init()
+            window = None
+            clock = None
 
         # Step 2: Generate game trajectories for each heuristic combination for each level
         for combination in combinations:
+            print(f'Generating trajectories for heuristic {combination}')
             
             # Instantiate agent with <combination> strategy settings		
             risk_tolerance, action_noise, spatial_coordination = combination
@@ -271,48 +529,67 @@ class SimilarityAnalysis():
                 use_collision_avoidance=False,
                 action_stability=action_noise,
                 decision_speed=decision_speed)
-            
+
             # Run the agent in all 7 levels
             for level in self.level_list:
                 config = self.config.copy()
                 config['force_specific_level'] = level
                 
-                env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
-                
-                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}', level = level, category = 'heuristic') # instantiate the trajectory 
+                #env = DummyVecEnv([make_wrapped_env(config, teammate=teammate) for _ in range(1)])
+                if render:
+                    env = DummyVecEnv([make_wrapped_env(config, clock=clock, window=window) for _ in range(1)])
+                else:
+                    env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
+
+                base_env = env.envs[0].env
+                base_env.current_teammate = teammate
+                base_env.teammate_policy = teammate
+
+                teammate.env = base_env
+
+                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
                 step_count = 0
                 obs = env.reset()
-                base_env = env.envs[0].env # TODO confirm that this will update live as the original env does. Is it a shallow copy?
-                print(f'base_env is {base_env} (should be MaisrEnvVec, NOT LocalSearchWrapper\n\n%%%')
+                done = False
+
+                #print(f'base_env is {base_env} (should be MaisrEnvVec, NOT LocalSearchWrapper\n\n%%%')
                 
                 while not done:
-                    agent_waypoint = env.envs[0].get_teammate_action() # TODO this is wrong. 
-                    agent_action = 
-                    base_env.agents[base_env.aircraft_ids[1]].waypoint_override = self.teammate_action
+                    agent0_action = 0
+                    base_env.env.agents[0].appearance = 'invisible' # Forces a hold
+
+                    agent1_waypoint = base_env.get_teammate_action()#teammate_action # This is a waypoint
+
+                    current_pos = (base_env.env.agents[1].x, base_env.env.agents[1].y)
+                    agent1_action = waypoint_to_direction_index(current_pos, agent1_waypoint)
                     
-                    obses, rewards, dones, infos = env.step([agent_action])
+                    obses, rewards, dones, infos = env.step([agent0_action])
                     obs = obses[0]
                     reward = rewards[0]
                     info = infos[0]
                     done = dones[0]
+
+                    if render: base_env.env.render()
                         
-                    trajectory.actions.append(agent_action)
-                    trajectory.positions.append((base_env.agents[0].x, base_env.agents[0].y))
-                    trajectory.target_ids.append(base_env.num_targets_identified)
-                    trajectory.threat_ids.append(base_env.num_threat_ids)
+                    trajectory.actions.append(agent1_action)
+                    trajectory.positions.append((base_env.env.agents[1].x, base_env.env.agents[1].y))
+                    trajectory.target_ids.append(base_env.env.targets_identified)
+                    trajectory.threat_ids.append(base_env.env.num_threats_identified)
                     step_count += 1
                         
                 self.heuristic_trajectories.append(trajectory)
 
         # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
-        
+        out_file = os.path.join('./similarity_analysis', "strategy_trajectories.json")
+        save_trajectories_to_json(self.heuristic_trajectories, out_file)
+
         return self.heuristic_trajectories
         
     
     ################################################ Helper functions ################################################
     
     # Ready to test
-    def compute_2d_emd(heatmap1: np.ndarray, heatmap2: np.ndarray) -> float:
+    def compute_2d_emd(self, heatmap1: np.ndarray, heatmap2: np.ndarray) -> float:
         """
         Compute 2D Earth Mover's Distance (EMD) between two 2D histograms using
         Euclidean distance and the Hungarian algorithm.
@@ -359,19 +636,50 @@ class SimilarityAnalysis():
         """
         
         # --- 1. Aggregate positions ---
-        def extract_positions(trajs: List[Trajectory]) -> np.ndarray:
-            return np.array([pos for t in trajs for pos in t.positions])
+        #def extract_positions(trajs: List[Trajectory]) -> np.ndarray:
+            #return np.array([pos for t in trajs for pos in t.positions])
 
-        human_positions = extract_positions(human_trajectories)
+        def extract_positions(trajs: List[Trajectory], subsample_every_n: int = None) -> np.ndarray:
+            all_positions = []
+            for t in trajs:
+                if subsample_every_n is not None:
+                    # Subsample positions by taking every nth position
+                    subsampled_positions = t.positions[::subsample_every_n]
+                    all_positions.extend(subsampled_positions)
+                else:
+                    # Use all positions
+                    all_positions.extend(t.positions)
+            return np.array(all_positions)
+
+        import random
+
+        # Set random seed for reproducibility
+        random.seed(42)
+        np.random.seed(42)
+        human_sample_fraction = 0.3
+
+        # Sample human trajectories
+        if human_sample_fraction < 1.0:
+            sample_size = int(len(human_trajectories) * human_sample_fraction)
+            sampled_human_trajectories = random.sample(human_trajectories, sample_size)
+            print(f"Using {sample_size} out of {len(human_trajectories)} human trajectories ({human_sample_fraction:.1%})")
+        else:
+            sampled_human_trajectories = human_trajectories
+            print(f"Using all {len(human_trajectories)} human trajectories")
+
+
+        #human_positions = extract_positions(sampled_human_trajectories)
+        human_positions = extract_positions(sampled_human_trajectories, subsample_every_n=10)
         rl_positions = extract_positions(rl_trajectories)
         heuristic_positions = extract_positions(heuristic_trajectories)
 
         # --- 2. Define common grid for all heatmaps ---
-        all_positions = np.vstack([human_positions, rl_positions, heuristic_positions])
-        x_min, y_min = np.min(all_positions, axis=0)
-        x_max, y_max = np.max(all_positions, axis=0)
+        #all_positions = np.vstack([human_positions, rl_positions, heuristic_positions])
+        x_min, y_min = -500, -500 #np.min(all_positions, axis=0)
+        x_max, y_max = 500, 500 #np.max(all_positions, axis=0)
 
         def compute_heatmap(positions):
+            print(positions)
             heatmap, _, _ = np.histogram2d(
                 positions[:,0], positions[:,1],
                 bins=bins,
@@ -411,7 +719,7 @@ class SimilarityAnalysis():
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plt.tight_layout()
-        plt.savefig('/data_analysis/position_heatmaps.png', dpi=300)
+        plt.savefig('./similarity_analysis/position_heatmaps.png', dpi=300)
         plt.close(fig)
             
         return emd_results
@@ -780,25 +1088,38 @@ class SimilarityAnalysis():
     
     
     def run_analysis(self):
+        load_saved = False
+
+        self.config = load_env_config('configs/Monolith_index_August.json')
+        self.config['use_stuck_detection'] = False
+        self.config['prob_detect'] = 0  # 0.0003
+        self.config['action_type'] = 'Discrete16'
+
         # Load trajectories
-        self.human_trajectories = self.process_human_trajectories()
-        self.heuristic_trajectories = self.generate_strategy_trajectories()
-        self.rl_trajectories = self.generate_rl_trajectories()
+        if load_saved:
+            self.human_trajectories = load_saved_trajectories('human')
+            self.heuristic_trajectories = load_saved_trajectories('strategy')
+            self.rl_trajectories = load_saved_trajectories('rl')
+
+        else:
+            #self.human_trajectories = self.process_human_trajectories()
+            self.heuristic_trajectories = self.generate_strategy_trajectories()
+            #self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
-        self.compare_position_heatmaps_2d() # Ready to test
+        self.compare_position_heatmaps_2d(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
         
         # Analyze threat-target priority clusters
-        self.compute_silhouette_scores() # Ready to test
+        self.compute_silhouette_scores(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
         
-        # Analyze rate of identifying threats and targets throughout the episode
-        self.compare_progress_rates() # Ready to test
+        # Analyze rate of identifying threats and targets throughout the episode # TODO Find DTW package
+        #self.compare_progress_rates(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
         
         # Analyze metric similarity
         self.analyze_metric_similarity() # Has a TODO, then test.
         
         # Analyze similarity of action distributions
-        self.analyze_action_distributions() # Ready to test
+        self.analyze_action_distributions(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
         
         # Final data to return and save
         # 1. 

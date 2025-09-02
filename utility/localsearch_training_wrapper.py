@@ -147,8 +147,8 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         elif self.teammate_policy:
             self.current_teammate = self.teammate_policy
-            if self.env.tag != 'userstudy_0':
-                print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate.name}')
+            #if self.env.tag != 'userstudy_0':
+                #print(f'[localsearchwrapper] teammate_policy is true, current teammate set to {self.current_teammate.name}')
         else:
             self.current_teammate = None
             #if self.env.tag != 'userstudy_0':
@@ -386,6 +386,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_obs = self.current_teammate._normalize_observation(self.get_observation(1))
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
+            print(f'teammate chose subpolicy {self.teammate_subpolicy_choice}')
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
 
             if self.teammate_subpolicy_choice == 0:  # Local search
@@ -502,6 +503,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
         else: # Fallback greedy search
+
             # Access teammate location
             teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
             teammate_y = self.env.agents[self.env.aircraft_ids[1]].y

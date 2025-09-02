@@ -1,6 +1,8 @@
 import glob
 import os
 import random
+from multiprocessing.managers import Value
+
 import numpy as np
 from abc import ABC, abstractmethod
 import pygame
@@ -1105,6 +1107,7 @@ class HeuristicAgent:
         Note: gotothreat is now action 2 in the new action space
         """
         detections = env.num_threats_identified
+        print(f'detections: {detections}')
 
         should_go = False
         if self.risk_tolerance == "low":
@@ -1352,6 +1355,7 @@ class GenericTeammatePolicy(TeammatePolicy):
         else:
             # If no environment available, fallback to local search
             print("[GenericTeammatePolicy] Warning: No environment available, defaulting to localsearch")
+            raise ValueError
             return 0
 
     def reset(self):

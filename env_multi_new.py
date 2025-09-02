@@ -575,7 +575,6 @@ class MAISREnvVec(gym.Env):
         ################################ Move the agents and check for gameplay updates ################################
         for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
 
-
             aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
             aircraft_idx = aircraft.agent_idx  # Get the aircraft's index (0 or 1)
 
