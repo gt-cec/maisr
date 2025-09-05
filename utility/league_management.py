@@ -1107,7 +1107,7 @@ class HeuristicAgent:
         Note: gotothreat is now action 2 in the new action space
         """
         detections = env.num_threats_identified
-        print(f'detections: {detections}')
+        #print(f'detections: {detections}')
 
         should_go = False
         if self.risk_tolerance == "low":

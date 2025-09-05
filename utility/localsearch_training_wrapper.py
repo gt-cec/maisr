@@ -351,6 +351,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         # Get action from RL teammates
         if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
+            print('target index or model is true')
             raw_teammate_obs = self.env.get_observation_nearest_n(1)
             teammate_obs = self.current_teammate._normalize_observation(raw_teammate_obs)
 
@@ -366,8 +367,11 @@ class MaisrLocalSearchWrapper(gym.Env):
         #     return self.current_teammate.get_action()
 
         elif self.teammate_manager or self.teammate_policy:
+            #print('teammate manager or policy is true')
+
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] in ['selfplay','fcp']:
+
                 if hasattr(self.current_teammate, 'model'):
                     teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
                     #teammate_obs = self.env.get_observation_nearest_n(1)
@@ -386,7 +390,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_obs = self.current_teammate._normalize_observation(self.get_observation(1))
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
-            print(f'teammate chose subpolicy {self.teammate_subpolicy_choice}')
+            #print(f'teammate chose subpolicy {self.teammate_subpolicy_choice}')
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
 
             if self.teammate_subpolicy_choice == 0:  # Local search

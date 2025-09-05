@@ -492,7 +492,7 @@ class SimilarityAnalysis:
     # TODO test
     def generate_strategy_trajectories(self):
         # Step 1: Create list of heuristic agent parameter combinations. Each element in the list is itself a list of three strings (risk_tolerance, action_noise, spatial_coordination)
-        risk_tolerance = ['high'] #["low", "medium", "high", "max_greedy"]
+        risk_tolerance = ["low", "medium", "high", "max_greedy"]
         action_noise = ["stable", "noisy", "very_noisy"]
         planning_horizon = ['greedy', 'clusters']
         spatial_coordination = [False, True]
@@ -500,7 +500,7 @@ class SimilarityAnalysis:
         combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination)]
         print(f'Generated {len(combinations)} strategy combinations')
 
-        render = True
+        render = False
         if render:
             if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
             pygame.display.init()
@@ -545,7 +545,7 @@ class SimilarityAnalysis:
                 base_env.current_teammate = teammate
                 base_env.teammate_policy = teammate
 
-                teammate.env = base_env
+                teammate.env = base_env.env
 
                 trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
                 step_count = 0
@@ -559,6 +559,7 @@ class SimilarityAnalysis:
                     base_env.env.agents[0].appearance = 'invisible' # Forces a hold
 
                     agent1_waypoint = base_env.get_teammate_action()#teammate_action # This is a waypoint
+                    #print(f'Agent 1 waypoint is {agent1_waypoint}')
 
                     current_pos = (base_env.env.agents[1].x, base_env.env.agents[1].y)
                     agent1_action = waypoint_to_direction_index(current_pos, agent1_waypoint)
@@ -569,7 +570,8 @@ class SimilarityAnalysis:
                     info = infos[0]
                     done = dones[0]
 
-                    if render: base_env.env.render()
+                    if render:
+                        base_env.env.render()
                         
                     trajectory.actions.append(agent1_action)
                     trajectory.positions.append((base_env.env.agents[1].x, base_env.env.agents[1].y))
@@ -1094,6 +1096,7 @@ class SimilarityAnalysis:
         self.config['use_stuck_detection'] = False
         self.config['prob_detect'] = 0  # 0.0003
         self.config['action_type'] = 'Discrete16'
+        self.config['league_type'] = 'strategy_diverse'
 
         # Load trajectories
         if load_saved:
@@ -1103,14 +1106,14 @@ class SimilarityAnalysis:
 
         else:
             #self.human_trajectories = self.process_human_trajectories()
-            self.heuristic_trajectories = self.generate_strategy_trajectories()
-            #self.rl_trajectories = self.generate_rl_trajectories()
+            #self.heuristic_trajectories = self.generate_strategy_trajectories()
+            self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
-        self.compare_position_heatmaps_2d(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
+        self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
         
         # Analyze threat-target priority clusters
-        self.compute_silhouette_scores(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
+        self.compute_silhouette_scores(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
         
         # Analyze rate of identifying threats and targets throughout the episode # TODO Find DTW package
         #self.compare_progress_rates(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
