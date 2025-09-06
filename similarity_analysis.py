@@ -224,7 +224,8 @@ class Trajectory:
 class SimilarityAnalysis:
     def __init__(self):
         self.human_trajectories_path = './userstudy_logs/' # Where the human trajectory json files are stored
-        self.rl_agents_path = './similarity_analysis/rl_agents'      #'./offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+        self.rl_agents_path = 'similarity_analysis/rl_agents'  #'./offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+        #self.rl_agents_path = './trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
          
         self.num_rl_agents = 32
         self.level_list = [1, 3, 5, 6, 7]
@@ -276,7 +277,8 @@ class SimilarityAnalysis:
 
                 # Extract level from filename (assuming format like "level_A1_data.json")
                 filename = os.path.basename(json_file)
-                level_match = re.search(r'[ABCPS](\d+)', filename)
+                #level_match = re.search(r'[ABCPS](\d+)', filename)
+                level_match = re.search(r'[PS](\d+)', filename)
                 if not level_match:
                     print(f"Could not extract level from filename: {filename}")
                     continue
@@ -394,6 +396,16 @@ class SimilarityAnalysis:
             os.path.join(self.rl_agents_path, "**/*_vecnormalize.pkl")
         ]
 
+        # model_patterns = [
+        #     os.path.join(self.rl_agents_path, "*_checkpoint_*_steps.zip"),
+        #     os.path.join(self.rl_agents_path, "**/*_checkpoint_*_steps.zip")
+        # ]
+        #
+        # normstats_patterns = [
+        #     os.path.join(self.rl_agents_path, "*_checkpoint_vecnormalize_*_steps.pkl"),
+        #     os.path.join(self.rl_agents_path, "**/*_checkpoint_vecnormalize_*_steps.pkl")
+        # ]
+
         all_checkpoints = []
         for pattern in model_patterns:
             all_checkpoints.extend(glob.glob(pattern, recursive=True))
@@ -405,6 +417,8 @@ class SimilarityAnalysis:
         all_checkpoints = list(set(all_checkpoints))  # Remove duplicates and sort by modification time (newest first)
         all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         all_normstats.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+
+        print(all_checkpoints)
 
         if render:
             if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
@@ -431,52 +445,55 @@ class SimilarityAnalysis:
             if os.path.exists(expected_vecnorm_filename):
                 norm_stats_path = expected_vecnorm_filename
 
-            agent_pairs.append((model, norm_stats_path))
+            agent_pairs.append((model, norm_stats_path, agent_model_filename))
             
         # Step 2: Run each agent in each level and save the trajectory
-        for agent_model, pkl_path in agent_pairs:
-            print(f'Generating trajectory for RL agent {agent_model}, {pkl_path}')
+        for agent_model, pkl_path, agent_model_filename in agent_pairs:
+            print(f'\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%')
+            print(f'%%%%%%% Generating trajectory for RL agent {agent_model_filename[28:]}, {pkl_path} %%%%%%%')
+            print(f'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n')
             
             # Extract seed (number after "seed")
             seed_match = re.search(r"seed(\d+)", pkl_path)
             seed = seed_match.group(1) if seed_match else "000"
             
             for level in self.level_list:
-                config = self.config.copy()
-                config['force_specific_level'] = level
+                for run in range(8):
+                    config = self.config.copy()
+                    config['force_specific_level'] = level
 
-                if render:
-                    env = DummyVecEnv([make_wrapped_env(config, clock=clock, window=window) for _ in range(1)])
-                else:
-                    env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
+                    if render:
+                        env = DummyVecEnv([make_wrapped_env(config, clock=clock, window=window) for _ in range(1)])
+                    else:
+                        env = DummyVecEnv([make_wrapped_env(config) for _ in range(1)])
 
-                env = load_vecnormalize_wrapper(pkl_path, env)
+                    env = load_vecnormalize_wrapper(pkl_path, env)
 
-                trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
-                step_count = 0
-                obs = env.reset()
-                done = False
-                base_env = env.envs[0].env
-                base_env.env.agents[1].appearance = 'invisible'  # Forces a hold # TODO see if this is consistent with the others
+                    trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+                    step_count = 0
+                    obs = env.reset()
+                    done = False
+                    base_env = env.envs[0].env
+                    base_env.env.agents[1].appearance = 'invisible'  # Forces a hold # TODO see if this is consistent with the others
 
-                while not done:
-                    agent_action, _ = agent_model.predict(obs, deterministic=True)
-                    
-                    obses, rewards, dones, infos = env.step([agent_action])
-                    obs = obses[0]
-                    reward = rewards[0]
-                    info = infos[0]
-                    done = dones[0]
+                    while not done:
+                        agent_action, _ = agent_model.predict(obs, deterministic=True)
 
-                    if render: base_env.env.render()
-                        
-                    trajectory.actions.append(agent_action)
-                    trajectory.positions.append((base_env.env.agents[0].x, base_env.env.agents[0].y))
-                    trajectory.target_ids.append(base_env.env.targets_identified)
-                    trajectory.threat_ids.append(base_env.env.num_threats_identified)
-                    step_count += 1
-                        
-                rl_trajectories.append(trajectory)
+                        obses, rewards, dones, infos = env.step([agent_action])
+                        obs = obses[0]
+                        reward = rewards[0]
+                        info = infos[0]
+                        done = dones[0]
+
+                        if render: base_env.env.render()
+
+                        trajectory.actions.append(agent_action)
+                        trajectory.positions.append((base_env.env.agents[0].x, base_env.env.agents[0].y))
+                        trajectory.target_ids.append(base_env.env.targets_identified)
+                        trajectory.threat_ids.append(base_env.env.num_threats_identified)
+                        step_count += 1
+
+                    rl_trajectories.append(trajectory)
             
         # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
         out_file = os.path.join('./similarity_analysis', "rl_trajectories.json")
@@ -627,20 +644,16 @@ class SimilarityAnalysis:
         return emd
     
     ################################################ Analysis functions ################################################
-    
-    # Ready to test
-    def compare_position_heatmaps_2d(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory], 
-                                     heuristic_trajectories: List[Trajectory], bins: int = 50, 
+
+    def compare_position_heatmaps_2d(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
+                                     heuristic_trajectories: List[Trajectory], bins: int = 50,
                                      output_csv: str = "heatmap_emd_results_2d.csv"):
         """ References/justification for using 2D EMD for this analysis:
             https://stats.stackexchange.com/questions/404775/calculate-earth-movers-distance-for-two-grayscale-images
             https://stats.stackexchange.com/questions/659384/compute-p-value-of-earth-movers-distance-score-comparing-two-heatmaps-in-r
         """
-        
-        # --- 1. Aggregate positions ---
-        #def extract_positions(trajs: List[Trajectory]) -> np.ndarray:
-            #return np.array([pos for t in trajs for pos in t.positions])
 
+        # --- 1. Aggregate positions ---
         def extract_positions(trajs: List[Trajectory], subsample_every_n: int = None) -> np.ndarray:
             all_positions = []
             for t in trajs:
@@ -664,53 +677,99 @@ class SimilarityAnalysis:
         if human_sample_fraction < 1.0:
             sample_size = int(len(human_trajectories) * human_sample_fraction)
             sampled_human_trajectories = random.sample(human_trajectories, sample_size)
-            print(f"Using {sample_size} out of {len(human_trajectories)} human trajectories ({human_sample_fraction:.1%})")
+            print(
+                f"Using {sample_size} out of {len(human_trajectories)} human trajectories ({human_sample_fraction:.1%})")
         else:
             sampled_human_trajectories = human_trajectories
             print(f"Using all {len(human_trajectories)} human trajectories")
 
-
-        #human_positions = extract_positions(sampled_human_trajectories)
+        # Extract human positions (subsampled)
         human_positions = extract_positions(sampled_human_trajectories, subsample_every_n=10)
+
+        # Group heuristic trajectories by agent type (name)
+        heuristic_agents = {}
+        for traj in heuristic_trajectories:
+            agent_name = traj.name
+            if agent_name not in heuristic_agents:
+                heuristic_agents[agent_name] = []
+            heuristic_agents[agent_name].append(traj)
+
+        print(f"Found {len(heuristic_agents)} unique heuristic agent types:")
+        for agent_name, trajs in heuristic_agents.items():
+            print(f"  - {agent_name}: {len(trajs)} trajectories")
+
+        # Extract RL positions (for overall comparison)
         rl_positions = extract_positions(rl_trajectories)
-        heuristic_positions = extract_positions(heuristic_trajectories)
 
         # --- 2. Define common grid for all heatmaps ---
-        #all_positions = np.vstack([human_positions, rl_positions, heuristic_positions])
-        x_min, y_min = -500, -500 #np.min(all_positions, axis=0)
-        x_max, y_max = 500, 500 #np.max(all_positions, axis=0)
+        x_min, y_min = -500, -500
+        x_max, y_max = 500, 500
 
         def compute_heatmap(positions):
-            print(positions)
+            if len(positions) == 0:
+                return np.zeros((bins, bins))
             heatmap, _, _ = np.histogram2d(
-                positions[:,0], positions[:,1],
+                positions[:, 0], positions[:, 1],
                 bins=bins,
                 range=[[x_min, x_max], [y_min, y_max]]
             )
             return heatmap
 
+        # Compute human and RL heatmaps
         human_heatmap = compute_heatmap(human_positions)
         rl_heatmap = compute_heatmap(rl_positions)
-        heuristic_heatmap = compute_heatmap(heuristic_positions)
+
+        # Compute heatmaps for each heuristic agent type
+        heuristic_heatmaps = {}
+        for agent_name, trajs in heuristic_agents.items():
+            agent_positions = extract_positions(trajs)
+            heuristic_heatmaps[agent_name] = compute_heatmap(agent_positions)
 
         # --- 3. Compute pairwise 2D EMD ---
-        emd_results = {
-            'human_vs_rl': self.compute_2d_emd(human_heatmap, rl_heatmap),
-            'human_vs_heuristic': self.compute_2d_emd(human_heatmap, heuristic_heatmap),
-            'rl_vs_heuristic': self.compute_2d_emd(rl_heatmap, heuristic_heatmap),
-        }
+        emd_results = {}
+
+        # Standard comparisons
+        emd_results['human_vs_rl'] = self.compute_2d_emd(human_heatmap, rl_heatmap)
+
+        # Compute all heuristic positions for overall comparison
+        all_heuristic_positions = extract_positions(heuristic_trajectories)
+        all_heuristic_heatmap = compute_heatmap(all_heuristic_positions)
+        emd_results['human_vs_all_heuristic'] = self.compute_2d_emd(human_heatmap, all_heuristic_heatmap)
+        emd_results['rl_vs_all_heuristic'] = self.compute_2d_emd(rl_heatmap, all_heuristic_heatmap)
+
+        # Compute EMD between human and each individual heuristic agent type
+        for agent_name, agent_heatmap in heuristic_heatmaps.items():
+            emd_key = f'human_vs_heuristic_{agent_name}'
+            emd_results[emd_key] = self.compute_2d_emd(human_heatmap, agent_heatmap)
 
         # --- 4. Output results ---
-        print("Pairwise 2D Heatmap EMD Results:")
-        for k, v in emd_results.items():
-            print(f"{k}: {v:.6f}")
+        print("\nPairwise 2D Heatmap EMD Results:")
+        print("=" * 50)
 
+        # Print standard comparisons first
+        standard_keys = ['human_vs_rl', 'human_vs_all_heuristic', 'rl_vs_all_heuristic']
+        for key in standard_keys:
+            if key in emd_results:
+                print(f"{key}: {emd_results[key]:.6f}")
+
+        print("\nHuman vs Individual Heuristic Agents:")
+        print("-" * 40)
+        # Sort heuristic agent results by EMD value
+        heuristic_results = {k: v for k, v in emd_results.items() if k.startswith('human_vs_heuristic_')}
+        sorted_heuristic = sorted(heuristic_results.items(), key=lambda x: x[1])
+
+        for key, value in sorted_heuristic:
+            agent_name = key.replace('human_vs_heuristic_', '')
+            print(f"{agent_name}: {value:.6f}")
+
+        # Save results to CSV
         pd.DataFrame([emd_results]).to_csv(output_csv, index=False)
-        
-        # --- 5. Plot the three heatmaps ---
+
+        # --- 5. Plot the heatmaps ---
+        # Plot overview: Human, RL, All Heuristic
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-        heatmaps = [human_heatmap, rl_heatmap, heuristic_heatmap]
-        titles = ['Human', 'RL Agent', 'Heuristic']
+        heatmaps = [human_heatmap, rl_heatmap, all_heuristic_heatmap]
+        titles = ['Human', 'RL Agent', 'All Heuristic']
 
         for ax, hm, title in zip(axes, heatmaps, titles):
             im = ax.imshow(hm, origin='lower', aspect='auto',
@@ -721,18 +780,171 @@ class SimilarityAnalysis:
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plt.tight_layout()
-        plt.savefig('./similarity_analysis/position_heatmaps.png', dpi=300)
+        plt.savefig('./similarity_analysis/position_heatmaps_overview.png', dpi=300)
         plt.close(fig)
-            
+
+        # Plot individual heuristic agent heatmaps (top 6 most similar to humans)
+        top_6_agents = sorted_heuristic[:6]
+        if len(top_6_agents) > 0:
+            n_cols = 3
+            n_rows = 2
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 12))
+            axes = axes.flatten()
+
+            for i, (key, emd_value) in enumerate(top_6_agents):
+                if i >= len(axes):
+                    break
+
+                agent_name = key.replace('human_vs_heuristic_', '')
+                heatmap = heuristic_heatmaps[agent_name]
+
+                im = axes[i].imshow(heatmap, origin='lower', aspect='auto',
+                                    extent=[x_min, x_max, y_min, y_max], cmap='hot')
+                axes[i].set_title(f"{agent_name}\n(EMD vs Human: {emd_value:.3f})")
+                axes[i].set_xlabel("X Position")
+                axes[i].set_ylabel("Y Position")
+                fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
+
+            # Hide unused subplots
+            for i in range(len(top_6_agents), len(axes)):
+                axes[i].set_visible(False)
+
+            plt.tight_layout()
+            plt.savefig('./similarity_analysis/top_heuristic_agents_heatmaps.png', dpi=300)
+            plt.close(fig)
+
+        # Create a summary plot showing EMD values
+        plt.figure(figsize=(12, 8))
+        agent_names = [key.replace('human_vs_heuristic_', '') for key, _ in sorted_heuristic]
+        emd_values = [value for _, value in sorted_heuristic]
+
+        bars = plt.bar(range(len(agent_names)), emd_values, alpha=0.7)
+        plt.xlabel('Heuristic Agent Type')
+        plt.ylabel('EMD Distance from Human Trajectories')
+        plt.title('Earth Mover\'s Distance: Human vs Individual Heuristic Agents')
+        plt.xticks(range(len(agent_names)), agent_names, rotation=45, ha='right')
+
+        # Add horizontal lines for reference comparisons
+        if 'human_vs_rl' in emd_results:
+            plt.axhline(y=emd_results['human_vs_rl'], color='red', linestyle='--',
+                        label=f"Human vs RL ({emd_results['human_vs_rl']:.3f})")
+        if 'human_vs_all_heuristic' in emd_results:
+            plt.axhline(y=emd_results['human_vs_all_heuristic'], color='blue', linestyle='--',
+                        label=f"Human vs All Heuristic ({emd_results['human_vs_all_heuristic']:.3f})")
+
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig('./similarity_analysis/emd_comparison_bar_chart.png', dpi=300)
+        plt.close()
+
         return emd_results
-        
+    
+    # Ready to test
+    # def compare_position_heatmaps_2d(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
+    #                                  heuristic_trajectories: List[Trajectory], bins: int = 50,
+    #                                  output_csv: str = "heatmap_emd_results_2d.csv"):
+    #     """ References/justification for using 2D EMD for this analysis:
+    #         https://stats.stackexchange.com/questions/404775/calculate-earth-movers-distance-for-two-grayscale-images
+    #         https://stats.stackexchange.com/questions/659384/compute-p-value-of-earth-movers-distance-score-comparing-two-heatmaps-in-r
+    #     """
+    #
+    #     # --- 1. Aggregate positions ---
+    #     #def extract_positions(trajs: List[Trajectory]) -> np.ndarray:
+    #         #return np.array([pos for t in trajs for pos in t.positions])
+    #
+    #     def extract_positions(trajs: List[Trajectory], subsample_every_n: int = None) -> np.ndarray:
+    #         all_positions = []
+    #         for t in trajs:
+    #             if subsample_every_n is not None:
+    #                 # Subsample positions by taking every nth position
+    #                 subsampled_positions = t.positions[::subsample_every_n]
+    #                 all_positions.extend(subsampled_positions)
+    #             else:
+    #                 # Use all positions
+    #                 all_positions.extend(t.positions)
+    #         return np.array(all_positions)
+    #
+    #     import random
+    #
+    #     # Set random seed for reproducibility
+    #     random.seed(42)
+    #     np.random.seed(42)
+    #     human_sample_fraction = 0.3
+    #
+    #     # Sample human trajectories
+    #     if human_sample_fraction < 1.0:
+    #         sample_size = int(len(human_trajectories) * human_sample_fraction)
+    #         sampled_human_trajectories = random.sample(human_trajectories, sample_size)
+    #         print(f"Using {sample_size} out of {len(human_trajectories)} human trajectories ({human_sample_fraction:.1%})")
+    #     else:
+    #         sampled_human_trajectories = human_trajectories
+    #         print(f"Using all {len(human_trajectories)} human trajectories")
+    #
+    #
+    #     #human_positions = extract_positions(sampled_human_trajectories)
+    #     human_positions = extract_positions(sampled_human_trajectories, subsample_every_n=10)
+    #     rl_positions = extract_positions(rl_trajectories)
+    #     heuristic_positions = extract_positions(heuristic_trajectories)
+    #
+    #     # --- 2. Define common grid for all heatmaps ---
+    #     #all_positions = np.vstack([human_positions, rl_positions, heuristic_positions])
+    #     x_min, y_min = -500, -500 #np.min(all_positions, axis=0)
+    #     x_max, y_max = 500, 500 #np.max(all_positions, axis=0)
+    #
+    #     def compute_heatmap(positions):
+    #         print(positions)
+    #         heatmap, _, _ = np.histogram2d(
+    #             positions[:,0], positions[:,1],
+    #             bins=bins,
+    #             range=[[x_min, x_max], [y_min, y_max]]
+    #         )
+    #         return heatmap
+    #
+    #     human_heatmap = compute_heatmap(human_positions)
+    #     rl_heatmap = compute_heatmap(rl_positions)
+    #     heuristic_heatmap = compute_heatmap(heuristic_positions)
+    #
+    #     # --- 3. Compute pairwise 2D EMD ---
+    #     emd_results = {
+    #         'human_vs_rl': self.compute_2d_emd(human_heatmap, rl_heatmap),
+    #         'human_vs_heuristic': self.compute_2d_emd(human_heatmap, heuristic_heatmap),
+    #         'rl_vs_heuristic': self.compute_2d_emd(rl_heatmap, heuristic_heatmap),
+    #     }
+    #
+    #     # --- 4. Output results ---
+    #     print("Pairwise 2D Heatmap EMD Results:")
+    #     for k, v in emd_results.items():
+    #         print(f"{k}: {v:.6f}")
+    #
+    #     pd.DataFrame([emd_results]).to_csv(output_csv, index=False)
+    #
+    #     # --- 5. Plot the three heatmaps ---
+    #     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    #     heatmaps = [human_heatmap, rl_heatmap, heuristic_heatmap]
+    #     titles = ['Human', 'RL Agent', 'Heuristic']
+    #
+    #     for ax, hm, title in zip(axes, heatmaps, titles):
+    #         im = ax.imshow(hm, origin='lower', aspect='auto',
+    #                        extent=[x_min, x_max, y_min, y_max], cmap='hot')
+    #         ax.set_title(f"{title} Heatmap")
+    #         ax.set_xlabel("X Position")
+    #         ax.set_ylabel("Y Position")
+    #         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    #
+    #     plt.tight_layout()
+    #     plt.savefig('./similarity_analysis/position_heatmaps.png', dpi=300)
+    #     plt.close(fig)
+    #
+    #     return emd_results
+    #
     
     # Ready to test
     def compute_silhouette_scores(self,
         human_trajectories: List[Trajectory],
         rl_trajectories: List[Trajectory],
         heuristic_trajectories: List[Trajectory],
-        save_dir: str = "analysis_outputs"
+        save_dir: str = "similarity_analysis"
     ):
         """
         Compute and visualize silhouette scores for human, RL, and heuristic gameplay trajectories.
@@ -814,7 +1026,7 @@ class SimilarityAnalysis:
 
     # Ready to test
     def compare_progress_rates(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
-                heuristic_trajectories: List[Trajectory], save_dir: str = "analysis_outputs"):
+                heuristic_trajectories: List[Trajectory], save_dir: str = "similarity_analysis"):
         """
         1. Compute DTW distances for intra- and inter-group pairs based on target identification histories.
         2. Compare human-vs-heuristic vs human-vs-rl with Mann-Whitney U test.
@@ -944,10 +1156,10 @@ class SimilarityAnalysis:
 
         # Normalize for chi-squared to avoid zeros
         # (Add small epsilon to avoid division by zero)
-        eps = 1e-6
-        human_hist += eps
-        rl_hist += eps
-        strategy_hist += eps
+        #eps = 1e-6
+        #human_hist += eps
+        #rl_hist += eps
+        #strategy_hist += eps
 
         # Plot histograms
         fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
@@ -970,15 +1182,15 @@ class SimilarityAnalysis:
 
         # Perform pairwise chi-squared comparisons
         # Use the first histogram as observed and second as expected for chi-squared
-        chi_human_rl = chisquare(f_obs=human_hist, f_exp=rl_hist)
-        chi_human_strategy = chisquare(f_obs=human_hist, f_exp=strategy_hist)
-        chi_rl_strategy = chisquare(f_obs=rl_hist, f_exp=strategy_hist)
-
-        print("Chi-squared comparisons:")
-        print(f"Human vs RL: χ² = {chi_human_rl.statistic:.3f}, p = {chi_human_rl.pvalue:.3e}")
-        print(f"Human vs Strategy: χ² = {chi_human_strategy.statistic:.3f}, p = {chi_human_strategy.pvalue:.3e}")
-        print(f"RL vs Strategy: χ² = {chi_rl_strategy.statistic:.3f}, p = {chi_rl_strategy.pvalue:.3e}")
-        print(f"Histograms saved to: {save_path}")
+        # chi_human_rl = chisquare(f_obs=human_hist, f_exp=rl_hist)
+        # chi_human_strategy = chisquare(f_obs=human_hist, f_exp=strategy_hist)
+        # chi_rl_strategy = chisquare(f_obs=rl_hist, f_exp=strategy_hist)
+        #
+        # print("Chi-squared comparisons:")
+        # print(f"Human vs RL: χ² = {chi_human_rl.statistic:.3f}, p = {chi_human_rl.pvalue:.3e}")
+        # print(f"Human vs Strategy: χ² = {chi_human_strategy.statistic:.3f}, p = {chi_human_strategy.pvalue:.3e}")
+        # print(f"RL vs Strategy: χ² = {chi_rl_strategy.statistic:.3f}, p = {chi_rl_strategy.pvalue:.3e}")
+        # print(f"Histograms saved to: {save_path}")
         
     
     # TODO: Add the target-based metrics. Then test.
@@ -1090,7 +1302,7 @@ class SimilarityAnalysis:
     
     
     def run_analysis(self):
-        load_saved = False
+        load_saved = True
 
         self.config = load_env_config('configs/Monolith_index_August.json')
         self.config['use_stuck_detection'] = False
@@ -1105,9 +1317,9 @@ class SimilarityAnalysis:
             self.rl_trajectories = load_saved_trajectories('rl')
 
         else:
-            #self.human_trajectories = self.process_human_trajectories()
+            self.human_trajectories = self.process_human_trajectories()
             #self.heuristic_trajectories = self.generate_strategy_trajectories()
-            self.rl_trajectories = self.generate_rl_trajectories()
+            #self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
         self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
