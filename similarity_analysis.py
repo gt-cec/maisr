@@ -939,90 +939,516 @@ class SimilarityAnalysis:
     #     return emd_results
     #
     
-    # Ready to test
+    # # Ready to test
+    # def compute_silhouette_scores(self,
+    #     human_trajectories: List[Trajectory],
+    #     rl_trajectories: List[Trajectory],
+    #     heuristic_trajectories: List[Trajectory],
+    #     save_dir: str = "similarity_analysis"
+    # ):
+    #     """
+    #     Compute and visualize silhouette scores for human, RL, and heuristic gameplay trajectories.
+    #     Clusters are based on the final number of targets and threats identified per trajectory.
+    #     """
+    #     os.makedirs(save_dir, exist_ok=True)
+    #
+    #     # 1. Build the feature matrix: (targets_final, threats_final)
+    #     def extract_features(trajs):
+    #         return np.array([
+    #             [t.target_ids[-1], t.threat_ids[-1]]
+    #             for t in trajs
+    #             if t.target_ids and t.threat_ids
+    #         ])
+    #
+    #     human_features = extract_features(human_trajectories)
+    #     rl_features = extract_features(rl_trajectories)
+    #     heuristic_features = extract_features(heuristic_trajectories)
+    #
+    #     # Combine for plotting
+    #     all_features = np.vstack([human_features, rl_features, heuristic_features])
+    #     all_labels = (
+    #         ["human"] * len(human_features)
+    #         + ["rl"] * len(rl_features)
+    #         + ["heuristic"] * len(heuristic_features)
+    #     )
+    #
+    #     # 2. Create scatter plot
+    #     colors = {"human": "blue", "rl": "green", "heuristic": "red"}
+    #     plt.figure(figsize=(8, 6))
+    #     for label, features in zip(
+    #         ["human", "rl", "heuristic"],
+    #         [human_features, rl_features, heuristic_features]
+    #     ):
+    #         if len(features) > 0:
+    #             plt.scatter(
+    #                 features[:, 0], features[:, 1],
+    #                 c=colors[label], label=label, alpha=0.7, edgecolors='k'
+    #             )
+    #     plt.xlabel("Final # Targets Identified")
+    #     plt.ylabel("Final # Threats Identified")
+    #     plt.title("Trajectory Outcome Clusters (Targets vs Threats)")
+    #     plt.legend()
+    #     plt.grid(True)
+    #     plt.savefig(os.path.join(save_dir, "trajectory_clusters.png"))
+    #     plt.close()
+    #
+    #     # 3. Compute silhouette scores
+    #     # Silhouette score requires >= 2 clusters
+    #     def get_silhouette_score(features, n_clusters=None):
+    #         if len(features) < 2:
+    #             return None  # Can't compute silhouette for <2 samples
+    #         if n_clusters is None:
+    #             n_clusters = min(2, len(features))  # fallback
+    #         # Standardize features to improve cluster separation
+    #         X = StandardScaler().fit_transform(features)
+    #         # Use KMeans for clustering
+    #         kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+    #         labels = kmeans.fit_predict(X)
+    #         if len(set(labels)) < 2:
+    #             return None  # silhouette score undefined for single cluster
+    #         return silhouette_score(X, labels)
+    #
+    #     silhouette_results = {
+    #         "human_only": get_silhouette_score(human_features),
+    #         "rl_only": get_silhouette_score(rl_features),
+    #         "heuristic_only": get_silhouette_score(heuristic_features),
+    #         "human_rl": get_silhouette_score(np.vstack([human_features, rl_features])),
+    #         "human_heuristic": get_silhouette_score(np.vstack([human_features, heuristic_features])),
+    #     }
+    #
+    #     # 4. Save results
+    #     results_path = os.path.join(save_dir, "silhouette_scores.txt")
+    #     with open(results_path, "w") as f:
+    #         for k, v in silhouette_results.items():
+    #             f.write(f"{k}: {v}\n")
+    #
+    #     return silhouette_results
+
     def compute_silhouette_scores(self,
-        human_trajectories: List[Trajectory],
-        rl_trajectories: List[Trajectory],
-        heuristic_trajectories: List[Trajectory],
-        save_dir: str = "similarity_analysis"
-    ):
+                                  human_trajectories: List[Trajectory],
+                                  rl_trajectories: List[Trajectory],
+                                  heuristic_trajectories: List[Trajectory],
+                                  save_dir: str = "similarity_analysis"
+                                  ):
         """
         Compute and visualize silhouette scores for human, RL, and heuristic gameplay trajectories.
-        Clusters are based on the final number of targets and threats identified per trajectory.
+        Clusters are based on targets and threats identified at three temporal checkpoints:
+        33%, 67%, and 100% through each trajectory.
         """
         os.makedirs(save_dir, exist_ok=True)
 
-        # 1. Build the feature matrix: (targets_final, threats_final)
-        def extract_features(trajs):
-            return np.array([
-                [t.target_ids[-1], t.threat_ids[-1]]
-                for t in trajs
-                if t.target_ids and t.threat_ids
-            ])
+        # Define temporal checkpoints
+        checkpoints = [0.33, 0.67, 1.0]
+        checkpoint_names = ["33%", "67%", "100%"]
 
-        human_features = extract_features(human_trajectories)
-        rl_features = extract_features(rl_trajectories)
-        heuristic_features = extract_features(heuristic_trajectories)
+        def extract_features_at_checkpoints(trajs):
+            """Extract features at 33%, 67%, and 100% through each trajectory"""
+            features_by_checkpoint = {cp: [] for cp in checkpoints}
 
-        # Combine for plotting
-        all_features = np.vstack([human_features, rl_features, heuristic_features])
-        all_labels = (
-            ["human"] * len(human_features)
-            + ["rl"] * len(rl_features)
-            + ["heuristic"] * len(heuristic_features)
-        )
+            for traj in trajs:
+                if not traj.target_ids or not traj.threat_ids:
+                    continue
 
-        # 2. Create scatter plot
+                traj_length = len(traj.target_ids)
+                if traj_length < 2:  # Skip very short trajectories
+                    continue
+
+                for checkpoint in checkpoints:
+                    # Calculate index for this checkpoint
+                    if checkpoint == 1.0:
+                        idx = traj_length - 1  # Use final index for 100%
+                    else:
+                        idx = int(checkpoint * traj_length)
+                        idx = min(idx, traj_length - 1)  # Ensure we don't exceed bounds
+
+                    # Extract features at this checkpoint
+                    targets_at_checkpoint = traj.target_ids[idx]
+                    threats_at_checkpoint = traj.threat_ids[idx]
+                    features_by_checkpoint[checkpoint].append([targets_at_checkpoint, threats_at_checkpoint])
+
+            # Convert to numpy arrays
+            for checkpoint in checkpoints:
+                if features_by_checkpoint[checkpoint]:
+                    features_by_checkpoint[checkpoint] = np.array(features_by_checkpoint[checkpoint])
+                else:
+                    features_by_checkpoint[checkpoint] = np.array([]).reshape(0, 2)
+
+            return features_by_checkpoint
+
+        # Extract features for each group at each checkpoint
+        human_features_by_cp = extract_features_at_checkpoints(human_trajectories)
+        rl_features_by_cp = extract_features_at_checkpoints(rl_trajectories)
+        heuristic_features_by_cp = extract_features_at_checkpoints(heuristic_trajectories)
+
+        # Create subplot grid for visualizations
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
         colors = {"human": "blue", "rl": "green", "heuristic": "red"}
-        plt.figure(figsize=(8, 6))
-        for label, features in zip(
-            ["human", "rl", "heuristic"],
-            [human_features, rl_features, heuristic_features]
-        ):
-            if len(features) > 0:
-                plt.scatter(
-                    features[:, 0], features[:, 1],
-                    c=colors[label], label=label, alpha=0.7, edgecolors='k'
-                )
-        plt.xlabel("Final # Targets Identified")
-        plt.ylabel("Final # Threats Identified")
-        plt.title("Trajectory Outcome Clusters (Targets vs Threats)")
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(os.path.join(save_dir, "trajectory_clusters.png"))
+
+        silhouette_results = {}
+
+        for i, (checkpoint, cp_name) in enumerate(zip(checkpoints, checkpoint_names)):
+            # Get features for this checkpoint
+            human_features = human_features_by_cp[checkpoint]
+            rl_features = rl_features_by_cp[checkpoint]
+            heuristic_features = heuristic_features_by_cp[checkpoint]
+
+            # Skip if any group has no data
+            if len(human_features) == 0 or len(rl_features) == 0 or len(heuristic_features) == 0:
+                print(f"Warning: Insufficient data for checkpoint {cp_name}")
+                continue
+
+            # Combine for plotting and analysis
+            all_features = np.vstack([human_features, rl_features, heuristic_features])
+            all_labels = (
+                    ["human"] * len(human_features)
+                    + ["rl"] * len(rl_features)
+                    + ["heuristic"] * len(heuristic_features)
+            )
+
+            # Plot scatter plot for this checkpoint (top row)
+            ax_scatter = axes[0, i]
+            for label, features in zip(
+                    ["human", "rl", "heuristic"],
+                    [human_features, rl_features, heuristic_features]
+            ):
+                if len(features) > 0:
+                    ax_scatter.scatter(
+                        features[:, 0], features[:, 1],
+                        c=colors[label], label=label, alpha=0.7, edgecolors='k'
+                    )
+            ax_scatter.set_xlabel("Targets Identified")
+            ax_scatter.set_ylabel("Threats Identified")
+            ax_scatter.set_title(f"Trajectory Clusters at {cp_name}")
+            ax_scatter.legend()
+            ax_scatter.grid(True)
+
+            # Compute silhouette scores for this checkpoint
+            def get_silhouette_score(features, n_clusters=None):
+                if len(features) < 2:
+                    return None
+                if n_clusters is None:
+                    n_clusters = min(2, len(features))
+
+                # Standardize features
+                if np.std(features) == 0:  # Handle case where all values are identical
+                    return None
+                X = StandardScaler().fit_transform(features)
+
+                # Use KMeans for clustering
+                kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+                labels = kmeans.fit_predict(X)
+
+                if len(set(labels)) < 2:
+                    return None
+                return silhouette_score(X, labels)
+
+            checkpoint_results = {
+                f"human_only_{cp_name}": get_silhouette_score(human_features),
+                f"rl_only_{cp_name}": get_silhouette_score(rl_features),
+                f"heuristic_only_{cp_name}": get_silhouette_score(heuristic_features),
+                f"human_rl_{cp_name}": get_silhouette_score(np.vstack([human_features, rl_features])),
+                f"human_heuristic_{cp_name}": get_silhouette_score(np.vstack([human_features, heuristic_features])),
+                f"all_groups_{cp_name}": get_silhouette_score(all_features)
+            }
+
+            silhouette_results.update(checkpoint_results)
+
+        # Create silhouette score comparison plot (bottom row)
+        # Prepare data for comparison across checkpoints
+        comparison_metrics = ["human_only", "rl_only", "heuristic_only", "human_rl", "human_heuristic", "all_groups"]
+
+        for j, metric in enumerate(comparison_metrics):
+            if j >= 3:  # Only plot first 3 metrics in bottom row
+                break
+
+            ax_bar = axes[1, j]
+            scores = []
+            labels = []
+
+            for i, cp_name in enumerate(checkpoint_names):
+                key = f"{metric}_{cp_name}"
+                if key in silhouette_results and silhouette_results[key] is not None:
+                    scores.append(silhouette_results[key])
+                    labels.append(cp_name)
+
+            if scores:
+                bars = ax_bar.bar(labels, scores, alpha=0.7)
+                ax_bar.set_ylabel("Silhouette Score")
+                ax_bar.set_title(f"{metric.replace('_', ' ').title()}")
+                ax_bar.grid(True, axis='y', alpha=0.3)
+
+                # Add value labels on bars
+                for bar, score in zip(bars, scores):
+                    height = bar.get_height()
+                    ax_bar.text(bar.get_x() + bar.get_width() / 2., height + 0.01,
+                                f'{score:.3f}', ha='center', va='bottom')
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "trajectory_clusters_temporal.png"), dpi=300)
         plt.close()
 
-        # 3. Compute silhouette scores
-        # Silhouette score requires >= 2 clusters
-        def get_silhouette_score(features, n_clusters=None):
-            if len(features) < 2:
-                return None  # Can't compute silhouette for <2 samples
-            if n_clusters is None:
-                n_clusters = min(2, len(features))  # fallback
-            # Standardize features to improve cluster separation
-            X = StandardScaler().fit_transform(features)
-            # Use KMeans for clustering
-            kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
-            labels = kmeans.fit_predict(X)
-            if len(set(labels)) < 2:
-                return None  # silhouette score undefined for single cluster
-            return silhouette_score(X, labels)
+        # Create a comprehensive results table
+        results_df = pd.DataFrame()
+        for checkpoint, cp_name in zip(checkpoints, checkpoint_names):
+            checkpoint_data = {k.replace(f'_{cp_name}', ''): v for k, v in silhouette_results.items()
+                               if k.endswith(f'_{cp_name}')}
+            checkpoint_data['checkpoint'] = cp_name
+            results_df = pd.concat([results_df, pd.DataFrame([checkpoint_data])], ignore_index=True)
 
-        silhouette_results = {
-            "human_only": get_silhouette_score(human_features),
-            "rl_only": get_silhouette_score(rl_features),
-            "heuristic_only": get_silhouette_score(heuristic_features),
-            "human_rl": get_silhouette_score(np.vstack([human_features, rl_features])),
-            "human_heuristic": get_silhouette_score(np.vstack([human_features, heuristic_features])),
+        # Save detailed results
+        results_path = os.path.join(save_dir, "silhouette_scores_temporal.csv")
+        results_df.to_csv(results_path, index=False)
+
+        # Print summary
+        print("\nSilhouette Scores by Temporal Checkpoint:")
+        print("=" * 60)
+        for checkpoint, cp_name in zip(checkpoints, checkpoint_names):
+            print(f"\n{cp_name} through trajectory:")
+            print("-" * 30)
+            for key, value in silhouette_results.items():
+                if key.endswith(f'_{cp_name}') and value is not None:
+                    clean_key = key.replace(f'_{cp_name}', '').replace('_', ' ')
+                    print(f"  {clean_key}: {value:.4f}")
+
+        return silhouette_results
+
+    def analyze_temporal_silhouette_evolution(self,
+                                              human_trajectories: List[Trajectory],
+                                              rl_trajectories: List[Trajectory],
+                                              heuristic_trajectories: List[Trajectory],
+                                              save_dir: str = "similarity_analysis",
+                                              n_timepoints: int = 10
+                                              ):
+        """
+        Analyze silhouette scores at multiple evenly-spaced time points throughout trajectories
+        and plot the temporal evolution of human-RL vs human-heuristic similarity.
+
+        Args:
+            human_trajectories: List of human trajectory objects
+            rl_trajectories: List of RL trajectory objects
+            heuristic_trajectories: List of heuristic trajectory objects
+            save_dir: Directory to save outputs
+            n_timepoints: Number of evenly-spaced time points to analyze (default: 10)
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Generate evenly-spaced time points from 10% to 100%
+        time_points = np.linspace(0.1, 0.9, n_timepoints)
+
+        def extract_features_at_timepoints(trajs, time_points):
+            """Extract features at specified time points for all trajectories"""
+            features_by_timepoint = {tp: [] for tp in time_points}
+
+            for traj in trajs:
+                if not traj.target_ids or not traj.threat_ids:
+                    continue
+
+                traj_length = len(traj.target_ids)
+                if traj_length < 2:  # Skip very short trajectories
+                    continue
+
+                for time_point in time_points:
+                    # Calculate index for this time point
+                    if time_point >= 1.0:
+                        idx = traj_length - 1  # Use final index for 100%
+                    else:
+                        idx = int(time_point * traj_length)
+                        idx = min(idx, traj_length - 1)  # Ensure we don't exceed bounds
+
+                    # Extract features at this time point
+                    targets_at_timepoint = traj.target_ids[idx]
+                    threats_at_timepoint = traj.threat_ids[idx]
+                    features_by_timepoint[time_point].append([targets_at_timepoint, threats_at_timepoint])
+
+            # Convert to numpy arrays
+            for time_point in time_points:
+                if features_by_timepoint[time_point]:
+                    features_by_timepoint[time_point] = np.array(features_by_timepoint[time_point])
+                else:
+                    features_by_timepoint[time_point] = np.array([]).reshape(0, 2)
+
+            return features_by_timepoint
+
+        def get_silhouette_score(features, n_clusters=2):
+            """Compute silhouette score for given features"""
+            if len(features) < n_clusters:
+                return None
+
+            # Check for zero variance (all identical values)
+            if np.all(features == features[0]):
+                return None
+
+            # Standardize features
+            try:
+                X = StandardScaler().fit_transform(features)
+            except:
+                return None
+
+            # Use KMeans for clustering
+            try:
+                kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+                labels = kmeans.fit_predict(X)
+
+                if len(set(labels)) < 2:
+                    return None
+                return silhouette_score(X, labels)
+            except:
+                return None
+
+        # Extract features for each group at each time point
+        print("Extracting features at multiple time points...")
+        human_features_by_tp = extract_features_at_timepoints(human_trajectories, time_points)
+        rl_features_by_tp = extract_features_at_timepoints(rl_trajectories, time_points)
+        heuristic_features_by_tp = extract_features_at_timepoints(heuristic_trajectories, time_points)
+
+        # Compute silhouette scores over time
+        human_rl_scores = []
+        human_heuristic_scores = []
+        valid_time_points = []
+
+        print("Computing silhouette scores at each time point...")
+        for i, time_point in enumerate(time_points):
+            print(f"Processing time point {i + 1}/{len(time_points)} ({time_point:.1%})")
+
+            human_features = human_features_by_tp[time_point]
+            rl_features = rl_features_by_tp[time_point]
+            heuristic_features = heuristic_features_by_tp[time_point]
+
+            # Skip if any group has insufficient data
+            if len(human_features) < 2 or len(rl_features) < 2 or len(heuristic_features) < 2:
+                print(f"  Insufficient data at {time_point:.1%}, skipping...")
+                continue
+
+            # Compute human-RL silhouette score
+            human_rl_combined = np.vstack([human_features, rl_features])
+            human_rl_score = get_silhouette_score(human_rl_combined)
+
+            # Compute human-heuristic silhouette score
+            human_heuristic_combined = np.vstack([human_features, heuristic_features])
+            human_heuristic_score = get_silhouette_score(human_heuristic_combined)
+
+            # Only keep time points where both scores are valid
+            if human_rl_score is not None and human_heuristic_score is not None:
+                human_rl_scores.append(human_rl_score)
+                human_heuristic_scores.append(human_heuristic_score)
+                valid_time_points.append(time_point)
+                print(f"  H-RL: {human_rl_score:.4f}, H-Heuristic: {human_heuristic_score:.4f}")
+            else:
+                print(f"  Invalid scores at {time_point:.1%}, skipping...")
+
+        # Convert to numpy arrays for easier handling
+        valid_time_points = np.array(valid_time_points)
+        human_rl_scores = np.array(human_rl_scores)
+        human_heuristic_scores = np.array(human_heuristic_scores)
+
+        if len(valid_time_points) == 0:
+            print("Warning: No valid time points found for analysis!")
+            return None
+
+        # Create the temporal evolution plot
+        plt.figure(figsize=(12, 8))
+
+        # Plot both lines
+        plt.plot(valid_time_points * 100, human_rl_scores,
+                 marker='o', linewidth=2.5, markersize=8,
+                 label='Human vs RL', color='blue', alpha=0.8)
+
+        plt.plot(valid_time_points * 100, human_heuristic_scores,
+                 marker='s', linewidth=2.5, markersize=8,
+                 label='Human vs Heuristic', color='red', alpha=0.8)
+
+        # Customize the plot
+        plt.xlabel('Progress Through Trajectory (%)', fontsize=12)
+        plt.ylabel('Silhouette Score', fontsize=12)
+        plt.title('Temporal Evolution of Agent Similarity\n(Higher scores = better separation between groups)',
+                  fontsize=14)
+        plt.legend(fontsize=11)
+        plt.grid(True, alpha=0.3)
+
+        # Add some styling
+        plt.xlim(valid_time_points[0] * 100 - 2, valid_time_points[-1] * 100 + 2)
+
+        # Add horizontal line at 0 for reference
+        plt.axhline(y=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
+
+        # Improve tick formatting
+        plt.gca().tick_params(labelsize=10)
+
+        plt.tight_layout()
+
+        # Save the plot
+        plot_path = os.path.join(save_dir, "temporal_silhouette_evolution.png")
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        # Save numerical results
+        results_df = pd.DataFrame({
+            'time_point_percent': valid_time_points * 100,
+            'human_vs_rl_silhouette': human_rl_scores,
+            'human_vs_heuristic_silhouette': human_heuristic_scores
+        })
+
+        results_path = os.path.join(save_dir, "temporal_silhouette_scores.csv")
+        results_df.to_csv(results_path, index=False)
+
+        # Print summary statistics
+        print("\n" + "=" * 60)
+        print("TEMPORAL SILHOUETTE ANALYSIS SUMMARY")
+        print("=" * 60)
+        print(f"Valid time points analyzed: {len(valid_time_points)}")
+        print(f"Time range: {valid_time_points[0]:.1%} to {valid_time_points[-1]:.1%}")
+
+        print(f"\nHuman vs RL Silhouette Scores:")
+        print(f"  Mean: {np.mean(human_rl_scores):.4f}")
+        print(f"  Std:  {np.std(human_rl_scores):.4f}")
+        print(f"  Range: {np.min(human_rl_scores):.4f} to {np.max(human_rl_scores):.4f}")
+
+        print(f"\nHuman vs Heuristic Silhouette Scores:")
+        print(f"  Mean: {np.mean(human_heuristic_scores):.4f}")
+        print(f"  Std:  {np.std(human_heuristic_scores):.4f}")
+        print(f"  Range: {np.min(human_heuristic_scores):.4f} to {np.max(human_heuristic_scores):.4f}")
+
+        # Determine which comparison shows better separation on average
+        avg_hr = np.mean(human_rl_scores)
+        avg_hh = np.mean(human_heuristic_scores)
+
+        if avg_hr > avg_hh:
+            better_sep = "Human vs RL"
+            diff = avg_hr - avg_hh
+        else:
+            better_sep = "Human vs Heuristic"
+            diff = avg_hh - avg_hr
+
+        print(f"\nBetter average separation: {better_sep} (by {diff:.4f})")
+
+        # Check for temporal trends
+        from scipy.stats import pearsonr
+
+        hr_corr, hr_p = pearsonr(valid_time_points, human_rl_scores)
+        hh_corr, hh_p = pearsonr(valid_time_points, human_heuristic_scores)
+
+        print(f"\nTemporal trends:")
+        print(f"  Human vs RL correlation with time: r={hr_corr:.3f}, p={hr_p:.3f}")
+        print(f"  Human vs Heuristic correlation with time: r={hh_corr:.3f}, p={hh_p:.3f}")
+
+        print(f"\nResults saved to:")
+        print(f"  Plot: {plot_path}")
+        print(f"  Data: {results_path}")
+
+        return {
+            'time_points': valid_time_points,
+            'human_rl_scores': human_rl_scores,
+            'human_heuristic_scores': human_heuristic_scores,
+            'summary_stats': {
+                'hr_mean': np.mean(human_rl_scores),
+                'hr_std': np.std(human_rl_scores),
+                'hh_mean': np.mean(human_heuristic_scores),
+                'hh_std': np.std(human_heuristic_scores),
+                'hr_time_corr': hr_corr,
+                'hh_time_corr': hh_corr
+            }
         }
 
-        # 4. Save results
-        results_path = os.path.join(save_dir, "silhouette_scores.txt")
-        with open(results_path, "w") as f:
-            for k, v in silhouette_results.items():
-                f.write(f"{k}: {v}\n")
-
-        return silhouette_results       
 
     # Ready to test
     def compare_progress_rates(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
@@ -1119,25 +1545,27 @@ class SimilarityAnalysis:
             "pearson": (pearson_corr, pearson_p)
         }
 
-    # Ready to test
-    def analyze_action_distributions(self, human_trajectories, rl_trajectories, heuristic_trajectories, save_dir="analysis_outputs"):
+    def analyze_action_distributions(self, human_trajectories, rl_trajectories, heuristic_trajectories,
+                                     save_dir="similarity_analysis"):
         """
-        Input: 
+        Input:
             human_trajectories: list of Trajectory objects
             rl_trajectories: list of Trajectory objects
             heuristic_trajectories: list of Trajectory objects
-            
+
         Process:
-            1. Generate histograms of action distributions (Frequency of each discrete action 0–15) for 
-               human, RL, and strategy agents. 
-            2. Plot all three histograms on a 3x1 matplotlib plot.
-            3. Perform pairwise chi-squared comparisons between all three histograms.
-            
+            1. Generate histograms of action distributions (Frequency of each discrete action 0–15) for
+               human, RL, and individual heuristic agent configurations.
+            2. Plot histograms in a comprehensive multi-panel figure.
+            3. Perform pairwise chi-squared comparisons between all distributions.
+            4. Identify which heuristic agents are most similar to humans.
+
         Output:
             - Prints pairwise chi-squared statistics
-            - Shows and saves the histogram figure
+            - Shows and saves comprehensive histogram figures
+            - Saves detailed comparison results to CSV
         """
-        
+
         os.makedirs(save_dir, exist_ok=True)
         n_actions = 16  # Actions are 0–15
 
@@ -1146,51 +1574,284 @@ class SimilarityAnalysis:
             all_actions = []
             for traj in trajectories:
                 all_actions.extend(traj.actions)
-            hist, _ = np.histogram(all_actions, bins=np.arange(n_actions+1)-0.5)
+            if not all_actions:
+                return np.zeros(n_actions)
+            hist, _ = np.histogram(all_actions, bins=np.arange(n_actions + 1) - 0.5)
             return hist
 
-        # Compute histograms
+        # Group heuristic trajectories by agent type (name)
+        heuristic_agents = {}
+        for traj in heuristic_trajectories:
+            agent_name = traj.name
+            if agent_name not in heuristic_agents:
+                heuristic_agents[agent_name] = []
+            heuristic_agents[agent_name].append(traj)
+
+        print(f"Found {len(heuristic_agents)} unique heuristic agent types:")
+        for agent_name, trajs in heuristic_agents.items():
+            print(f"  - {agent_name}: {len(trajs)} trajectories")
+
+        # Compute histograms for all groups
         human_hist = get_action_hist(human_trajectories)
         rl_hist = get_action_hist(rl_trajectories)
-        strategy_hist = get_action_hist(heuristic_trajectories)
 
-        # Normalize for chi-squared to avoid zeros
-        # (Add small epsilon to avoid division by zero)
-        #eps = 1e-6
-        #human_hist += eps
-        #rl_hist += eps
-        #strategy_hist += eps
+        # Compute histograms for each individual heuristic agent type
+        heuristic_hists = {}
+        for agent_name, agent_trajs in heuristic_agents.items():
+            heuristic_hists[agent_name] = get_action_hist(agent_trajs)
 
-        # Plot histograms
-        fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
-        categories = ['Human', 'RL Agent', 'Heuristic Strategy Agent']
-        hists = [human_hist, rl_hist, strategy_hist]
-        
-        for ax, hist, cat in zip(axes, hists, categories):
-            ax.bar(range(n_actions), hist, color='skyblue', edgecolor='black')
-            ax.set_title(f'{cat} Action Distribution')
-            ax.set_ylabel('Frequency')
-            ax.set_xticks(range(n_actions))
-            ax.grid(axis='y', linestyle='--', alpha=0.7)
+        # Compute overall heuristic histogram for comparison
+        overall_heuristic_hist = get_action_hist(heuristic_trajectories)
 
-        axes[-1].set_xlabel('Action Index')
+        # Create comprehensive visualization
+        n_heuristic_agents = len(heuristic_agents)
+        n_cols = 3
+        n_rows = max(2, (n_heuristic_agents + 2) // n_cols + 1)  # +2 for human and RL, +1 for overall heuristic
+
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+        if n_rows == 1:
+            axes = axes.reshape(1, -1)
+        axes = axes.flatten()
+
+        plot_idx = 0
+
+        # Plot human distribution
+        axes[plot_idx].bar(range(n_actions), human_hist, color='blue', alpha=0.7, edgecolor='black')
+        axes[plot_idx].set_title('Human Action Distribution')
+        axes[plot_idx].set_ylabel('Frequency')
+        axes[plot_idx].set_xticks(range(n_actions))
+        axes[plot_idx].grid(axis='y', linestyle='--', alpha=0.7)
+        plot_idx += 1
+
+        # Plot RL distribution
+        axes[plot_idx].bar(range(n_actions), rl_hist, color='green', alpha=0.7, edgecolor='black')
+        axes[plot_idx].set_title('RL Agent Action Distribution')
+        axes[plot_idx].set_ylabel('Frequency')
+        axes[plot_idx].set_xticks(range(n_actions))
+        axes[plot_idx].grid(axis='y', linestyle='--', alpha=0.7)
+        plot_idx += 1
+
+        # Plot overall heuristic distribution
+        axes[plot_idx].bar(range(n_actions), overall_heuristic_hist, color='red', alpha=0.7, edgecolor='black')
+        axes[plot_idx].set_title('All Heuristic Agents Combined')
+        axes[plot_idx].set_ylabel('Frequency')
+        axes[plot_idx].set_xticks(range(n_actions))
+        axes[plot_idx].grid(axis='y', linestyle='--', alpha=0.7)
+        plot_idx += 1
+
+        # Plot individual heuristic agent distributions
+        import matplotlib.cm as cm
+        colors = cm.Set3(np.linspace(0, 1, len(heuristic_agents)))
+
+        for i, (agent_name, agent_hist) in enumerate(heuristic_hists.items()):
+            if plot_idx < len(axes):
+                axes[plot_idx].bar(range(n_actions), agent_hist, color=colors[i], alpha=0.7, edgecolor='black')
+                # Truncate long agent names for display
+                display_name = agent_name[:20] + '...' if len(agent_name) > 20 else agent_name
+                axes[plot_idx].set_title(f'Heuristic: {display_name}')
+                axes[plot_idx].set_ylabel('Frequency')
+                axes[plot_idx].set_xticks(range(n_actions))
+                axes[plot_idx].grid(axis='y', linestyle='--', alpha=0.7)
+                plot_idx += 1
+
+        # Hide unused subplots
+        for i in range(plot_idx, len(axes)):
+            axes[i].set_visible(False)
+
+        # Add x-label to bottom row
+        for i in range(max(0, len(axes) - n_cols), len(axes)):
+            if axes[i].get_visible():
+                axes[i].set_xlabel('Action Index')
 
         plt.tight_layout()
-        save_path = os.path.join(save_dir, "action_distribution_histograms.png")
-        plt.savefig(save_path)
+        save_path = os.path.join(save_dir, "action_distribution_histograms_individual.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.show()
 
         # Perform pairwise chi-squared comparisons
-        # Use the first histogram as observed and second as expected for chi-squared
-        # chi_human_rl = chisquare(f_obs=human_hist, f_exp=rl_hist)
-        # chi_human_strategy = chisquare(f_obs=human_hist, f_exp=strategy_hist)
-        # chi_rl_strategy = chisquare(f_obs=rl_hist, f_exp=strategy_hist)
-        #
-        # print("Chi-squared comparisons:")
-        # print(f"Human vs RL: χ² = {chi_human_rl.statistic:.3f}, p = {chi_human_rl.pvalue:.3e}")
-        # print(f"Human vs Strategy: χ² = {chi_human_strategy.statistic:.3f}, p = {chi_human_strategy.pvalue:.3e}")
-        # print(f"RL vs Strategy: χ² = {chi_rl_strategy.statistic:.3f}, p = {chi_rl_strategy.pvalue:.3e}")
-        # print(f"Histograms saved to: {save_path}")
+        from scipy.stats import chisquare
+
+        comparison_results = []
+
+        print("\n" + "=" * 80)
+        print("CHI-SQUARED ACTION DISTRIBUTION COMPARISONS")
+        print("=" * 80)
+
+        # Helper function for chi-squared test with small count handling
+        def safe_chisquare(observed, expected):
+            # Add small constant to avoid zero expected frequencies
+            eps = 1e-6
+            expected_safe = expected + eps
+            observed_safe = observed + eps
+
+            # Ensure both arrays sum to the same total for fair comparison
+            expected_norm = expected_safe * np.sum(observed_safe) / np.sum(expected_safe)
+
+            try:
+                stat, p = chisquare(f_obs=observed_safe, f_exp=expected_norm)
+                return stat, p
+            except:
+                return np.nan, np.nan
+
+        # Compare human vs RL
+        chi_stat, p_val = safe_chisquare(human_hist, rl_hist)
+        comparison_results.append({
+            'Comparison': 'Human vs RL',
+            'Group1': 'Human',
+            'Group2': 'RL',
+            'Chi2_Statistic': chi_stat,
+            'P_Value': p_val,
+            'Significant': p_val < 0.05 if not np.isnan(p_val) else False
+        })
+        print(f"Human vs RL: χ² = {chi_stat:.3f}, p = {p_val:.3e}")
+
+        # Compare human vs overall heuristic
+        chi_stat, p_val = safe_chisquare(human_hist, overall_heuristic_hist)
+        comparison_results.append({
+            'Comparison': 'Human vs All Heuristic',
+            'Group1': 'Human',
+            'Group2': 'All_Heuristic',
+            'Chi2_Statistic': chi_stat,
+            'P_Value': p_val,
+            'Significant': p_val < 0.05 if not np.isnan(p_val) else False
+        })
+        print(f"Human vs All Heuristic: χ² = {chi_stat:.3f}, p = {p_val:.3e}")
+
+        # Compare human vs each individual heuristic agent
+        human_heuristic_comparisons = []
+
+        print(f"\nHuman vs Individual Heuristic Agents:")
+        print("-" * 50)
+
+        for agent_name, agent_hist in heuristic_hists.items():
+            chi_stat, p_val = safe_chisquare(human_hist, agent_hist)
+
+            comparison_results.append({
+                'Comparison': f'Human vs {agent_name}',
+                'Group1': 'Human',
+                'Group2': agent_name,
+                'Chi2_Statistic': chi_stat,
+                'P_Value': p_val,
+                'Significant': p_val < 0.05 if not np.isnan(p_val) else False
+            })
+
+            human_heuristic_comparisons.append((agent_name, chi_stat, p_val))
+            print(f"Human vs {agent_name}: χ² = {chi_stat:.3f}, p = {p_val:.3e}")
+
+        # Compare RL vs each individual heuristic agent
+        print(f"\nRL vs Individual Heuristic Agents:")
+        print("-" * 50)
+
+        for agent_name, agent_hist in heuristic_hists.items():
+            chi_stat, p_val = safe_chisquare(rl_hist, agent_hist)
+
+            comparison_results.append({
+                'Comparison': f'RL vs {agent_name}',
+                'Group1': 'RL',
+                'Group2': agent_name,
+                'Chi2_Statistic': chi_stat,
+                'P_Value': p_val,
+                'Significant': p_val < 0.05 if not np.isnan(p_val) else False
+            })
+
+            print(f"RL vs {agent_name}: χ² = {chi_stat:.3f}, p = {p_val:.3e}")
+
+        # Identify most similar heuristic agents to humans
+        # Sort by chi-squared statistic (lower = more similar)
+        human_heuristic_comparisons.sort(key=lambda x: x[1] if not np.isnan(x[1]) else float('inf'))
+
+        print(f"\n" + "=" * 60)
+        print("TOP 5 MOST SIMILAR HEURISTIC AGENTS TO HUMANS")
+        print("=" * 60)
+        print("(Ranked by Chi-squared statistic - lower is more similar)")
+
+        for i, (agent_name, chi_stat, p_val) in enumerate(human_heuristic_comparisons[:5]):
+            print(f"{i + 1}. {agent_name}")
+            print(f"   χ² = {chi_stat:.3f}, p = {p_val:.3e}")
+            if not np.isnan(p_val):
+                significance = "significant" if p_val < 0.05 else "not significant"
+                print(f"   Difference is {significance} (α = 0.05)")
+            print()
+
+        # Create a focused comparison plot for top similar agents
+        top_5_agents = [comp[0] for comp in human_heuristic_comparisons[:5]]
+
+        if len(top_5_agents) > 0:
+            fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+            axes = axes.flatten()
+
+            # Plot human reference
+            axes[0].bar(range(n_actions), human_hist, color='blue', alpha=0.7, edgecolor='black')
+            axes[0].set_title('Human (Reference)', fontweight='bold')
+            axes[0].set_ylabel('Frequency')
+            axes[0].set_xticks(range(n_actions))
+            axes[0].grid(axis='y', linestyle='--', alpha=0.7)
+
+            # Plot top 5 most similar heuristic agents
+            for i, agent_name in enumerate(top_5_agents):
+                if i + 1 < len(axes):
+                    agent_hist = heuristic_hists[agent_name]
+                    chi_stat = human_heuristic_comparisons[i][1]
+
+                    axes[i + 1].bar(range(n_actions), agent_hist, color=colors[i % len(colors)],
+                                    alpha=0.7, edgecolor='black')
+
+                    display_name = agent_name[:15] + '...' if len(agent_name) > 15 else agent_name
+                    axes[i + 1].set_title(f'{display_name}\n(χ² = {chi_stat:.2f})')
+                    axes[i + 1].set_ylabel('Frequency')
+                    axes[i + 1].set_xticks(range(n_actions))
+                    axes[i + 1].grid(axis='y', linestyle='--', alpha=0.7)
+
+            # Hide unused subplot
+            if len(top_5_agents) < 5:
+                axes[5].set_visible(False)
+
+            # Add x-labels to bottom row
+            for i in range(3, 6):
+                if i < len(axes) and axes[i].get_visible():
+                    axes[i].set_xlabel('Action Index')
+
+            plt.suptitle('Top 5 Most Similar Heuristic Agents to Human Action Distributions',
+                         fontsize=16, fontweight='bold')
+            plt.tight_layout()
+
+            top5_save_path = os.path.join(save_dir, "action_distribution_top5_similar.png")
+            plt.savefig(top5_save_path, dpi=300, bbox_inches='tight')
+            plt.show()
+
+        # Save detailed results to CSV
+        results_df = pd.DataFrame(comparison_results)
+        results_df = results_df.sort_values('Chi2_Statistic', ascending=True)
+
+        csv_save_path = os.path.join(save_dir, "action_distribution_comparisons.csv")
+        results_df.to_csv(csv_save_path, index=False)
+
+        # Create summary statistics
+        summary_stats = {
+            'total_heuristic_agents': len(heuristic_agents),
+            'human_total_actions': int(np.sum(human_hist)),
+            'rl_total_actions': int(np.sum(rl_hist)),
+            'heuristic_total_actions': {name: int(np.sum(hist)) for name, hist in heuristic_hists.items()},
+            'most_similar_to_human': top_5_agents[0] if top_5_agents else None,
+            'most_similar_chi2': float(human_heuristic_comparisons[0][1]) if human_heuristic_comparisons else None
+        }
+
+        summary_path = os.path.join(save_dir, "action_distribution_summary.json")
+        with open(summary_path, 'w') as f:
+            json.dump(summary_stats, f, indent=2)
+
+        print(f"\nResults saved:")
+        print(f"  Main plot: {save_path}")
+        if len(top_5_agents) > 0:
+            print(f"  Top 5 plot: {top5_save_path}")
+        print(f"  Detailed comparisons: {csv_save_path}")
+        print(f"  Summary statistics: {summary_path}")
+
+        return {
+            'comparison_results': comparison_results,
+            'most_similar_agents': human_heuristic_comparisons[:5],
+            'summary_statistics': summary_stats
+        }
         
     
     # TODO: Add the target-based metrics. Then test.
@@ -1217,15 +1878,15 @@ class SimilarityAnalysis:
         # --- Step 1: Compute metrics per trajectory ---
         metrics: Dict[str, Dict[str, List[float]]] = {
             "human": {
-                "smoothness": [], "switch_rate": [],
+                "path_smoothness": [], "action_switches_per_step": [],
                 "flying_toward_nearest_rate": [], "average_target_distance": []
             },
             "rl": {
-                "smoothness": [], "switch_rate": [],
+                "path_smoothness": [], "action_switches_per_step": [],
                 "flying_toward_nearest_rate": [], "average_target_distance": []
             },
             "heuristic": {
-                "smoothness": [], "switch_rate": [],
+                "path_smoothness": [], "action_switches_per_step": [],
                 "flying_toward_nearest_rate": [], "average_target_distance": []
             },
         }
@@ -1255,8 +1916,8 @@ class SimilarityAnalysis:
             average_target_distance = None
 
             # Save metrics
-            metrics[traj.category]["smoothness"].append(smoothness)
-            metrics[traj.category]["switch_rate"].append(switch_rate)
+            metrics[traj.category]["path_smoothness"].append(smoothness)
+            metrics[traj.category]["action_switches_per_step"].append(switch_rate)
             metrics[traj.category]["flying_toward_nearest_rate"].append(flying_toward_nearest_rate)
             metrics[traj.category]["average_target_distance"].append(average_target_distance)
 
@@ -1295,12 +1956,1894 @@ class SimilarityAnalysis:
 
             plt.figure(figsize=(8, 6))
             plt.boxplot([human_vals, rl_vals, heuristic_vals], labels=["Human", "RL", "Heuristic"])
-            plt.title(f"{metric_name.replace('_',' ').capitalize()} by Agent Type")
-            plt.ylabel(metric_name.replace('_',' ').capitalize())
-            plt.grid(True, alpha=0.3)
+
+            # After plt.boxplot line, add:
+            bp = plt.boxplot([human_vals, rl_vals, heuristic_vals], tick_labels=["Human", "RL", "Heuristic"],patch_artist=True)
+            # Color the boxes
+            colors = ['lightblue', 'lightgreen', 'lightcoral']
+            for patch, color in zip(bp['boxes'], colors):
+                patch.set_facecolor(color)
+
+            plt.title(f"{metric_name.replace('_', ' ').capitalize()}", fontsize=20)
+            plt.ylabel(metric_name.replace('_', ' ').capitalize(), fontsize=18)
+            plt.xlabel("Agent Type", fontsize=18)  # Add this line
+            plt.tick_params(axis='both', which='major', labelsize=15)
+            plt.grid(True, axis='y', alpha=0.3)  # Change from True to axis='y'
             plt.show()
-    
-    
+
+
+    def analyze_progress_rate_correlations(self,
+                                           human_trajectories: List[Trajectory],
+                                           rl_trajectories: List[Trajectory],
+                                           heuristic_trajectories: List[Trajectory],
+                                           save_dir: str = "similarity_analysis",
+                                           n_timepoints: int = 10
+                                           ):
+        """
+        Analyze correlations between target and threat identification progress rates
+        across human, RL, and individual heuristic agent groups.
+
+        Args:
+            human_trajectories: List of human trajectory objects
+            rl_trajectories: List of RL trajectory objects
+            heuristic_trajectories: List of heuristic trajectory objects
+            save_dir: Directory to save outputs
+            n_timepoints: Number of evenly-spaced time points to analyze (default: 10)
+
+        Returns:
+            dict: Correlation results and time series data
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Generate evenly-spaced time points from 10% to 100%
+        time_points = np.linspace(0.1, 0.9, n_timepoints)
+
+        def extract_identification_series(trajs, time_points, metric_type='targets'):
+            """
+            Extract target or threat identification counts at specified time points
+
+            Args:
+                trajs: List of trajectory objects
+                time_points: Array of time points (0.1 to 1.0)
+                metric_type: 'targets' or 'threats'
+
+            Returns:
+                dict: {time_point: [values_across_trajectories]}
+            """
+            series_by_timepoint = {tp: [] for tp in time_points}
+
+            for traj in trajs:
+                if metric_type == 'targets':
+                    identification_data = traj.target_ids
+                elif metric_type == 'threats':
+                    identification_data = traj.threat_ids
+                else:
+                    raise ValueError("metric_type must be 'targets' or 'threats'")
+
+                if not identification_data:
+                    continue
+
+                traj_length = len(identification_data)
+                if traj_length < 2:  # Skip very short trajectories
+                    continue
+
+                for time_point in time_points:
+                    # Calculate index for this time point
+                    if time_point >= 1.0:
+                        idx = traj_length - 1  # Use final index for 100%
+                    else:
+                        idx = int(time_point * traj_length)
+                        idx = min(idx, traj_length - 1)  # Ensure we don't exceed bounds
+
+                    # Extract identification count at this time point
+                    identification_count = identification_data[idx]
+                    series_by_timepoint[time_point].append(identification_count)
+
+            return series_by_timepoint
+
+        def compute_average_series(series_by_timepoint, time_points):
+            """Compute average identification counts at each time point"""
+            avg_series = []
+            valid_timepoints = []
+
+            for tp in time_points:
+                values = series_by_timepoint[tp]
+                if len(values) > 0:
+                    avg_series.append(np.mean(values))
+                    valid_timepoints.append(tp)
+                else:
+                    print(f"Warning: No data at time point {tp:.1%}")
+
+            return np.array(avg_series), np.array(valid_timepoints)
+
+        # Group heuristic trajectories by agent type (name)
+        heuristic_agents = {}
+        for traj in heuristic_trajectories:
+            agent_name = traj.name
+            if agent_name not in heuristic_agents:
+                heuristic_agents[agent_name] = []
+            heuristic_agents[agent_name].append(traj)
+
+        print(f"Found {len(heuristic_agents)} unique heuristic agent types:")
+        for agent_name, trajs in heuristic_agents.items():
+            print(f"  - {agent_name}: {len(trajs)} trajectories")
+
+        print("Extracting target identification time series...")
+        # Extract target identification series for each group
+        human_targets_series = extract_identification_series(human_trajectories, time_points, 'targets')
+        rl_targets_series = extract_identification_series(rl_trajectories, time_points, 'targets')
+
+        # Extract series for each individual heuristic agent type
+        heuristic_targets_series = {}
+        for agent_name, trajs in heuristic_agents.items():
+            heuristic_targets_series[agent_name] = extract_identification_series(trajs, time_points, 'targets')
+
+        print("Extracting threat identification time series...")
+        # Extract threat identification series for each group
+        human_threats_series = extract_identification_series(human_trajectories, time_points, 'threats')
+        rl_threats_series = extract_identification_series(rl_trajectories, time_points, 'threats')
+
+        # Extract series for each individual heuristic agent type
+        heuristic_threats_series = {}
+        for agent_name, trajs in heuristic_agents.items():
+            heuristic_threats_series[agent_name] = extract_identification_series(trajs, time_points, 'threats')
+
+        # Compute average series for each group
+        human_targets_avg, valid_tp_targets = compute_average_series(human_targets_series, time_points)
+        rl_targets_avg, _ = compute_average_series(rl_targets_series, time_points)
+
+        # Compute average series for each heuristic agent type
+        heuristic_targets_avg = {}
+        for agent_name, series in heuristic_targets_series.items():
+            heuristic_targets_avg[agent_name], _ = compute_average_series(series, time_points)
+
+        human_threats_avg, valid_tp_threats = compute_average_series(human_threats_series, time_points)
+        rl_threats_avg, _ = compute_average_series(rl_threats_series, time_points)
+
+        # Compute average series for each heuristic agent type
+        heuristic_threats_avg = {}
+        for agent_name, series in heuristic_threats_series.items():
+            heuristic_threats_avg[agent_name], _ = compute_average_series(series, time_points)
+
+        # Ensure all series have the same length for correlation calculation
+        min_len_targets = min(len(human_targets_avg), len(rl_targets_avg))
+        min_len_threats = min(len(human_threats_avg), len(rl_threats_avg))
+
+        if min_len_targets == 0 or min_len_threats == 0:
+            print("Error: Insufficient data for correlation analysis")
+            return None
+
+        # Trim series to same length
+        human_targets_avg = human_targets_avg[:min_len_targets]
+        rl_targets_avg = rl_targets_avg[:min_len_targets]
+        valid_tp_targets = valid_tp_targets[:min_len_targets]
+
+        human_threats_avg = human_threats_avg[:min_len_threats]
+        rl_threats_avg = rl_threats_avg[:min_len_threats]
+        valid_tp_threats = valid_tp_threats[:min_len_threats]
+
+        # Calculate correlations
+        from scipy.stats import pearsonr
+
+        print("Computing correlations...")
+        correlation_results = {}
+
+        # Target identification correlations
+        if len(human_targets_avg) > 1:
+            corr_human_rl_targets, p_human_rl_targets = pearsonr(human_targets_avg, rl_targets_avg)
+
+            correlation_results['human_vs_rl_targets'] = {
+                'correlation': corr_human_rl_targets,
+                'p_value': p_human_rl_targets
+            }
+
+            # Correlations with individual heuristic agents
+            for agent_name, agent_targets_avg in heuristic_targets_avg.items():
+                if len(agent_targets_avg) >= min_len_targets:
+                    agent_targets_trimmed = agent_targets_avg[:min_len_targets]
+                    corr_human_heuristic, p_human_heuristic = pearsonr(human_targets_avg, agent_targets_trimmed)
+                    correlation_results[f'human_vs_{agent_name}_targets'] = {
+                        'correlation': corr_human_heuristic,
+                        'p_value': p_human_heuristic
+                    }
+
+        # Threat identification correlations
+        if len(human_threats_avg) > 1:
+            corr_human_rl_threats, p_human_rl_threats = pearsonr(human_threats_avg, rl_threats_avg)
+
+            correlation_results['human_vs_rl_threats'] = {
+                'correlation': corr_human_rl_threats,
+                'p_value': p_human_rl_threats
+            }
+
+            # Correlations with individual heuristic agents
+            for agent_name, agent_threats_avg in heuristic_threats_avg.items():
+                if len(agent_threats_avg) >= min_len_threats:
+                    agent_threats_trimmed = agent_threats_avg[:min_len_threats]
+                    corr_human_heuristic, p_human_heuristic = pearsonr(human_threats_avg, agent_threats_trimmed)
+                    correlation_results[f'human_vs_{agent_name}_threats'] = {
+                        'correlation': corr_human_heuristic,
+                        'p_value': p_human_heuristic
+                    }
+
+        # Create plots with individual heuristic agent lines
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12))
+
+        # Define colors for heuristic agents
+        import matplotlib.cm as cm
+        colors = cm.Set3(np.linspace(0, 1, len(heuristic_agents)))
+        heuristic_colors = dict(zip(heuristic_agents.keys(), colors))
+
+        # Plot 1: Target identification progress
+        ax1.plot(valid_tp_targets * 100, human_targets_avg,
+                 marker='o', linewidth=3, markersize=10,
+                 label='Human', color='blue', alpha=0.9, zorder=10)
+        ax1.plot(valid_tp_targets * 100, rl_targets_avg,
+                 marker='s', linewidth=3, markersize=10,
+                 label='RL Agent', color='green', alpha=0.9, zorder=10)
+
+        # Plot individual heuristic agents
+        for agent_name, agent_targets_avg in heuristic_targets_avg.items():
+            if len(agent_targets_avg) >= min_len_targets:
+                agent_targets_trimmed = agent_targets_avg[:min_len_targets]
+                ax1.plot(valid_tp_targets * 100, agent_targets_trimmed,
+                         marker='^', linewidth=2, markersize=6,
+                         label=f'Heuristic: {agent_name}',
+                         color=heuristic_colors[agent_name], alpha=0.7)
+
+        ax1.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+        ax1.set_ylabel('Average Targets Identified', fontsize=12)
+        ax1.set_title('Target Identification Progress Over Time', fontsize=14)
+        ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        ax1.grid(True, alpha=0.3)
+
+        # Plot 2: Threat identification progress
+        ax2.plot(valid_tp_threats * 100, human_threats_avg,
+                 marker='o', linewidth=3, markersize=10,
+                 label='Human', color='blue', alpha=0.9, zorder=10)
+        ax2.plot(valid_tp_threats * 100, rl_threats_avg,
+                 marker='s', linewidth=3, markersize=10,
+                 label='RL Agent', color='green', alpha=0.9, zorder=10)
+
+        # Plot individual heuristic agents
+        for agent_name, agent_threats_avg in heuristic_threats_avg.items():
+            if len(agent_threats_avg) >= min_len_threats:
+                agent_threats_trimmed = agent_threats_avg[:min_len_threats]
+                ax2.plot(valid_tp_threats * 100, agent_threats_trimmed,
+                         marker='^', linewidth=2, markersize=6,
+                         label=f'Heuristic: {agent_name}',
+                         color=heuristic_colors[agent_name], alpha=0.7)
+
+        ax2.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+        ax2.set_ylabel('Average Threats Identified', fontsize=12)
+        ax2.set_title('Threat Identification Progress Over Time', fontsize=14)
+        ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+        # Save the plot
+        plot_path = os.path.join(save_dir, "progress_rate_correlations_individual.png")
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        # Create a separate plot showing only the best correlating heuristic agents (top 6)
+        # Find top 6 heuristic agents with highest correlation to humans for targets
+        target_correlations_heuristic = {}
+        for key, value in correlation_results.items():
+            if key.startswith('human_vs_') and key.endswith('_targets') and 'rl' not in key:
+                agent_name = key.replace('human_vs_', '').replace('_targets', '')
+                target_correlations_heuristic[agent_name] = abs(value['correlation'])
+
+        top_6_agents = sorted(target_correlations_heuristic.items(), key=lambda x: x[1], reverse=True)[:6]
+
+        if len(top_6_agents) > 0:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+
+            # Plot top 6 for targets
+            ax1.plot(valid_tp_targets * 100, human_targets_avg,
+                     marker='o', linewidth=3, markersize=10,
+                     label='Human', color='blue', alpha=0.9, zorder=10)
+            ax1.plot(valid_tp_targets * 100, rl_targets_avg,
+                     marker='s', linewidth=3, markersize=10,
+                     label='RL Agent', color='green', alpha=0.9, zorder=10)
+
+            for i, (agent_name, corr_value) in enumerate(top_6_agents):
+                if agent_name in heuristic_targets_avg:
+                    agent_targets_avg = heuristic_targets_avg[agent_name]
+                    if len(agent_targets_avg) >= min_len_targets:
+                        agent_targets_trimmed = agent_targets_avg[:min_len_targets]
+                        ax1.plot(valid_tp_targets * 100, agent_targets_trimmed,
+                                 marker='^', linewidth=2, markersize=6,
+                                 label=f'{agent_name} (r={corr_value:.3f})',
+                                 color=heuristic_colors[agent_name], alpha=0.8)
+
+            ax1.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+            ax1.set_ylabel('Average Targets Identified', fontsize=12)
+            ax1.set_title('Target Identification: Top 6 Most Similar Heuristic Agents', fontsize=14)
+            ax1.legend(fontsize=10)
+            ax1.grid(True, alpha=0.3)
+
+            # Plot top 6 for threats (using same agents as targets for consistency)
+            ax2.plot(valid_tp_threats * 100, human_threats_avg,
+                     marker='o', linewidth=3, markersize=10,
+                     label='Human', color='blue', alpha=0.9, zorder=10)
+            ax2.plot(valid_tp_threats * 100, rl_threats_avg,
+                     marker='s', linewidth=3, markersize=10,
+                     label='RL Agent', color='green', alpha=0.9, zorder=10)
+
+            for i, (agent_name, _) in enumerate(top_6_agents):
+                if agent_name in heuristic_threats_avg:
+                    agent_threats_avg = heuristic_threats_avg[agent_name]
+                    if len(agent_threats_avg) >= min_len_threats:
+                        agent_threats_trimmed = agent_threats_avg[:min_len_threats]
+                        # Get threat correlation for this agent
+                        threat_corr_key = f'human_vs_{agent_name}_threats'
+                        threat_corr = correlation_results.get(threat_corr_key, {}).get('correlation', 0)
+                        ax2.plot(valid_tp_threats * 100, agent_threats_trimmed,
+                                 marker='^', linewidth=2, markersize=6,
+                                 label=f'{agent_name} (r={threat_corr:.3f})',
+                                 color=heuristic_colors[agent_name], alpha=0.8)
+
+            ax2.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+            ax2.set_ylabel('Average Threats Identified', fontsize=12)
+            ax2.set_title('Threat Identification: Top 6 Most Similar Heuristic Agents', fontsize=14)
+            ax2.legend(fontsize=10)
+            ax2.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+
+            top_6_plot_path = os.path.join(save_dir, "progress_rate_correlations_top6.png")
+            plt.savefig(top_6_plot_path, dpi=300, bbox_inches='tight')
+            plt.show()
+
+        # Save numerical results
+        results_data = {
+            'time_points_percent': (valid_tp_targets * 100).tolist(),
+            'human_targets_avg': human_targets_avg.tolist(),
+            'rl_targets_avg': rl_targets_avg.tolist(),
+            'human_threats_avg': human_threats_avg.tolist(),
+            'rl_threats_avg': rl_threats_avg.tolist(),
+            'correlations': correlation_results
+        }
+
+        # Add individual heuristic agent data
+        for agent_name, agent_targets_avg in heuristic_targets_avg.items():
+            if len(agent_targets_avg) >= min_len_targets:
+                results_data[f'{agent_name}_targets_avg'] = agent_targets_avg[:min_len_targets].tolist()
+
+        for agent_name, agent_threats_avg in heuristic_threats_avg.items():
+            if len(agent_threats_avg) >= min_len_threats:
+                results_data[f'{agent_name}_threats_avg'] = agent_threats_avg[:min_len_threats].tolist()
+
+        results_path = os.path.join(save_dir, "progress_rate_correlation_results_individual.json")
+        with open(results_path, 'w') as f:
+            json.dump(results_data, f, indent=2)
+
+        # Create comprehensive summary DataFrame
+        summary_data = []
+
+        # Add Human vs RL comparisons
+        if 'human_vs_rl_targets' in correlation_results:
+            summary_data.append({
+                'Comparison': 'Human vs RL (Targets)',
+                'Agent_Type': 'RL',
+                'Correlation': correlation_results['human_vs_rl_targets']['correlation'],
+                'P-value': correlation_results['human_vs_rl_targets']['p_value']
+            })
+
+        if 'human_vs_rl_threats' in correlation_results:
+            summary_data.append({
+                'Comparison': 'Human vs RL (Threats)',
+                'Agent_Type': 'RL',
+                'Correlation': correlation_results['human_vs_rl_threats']['correlation'],
+                'P-value': correlation_results['human_vs_rl_threats']['p_value']
+            })
+
+        # Add individual heuristic agent comparisons
+        for key, value in correlation_results.items():
+            if key.startswith('human_vs_') and ('_targets' in key or '_threats' in key) and 'rl' not in key:
+                if '_targets' in key:
+                    agent_name = key.replace('human_vs_', '').replace('_targets', '')
+                    metric = 'Targets'
+                else:
+                    agent_name = key.replace('human_vs_', '').replace('_threats', '')
+                    metric = 'Threats'
+
+                summary_data.append({
+                    'Comparison': f'Human vs {agent_name} ({metric})',
+                    'Agent_Type': 'Heuristic',
+                    'Agent_Name': agent_name,
+                    'Correlation': value['correlation'],
+                    'P-value': value['p_value']
+                })
+
+        summary_df = pd.DataFrame(summary_data)
+        summary_path = os.path.join(save_dir, "progress_rate_correlation_summary_individual.csv")
+        summary_df.to_csv(summary_path, index=False)
+
+        # Print detailed results summary
+        print("\n" + "=" * 80)
+        print("INDIVIDUAL HEURISTIC AGENT CORRELATION ANALYSIS SUMMARY")
+        print("=" * 80)
+
+        print(
+            f"\nAnalyzed {len(valid_tp_targets)} time points from {valid_tp_targets[0]:.1%} to {valid_tp_targets[-1]:.1%}")
+        print(f"Analyzed {len(heuristic_agents)} individual heuristic agent types")
+
+        print("\nTarget Identification Correlations:")
+        print("-" * 50)
+        if 'human_vs_rl_targets' in correlation_results:
+            print(f"Human vs RL:       r = {correlation_results['human_vs_rl_targets']['correlation']:.4f}, "
+                  f"p = {correlation_results['human_vs_rl_targets']['p_value']:.4f}")
+
+        # Print top 5 heuristic agents for targets
+        print("\nTop 5 Most Similar Heuristic Agents (Targets):")
+        for i, (agent_name, corr_value) in enumerate(top_6_agents[:5]):
+            key = f'human_vs_{agent_name}_targets'
+            if key in correlation_results:
+                p_val = correlation_results[key]['p_value']
+                print(f"  {i + 1}. {agent_name}: r = {correlation_results[key]['correlation']:.4f}, p = {p_val:.4f}")
+
+        print("\nThreat Identification Correlations:")
+        print("-" * 50)
+        if 'human_vs_rl_threats' in correlation_results:
+            print(f"Human vs RL:       r = {correlation_results['human_vs_rl_threats']['correlation']:.4f}, "
+                  f"p = {correlation_results['human_vs_rl_threats']['p_value']:.4f}")
+
+        # Find and print top 5 heuristic agents for threats
+        threat_correlations_heuristic = {}
+        for key, value in correlation_results.items():
+            if key.startswith('human_vs_') and key.endswith('_threats') and 'rl' not in key:
+                agent_name = key.replace('human_vs_', '').replace('_threats', '')
+                threat_correlations_heuristic[agent_name] = abs(value['correlation'])
+
+        top_5_threats = sorted(threat_correlations_heuristic.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        print("\nTop 5 Most Similar Heuristic Agents (Threats):")
+        for i, (agent_name, corr_value) in enumerate(top_5_threats):
+            key = f'human_vs_{agent_name}_threats'
+            if key in correlation_results:
+                p_val = correlation_results[key]['p_value']
+                print(f"  {i + 1}. {agent_name}: r = {correlation_results[key]['correlation']:.4f}, p = {p_val:.4f}")
+
+        print(f"\nFiles saved:")
+        print(f"  Individual agents plot: {plot_path}")
+        if len(top_6_agents) > 0:
+            print(f"  Top 6 agents plot: {top_6_plot_path}")
+        print(f"  Detailed results: {results_path}")
+        print(f"  Summary table: {summary_path}")
+
+        return {
+            'correlations': correlation_results,
+            'time_series': {
+                'time_points': valid_tp_targets,
+                'human_targets': human_targets_avg,
+                'rl_targets': rl_targets_avg,
+                'heuristic_targets': heuristic_targets_avg,
+                'human_threats': human_threats_avg,
+                'rl_threats': rl_threats_avg,
+                'heuristic_threats': heuristic_threats_avg
+            },
+            'summary_stats': {
+                'top_target_agents': top_6_agents,
+                'top_threat_agents': top_5_threats
+            }
+        }
+
+    def analyze_progress_rate_mse(self,
+                                  human_trajectories: List[Trajectory],
+                                  rl_trajectories: List[Trajectory],
+                                  heuristic_trajectories: List[Trajectory],
+                                  save_dir: str = "similarity_analysis",
+                                  n_timepoints: int = 10
+                                  ):
+        """
+        Analyze Mean Squared Error (MSE) between human progress rates and both
+        RL and individual heuristic agent progress rates for target and threat identification.
+
+        Args:
+            human_trajectories: List of human trajectory objects
+            rl_trajectories: List of RL trajectory objects
+            heuristic_trajectories: List of heuristic trajectory objects
+            save_dir: Directory to save outputs
+            n_timepoints: Number of evenly-spaced time points to analyze (default: 10)
+
+        Returns:
+            dict: MSE results and time series data
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Generate evenly-spaced time points from 10% to 90%
+        time_points = np.linspace(0.1, 0.9, n_timepoints)
+
+        def extract_identification_series(trajs, time_points, metric_type='targets'):
+            """
+            Extract target or threat identification counts at specified time points
+
+            Args:
+                trajs: List of trajectory objects
+                time_points: Array of time points (0.1 to 0.9)
+                metric_type: 'targets' or 'threats'
+
+            Returns:
+                dict: {time_point: [values_across_trajectories]}
+            """
+            series_by_timepoint = {tp: [] for tp in time_points}
+
+            for traj in trajs:
+                if metric_type == 'targets':
+                    identification_data = traj.target_ids
+                elif metric_type == 'threats':
+                    identification_data = traj.threat_ids
+                else:
+                    raise ValueError("metric_type must be 'targets' or 'threats'")
+
+                if not identification_data:
+                    continue
+
+                traj_length = len(identification_data)
+                if traj_length < 2:  # Skip very short trajectories
+                    continue
+
+                for time_point in time_points:
+                    # Calculate index for this time point
+                    if time_point >= 1.0:
+                        idx = traj_length - 1  # Use final index for 100%
+                    else:
+                        idx = int(time_point * traj_length)
+                        idx = min(idx, traj_length - 1)  # Ensure we don't exceed bounds
+
+                    # Extract identification count at this time point
+                    identification_count = identification_data[idx]
+                    series_by_timepoint[time_point].append(identification_count)
+
+            return series_by_timepoint
+
+        def compute_average_series(series_by_timepoint, time_points):
+            """Compute average identification counts at each time point"""
+            avg_series = []
+            valid_timepoints = []
+
+            for tp in time_points:
+                values = series_by_timepoint[tp]
+                if len(values) > 0:
+                    avg_series.append(np.mean(values))
+                    valid_timepoints.append(tp)
+                else:
+                    print(f"Warning: No data at time point {tp:.1%}")
+
+            return np.array(avg_series), np.array(valid_timepoints)
+
+        def compute_mse(series1, series2):
+            """Compute Mean Squared Error between two time series"""
+            if len(series1) != len(series2):
+                min_len = min(len(series1), len(series2))
+                series1 = series1[:min_len]
+                series2 = series2[:min_len]
+
+            if len(series1) == 0:
+                return None
+
+            return np.mean((series1 - series2) ** 2)
+
+        # Group heuristic trajectories by agent type (name)
+        heuristic_agents = {}
+        for traj in heuristic_trajectories:
+            agent_name = traj.name
+            if agent_name not in heuristic_agents:
+                heuristic_agents[agent_name] = []
+            heuristic_agents[agent_name].append(traj)
+
+        print(f"Found {len(heuristic_agents)} unique heuristic agent types:")
+        for agent_name, trajs in heuristic_agents.items():
+            print(f"  - {agent_name}: {len(trajs)} trajectories")
+
+        print("Extracting target identification time series...")
+        # Extract target identification series for each group
+        human_targets_series = extract_identification_series(human_trajectories, time_points, 'targets')
+        rl_targets_series = extract_identification_series(rl_trajectories, time_points, 'targets')
+
+        # Extract series for each individual heuristic agent type
+        heuristic_targets_series = {}
+        for agent_name, trajs in heuristic_agents.items():
+            heuristic_targets_series[agent_name] = extract_identification_series(trajs, time_points, 'targets')
+
+        print("Extracting threat identification time series...")
+        # Extract threat identification series for each group
+        human_threats_series = extract_identification_series(human_trajectories, time_points, 'threats')
+        rl_threats_series = extract_identification_series(rl_trajectories, time_points, 'threats')
+
+        # Extract series for each individual heuristic agent type
+        heuristic_threats_series = {}
+        for agent_name, trajs in heuristic_agents.items():
+            heuristic_threats_series[agent_name] = extract_identification_series(trajs, time_points, 'threats')
+
+        # Compute average series for each group
+        human_targets_avg, valid_tp_targets = compute_average_series(human_targets_series, time_points)
+        rl_targets_avg, _ = compute_average_series(rl_targets_series, time_points)
+
+        # Compute average series for each heuristic agent type
+        heuristic_targets_avg = {}
+        for agent_name, series in heuristic_targets_series.items():
+            heuristic_targets_avg[agent_name], _ = compute_average_series(series, time_points)
+
+        human_threats_avg, valid_tp_threats = compute_average_series(human_threats_series, time_points)
+        rl_threats_avg, _ = compute_average_series(rl_threats_series, time_points)
+
+        # Compute average series for each heuristic agent type
+        heuristic_threats_avg = {}
+        for agent_name, series in heuristic_threats_series.items():
+            heuristic_threats_avg[agent_name], _ = compute_average_series(series, time_points)
+
+        # Ensure all series have the same length for MSE calculation
+        min_len_targets = min(len(human_targets_avg), len(rl_targets_avg))
+        min_len_threats = min(len(human_threats_avg), len(rl_threats_avg))
+
+        if min_len_targets == 0 or min_len_threats == 0:
+            print("Error: Insufficient data for MSE analysis")
+            return None
+
+        # Trim series to same length
+        human_targets_avg = human_targets_avg[:min_len_targets]
+        rl_targets_avg = rl_targets_avg[:min_len_targets]
+        valid_tp_targets = valid_tp_targets[:min_len_targets]
+
+        human_threats_avg = human_threats_avg[:min_len_threats]
+        rl_threats_avg = rl_threats_avg[:min_len_threats]
+        valid_tp_threats = valid_tp_threats[:min_len_threats]
+
+        # Calculate MSE values
+        print("Computing MSE values...")
+        mse_results = {}
+
+        # Target identification MSE
+        if len(human_targets_avg) > 0:
+            mse_human_rl_targets = compute_mse(human_targets_avg, rl_targets_avg)
+            mse_results['human_vs_rl_targets'] = mse_human_rl_targets
+
+            # MSE with individual heuristic agents
+            for agent_name, agent_targets_avg in heuristic_targets_avg.items():
+                if len(agent_targets_avg) >= min_len_targets:
+                    agent_targets_trimmed = agent_targets_avg[:min_len_targets]
+                    mse_human_heuristic = compute_mse(human_targets_avg, agent_targets_trimmed)
+                    mse_results[f'human_vs_{agent_name}_targets'] = mse_human_heuristic
+
+        # Threat identification MSE
+        if len(human_threats_avg) > 0:
+            mse_human_rl_threats = compute_mse(human_threats_avg, rl_threats_avg)
+            mse_results['human_vs_rl_threats'] = mse_human_rl_threats
+
+            # MSE with individual heuristic agents
+            for agent_name, agent_threats_avg in heuristic_threats_avg.items():
+                if len(agent_threats_avg) >= min_len_threats:
+                    agent_threats_trimmed = agent_threats_avg[:min_len_threats]
+                    mse_human_heuristic = compute_mse(human_threats_avg, agent_threats_trimmed)
+                    mse_results[f'human_vs_{agent_name}_threats'] = mse_human_heuristic
+
+        # Create plots showing MSE comparisons
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # Define colors for heuristic agents
+        import matplotlib.cm as cm
+        colors = cm.Set3(np.linspace(0, 1, len(heuristic_agents)))
+        heuristic_colors = dict(zip(heuristic_agents.keys(), colors))
+
+        # Plot 1: Target identification progress lines
+        ax1.plot(valid_tp_targets * 100, human_targets_avg,
+                 marker='o', linewidth=3, markersize=8,
+                 label='Human', color='blue', alpha=0.9, zorder=10)
+        ax1.plot(valid_tp_targets * 100, rl_targets_avg,
+                 marker='s', linewidth=3, markersize=8,
+                 label=f'RL (MSE: {mse_results.get("human_vs_rl_targets", 0):.3f})',
+                 color='green', alpha=0.9, zorder=10)
+
+        # Show only top 6 most similar heuristic agents for clarity
+        target_mse_heuristic = {}
+        for key, value in mse_results.items():
+            if key.startswith('human_vs_') and key.endswith('_targets') and 'rl' not in key and value is not None:
+                agent_name = key.replace('human_vs_', '').replace('_targets', '')
+                target_mse_heuristic[agent_name] = value
+
+        top_6_agents_targets = sorted(target_mse_heuristic.items(), key=lambda x: x[1])[:6]
+
+        for agent_name, mse_value in top_6_agents_targets:
+            if agent_name in heuristic_targets_avg:
+                agent_targets_avg = heuristic_targets_avg[agent_name]
+                if len(agent_targets_avg) >= min_len_targets:
+                    agent_targets_trimmed = agent_targets_avg[:min_len_targets]
+                    ax1.plot(valid_tp_targets * 100, agent_targets_trimmed,
+                             marker='^', linewidth=2, markersize=6,
+                             label=f'{agent_name[:15]}... (MSE: {mse_value:.3f})',
+                             color=heuristic_colors[agent_name], alpha=0.7)
+
+        ax1.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+        ax1.set_ylabel('Average Targets Identified', fontsize=12)
+        ax1.set_title('Target Identification: Top 6 Most Similar Agents (Lowest MSE)', fontsize=14)
+        ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        ax1.grid(True, alpha=0.3)
+
+        # Plot 2: Target MSE bar chart
+        target_mse_values = []
+        target_labels = []
+
+        # Add RL MSE
+        if 'human_vs_rl_targets' in mse_results and mse_results['human_vs_rl_targets'] is not None:
+            target_mse_values.append(mse_results['human_vs_rl_targets'])
+            target_labels.append('RL (all)')
+
+        # Add top 10 heuristic agent MSEs
+        top_10_targets = sorted(target_mse_heuristic.items(), key=lambda x: x[1])[:24]
+        for agent_name, mse_value in top_10_targets:
+            target_mse_values.append(mse_value)
+            target_labels.append(agent_name[:20] + ('...' if len(agent_name) > 15 else ''))
+
+        bars = ax2.bar(range(len(target_mse_values)), target_mse_values, alpha=0.7)
+        bars[0].set_color('green') if len(bars) > 0 else None  # Color RL bar differently
+
+        ax2.set_xlabel('Agent Type', fontsize=18)
+        ax2.set_ylabel('MSE vs Human Targets', fontsize=18)
+        ax2.set_title('Average MSE with all human trajectories – \nRegular Target IDs over time', fontsize=20)
+        ax2.set_xticks(range(len(target_labels)))
+        ax2.set_xticklabels(target_labels, rotation=45, ha='right')
+        ax2.grid(True, axis='y', alpha=0.3)
+
+        # Add value labels on bars
+        # for bar, value in zip(bars, target_mse_values):
+        #     height = bar.get_height()
+        #     ax2.text(bar.get_x() + bar.get_width() / 2., height + max(target_mse_values) * 0.01,
+        #              f'{value:.3f}', ha='center', va='bottom', fontsize=8)
+
+        # Plot 3: Threat identification progress lines
+        ax3.plot(valid_tp_threats * 100, human_threats_avg,
+                 marker='o', linewidth=3, markersize=8,
+                 label='Human', color='blue', alpha=0.9, zorder=10)
+        ax3.plot(valid_tp_threats * 100, rl_threats_avg,
+                 marker='s', linewidth=3, markersize=8,
+                 label=f'RL (MSE: {mse_results.get("human_vs_rl_threats", 0):.3f})',
+                 color='green', alpha=0.9, zorder=10)
+
+        # Show only top 6 most similar heuristic agents for threats
+        threat_mse_heuristic = {}
+        for key, value in mse_results.items():
+            if key.startswith('human_vs_') and key.endswith('_threats') and 'rl' not in key and value is not None:
+                agent_name = key.replace('human_vs_', '').replace('_threats', '')
+                threat_mse_heuristic[agent_name] = value
+
+        top_6_agents_threats = sorted(threat_mse_heuristic.items(), key=lambda x: x[1])[:6]
+
+        for agent_name, mse_value in top_6_agents_threats:
+            if agent_name in heuristic_threats_avg:
+                agent_threats_avg = heuristic_threats_avg[agent_name]
+                if len(agent_threats_avg) >= min_len_threats:
+                    agent_threats_trimmed = agent_threats_avg[:min_len_threats]
+                    ax3.plot(valid_tp_threats * 100, agent_threats_trimmed,
+                             marker='^', linewidth=2, markersize=6,
+                             label=f'{agent_name[:15]}... (MSE: {mse_value:.3f})',
+                             color=heuristic_colors[agent_name], alpha=0.7)
+
+        ax3.set_xlabel('Progress Through Trajectory (%)', fontsize=12)
+        ax3.set_ylabel('Average Threats Identified', fontsize=12)
+        ax3.set_title('Threat Identification: Top 6 Most Similar Agents (Lowest MSE)', fontsize=14)
+        ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+        ax3.grid(True, alpha=0.3)
+
+        # Plot 4: Threat MSE bar chart
+        threat_mse_values = []
+        threat_labels = []
+
+        # Add RL MSE
+        if 'human_vs_rl_threats' in mse_results and mse_results['human_vs_rl_threats'] is not None:
+            threat_mse_values.append(mse_results['human_vs_rl_threats'])
+            threat_labels.append('RL (all))')
+
+        # Add top 10 heuristic agent MSEs
+        top_10_threats = sorted(threat_mse_heuristic.items(), key=lambda x: x[1])[:24]
+        for agent_name, mse_value in top_10_threats:
+            threat_mse_values.append(mse_value)
+            threat_labels.append(agent_name[:20] + ('...' if len(agent_name) > 15 else ''))
+
+        bars = ax4.bar(range(len(threat_mse_values)), threat_mse_values, alpha=0.7)
+        bars[0].set_color('green') if len(bars) > 0 else None  # Color RL bar differently
+
+        ax4.set_xlabel('Agent Type', fontsize=18)
+        ax4.set_ylabel('MSE vs Human Threats', fontsize=18)
+        ax4.set_title('Average MSE with all human trajectories – \nHigh-Value Target IDs over time', fontsize=20)
+        ax4.set_xticks(range(len(threat_labels)))
+        ax4.set_xticklabels(threat_labels, rotation=45, ha='right')
+        ax4.grid(True, axis='y', alpha=0.3)
+
+        # Add value labels on bars
+        # for bar, value in zip(bars, threat_mse_values):
+        #     height = bar.get_height()
+        #     ax4.text(bar.get_x() + bar.get_width() / 2., height + max(threat_mse_values) * 0.01,
+        #              f'{value:.3f}', ha='center', va='bottom', fontsize=8)
+
+        plt.tight_layout()
+
+        # Save the plot
+        plot_path = os.path.join(save_dir, "progress_rate_mse_analysis.png")
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        # Save numerical results
+        results_data = {
+            'time_points_percent': (valid_tp_targets * 100).tolist(),
+            'human_targets_avg': human_targets_avg.tolist(),
+            'rl_targets_avg': rl_targets_avg.tolist(),
+            'human_threats_avg': human_threats_avg.tolist(),
+            'rl_threats_avg': rl_threats_avg.tolist(),
+            'mse_results': mse_results
+        }
+
+        # Add individual heuristic agent data
+        for agent_name, agent_targets_avg in heuristic_targets_avg.items():
+            if len(agent_targets_avg) >= min_len_targets:
+                results_data[f'{agent_name}_targets_avg'] = agent_targets_avg[:min_len_targets].tolist()
+
+        for agent_name, agent_threats_avg in heuristic_threats_avg.items():
+            if len(agent_threats_avg) >= min_len_threats:
+                results_data[f'{agent_name}_threats_avg'] = agent_threats_avg[:min_len_threats].tolist()
+
+        results_path = os.path.join(save_dir, "progress_rate_mse_results.json")
+        with open(results_path, 'w') as f:
+            json.dump(results_data, f, indent=2)
+
+        # Create comprehensive summary DataFrame
+        summary_data = []
+
+        # Add Human vs RL comparisons
+        if 'human_vs_rl_targets' in mse_results and mse_results['human_vs_rl_targets'] is not None:
+            summary_data.append({
+                'Comparison': 'Human vs RL (Targets)',
+                'Agent_Type': 'RL',
+                'MSE': mse_results['human_vs_rl_targets']
+            })
+
+        if 'human_vs_rl_threats' in mse_results and mse_results['human_vs_rl_threats'] is not None:
+            summary_data.append({
+                'Comparison': 'Human vs RL (Threats)',
+                'Agent_Type': 'RL',
+                'MSE': mse_results['human_vs_rl_threats']
+            })
+
+        # Add individual heuristic agent comparisons
+        for key, value in mse_results.items():
+            if key.startswith('human_vs_') and (
+                    '_targets' in key or '_threats' in key) and 'rl' not in key and value is not None:
+                if '_targets' in key:
+                    agent_name = key.replace('human_vs_', '').replace('_targets', '')
+                    metric = 'Targets'
+                else:
+                    agent_name = key.replace('human_vs_', '').replace('_threats', '')
+                    metric = 'Threats'
+
+                summary_data.append({
+                    'Comparison': f'Human vs {agent_name} ({metric})',
+                    'Agent_Type': 'Heuristic',
+                    'Agent_Name': agent_name,
+                    'MSE': value
+                })
+
+        summary_df = pd.DataFrame(summary_data)
+
+        # Sort by MSE for easier interpretation
+        summary_df = summary_df.sort_values('MSE', ascending=True)
+
+        summary_path = os.path.join(save_dir, "progress_rate_mse_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+
+        # Print detailed results summary
+        print("\n" + "=" * 80)
+        print("MEAN SQUARED ERROR (MSE) PROGRESS ANALYSIS SUMMARY")
+        print("=" * 80)
+
+        print(
+            f"\nAnalyzed {len(valid_tp_targets)} time points from {valid_tp_targets[0]:.1%} to {valid_tp_targets[-1]:.1%}")
+        print(f"Analyzed {len(heuristic_agents)} individual heuristic agent types")
+        print("\nLower MSE values indicate better similarity to human progress patterns.")
+
+        print("\nTarget Identification MSE Results:")
+        print("-" * 50)
+        if 'human_vs_rl_targets' in mse_results and mse_results['human_vs_rl_targets'] is not None:
+            print(f"Human vs RL:       MSE = {mse_results['human_vs_rl_targets']:.6f}")
+
+        # Print top 5 most similar heuristic agents for targets
+        print("\nTop 5 Most Similar Heuristic Agents (Targets - Lowest MSE):")
+        for i, (agent_name, mse_value) in enumerate(top_6_agents_targets[:5]):
+            print(f"  {i + 1}. {agent_name}: MSE = {mse_value:.6f}")
+
+        print("\nThreat Identification MSE Results:")
+        print("-" * 50)
+        if 'human_vs_rl_threats' in mse_results and mse_results['human_vs_rl_threats'] is not None:
+            print(f"Human vs RL:       MSE = {mse_results['human_vs_rl_threats']:.6f}")
+
+        # Print top 5 most similar heuristic agents for threats
+        print("\nTop 5 Most Similar Heuristic Agents (Threats - Lowest MSE):")
+        for i, (agent_name, mse_value) in enumerate(top_6_agents_threats[:5]):
+            print(f"  {i + 1}. {agent_name}: MSE = {mse_value:.6f}")
+
+        # Determine which agent type is more similar to humans overall
+        print(f"\nOverall Similarity to Human Progress Patterns:")
+        print("-" * 50)
+
+        # Compare average ranks
+        rl_target_rank = None
+        rl_threat_rank = None
+
+        if 'human_vs_rl_targets' in mse_results and mse_results['human_vs_rl_targets'] is not None:
+            target_mse_all = [(name, mse) for name, mse in target_mse_heuristic.items()]
+            target_mse_all.append(('RL', mse_results['human_vs_rl_targets']))
+            target_mse_all.sort(key=lambda x: x[1])
+            rl_target_rank = next(i for i, (name, _) in enumerate(target_mse_all) if name == 'RL') + 1
+            print(f"RL agent ranks #{rl_target_rank} out of {len(target_mse_all)} for target identification similarity")
+
+        if 'human_vs_rl_threats' in mse_results and mse_results['human_vs_rl_threats'] is not None:
+            threat_mse_all = [(name, mse) for name, mse in threat_mse_heuristic.items()]
+            threat_mse_all.append(('RL', mse_results['human_vs_rl_threats']))
+            threat_mse_all.sort(key=lambda x: x[1])
+            rl_threat_rank = next(i for i, (name, _) in enumerate(threat_mse_all) if name == 'RL') + 1
+            print(f"RL agent ranks #{rl_threat_rank} out of {len(threat_mse_all)} for threat identification similarity")
+
+        print(f"\nFiles saved:")
+        print(f"  Plot: {plot_path}")
+        print(f"  Detailed results: {results_path}")
+        print(f"  Summary table: {summary_path}")
+
+        return {
+            'mse_results': mse_results,
+            'time_series': {
+                'time_points': valid_tp_targets,
+                'human_targets': human_targets_avg,
+                'rl_targets': rl_targets_avg,
+                'heuristic_targets': heuristic_targets_avg,
+                'human_threats': human_threats_avg,
+                'rl_threats': rl_threats_avg,
+                'heuristic_threats': heuristic_threats_avg
+            },
+            'summary_stats': {
+                'top_target_agents': top_6_agents_targets,
+                'top_threat_agents': top_6_agents_threats,
+                'rl_target_rank': rl_target_rank,
+                'rl_threat_rank': rl_threat_rank
+            }
+        }
+
+    def analyze_cross_trajectory_position_mse(self,
+                                              human_trajectories: List[Trajectory],
+                                              rl_trajectories: List[Trajectory],
+                                              heuristic_trajectories: List[Trajectory],
+                                              save_dir: str = "similarity_analysis",
+                                              n_timepoints: int = 20):
+        """
+        Calculate position vs time MSE between every possible cross-group trajectory pair.
+
+        Tests the hypothesis that the full league of heuristic trajectories provides better
+        human modeling than any individual heuristic trajectory by comparing:
+        1. Average MSE between all human trajectories and each individual heuristic agent type
+        2. Average MSE between all human trajectories and all heuristic trajectories combined
+
+        Args:
+            human_trajectories: List of human trajectory objects
+            rl_trajectories: List of RL trajectory objects
+            heuristic_trajectories: List of heuristic trajectory objects
+            save_dir: Directory to save outputs
+            n_timepoints: Number of evenly-spaced time points for comparison
+
+        Returns:
+            dict: MSE analysis results including statistical test outcomes
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        def extract_position_timeseries(traj, n_timepoints):
+            """Extract position time series at evenly spaced time points"""
+            if not traj.positions or len(traj.positions) < 2:
+                return None
+
+            positions = np.array(traj.positions)
+            traj_length = len(positions)
+
+            # Create evenly spaced indices
+            indices = np.linspace(0, traj_length - 1, n_timepoints, dtype=int)
+            sampled_positions = positions[indices]
+
+            # Flatten to 1D array: [x1, y1, x2, y2, ..., xn, yn]
+            return sampled_positions.flatten()
+
+        def compute_position_mse(traj1, traj2, n_timepoints):
+            """Compute MSE between two trajectory position time series"""
+            series1 = extract_position_timeseries(traj1, n_timepoints)
+            series2 = extract_position_timeseries(traj2, n_timepoints)
+
+            if series1 is None or series2 is None:
+                return None
+
+            if len(series1) != len(series2):
+                min_len = min(len(series1), len(series2))
+                series1 = series1[:min_len]
+                series2 = series2[:min_len]
+
+            return np.mean((series1 - series2) ** 2)
+
+        print("Computing cross-trajectory position MSE analysis...")
+        print(f"Human trajectories: {len(human_trajectories)}")
+        print(f"RL trajectories: {len(rl_trajectories)}")
+        print(f"Heuristic trajectories: {len(heuristic_trajectories)}")
+
+        # Group heuristic trajectories by agent type
+        heuristic_agents = {}
+        for traj in heuristic_trajectories:
+            agent_name = traj.name
+            if agent_name not in heuristic_agents:
+                heuristic_agents[agent_name] = []
+            heuristic_agents[agent_name].append(traj)
+
+        print(f"Found {len(heuristic_agents)} unique heuristic agent types:")
+        for agent_name, trajs in heuristic_agents.items():
+            print(f"  - {agent_name}: {len(trajs)} trajectories")
+
+        # 1. Compute MSE between all human-heuristic trajectory pairs for each agent type
+        agent_mse_results = {}
+
+        for agent_name, agent_trajs in heuristic_agents.items():
+            print(f"\nComputing MSEs for agent type: {agent_name}")
+            mse_values = []
+
+            for i, human_traj in enumerate(human_trajectories):
+                for j, heuristic_traj in enumerate(agent_trajs):
+                    mse = compute_position_mse(human_traj, heuristic_traj, n_timepoints)
+                    if mse is not None:
+                        mse_values.append(mse)
+
+            agent_mse_results[agent_name] = {
+                'mse_values': mse_values,
+                'mean_mse': np.mean(mse_values) if mse_values else None,
+                'std_mse': np.std(mse_values) if mse_values else None,
+                'n_comparisons': len(mse_values)
+            }
+
+            print(f"  {len(mse_values)} valid comparisons, mean MSE: {np.mean(mse_values):.6f}")
+
+        # 2. Compute MSE between all human trajectories and ALL heuristic trajectories
+        print(f"\nComputing MSEs between all human and all heuristic trajectories...")
+        all_heuristic_mse_values = []
+
+        for i, human_traj in enumerate(human_trajectories):
+            for j, heuristic_traj in enumerate(heuristic_trajectories):
+                mse = compute_position_mse(human_traj, heuristic_traj, n_timepoints)
+                if mse is not None:
+                    all_heuristic_mse_values.append(mse)
+
+        overall_mean_mse = np.mean(all_heuristic_mse_values) if all_heuristic_mse_values else None
+
+        print(f"  {len(all_heuristic_mse_values)} valid comparisons, mean MSE: {overall_mean_mse:.6f}")
+
+        # 3. For comparison, compute human-RL MSEs
+        print(f"\nComputing MSEs between human and RL trajectories...")
+        human_rl_mse_values = []
+
+        for i, human_traj in enumerate(human_trajectories):
+            for j, rl_traj in enumerate(rl_trajectories):
+                mse = compute_position_mse(human_traj, rl_traj, n_timepoints)
+                if mse is not None:
+                    human_rl_mse_values.append(mse)
+
+        rl_mean_mse = np.mean(human_rl_mse_values) if human_rl_mse_values else None
+
+        print(f"  {len(human_rl_mse_values)} valid comparisons, mean MSE: {rl_mean_mse:.6f}")
+
+        # 4. Test the hypothesis: Is any individual agent worse than the overall average?
+        print(f"\n" + "=" * 80)
+        print("HYPOTHESIS TESTING: LEAGUE DIVERSITY BENEFIT")
+        print("=" * 80)
+
+        hypothesis_results = {}
+
+        # Test: For each individual agent, is their average MSE > overall average MSE?
+        # This would support the hypothesis that diversity helps
+        print(f"\nOverall average MSE (all heuristic agents): {overall_mean_mse:.6f}")
+        print(f"RL average MSE (for comparison): {rl_mean_mse:.6f}")
+
+        worse_than_overall = []
+        better_than_overall = []
+
+        for agent_name, results in agent_mse_results.items():
+            agent_mean = results['mean_mse']
+            if agent_mean is not None and overall_mean_mse is not None:
+                is_worse = agent_mean > overall_mean_mse
+                difference = agent_mean - overall_mean_mse
+
+                print(f"\n{agent_name}:")
+                print(f"  Individual agent average MSE: {agent_mean:.6f}")
+                print(f"  Difference from overall: {difference:+.6f}")
+                print(f"  {'WORSE' if is_worse else 'BETTER'} than overall average")
+
+                if is_worse:
+                    worse_than_overall.append((agent_name, agent_mean, difference))
+                else:
+                    better_than_overall.append((agent_name, agent_mean, difference))
+
+        # Statistical tests
+        from scipy import stats
+
+        # Perform statistical tests comparing each individual agent to overall distribution
+        statistical_tests = {}
+
+        for agent_name, results in agent_mse_results.items():
+            if results['mse_values'] and len(results['mse_values']) > 1:
+                # Mann-Whitney U test: individual agent vs all heuristic agents
+                u_stat, p_val = stats.mannwhitneyu(
+                    results['mse_values'],
+                    all_heuristic_mse_values,
+                    alternative='two-sided'
+                )
+
+                statistical_tests[agent_name] = {
+                    'mann_whitney_u': u_stat,
+                    'p_value': p_val,
+                    'significant_difference': p_val < 0.05
+                }
+
+        # Summary statistics
+        n_worse = len(worse_than_overall)
+        n_better = len(better_than_overall)
+        n_total = len(agent_mse_results)
+
+        hypothesis_results = {
+            'overall_mean_mse': overall_mean_mse,
+            'rl_mean_mse': rl_mean_mse,
+            'n_agents_worse_than_overall': n_worse,
+            'n_agents_better_than_overall': n_better,
+            'fraction_worse_than_overall': n_worse / n_total if n_total > 0 else 0,
+            'worse_agents': worse_than_overall,
+            'better_agents': better_than_overall,
+            'statistical_tests': statistical_tests
+        }
+
+        print(f"\n" + "-" * 60)
+        print("SUMMARY:")
+        print(
+            f"  {n_worse}/{n_total} ({100 * n_worse / n_total:.1f}%) individual agents perform WORSE than overall average")
+        print(
+            f"  {n_better}/{n_total} ({100 * n_better / n_total:.1f}%) individual agents perform BETTER than overall average")
+
+        if n_worse > n_better:
+            print(f"\n✓ HYPOTHESIS SUPPORTED: Majority of individual agents are worse than the diverse league")
+            print(f"  This suggests that diversity in the heuristic agent league provides better human modeling")
+        else:
+            print(f"\n✗ HYPOTHESIS NOT SUPPORTED: More individual agents perform better than the overall average")
+
+        # 5. Create visualizations
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+
+        # Plot 1: MSE distributions for each agent type
+        agent_names = list(agent_mse_results.keys())
+        agent_means = [agent_mse_results[name]['mean_mse'] for name in agent_names if
+                       agent_mse_results[name]['mean_mse'] is not None]
+
+        valid_agent_names = [name for name in agent_names if agent_mse_results[name]['mean_mse'] is not None]
+
+        bars = ax1.bar(range(len(valid_agent_names)), agent_means, alpha=0.7)
+        ax1.axhline(y=overall_mean_mse, color='red', linestyle='--', linewidth=2,
+                    label=f'Heuristic Average ({overall_mean_mse:.4f})')
+        ax1.axhline(y=rl_mean_mse, color='green', linestyle='--', linewidth=2,
+                    label=f'RL Average ({rl_mean_mse:.4f})')
+
+        # Color bars based on whether they're above or below overall average
+        for i, (bar, mean_val) in enumerate(zip(bars, agent_means)):
+            if mean_val > overall_mean_mse:
+                bar.set_color('lightcoral')  # Worse than average
+            else:
+                bar.set_color('lightblue')  # Better than average
+
+        ax1.set_xlabel('Heuristic Agent Type')
+        ax1.set_ylabel('Mean Position MSE vs Humans')
+        ax1.set_title('MSE (position vs. time) between heuristic agents and human trajectories')
+        ax1.set_xticks(range(len(valid_agent_names)))
+        ax1.set_xticklabels([name[:15] + '...' if len(name) > 15 else name for name in valid_agent_names],
+                            rotation=45, ha='right')
+        ax1.legend()
+        ax1.grid(True, axis='y', alpha=0.3)
+
+        # Add value labels on bars
+        # for bar, value in zip(bars, agent_means):
+        #     height = bar.get_height()
+        #     ax1.text(bar.get_x() + bar.get_width() / 2., height + max(agent_means) * 0.01,
+        #              f'{value:.4f}', ha='center', va='bottom', fontsize=8)
+
+        # Plot 2: Distribution comparison (box plot)
+        box_data = []
+        box_labels = []
+
+        # Add individual agent distributions (top 6 most different from overall)
+        sorted_agents = sorted([(name, abs(results['mean_mse'] - overall_mean_mse))
+                                for name, results in agent_mse_results.items()
+                                if results['mean_mse'] is not None],
+                               key=lambda x: x[1], reverse=True)[:6]
+
+        for agent_name, _ in sorted_agents:
+            box_data.append(agent_mse_results[agent_name]['mse_values'])
+            box_labels.append(agent_name[:15] + '...' if len(agent_name) > 10 else agent_name)
+
+        # Add overall heuristic and RL distributions
+        box_data.extend([all_heuristic_mse_values, human_rl_mse_values])
+        box_labels.extend(['All Heuristic', 'RL'])
+
+        bp = ax2.boxplot(box_data, labels=box_labels, patch_artist=True)
+
+        # Color the boxes
+        colors = ['lightcoral' if i < len(sorted_agents) else 'lightgreen' for i in range(len(bp['boxes']))]
+        for patch, color in zip(bp['boxes'], colors):
+            patch.set_facecolor(color)
+
+        ax2.set_ylabel('Position MSE vs Humans')
+        ax2.set_title('MSE Distribution Comparison')
+        ax2.tick_params(axis='x', rotation=45)
+        ax2.grid(True, axis='y', alpha=0.3)
+
+        # Plot 3: Hypothesis test results (p-values)
+        test_agents = [name for name in statistical_tests.keys()]
+        p_values = [statistical_tests[name]['p_value'] for name in test_agents]
+
+        bars3 = ax3.bar(range(len(test_agents)), p_values, alpha=0.7)
+        ax3.axhline(y=0.05, color='red', linestyle='--', linewidth=2, label='p = 0.05')
+
+        # Color bars based on significance
+        for bar, p_val in zip(bars3, p_values):
+            if p_val < 0.05:
+                bar.set_color('orange')  # Significant difference
+            else:
+                bar.set_color('lightgray')  # Not significant
+
+        ax3.set_xlabel('Heuristic Agent Type')
+        #ax3.set_ylabel('p-value (Mann-Whitney U Test)')
+        ax3.set_title('Statistical Significance vs Overall Distribution')
+        ax3.set_xticks(range(len(test_agents)))
+        ax3.set_xticklabels([name[:15] + '...' if len(name) > 10 else name for name in test_agents],
+                            rotation=45, ha='right')
+        ax3.legend()
+        ax3.grid(True, axis='y', alpha=0.3)
+        ax3.set_yscale('log')  # Log scale for p-values
+
+        # Plot 4: Summary pie chart
+        labels = ['Worse than Overall', 'Better than Overall']
+        sizes = [n_worse, n_better]
+        colors = ['lightcoral', 'lightblue']
+
+        ax4.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+        ax4.set_title(f'Agent Performance Distribution\n({n_total} total agents)')
+
+        plt.tight_layout()
+
+        # Save the plot
+        plot_path = os.path.join(save_dir, "cross_trajectory_position_mse_analysis.png")
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        # 6. Save detailed results
+        detailed_results = {
+            'hypothesis_results': hypothesis_results,
+            'agent_mse_results': {k: {**v, 'mse_values': v['mse_values'][:100]}  # Limit saved values for file size
+                                  for k, v in agent_mse_results.items()},
+            'overall_statistics': {
+                'overall_mean_mse': float(overall_mean_mse) if overall_mean_mse is not None else None,
+                'overall_std_mse': float(np.std(all_heuristic_mse_values)) if all_heuristic_mse_values else None,
+                'rl_mean_mse': float(rl_mean_mse) if rl_mean_mse is not None else None,
+                'rl_std_mse': float(np.std(human_rl_mse_values)) if human_rl_mse_values else None,
+                'n_total_comparisons': int(len(all_heuristic_mse_values)),
+                'n_rl_comparisons': int(len(human_rl_mse_values))
+            },
+            'statistical_tests': statistical_tests
+        }
+        # detailed_results = {
+        #     'hypothesis_results': hypothesis_results,
+        #     'agent_mse_results': {k: {**v, 'mse_values': v['mse_values'][:100]}  # Limit saved values for file size
+        #                           for k, v in agent_mse_results.items()},
+        #     'overall_statistics': {
+        #         'overall_mean_mse': overall_mean_mse,
+        #         'overall_std_mse': np.std(all_heuristic_mse_values) if all_heuristic_mse_values else None,
+        #         'rl_mean_mse': rl_mean_mse,
+        #         'rl_std_mse': np.std(human_rl_mse_values) if human_rl_mse_values else None,
+        #         'n_total_comparisons': len(all_heuristic_mse_values),
+        #         'n_rl_comparisons': len(human_rl_mse_values)
+        #     },
+        #     'statistical_tests': statistical_tests
+        # }
+
+        results_path = os.path.join(save_dir, "cross_trajectory_position_mse_results.json")
+        with open(results_path, 'w') as f:
+            json.dump(detailed_results, f, indent=2)
+
+        # Create summary table
+        summary_data = []
+        for agent_name, results in agent_mse_results.items():
+            if results['mean_mse'] is not None:
+                summary_data.append({
+                    'Agent_Name': agent_name,
+                    'Mean_MSE': results['mean_mse'],
+                    'Std_MSE': results['std_mse'],
+                    'N_Comparisons': results['n_comparisons'],
+                    'Diff_from_Overall': results['mean_mse'] - overall_mean_mse,
+                    'Worse_than_Overall': results['mean_mse'] > overall_mean_mse,
+                    'P_Value': statistical_tests.get(agent_name, {}).get('p_value', None),
+                    'Significant_Diff': statistical_tests.get(agent_name, {}).get('significant_difference', None)
+                })
+
+        # Add overall and RL for comparison
+        summary_data.extend([
+            {
+                'Agent_Name': 'OVERALL_HEURISTIC',
+                'Mean_MSE': overall_mean_mse,
+                'Std_MSE': np.std(all_heuristic_mse_values) if all_heuristic_mse_values else None,
+                'N_Comparisons': len(all_heuristic_mse_values),
+                'Diff_from_Overall': 0.0,
+                'Worse_than_Overall': False,
+                'P_Value': None,
+                'Significant_Diff': None
+            },
+            {
+                'Agent_Name': 'RL_AGENT',
+                'Mean_MSE': rl_mean_mse,
+                'Std_MSE': np.std(human_rl_mse_values) if human_rl_mse_values else None,
+                'N_Comparisons': len(human_rl_mse_values),
+                'Diff_from_Overall': rl_mean_mse - overall_mean_mse if rl_mean_mse and overall_mean_mse else None,
+                'Worse_than_Overall': rl_mean_mse > overall_mean_mse if rl_mean_mse and overall_mean_mse else None,
+                'P_Value': None,
+                'Significant_Diff': None
+            }
+        ])
+
+        summary_df = pd.DataFrame(summary_data)
+        summary_df = summary_df.sort_values('Mean_MSE', ascending=True)
+
+        summary_path = os.path.join(save_dir, "cross_trajectory_position_mse_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+
+        print(f"\nFiles saved:")
+        print(f"  Plot: {plot_path}")
+        print(f"  Detailed results: {results_path}")
+        print(f"  Summary table: {summary_path}")
+
+        return detailed_results
+
+    def analyze_human_similarity_comparison(self,
+                                            human_trajectories: List[Trajectory],
+                                            rl_trajectories: List[Trajectory],
+                                            heuristic_trajectories: List[Trajectory],
+                                            save_dir: str = "similarity_analysis",
+                                            n_timepoints: int = 20):
+        """
+        Test the hypothesis that heuristic agents are more similar to humans than RL agents
+        by comparing position trajectory MSE distributions.
+
+        Performs statistical tests to determine if:
+        1. Average MSE(human, heuristic) < Average MSE(human, RL)
+        2. The difference is statistically significant
+
+        Args:
+            human_trajectories: List of human trajectory objects
+            rl_trajectories: List of RL trajectory objects
+            heuristic_trajectories: List of heuristic trajectory objects
+            save_dir: Directory to save outputs
+            n_timepoints: Number of evenly-spaced time points for comparison
+
+        Returns:
+            dict: Statistical test results and MSE comparisons
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        def extract_position_timeseries(traj, n_timepoints):
+            """Extract position time series at evenly spaced time points"""
+            if not traj.positions or len(traj.positions) < 2:
+                return None
+
+            positions = np.array(traj.positions)
+            traj_length = len(positions)
+
+            # Create evenly spaced indices
+            indices = np.linspace(0, traj_length - 1, n_timepoints, dtype=int)
+            sampled_positions = positions[indices]
+
+            # Flatten to 1D array: [x1, y1, x2, y2, ..., xn, yn]
+            return sampled_positions.flatten()
+
+        def compute_position_mse(traj1, traj2, n_timepoints):
+            """Compute MSE between two trajectory position time series"""
+            series1 = extract_position_timeseries(traj1, n_timepoints)
+            series2 = extract_position_timeseries(traj2, n_timepoints)
+
+            if series1 is None or series2 is None:
+                return None
+
+            if len(series1) != len(series2):
+                min_len = min(len(series1), len(series2))
+                series1 = series1[:min_len]
+                series2 = series2[:min_len]
+
+            return np.mean((series1 - series2) ** 2)
+
+        print("Computing Human-Heuristic vs Human-RL similarity comparison...")
+        print(f"Human trajectories: {len(human_trajectories)}")
+        print(f"RL trajectories: {len(rl_trajectories)}")
+        print(f"Heuristic trajectories: {len(heuristic_trajectories)}")
+
+        # 1. Compute all human-heuristic MSE values
+        print("\nComputing Human-Heuristic MSE values...")
+        human_heuristic_mse = []
+
+        for i, human_traj in enumerate(human_trajectories):
+            if i % 10 == 0:  # Progress indicator
+                print(f"  Processing human trajectory {i + 1}/{len(human_trajectories)}")
+
+            for j, heuristic_traj in enumerate(heuristic_trajectories):
+                mse = compute_position_mse(human_traj, heuristic_traj, n_timepoints)
+                if mse is not None:
+                    human_heuristic_mse.append(mse)
+
+        # 2. Compute all human-RL MSE values
+        print("\nComputing Human-RL MSE values...")
+        human_rl_mse = []
+
+        for i, human_traj in enumerate(human_trajectories):
+            if i % 10 == 0:  # Progress indicator
+                print(f"  Processing human trajectory {i + 1}/{len(human_trajectories)}")
+
+            for j, rl_traj in enumerate(rl_trajectories):
+                mse = compute_position_mse(human_traj, rl_traj, n_timepoints)
+                if mse is not None:
+                    human_rl_mse.append(mse)
+
+        # Convert to numpy arrays for easier manipulation
+        human_heuristic_mse = np.array(human_heuristic_mse)
+        human_rl_mse = np.array(human_rl_mse)
+
+        # 3. Compute summary statistics
+        hh_mean = np.mean(human_heuristic_mse)
+        hh_std = np.std(human_heuristic_mse)
+        hh_median = np.median(human_heuristic_mse)
+
+        hr_mean = np.mean(human_rl_mse)
+        hr_std = np.std(human_rl_mse)
+        hr_median = np.median(human_rl_mse)
+
+        print(f"\n" + "=" * 80)
+        print("HUMAN SIMILARITY COMPARISON RESULTS")
+        print("=" * 80)
+
+        print(f"\nHuman-Heuristic MSE Statistics:")
+        print(f"  N comparisons: {len(human_heuristic_mse):,}")
+        print(f"  Mean: {hh_mean:.6f}")
+        print(f"  Std:  {hh_std:.6f}")
+        print(f"  Median: {hh_median:.6f}")
+
+        print(f"\nHuman-RL MSE Statistics:")
+        print(f"  N comparisons: {len(human_rl_mse):,}")
+        print(f"  Mean: {hr_mean:.6f}")
+        print(f"  Std:  {hr_std:.6f}")
+        print(f"  Median: {hr_median:.6f}")
+
+        # 4. Statistical tests
+        from scipy import stats
+
+        # Test 1: Mann-Whitney U test (non-parametric)
+        # H0: The two distributions are the same
+        # H1: Human-Heuristic MSE is significantly lower than Human-RL MSE
+        u_stat, u_p_value = stats.mannwhitneyu(
+            human_heuristic_mse,
+            human_rl_mse,
+            alternative='less'  # Test if heuristic MSE is less than RL MSE
+        )
+
+        # Test 2: Welch's t-test (assumes normal distributions but unequal variances)
+        t_stat, t_p_value = stats.ttest_ind(
+            human_heuristic_mse,
+            human_rl_mse,
+            equal_var=False,
+            alternative='less'
+        )
+
+        # Test 3: Kolmogorov-Smirnov test (tests if distributions are different)
+        ks_stat, ks_p_value = stats.ks_2samp(human_heuristic_mse, human_rl_mse)
+
+        # Effect size (Cohen's d)
+        pooled_std = np.sqrt(((len(human_heuristic_mse) - 1) * hh_std ** 2 +
+                              (len(human_rl_mse) - 1) * hr_std ** 2) /
+                             (len(human_heuristic_mse) + len(human_rl_mse) - 2))
+        cohens_d = (hh_mean - hr_mean) / pooled_std
+
+        print(f"\n" + "-" * 60)
+        print("STATISTICAL TEST RESULTS")
+        print("-" * 60)
+
+        print(f"\nDifference in means:")
+        print(f"  Human-Heuristic mean - Human-RL mean = {hh_mean - hr_mean:.6f}")
+        print(f"  Relative improvement: {((hr_mean - hh_mean) / hr_mean * 100):.2f}% lower MSE")
+
+        print(f"\nMann-Whitney U Test (non-parametric):")
+        print(f"  U statistic: {u_stat:,.0f}")
+        print(f"  p-value: {u_p_value:.2e}")
+        print(f"  Result: {'SIGNIFICANT' if u_p_value < 0.05 else 'NOT SIGNIFICANT'} (α = 0.05)")
+
+        print(f"\nWelch's t-test:")
+        print(f"  t statistic: {t_stat:.4f}")
+        print(f"  p-value: {t_p_value:.2e}")
+        print(f"  Result: {'SIGNIFICANT' if t_p_value < 0.05 else 'NOT SIGNIFICANT'} (α = 0.05)")
+
+        print(f"\nKolmogorov-Smirnov Test:")
+        print(f"  KS statistic: {ks_stat:.4f}")
+        print(f"  p-value: {ks_p_value:.2e}")
+        print(
+            f"  Result: {'SIGNIFICANT DIFFERENCE' if ks_p_value < 0.05 else 'NO SIGNIFICANT DIFFERENCE'} in distributions")
+
+        print(f"\nEffect Size:")
+        print(f"  Cohen's d: {cohens_d:.4f}")
+
+        if abs(cohens_d) < 0.2:
+            effect_size_desc = "negligible"
+        elif abs(cohens_d) < 0.5:
+            effect_size_desc = "small"
+        elif abs(cohens_d) < 0.8:
+            effect_size_desc = "medium"
+        else:
+            effect_size_desc = "large"
+
+        print(f"  Effect size magnitude: {effect_size_desc}")
+
+        # 5. Create comprehensive visualizations
+        fig = plt.figure(figsize=(20, 16))
+
+        # Create a 3x3 grid
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+
+        # Plot 1: Box plot comparison (top left)
+        ax1 = fig.add_subplot(gs[0, 0])
+        box_data = [human_heuristic_mse, human_rl_mse]
+        box_labels = ['Human-Heuristic', 'Human-RL']
+
+        bp = ax1.boxplot(box_data, labels=box_labels, patch_artist=True)
+        bp['boxes'][0].set_facecolor('lightblue')
+        bp['boxes'][1].set_facecolor('lightcoral')
+
+        ax1.set_ylabel('Position MSE')
+        ax1.set_title('MSE Distribution Comparison')
+        ax1.grid(True, alpha=0.3)
+
+        # Add statistical annotation
+        ax1.text(0.02, 0.98, f'p = {u_p_value:.2e}\n(Mann-Whitney U)',
+                 transform=ax1.transAxes, fontsize=10, verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+        # Plot 2: Histogram comparison (top middle)
+        ax2 = fig.add_subplot(gs[0, 1])
+
+        # Use same bins for both histograms
+        min_val = min(np.min(human_heuristic_mse), np.min(human_rl_mse))
+        max_val = max(np.max(human_heuristic_mse), np.max(human_rl_mse))
+        bins = np.linspace(min_val, max_val, 50)
+
+        ax2.hist(human_heuristic_mse, bins=bins, alpha=0.7, label='Human-Heuristic',
+                 color='lightblue', density=True)
+        ax2.hist(human_rl_mse, bins=bins, alpha=0.7, label='Human-RL',
+                 color='lightcoral', density=True)
+
+        ax2.axvline(hh_mean, color='blue', linestyle='--', linewidth=2,
+                    label=f'H-H Mean: {hh_mean:.4f}')
+        ax2.axvline(hr_mean, color='red', linestyle='--', linewidth=2,
+                    label=f'H-RL Mean: {hr_mean:.4f}')
+
+        ax2.set_xlabel('Position MSE')
+        ax2.set_ylabel('Density')
+        ax2.set_title('MSE Distribution Histograms')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+
+        # Plot 3: Cumulative distribution (top right)
+        ax3 = fig.add_subplot(gs[0, 2])
+
+        # Sort values for CDF
+        hh_sorted = np.sort(human_heuristic_mse)
+        hr_sorted = np.sort(human_rl_mse)
+
+        # Compute cumulative probabilities
+        hh_p = np.arange(1, len(hh_sorted) + 1) / len(hh_sorted)
+        hr_p = np.arange(1, len(hr_sorted) + 1) / len(hr_sorted)
+
+        ax3.plot(hh_sorted, hh_p, label='Human-Heuristic', color='blue', linewidth=2)
+        ax3.plot(hr_sorted, hr_p, label='Human-RL', color='red', linewidth=2)
+
+        ax3.set_xlabel('Position MSE')
+        ax3.set_ylabel('Cumulative Probability')
+        ax3.set_title('Cumulative Distribution Functions')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        # Add annotation for median crossover
+        ax3.axhline(0.5, color='gray', linestyle=':', alpha=0.7)
+        ax3.axvline(hh_median, color='blue', linestyle=':', alpha=0.7)
+        ax3.axvline(hr_median, color='red', linestyle=':', alpha=0.7)
+
+        # Plot 4: Statistical test results summary (middle left)
+        ax4 = fig.add_subplot(gs[1, 0])
+        ax4.axis('off')
+
+        # Create text summary
+        test_results_text = f"""
+    Statistical Test Results Summary
+
+    Mean Difference:
+    • Human-Heuristic: {hh_mean:.6f}
+    • Human-RL: {hr_mean:.6f}
+    • Difference: {hh_mean - hr_mean:.6f}
+    • Improvement: {((hr_mean - hh_mean) / hr_mean * 100):.2f}%
+
+    Mann-Whitney U Test:
+    • p-value: {u_p_value:.2e}
+    • Result: {'✓ SIGNIFICANT' if u_p_value < 0.05 else '✗ NOT SIGNIFICANT'}
+
+    Welch's t-test:
+    • p-value: {t_p_value:.2e}
+    • Result: {'✓ SIGNIFICANT' if t_p_value < 0.05 else '✗ NOT SIGNIFICANT'}
+
+    Effect Size (Cohen's d):
+    • Value: {cohens_d:.4f}
+    • Magnitude: {effect_size_desc}
+
+    Sample Sizes:
+    • Human-Heuristic: {len(human_heuristic_mse):,}
+    • Human-RL: {len(human_rl_mse):,}
+        """
+
+        ax4.text(0.05, 0.95, test_results_text, transform=ax4.transAxes, fontsize=11,
+                 verticalalignment='top', fontfamily='monospace',
+                 bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+
+        # Plot 5: Q-Q plot (middle center)
+        ax5 = fig.add_subplot(gs[1, 1])
+
+        # Sample data for Q-Q plot if datasets are very large
+        if len(human_heuristic_mse) > 10000:
+            hh_sample = np.random.choice(human_heuristic_mse, 10000, replace=False)
+        else:
+            hh_sample = human_heuristic_mse
+
+        if len(human_rl_mse) > 10000:
+            hr_sample = np.random.choice(human_rl_mse, 10000, replace=False)
+        else:
+            hr_sample = human_rl_mse
+
+        stats.probplot(hh_sample, dist="norm", plot=ax5)
+        ax5.set_title('Q-Q Plot: Human-Heuristic MSE vs Normal')
+        ax5.grid(True, alpha=0.3)
+
+        # Plot 6: Scatter plot of random sample pairs (middle right)
+        ax6 = fig.add_subplot(gs[1, 2])
+
+        # Take a random sample for visualization
+        n_sample = min(1000, len(human_heuristic_mse), len(human_rl_mse))
+        hh_sample_idx = np.random.choice(len(human_heuristic_mse), n_sample, replace=False)
+        hr_sample_idx = np.random.choice(len(human_rl_mse), n_sample, replace=False)
+
+        ax6.scatter(human_heuristic_mse[hh_sample_idx], human_rl_mse[hr_sample_idx],
+                    alpha=0.5, s=20)
+
+        # Add diagonal line
+        min_val = min(np.min(human_heuristic_mse[hh_sample_idx]),
+                      np.min(human_rl_mse[hr_sample_idx]))
+        max_val = max(np.max(human_heuristic_mse[hh_sample_idx]),
+                      np.max(human_rl_mse[hr_sample_idx]))
+        ax6.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.7,
+                 label='Equal MSE line')
+
+        ax6.set_xlabel('Human-Heuristic MSE')
+        ax6.set_ylabel('Human-RL MSE')
+        ax6.set_title('MSE Correlation Scatter Plot\n(Random Sample)')
+        ax6.legend()
+        ax6.grid(True, alpha=0.3)
+
+        # Plot 7: Percentile comparison (bottom left)
+        ax7 = fig.add_subplot(gs[2, 0])
+
+        percentiles = np.arange(5, 100, 5)
+        hh_percentiles = np.percentile(human_heuristic_mse, percentiles)
+        hr_percentiles = np.percentile(human_rl_mse, percentiles)
+
+        ax7.plot(percentiles, hh_percentiles, 'o-', label='Human-Heuristic',
+                 color='blue', linewidth=2)
+        ax7.plot(percentiles, hr_percentiles, 's-', label='Human-RL',
+                 color='red', linewidth=2)
+
+        ax7.set_xlabel('Percentile')
+        ax7.set_ylabel('MSE Value')
+        ax7.set_title('Percentile Comparison')
+        ax7.legend()
+        ax7.grid(True, alpha=0.3)
+
+        # Plot 8: Effect size visualization (bottom middle)
+        ax8 = fig.add_subplot(gs[2, 1])
+
+        # Create overlapping distributions to show effect size
+        x_range = np.linspace(min_val, max_val, 1000)
+
+        # Approximate as normal distributions for visualization
+        hh_pdf = stats.norm.pdf(x_range, hh_mean, hh_std)
+        hr_pdf = stats.norm.pdf(x_range, hr_mean, hr_std)
+
+        ax8.plot(x_range, hh_pdf, label='Human-Heuristic', color='blue', linewidth=2)
+        ax8.plot(x_range, hr_pdf, label='Human-RL', color='red', linewidth=2)
+        ax8.fill_between(x_range, hh_pdf, alpha=0.3, color='blue')
+        ax8.fill_between(x_range, hr_pdf, alpha=0.3, color='red')
+
+        ax8.axvline(hh_mean, color='blue', linestyle='--', alpha=0.7)
+        ax8.axvline(hr_mean, color='red', linestyle='--', alpha=0.7)
+
+        ax8.set_xlabel('Position MSE')
+        ax8.set_ylabel('Probability Density')
+        ax8.set_title(f'Effect Size Visualization\n(Cohen\'s d = {cohens_d:.3f})')
+        ax8.legend()
+        ax8.grid(True, alpha=0.3)
+
+        # Plot 9: Hypothesis test conclusion (bottom right)
+        ax9 = fig.add_subplot(gs[2, 2])
+        ax9.axis('off')
+
+        # Determine overall conclusion
+        if u_p_value < 0.05 and hh_mean < hr_mean:
+            conclusion = "✓ HYPOTHESIS SUPPORTED"
+            conclusion_color = 'green'
+            conclusion_detail = "Heuristic agents are significantly\nmore similar to humans than RL agents"
+        elif u_p_value >= 0.05:
+            conclusion = "? INCONCLUSIVE"
+            conclusion_color = 'orange'
+            conclusion_detail = "No significant difference found\nbetween agent similarities"
+        else:
+            conclusion = "✗ HYPOTHESIS REJECTED"
+            conclusion_color = 'red'
+            conclusion_detail = "RL agents are more similar\nto humans than heuristic agents"
+
+        conclusion_text = f"""
+    FINAL CONCLUSION
+
+    {conclusion}
+
+    {conclusion_detail}
+
+    Key Evidence:
+    • Mean MSE difference: {hh_mean - hr_mean:.6f}
+    • Statistical significance: {u_p_value:.2e}
+    • Effect size: {effect_size_desc} ({cohens_d:.3f})
+
+    Confidence Level: 95%
+    (α = 0.05)
+        """
+
+        ax9.text(0.5, 0.5, conclusion_text, transform=ax9.transAxes, fontsize=12,
+                 horizontalalignment='center', verticalalignment='center',
+                 bbox=dict(boxstyle='round', facecolor=conclusion_color, alpha=0.2))
+
+        plt.suptitle('Human Similarity Comparison: Heuristic vs RL Agents\nPosition Trajectory MSE Analysis',
+                     fontsize=16, fontweight='bold')
+
+        # Save the comprehensive plot
+        plot_path = os.path.join(save_dir, "human_similarity_comparison_comprehensive.png")
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        plt.show()
+
+        # 6. Save detailed results
+        results = {
+            'summary_statistics': {
+                'human_heuristic_mse': {
+                    'mean': float(hh_mean),
+                    'std': float(hh_std),
+                    'median': float(hh_median),
+                    'n_comparisons': int(len(human_heuristic_mse)),
+                    'min': float(np.min(human_heuristic_mse)),
+                    'max': float(np.max(human_heuristic_mse)),
+                    'q25': float(np.percentile(human_heuristic_mse, 25)),
+                    'q75': float(np.percentile(human_heuristic_mse, 75))
+                },
+                'human_rl_mse': {
+                    'mean': float(hr_mean),
+                    'std': float(hr_std),
+                    'median': float(hr_median),
+                    'n_comparisons': int(len(human_rl_mse)),
+                    'min': float(np.min(human_rl_mse)),
+                    'max': float(np.max(human_rl_mse)),
+                    'q25': float(np.percentile(human_rl_mse, 25)),
+                    'q75': float(np.percentile(human_rl_mse, 75))
+                }
+            },
+            'statistical_tests': {
+                'mann_whitney_u': {
+                    'statistic': float(u_stat),
+                    'p_value': float(u_p_value),
+                    'significant': bool(u_p_value < 0.05),
+                    'interpretation': 'Human-Heuristic MSE is significantly lower' if u_p_value < 0.05 and hh_mean < hr_mean else 'No significant difference or opposite effect'
+                },
+                'welch_t_test': {
+                    'statistic': float(t_stat),
+                    'p_value': float(t_p_value),
+                    'significant': bool(t_p_value < 0.05)
+                },
+                'kolmogorov_smirnov': {
+                    'statistic': float(ks_stat),
+                    'p_value': float(ks_p_value),
+                    'significant': bool(ks_p_value < 0.05)
+                }
+            },
+            'effect_size': {
+                'cohens_d': float(cohens_d),
+                'magnitude': effect_size_desc,
+                'interpretation': f"{'Large' if abs(cohens_d) > 0.8 else 'Medium' if abs(cohens_d) > 0.5 else 'Small' if abs(cohens_d) > 0.2 else 'Negligible'} practical difference"
+            },
+            'hypothesis_test': {
+                'hypothesis': 'Human-Heuristic MSE < Human-RL MSE',
+                'supported': bool(u_p_value < 0.05 and hh_mean < hr_mean),
+                'confidence_level': 0.95,
+                'conclusion': conclusion
+            },
+            'practical_significance': {
+                'mean_difference': float(hh_mean - hr_mean),
+                'percent_improvement': float((hr_mean - hh_mean) / hr_mean * 100) if hr_mean > 0 else None,
+                'median_difference': float(hh_median - hr_median)
+            }
+        }
+
+        # Save results to JSON
+        results_path = os.path.join(save_dir, "human_similarity_comparison_results.json")
+        with open(results_path, 'w') as f:
+            json.dump(results, f, indent=2)
+
+        # Create summary CSV
+        summary_data = [{
+            'Comparison': 'Human-Heuristic vs Human-RL',
+            'H_Heuristic_Mean': hh_mean,
+            'H_RL_Mean': hr_mean,
+            'Mean_Difference': hh_mean - hr_mean,
+            'Percent_Improvement': (hr_mean - hh_mean) / hr_mean * 100 if hr_mean > 0 else None,
+            'Mann_Whitney_p': u_p_value,
+            'Significant': u_p_value < 0.05,
+            'Cohens_d': cohens_d,
+            'Effect_Size': effect_size_desc,
+            'N_HH_Comparisons': len(human_heuristic_mse),
+            'N_HR_Comparisons': len(human_rl_mse),
+            'Hypothesis_Supported': u_p_value < 0.05 and hh_mean < hr_mean
+        }]
+
+        summary_df = pd.DataFrame(summary_data)
+        summary_path = os.path.join(save_dir, "human_similarity_comparison_summary.csv")
+        summary_df.to_csv(summary_path, index=False)
+
+        print(f"\n" + "=" * 80)
+        print("FINAL CONCLUSION")
+        print("=" * 80)
+        print(f"{conclusion}")
+        print(f"\nKey findings:")
+        print(f"• Average Human-Heuristic MSE: {hh_mean:.6f}")
+        print(f"• Average Human-RL MSE: {hr_mean:.6f}")
+        print(f"• Difference: {hh_mean - hr_mean:.6f} ({((hr_mean - hh_mean) / hr_mean * 100):.2f}% improvement)")
+        print(f"• Statistical significance: p = {u_p_value:.2e}")
+        print(f"• Effect size: {effect_size_desc} (Cohen's d = {cohens_d:.3f})")
+
+        print(f"\nFiles saved:")
+        print(f"  Comprehensive plot: {plot_path}")
+        print(f"  Detailed results: {results_path}")
+        print(f"  Summary table: {summary_path}")
+
+        return results
+
+
+
+
+
+
+
+
+
+
+    ####################################################################################################################
+    ####################################################################################################################
+    ####################################################################################################################
+
     def run_analysis(self):
         load_saved = True
 
@@ -1322,19 +3865,47 @@ class SimilarityAnalysis:
             #self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
-        self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
-        
+        #self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
+
+        # self.analyze_temporal_silhouette_evolution(
+        #     self.human_trajectories,
+        #     self.rl_trajectories,
+        #     self.heuristic_trajectories
+        # )
+
+
+        # correlation_results = self.analyze_progress_rate_correlations(
+        #     self.human_trajectories,
+        #     self.rl_trajectories,
+        #     self.heuristic_trajectories
+        # )
+        #
+        mse_results = self.analyze_progress_rate_mse(
+            self.human_trajectories,
+            self.rl_trajectories,
+            self.heuristic_trajectories
+        )
+
+        # cross_mse_results = self.analyze_cross_trajectory_position_mse(self.human_trajectories,
+        #     self.rl_trajectories,
+        #     self.heuristic_trajectories)
+
+        # In your run_analysis method:
+        # similarity_results = self.analyze_human_similarity_comparison(
+        #     self.human_trajectories,
+        #     self.rl_trajectories,
+        #     self.heuristic_trajectories
+        # )
+
         # Analyze threat-target priority clusters
-        self.compute_silhouette_scores(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
+        #self.compute_silhouette_scores(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
         
-        # Analyze rate of identifying threats and targets throughout the episode # TODO Find DTW package
-        #self.compare_progress_rates(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
-        
+
         # Analyze metric similarity
-        self.analyze_metric_similarity() # Has a TODO, then test.
+        #self.analyze_metric_similarity() # Has a TODO, then test.
         
         # Analyze similarity of action distributions
-        self.analyze_action_distributions(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
+        #self.analyze_action_distributions(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
         
         # Final data to return and save
         # 1. 
