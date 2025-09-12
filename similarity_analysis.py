@@ -5,6 +5,7 @@ import os, json, math
 import glob
 
 import pygame
+from matplotlib.ticker import FuncFormatter
 from scipy.optimize import linear_sum_assignment
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -2089,21 +2090,39 @@ class SimilarityAnalysis:
                 continue
 
             plt.figure(figsize=(8, 6))
-            plt.grid(True, axis='y', alpha=0.3)
+            plt.grid(True, axis='y', alpha=0.6)
 
-            plt.boxplot([human_vals, rl_vals, heuristic_vals], labels=["Human", "RL", "Heuristic"])
+            #plt.boxplot([human_vals, rl_vals, heuristic_vals], labels=["Human", "RL", "Heuristic"])
 
-            # After plt.boxplot line, add:
-            bp = plt.boxplot([human_vals, rl_vals, heuristic_vals], tick_labels=["Human", "RL", "Heuristic"],patch_artist=True)
+            #bp = plt.violinplot([human_vals, rl_vals, heuristic_vals], tick_labels=["Human", "RL", "Heuristic"],patch_artist=True)
+            parts = plt.violinplot([human_vals, rl_vals, heuristic_vals], positions=[1, 2, 3], showmeans=False,showmedians=True)
+
             # Color the boxes
             colors = ['lightblue', 'lightgreen', 'lightcoral']
-            for patch, color in zip(bp['boxes'], colors):
-                patch.set_facecolor(color)
 
-            plt.title(f"{metric_name.replace('_', ' ').capitalize()}", fontsize=20)
-            plt.ylabel(metric_name.replace('_', ' ').capitalize(), fontsize=18)
-            plt.xlabel("Agent Type", fontsize=18)  # Add this line
-            plt.tick_params(axis='both', which='major', labelsize=15)
+            for i, pc in enumerate(parts['bodies']):
+                pc.set_facecolor(colors[i])
+                pc.set_alpha(1.0)  # Increased alpha to 0.9
+                pc.set_edgecolor('black')  # Added black outline around violins
+                pc.set_linewidth(1)  # Set outline width
+                pc.set_zorder(3)  # Set higher zorder to appear above gridlines
+
+            # Make all box and whisker elements black instead of blue
+            parts['cmedians'].set_color('black')
+            parts['cmedians'].set_linewidth(2)
+            parts['cmins'].set_color('black')
+            parts['cmaxes'].set_color('black')
+            parts['cmedians'].set_zorder(4)  # Keep medians above violins
+            parts['cbars'].set_color('black')
+
+            parts['cbars'].set_visible(False)
+            parts['cmins'].set_visible(False)
+            parts['cmaxes'].set_visible(False)
+
+            plt.title(f"{metric_name.replace('_', ' ').capitalize()}", fontsize=25)
+            plt.ylabel(metric_name.replace('_', ' ').capitalize(), fontsize=22)
+            plt.xlabel("Agent Type", fontsize=22)
+            plt.tick_params(axis='y', which='major', labelsize=20)
 
             plt.show()
 
@@ -3259,27 +3278,22 @@ class SimilarityAnalysis:
 
         valid_agent_names = [name for name in agent_names if agent_mse_results[name]['mean_mse'] is not None]
 
-        bars = ax1.bar(range(len(valid_agent_names)), agent_means, alpha=0.7)
-        ax1.axhline(y=overall_mean_mse, color='red', linestyle='--', linewidth=2,
-                    label=f'Heuristic Average ({overall_mean_mse:.4f})')
-        ax1.axhline(y=rl_mean_mse, color='green', linestyle='--', linewidth=2,
-                    label=f'RL Average ({rl_mean_mse:.4f})')
+        ax1.grid(True, axis='y', alpha=0.6)
 
-        # Color bars based on whether they're above or below overall average
-        for i, (bar, mean_val) in enumerate(zip(bars, agent_means)):
-            if mean_val > overall_mean_mse:
-                bar.set_color('lightcoral')  # Worse than average
-            else:
-                bar.set_color('lightblue')  # Better than average
+        bars = ax1.bar(range(len(valid_agent_names)), agent_means, alpha=0.9)
+        ax1.axhline(y=overall_mean_mse, color='red', linestyle='-', linewidth=2,label=f'Heuristic Average ({overall_mean_mse:.1f})')
+        ax1.axhline(y=rl_mean_mse, color='green', linestyle='-', linewidth=2, label=f'RL Average ({rl_mean_mse:.1f})')
 
-        ax1.set_xlabel('Heuristic Agent Type')
-        ax1.set_ylabel('Mean Position MSE vs Humans')
-        ax1.set_title('MSE (position vs. time) between heuristic agents and human trajectories')
+        ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x / 1000)}k'))
+        ax1.tick_params(labelsize=15)
+        ax1.set_xlabel('Heuristic Configuration', fontsize=20)
+        ax1.set_ylabel('Position MSE vs. Human', fontsize=20)
+        ax1.set_title('Position vs. time MSE between heuristic\nagents and human trajectories', fontsize=25)
         ax1.set_xticks(range(len(valid_agent_names)))
-        ax1.set_xticklabels([name[:15] + '...' if len(name) > 15 else name for name in valid_agent_names],
-                            rotation=45, ha='right')
-        ax1.legend()
-        ax1.grid(True, axis='y', alpha=0.3)
+        ax1.set_xticklabels([name[:15] + '...' if len(name) > 15 else name for name in valid_agent_names], rotation=45, ha='right')
+        ax1.set_ylim(bottom=100000)
+        #ax1.legend()
+
 
         # Add value labels on bars
         # for bar, value in zip(bars, agent_means):
@@ -3946,7 +3960,7 @@ class SimilarityAnalysis:
     ####################################################################################################################
 
     def run_analysis(self):
-        load_saved = False
+        load_saved = True
 
         self.config = load_env_config('configs/Monolith_index_August.json')
         self.config['use_stuck_detection'] = False
@@ -3980,7 +3994,7 @@ class SimilarityAnalysis:
         # cross_mse_results = self.analyze_cross_trajectory_position_mse(self.human_trajectories,
         #     self.rl_trajectories,
         #     self.heuristic_trajectories)
-        #
+
         # similarity_results = self.analyze_human_similarity_comparison(
         #     self.human_trajectories,
         #     self.rl_trajectories,
@@ -3988,7 +4002,7 @@ class SimilarityAnalysis:
         # )
         #
         # #Analyze metric similarity
-        # self.analyze_metric_similarity()
+        self.analyze_metric_similarity()
 
 
         #####################################
