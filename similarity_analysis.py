@@ -302,6 +302,52 @@ class Trajectory:
     threat_ids: List[int] = None                 # History of threats identified per timestep
 
 
+@dataclass
+class FullTrajectory:
+    category: str  # 'human', 'rl', or 'heuristic'
+    level: int
+    name: str
+    positions: List[Tuple[float, float]]
+    target0_pos: List[Tuple[float, float]]
+    target0_status: int
+    target1_pos: List[Tuple[float, float]]
+    target1_status: int
+    target2_pos: List[Tuple[float, float]]
+    target2_status: int
+    target3_pos: List[Tuple[float, float]]
+    target3_status: int
+    target4_pos: List[Tuple[float, float]]
+    target4_status: int
+    target5_pos: List[Tuple[float, float]]
+    target5_status: int
+    target6_pos: List[Tuple[float, float]]
+    target6_status: int
+    target7_pos: List[Tuple[float, float]]
+    target7_status: int
+    target8_pos: List[Tuple[float, float]]
+    target8_status: int
+    target9_pos: List[Tuple[float, float]]
+    target9_status: int
+    target10_pos: List[Tuple[float, float]]
+    target10_status: int
+    target11_pos: List[Tuple[float, float]]
+    target11_status: int
+    target12_pos: List[Tuple[float, float]]
+    target12_status: int
+    target13_pos: List[Tuple[float, float]]
+    target13_status: int
+    target14_pos: List[Tuple[float, float]]
+    target14_status: int
+    threat0_pos: List[Tuple[float, float]]
+    threat0_status: int
+    threat1_pos: List[Tuple[float, float]]
+    threat1_status: int
+    threat2_pos: List[Tuple[float, float]]
+    threat2_status: int
+    threat3_pos: List[Tuple[float, float]]
+    threat3_status: int
+
+
 class SimilarityAnalysis:
     def __init__(self):
         self.human_trajectories_path = './userstudy_logs/' # Where the human trajectory json files are stored
@@ -460,7 +506,7 @@ class SimilarityAnalysis:
         return self.human_trajectories
 
 
-    def generate_rl_trajectories(self, agents_path, out_name):
+    def generate_rl_trajectories(self, agents_path, out_name, full_trajectories):
         render = False
 
         rl_trajectories = []
@@ -540,7 +586,12 @@ class SimilarityAnalysis:
 
                     env = load_vecnormalize_wrapper(pkl_path, env)
 
-                    trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+                    if full_trajectories:
+                        trajectory = FullTrajectory(name=f'seed{seed}', level=level, category='rl', actions=[], positions=[], target_ids=[], threat_ids=[])  # instantiate the trajectory
+                        # TODO: Fully populate target and threat positions at each step (they don't change)
+                    else:
+                        trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+
                     step_count = 0
                     obs = env.reset()
                     done = False
@@ -562,6 +613,12 @@ class SimilarityAnalysis:
                         trajectory.positions.append((base_env.env.agents[0].x, base_env.env.agents[0].y))
                         trajectory.target_ids.append(base_env.env.targets_identified)
                         trajectory.threat_ids.append(base_env.env.num_threats_identified)
+
+                        if full_trajectories:
+                            for target in range(15):
+                                trajectory.target{str(target)}_status = base_env.env.targets_identified[target] # TODO FIX
+                            for threat in range(4):
+                                trajectory.threat{str(threat)}_status = base_env.env.threat_identified[target]  # TODO FIX
                         step_count += 1
 
                     rl_trajectories.append(trajectory)
