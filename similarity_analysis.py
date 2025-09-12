@@ -26,7 +26,7 @@ from sklearn.cluster import KMeans
 # For compare_progress_rate
 from scipy.spatial.distance import cdist
 #from fastdtw import fastdtw
-from scipy.stats import mannwhitneyu, pearsonr
+from scipy.stats import mannwhitneyu, pearsonr, kruskal
 
 # For action distribution comparison
 from scipy.stats import chisquare
@@ -35,6 +35,43 @@ from env_multi_new import MAISREnvVec
 from utility.data_logging import load_env_config
 from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, TargetSearchLocalTSP, HeuristicAgent
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
+
+
+def perform_kruskal_wallis_test(metric_name, human_vals, rl_vals, heuristic_vals):
+    """
+    Perform Kruskal-Wallis H test to determine if three groups are significantly different.
+    """
+    # Kruskal-Wallis test
+    h_stat, p_value = kruskal(human_vals, rl_vals, heuristic_vals)
+
+    print(f"\n--- {metric_name} - Kruskal-Wallis H Test ---")
+    print(f"H-statistic: {h_stat:.4f}")
+    print(f"p-value: {p_value}")
+    print(f"Result: {'SIGNIFICANT' if p_value < 0.05 else 'NOT SIGNIFICANT'} group differences (α = 0.05)")
+
+    # If significant, perform post-hoc pairwise comparisons
+    if p_value < 0.05:
+        print(f"\nPost-hoc pairwise comparisons (Dunn's test):")
+
+        # Combine data for post-hoc test
+        all_data = human_vals + rl_vals + heuristic_vals
+        groups = (['Human'] * len(human_vals) +
+                  ['RL'] * len(rl_vals) +
+                  ['Heuristic'] * len(heuristic_vals))
+
+        # Create DataFrame for scikit-posthocs
+        import pandas as pd
+        df = pd.DataFrame({'values': all_data, 'groups': groups})
+
+        # Dunn's test with Bonferroni correction
+        try:
+            import scikit_posthocs as sp
+            dunn_results = sp.posthoc_dunn(df, val_col='values', group_col='groups', p_adjust='bonferroni')
+            print(dunn_results)
+        except ImportError:
+            print("scikit-posthocs not available. Install with: pip install scikit-posthocs")
+
+    return h_stat, p_value
 
 
 def load_vecnormalize_wrapper(vecnorm_path, env):
@@ -111,18 +148,41 @@ def load_saved_trajectories(trajectory_type: str):
     # Convert JSON data back to Trajectory objects
     trajectories = []
     for traj_dict in trajectory_data:
+        # Subsample every 10th timestep for human trajectories (human gameplay used 10x refresh rate to improve user experience)
+        if trajectory_type == 'human':
+            positions = traj_dict.get('positions', [])
+            actions = traj_dict.get('actions', [])
+            target_ids = traj_dict.get('target_ids', [])
+            threat_ids = traj_dict.get('threat_ids', [])
+
+            # Apply subsampling (every 10th element, starting from 0)
+            positions = positions[::10] if positions else []
+            actions = actions[::10] if actions else []
+            target_ids = target_ids[::10] if target_ids else []
+            threat_ids = threat_ids[::10] if threat_ids else []
+        else:
+            # Keep all timesteps for RL and heuristic trajectories
+            positions = traj_dict.get('positions', [])
+            actions = traj_dict.get('actions', [])
+            target_ids = traj_dict.get('target_ids', [])
+            threat_ids = traj_dict.get('threat_ids', [])
+
         trajectory = Trajectory(
             category=traj_dict['category'],
             level=traj_dict['level'],
             name=traj_dict['name'],
-            positions=[tuple(pos) if isinstance(pos, list) else pos for pos in traj_dict.get('positions', [])],
-            actions=traj_dict.get('actions', []),
-            target_ids=traj_dict.get('target_ids', []),
-            threat_ids=traj_dict.get('threat_ids', [])
+            positions=[tuple(pos) if isinstance(pos, list) else pos for pos in positions],
+            actions=actions,
+            target_ids=target_ids,
+            threat_ids=threat_ids
         )
         trajectories.append(trajectory)
+        print(f"Successfully processed {traj_dict['category']} trajectory, {len(positions)} timesteps")
 
     print(f"Successfully loaded {len(trajectories)} {trajectory_type} trajectories from {file_path}")
+    if trajectory_type == 'human':
+        print(f"  Note: Human trajectories subsampled to every 10th timestep")
+
     return trajectories
 
 
@@ -514,7 +574,7 @@ class SimilarityAnalysis:
         planning_horizon = ['greedy', 'clusters']
         spatial_coordination = [False, True]
         decision_speed = ['fast', 'slow']
-        combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination)]
+        combinations = [list(p) for p in itertools.product(risk_tolerance, action_noise, spatial_coordination, planning_horizon, decision_speed)]
         print(f'Generated {len(combinations)} strategy combinations')
 
         render = False
@@ -536,7 +596,7 @@ class SimilarityAnalysis:
             print(f'Generating trajectories for heuristic {combination}')
             
             # Instantiate agent with <combination> strategy settings		
-            risk_tolerance, action_noise, spatial_coordination = combination
+            risk_tolerance, action_noise, spatial_coordination, planning_horizon, decision_speed = combination
             
             teammate = GenericTeammatePolicy(env=None,
                 local_search_policy=TargetSearchLocalTSP(search_radius=1000, spatial_coord=spatial_coordination, model_path=None, norm_stats_filepath=None, search_method=planning_horizon),
@@ -564,7 +624,7 @@ class SimilarityAnalysis:
 
                 teammate.env = base_env.env
 
-                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}_{planning_horizon}_{decision_speed}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
                 step_count = 0
                 obs = env.reset()
                 done = False
@@ -630,6 +690,8 @@ class SimilarityAnalysis:
         pts2 = np.repeat(coords, (weights2 * scale).astype(int), axis=0)
 
         n = min(len(pts1), len(pts2))
+        if n == 0: n = 1
+        #print(f'n = {n}')
         pts1 = pts1[:n]
         pts2 = pts2[:n]
 
@@ -646,7 +708,7 @@ class SimilarityAnalysis:
     ################################################ Analysis functions ################################################
 
     def compare_position_heatmaps_2d(self, human_trajectories: List[Trajectory], rl_trajectories: List[Trajectory],
-                                     heuristic_trajectories: List[Trajectory], bins: int = 50,
+                                     heuristic_trajectories: List[Trajectory], bins: int = 100,
                                      output_csv: str = "heatmap_emd_results_2d.csv"):
         """ References/justification for using 2D EMD for this analysis:
             https://stats.stackexchange.com/questions/404775/calculate-earth-movers-distance-for-two-grayscale-images
@@ -684,7 +746,7 @@ class SimilarityAnalysis:
             print(f"Using all {len(human_trajectories)} human trajectories")
 
         # Extract human positions (subsampled)
-        human_positions = extract_positions(sampled_human_trajectories, subsample_every_n=10)
+        human_positions = extract_positions(sampled_human_trajectories, subsample_every_n=1)
 
         # Group heuristic trajectories by agent type (name)
         heuristic_agents = {}
@@ -713,7 +775,7 @@ class SimilarityAnalysis:
                 bins=bins,
                 range=[[x_min, x_max], [y_min, y_max]]
             )
-            return heatmap
+            return np.log(heatmap + 1)
 
         # Compute human and RL heatmaps
         human_heatmap = compute_heatmap(human_positions)
@@ -772,15 +834,14 @@ class SimilarityAnalysis:
         titles = ['Human', 'RL Agent', 'All Heuristic']
 
         for ax, hm, title in zip(axes, heatmaps, titles):
-            im = ax.imshow(hm, origin='lower', aspect='auto',
-                           extent=[x_min, x_max, y_min, y_max], cmap='hot')
-            ax.set_title(f"{title} Heatmap")
-            ax.set_xlabel("X Position")
-            ax.set_ylabel("Y Position")
-            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            im = ax.imshow(hm, origin='lower', aspect='auto',extent=[x_min, x_max, y_min, y_max], cmap='hot')
+            ax.set_title(f"{title} Heatmap", fontsize=20)
+            #ax.set_xlabel("X Position",fontsize=14)
+            #ax.set_ylabel("Y Position",fontsize=14)
+            #fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         plt.tight_layout()
-        plt.savefig('./similarity_analysis/position_heatmaps_overview.png', dpi=300)
+        plt.savefig('./similarity_analysis/heatmaps_overview.png', dpi=300)
         plt.close(fig)
 
         # Plot individual heuristic agent heatmaps (top 6 most similar to humans)
@@ -800,18 +861,48 @@ class SimilarityAnalysis:
 
                 im = axes[i].imshow(heatmap, origin='lower', aspect='auto',
                                     extent=[x_min, x_max, y_min, y_max], cmap='hot')
-                axes[i].set_title(f"{agent_name}\n(EMD vs Human: {emd_value:.3f})")
-                axes[i].set_xlabel("X Position")
-                axes[i].set_ylabel("Y Position")
-                fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
+                axes[i].set_title(f"{agent_name}\n(EMD = {emd_value:.3f})")
+                #axes[i].set_xlabel("X Position")
+                #axes[i].set_ylabel("Y Position")
+                #fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
 
             # Hide unused subplots
             for i in range(len(top_6_agents), len(axes)):
                 axes[i].set_visible(False)
 
             plt.tight_layout()
-            plt.savefig('./similarity_analysis/top_heuristic_agents_heatmaps.png', dpi=300)
+            plt.savefig('./similarity_analysis/heatmaps_top_heuristic_agents.png', dpi=300)
             plt.close(fig)
+
+            # Plot individual heuristic agent heatmaps (top 6 LEAST similar to humans)
+            worst_6_agents = sorted_heuristic[-6:]
+            if len(top_6_agents) > 0:
+                n_cols = 3
+                n_rows = 2
+                fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 12))
+                axes = axes.flatten()
+
+                for i, (key, emd_value) in enumerate(worst_6_agents):
+                    if i >= len(axes):
+                        break
+
+                    agent_name = key.replace('human_vs_heuristic_', '')
+                    heatmap = heuristic_heatmaps[agent_name]
+
+                    im = axes[i].imshow(heatmap, origin='lower', aspect='auto',
+                                        extent=[x_min, x_max, y_min, y_max], cmap='hot')
+                    axes[i].set_title(f"{agent_name}\n(EMD = {emd_value:.3f})")
+                    #axes[i].set_xlabel("X Position")
+                    #axes[i].set_ylabel("Y Position")
+                    #fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
+
+                # Hide unused subplots
+                for i in range(len(worst_6_agents), len(axes)):
+                    axes[i].set_visible(False)
+
+                plt.tight_layout()
+                plt.savefig('./similarity_analysis/heatmaps_worst_heuristic_agents.png', dpi=300)
+                plt.close(fig)
 
         # Create a summary plot showing EMD values
         plt.figure(figsize=(12, 8))
@@ -1853,8 +1944,7 @@ class SimilarityAnalysis:
             'summary_statistics': summary_stats
         }
         
-    
-    # TODO: Add the target-based metrics. Then test.
+
     def analyze_metric_similarity(self):
         """
         Analyze trajectories from three groups: human, RL, and heuristic.
@@ -1867,6 +1957,7 @@ class SimilarityAnalysis:
         
         Performs pairwise statistical comparisons and generates boxplots.
         """
+
         # 16 discrete action direction vectors
         direction_vectors = np.array([
             (0, 1), (0.383, 0.924), (0.707, 0.707), (0.924, 0.383),
@@ -1879,15 +1970,15 @@ class SimilarityAnalysis:
         metrics: Dict[str, Dict[str, List[float]]] = {
             "human": {
                 "path_smoothness": [], "action_switches_per_step": [],
-                "flying_toward_nearest_rate": [], "average_target_distance": []
+                #"flying_toward_nearest_rate": [], "average_target_distance": []
             },
             "rl": {
                 "path_smoothness": [], "action_switches_per_step": [],
-                "flying_toward_nearest_rate": [], "average_target_distance": []
+                #"flying_toward_nearest_rate": [], "average_target_distance": []
             },
             "heuristic": {
                 "path_smoothness": [], "action_switches_per_step": [],
-                "flying_toward_nearest_rate": [], "average_target_distance": []
+                #"flying_toward_nearest_rate": [], "average_target_distance": []
             },
         }
 
@@ -1918,14 +2009,31 @@ class SimilarityAnalysis:
             # Save metrics
             metrics[traj.category]["path_smoothness"].append(smoothness)
             metrics[traj.category]["action_switches_per_step"].append(switch_rate)
-            metrics[traj.category]["flying_toward_nearest_rate"].append(flying_toward_nearest_rate)
-            metrics[traj.category]["average_target_distance"].append(average_target_distance)
+            #metrics[traj.category]["flying_toward_nearest_rate"].append(flying_toward_nearest_rate)
+            #metrics[traj.category]["average_target_distance"].append(average_target_distance)
 
-        # --- Step 2: Perform pairwise statistical tests ---
+        # --- Step 2: Perform overall group comparison test ---
+        print("\n--- (Analyze metric similarity) Overall Group Comparison (Kruskal-Wallis H Test) ---")
+        for metric_name in metrics["human"].keys():
+            human_vals = [v for v in metrics["human"][metric_name] if v is not None]
+            rl_vals = [v for v in metrics["rl"][metric_name] if v is not None]
+            heuristic_vals = [v for v in metrics["heuristic"][metric_name] if v is not None]
+
+            if len(human_vals) > 0 and len(rl_vals) > 0 and len(heuristic_vals) > 0:
+                h_stat, p_val = perform_kruskal_wallis_test(
+                    metric_name, human_vals, rl_vals, heuristic_vals
+                )
+            print(f'Kruskal results: h = {h_stat}, p = {p_val}')
+
+        # --- Step 3: Perform pairwise statistical tests ---
         def pairwise_tests(metric_name):
             human_vals = [v for v in metrics["human"][metric_name] if v is not None]
             rl_vals = [v for v in metrics["rl"][metric_name] if v is not None]
             heuristic_vals = [v for v in metrics["heuristic"][metric_name] if v is not None]
+
+            #print(human_vals)
+            #print(rl_vals)
+            #print(heuristic_vals)
 
             pairs = [
                 ("human", "rl", human_vals, rl_vals),
@@ -1936,10 +2044,11 @@ class SimilarityAnalysis:
             for name1, name2, data1, data2 in pairs:
                 if len(data1) > 0 and len(data2) > 0:
                     stat, p = mannwhitneyu(data1, data2, alternative="two-sided")
-                    results.append(f"{metric_name} {name1} vs {name2}: U={stat:.2f}, p={p:.4f}")
+                    #print(f'For {metric_name} {name1} vs {name2}: U = {stat}, p = {p}')
+                    results.append(f"{metric_name} {name1} vs {name2}: U={stat:.2f}, p={p}")
             return results
 
-        print("\n--- Pairwise Statistical Tests ---")
+        print("\n--- Metric similarity - Statistical Tests ---")
         for metric_name in metrics["human"].keys():
             for line in pairwise_tests(metric_name):
                 print(line)
@@ -1955,6 +2064,8 @@ class SimilarityAnalysis:
                 continue
 
             plt.figure(figsize=(8, 6))
+            plt.grid(True, axis='y', alpha=0.3)
+
             plt.boxplot([human_vals, rl_vals, heuristic_vals], labels=["Human", "RL", "Heuristic"])
 
             # After plt.boxplot line, add:
@@ -1968,7 +2079,7 @@ class SimilarityAnalysis:
             plt.ylabel(metric_name.replace('_', ' ').capitalize(), fontsize=18)
             plt.xlabel("Agent Type", fontsize=18)  # Add this line
             plt.tick_params(axis='both', which='major', labelsize=15)
-            plt.grid(True, axis='y', alpha=0.3)  # Change from True to axis='y'
+
             plt.show()
 
 
@@ -2673,7 +2784,7 @@ class SimilarityAnalysis:
             target_labels.append('RL (all)')
 
         # Add top 10 heuristic agent MSEs
-        top_10_targets = sorted(target_mse_heuristic.items(), key=lambda x: x[1])[:24]
+        top_10_targets = sorted(target_mse_heuristic.items(), key=lambda x: x[1])[:96]
         for agent_name, mse_value in top_10_targets:
             target_mse_values.append(mse_value)
             target_labels.append(agent_name[:20] + ('...' if len(agent_name) > 15 else ''))
@@ -2738,7 +2849,7 @@ class SimilarityAnalysis:
             threat_labels.append('RL (all))')
 
         # Add top 10 heuristic agent MSEs
-        top_10_threats = sorted(threat_mse_heuristic.items(), key=lambda x: x[1])[:24]
+        top_10_threats = sorted(threat_mse_heuristic.items(), key=lambda x: x[1])[:96]
         for agent_name, mse_value in top_10_threats:
             threat_mse_values.append(mse_value)
             threat_labels.append(agent_name[:20] + ('...' if len(agent_name) > 15 else ''))
@@ -3250,9 +3361,9 @@ class SimilarityAnalysis:
         #     'statistical_tests': statistical_tests
         # }
 
-        results_path = os.path.join(save_dir, "cross_trajectory_position_mse_results.json")
-        with open(results_path, 'w') as f:
-            json.dump(detailed_results, f, indent=2)
+        # results_path = os.path.join(save_dir, "cross_trajectory_position_mse_results.json")
+        # with open(results_path, 'w') as f:
+        #     json.dump(detailed_results, f, indent=2)
 
         # Create summary table
         summary_data = []
@@ -3301,7 +3412,7 @@ class SimilarityAnalysis:
 
         print(f"\nFiles saved:")
         print(f"  Plot: {plot_path}")
-        print(f"  Detailed results: {results_path}")
+        #print(f"  Detailed results: {results_path}")
         print(f"  Summary table: {summary_path}")
 
         return detailed_results
@@ -3428,22 +3539,11 @@ class SimilarityAnalysis:
         # Test 1: Mann-Whitney U test (non-parametric)
         # H0: The two distributions are the same
         # H1: Human-Heuristic MSE is significantly lower than Human-RL MSE
-        u_stat, u_p_value = stats.mannwhitneyu(
+        w_stat, w_p_value = stats.wilcoxon(
             human_heuristic_mse,
             human_rl_mse,
             alternative='less'  # Test if heuristic MSE is less than RL MSE
         )
-
-        # Test 2: Welch's t-test (assumes normal distributions but unequal variances)
-        t_stat, t_p_value = stats.ttest_ind(
-            human_heuristic_mse,
-            human_rl_mse,
-            equal_var=False,
-            alternative='less'
-        )
-
-        # Test 3: Kolmogorov-Smirnov test (tests if distributions are different)
-        ks_stat, ks_p_value = stats.ks_2samp(human_heuristic_mse, human_rl_mse)
 
         # Effect size (Cohen's d)
         pooled_std = np.sqrt(((len(human_heuristic_mse) - 1) * hh_std ** 2 +
@@ -3452,28 +3552,17 @@ class SimilarityAnalysis:
         cohens_d = (hh_mean - hr_mean) / pooled_std
 
         print(f"\n" + "-" * 60)
-        print("STATISTICAL TEST RESULTS")
+        print("HUMAN-HEURISTIC VS HUMAN-RL POSITION MSE STATISTICAL TEST RESULTS")
         print("-" * 60)
 
         print(f"\nDifference in means:")
         print(f"  Human-Heuristic mean - Human-RL mean = {hh_mean - hr_mean:.6f}")
         print(f"  Relative improvement: {((hr_mean - hh_mean) / hr_mean * 100):.2f}% lower MSE")
 
-        print(f"\nMann-Whitney U Test (non-parametric):")
-        print(f"  U statistic: {u_stat:,.0f}")
-        print(f"  p-value: {u_p_value:.2e}")
-        print(f"  Result: {'SIGNIFICANT' if u_p_value < 0.05 else 'NOT SIGNIFICANT'} (α = 0.05)")
-
-        print(f"\nWelch's t-test:")
-        print(f"  t statistic: {t_stat:.4f}")
-        print(f"  p-value: {t_p_value:.2e}")
-        print(f"  Result: {'SIGNIFICANT' if t_p_value < 0.05 else 'NOT SIGNIFICANT'} (α = 0.05)")
-
-        print(f"\nKolmogorov-Smirnov Test:")
-        print(f"  KS statistic: {ks_stat:.4f}")
-        print(f"  p-value: {ks_p_value:.2e}")
-        print(
-            f"  Result: {'SIGNIFICANT DIFFERENCE' if ks_p_value < 0.05 else 'NO SIGNIFICANT DIFFERENCE'} in distributions")
+        print(f"\n &&&&& Wilcoxon Signed Rank Test (non-parametric):")
+        print(f"  W statistic: {w_stat:,.0f}")
+        print(f"  p-value: {w_p_value:.2e}")
+        print(f"  Result: {'SIGNIFICANT' if w_p_value < 0.05 else 'NOT SIGNIFICANT'} (α = 0.05)")
 
         print(f"\nEffect Size:")
         print(f"  Cohen's d: {cohens_d:.4f}")
@@ -3509,9 +3598,9 @@ class SimilarityAnalysis:
         ax1.grid(True, alpha=0.3)
 
         # Add statistical annotation
-        ax1.text(0.02, 0.98, f'p = {u_p_value:.2e}\n(Mann-Whitney U)',
-                 transform=ax1.transAxes, fontsize=10, verticalalignment='top',
-                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        # ax1.text(0.02, 0.98, f'p = {u_p_value:.2e}\n(Mann-Whitney U)',
+        #          transform=ax1.transAxes, fontsize=10, verticalalignment='top',
+        #          bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
         # Plot 2: Histogram comparison (top middle)
         ax2 = fig.add_subplot(gs[0, 1])
@@ -3577,12 +3666,8 @@ class SimilarityAnalysis:
     • Improvement: {((hr_mean - hh_mean) / hr_mean * 100):.2f}%
 
     Mann-Whitney U Test:
-    • p-value: {u_p_value:.2e}
-    • Result: {'✓ SIGNIFICANT' if u_p_value < 0.05 else '✗ NOT SIGNIFICANT'}
-
-    Welch's t-test:
-    • p-value: {t_p_value:.2e}
-    • Result: {'✓ SIGNIFICANT' if t_p_value < 0.05 else '✗ NOT SIGNIFICANT'}
+    • p-value: {w_p_value:.2e}
+    • Result: {'✓ SIGNIFICANT' if w_p_value < 0.05 else '✗ NOT SIGNIFICANT'}
 
     Effect Size (Cohen's d):
     • Value: {cohens_d:.4f}
@@ -3687,11 +3772,11 @@ class SimilarityAnalysis:
         ax9.axis('off')
 
         # Determine overall conclusion
-        if u_p_value < 0.05 and hh_mean < hr_mean:
+        if w_p_value < 0.05 and hh_mean < hr_mean:
             conclusion = "✓ HYPOTHESIS SUPPORTED"
             conclusion_color = 'green'
             conclusion_detail = "Heuristic agents are significantly\nmore similar to humans than RL agents"
-        elif u_p_value >= 0.05:
+        elif w_p_value >= 0.05:
             conclusion = "? INCONCLUSIVE"
             conclusion_color = 'orange'
             conclusion_detail = "No significant difference found\nbetween agent similarities"
@@ -3709,7 +3794,7 @@ class SimilarityAnalysis:
 
     Key Evidence:
     • Mean MSE difference: {hh_mean - hr_mean:.6f}
-    • Statistical significance: {u_p_value:.2e}
+    • Statistical significance: {w_p_value:.2e}
     • Effect size: {effect_size_desc} ({cohens_d:.3f})
 
     Confidence Level: 95%
@@ -3753,22 +3838,13 @@ class SimilarityAnalysis:
                 }
             },
             'statistical_tests': {
-                'mann_whitney_u': {
-                    'statistic': float(u_stat),
-                    'p_value': float(u_p_value),
-                    'significant': bool(u_p_value < 0.05),
-                    'interpretation': 'Human-Heuristic MSE is significantly lower' if u_p_value < 0.05 and hh_mean < hr_mean else 'No significant difference or opposite effect'
+                'wilcoxon_signed_rank': {
+                    'statistic': float(w_stat),
+                    'p_value': float(w_p_value),
+                    'significant': bool(w_p_value < 0.05),
+                    'interpretation': 'Human-Heuristic MSE is significantly lower' if w_p_value < 0.05 and hh_mean < hr_mean else 'No significant difference or opposite effect'
                 },
-                'welch_t_test': {
-                    'statistic': float(t_stat),
-                    'p_value': float(t_p_value),
-                    'significant': bool(t_p_value < 0.05)
-                },
-                'kolmogorov_smirnov': {
-                    'statistic': float(ks_stat),
-                    'p_value': float(ks_p_value),
-                    'significant': bool(ks_p_value < 0.05)
-                }
+
             },
             'effect_size': {
                 'cohens_d': float(cohens_d),
@@ -3777,7 +3853,7 @@ class SimilarityAnalysis:
             },
             'hypothesis_test': {
                 'hypothesis': 'Human-Heuristic MSE < Human-RL MSE',
-                'supported': bool(u_p_value < 0.05 and hh_mean < hr_mean),
+                'supported': bool(w_p_value < 0.05 and hh_mean < hr_mean),
                 'confidence_level': 0.95,
                 'conclusion': conclusion
             },
@@ -3800,13 +3876,13 @@ class SimilarityAnalysis:
             'H_RL_Mean': hr_mean,
             'Mean_Difference': hh_mean - hr_mean,
             'Percent_Improvement': (hr_mean - hh_mean) / hr_mean * 100 if hr_mean > 0 else None,
-            'Mann_Whitney_p': u_p_value,
-            'Significant': u_p_value < 0.05,
+            'Mann_Whitney_p': w_p_value,
+            'Significant': w_p_value < 0.05,
             'Cohens_d': cohens_d,
             'Effect_Size': effect_size_desc,
             'N_HH_Comparisons': len(human_heuristic_mse),
             'N_HR_Comparisons': len(human_rl_mse),
-            'Hypothesis_Supported': u_p_value < 0.05 and hh_mean < hr_mean
+            'Hypothesis_Supported': w_p_value < 0.05 and hh_mean < hr_mean
         }]
 
         summary_df = pd.DataFrame(summary_data)
@@ -3821,7 +3897,7 @@ class SimilarityAnalysis:
         print(f"• Average Human-Heuristic MSE: {hh_mean:.6f}")
         print(f"• Average Human-RL MSE: {hr_mean:.6f}")
         print(f"• Difference: {hh_mean - hr_mean:.6f} ({((hr_mean - hh_mean) / hr_mean * 100):.2f}% improvement)")
-        print(f"• Statistical significance: p = {u_p_value:.2e}")
+        print(f"• Statistical significance: p = {w_p_value:.2e}")
         print(f"• Effect size: {effect_size_desc} (Cohen's d = {cohens_d:.3f})")
 
         print(f"\nFiles saved:")
@@ -3860,55 +3936,48 @@ class SimilarityAnalysis:
             self.rl_trajectories = load_saved_trajectories('rl')
 
         else:
-            self.human_trajectories = self.process_human_trajectories()
-            #self.heuristic_trajectories = self.generate_strategy_trajectories()
+            #self.human_trajectories = self.process_human_trajectories()
+            self.heuristic_trajectories = self.generate_strategy_trajectories()
             #self.rl_trajectories = self.generate_rl_trajectories()
         
         # Analyze similarity of position trajectories
         #self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
 
-        # self.analyze_temporal_silhouette_evolution(
-        #     self.human_trajectories,
-        #     self.rl_trajectories,
-        #     self.heuristic_trajectories
-        # )
-
-
-        # correlation_results = self.analyze_progress_rate_correlations(
-        #     self.human_trajectories,
-        #     self.rl_trajectories,
-        #     self.heuristic_trajectories
-        # )
-        #
         mse_results = self.analyze_progress_rate_mse(
             self.human_trajectories,
             self.rl_trajectories,
             self.heuristic_trajectories
         )
-
+        #
         # cross_mse_results = self.analyze_cross_trajectory_position_mse(self.human_trajectories,
         #     self.rl_trajectories,
         #     self.heuristic_trajectories)
-
-        # In your run_analysis method:
+        #
         # similarity_results = self.analyze_human_similarity_comparison(
         #     self.human_trajectories,
         #     self.rl_trajectories,
         #     self.heuristic_trajectories
         # )
+        #
+        # #Analyze metric similarity
+        # self.analyze_metric_similarity()
 
-        # Analyze threat-target priority clusters
+
+        #####################################
+
+        # Analyze threat-target priority clusters (NOT USED)
         #self.compute_silhouette_scores(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
         
-
-        # Analyze metric similarity
-        #self.analyze_metric_similarity() # Has a TODO, then test.
-        
-        # Analyze similarity of action distributions
+        # Analyze similarity of action distributions (NOT USED)
         #self.analyze_action_distributions(self.human_trajectories, self.heuristic_trajectories, self.rl_trajectories) # Ready to test
-        
-        # Final data to return and save
-        # 1. 
+
+        # self.analyze_temporal_silhouette_evolution( # NOT USED
+        #     self.human_trajectories,
+        #     self.rl_trajectories,
+        #     self.heuristic_trajectories
+        # )
+
+
 
 
 if __name__ == '__main__':

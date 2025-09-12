@@ -1,0 +1,10 @@
+{
+  "total_heuristic_agents": 1,
+  "human_total_actions": 5530,
+  "rl_total_actions": 5160,
+  "heuristic_total_actions": {
+    "seed000": 5160
+  },
+  "most_similar_to_human": "seed000",
+  "most_similar_chi2": 3219.332310110816
+}

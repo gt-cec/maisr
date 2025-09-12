@@ -1,0 +1,54 @@
+[
+  {
+    "agent1": "mixed75",
+    "agent2": "fcp",
+    "n_pairs": 80,
+    "mean1": 31.868624850000003,
+    "mean2": 11.794568193875,
+    "mean_diff": 20.074056656125002,
+    "statistic": 27.0,
+    "p_value": 2.1456503244745875e-14,
+    "effect_size": 0.854232247646537,
+    "significant": "True",
+    "test_type": "RL"
+  },
+  {
+    "agent1": "strat-finetuned",
+    "agent2": "selfplay",
+    "n_pairs": 80,
+    "mean1": 31.71372795,
+    "mean2": 13.202104722500001,
+    "mean_diff": 18.511623227499996,
+    "statistic": 81.0,
+    "p_value": 1.5528909301047422e-13,
+    "effect_size": 0.8252752223025867,
+    "significant": "True",
+    "test_type": "RL"
+  },
+  {
+    "agent1": "mixed75",
+    "agent2": "fcp",
+    "n_pairs": 160,
+    "mean1": 30.734545887499998,
+    "mean2": 15.49022244375,
+    "mean_diff": 15.244323443749998,
+    "statistic": 595.0,
+    "p_value": 1.3738779350195898e-23,
+    "effect_size": 0.7872355531425481,
+    "significant": "True",
+    "test_type": "Human"
+  },
+  {
+    "agent1": "strat-finetuned",
+    "agent2": "selfplay",
+    "n_pairs": 160,
+    "mean1": 33.258837781249994,
+    "mean2": 18.866975675,
+    "mean_diff": 14.391862106249995,
+    "statistic": 0.0,
+    "p_value": 2.760938135656712e-28,
+    "effect_size": 0.8673733040612506,
+    "significant": "True",
+    "test_type": "Human"
+  }
+]

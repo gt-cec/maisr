@@ -4,6 +4,9 @@ import glob
 import json
 import os
 
+import json
+from datetime import datetime
+
 import pygame
 import numpy as np
 import random
@@ -21,6 +24,10 @@ from utility.league_management import (GenericTeammatePolicy, SubPolicy, LocalSe
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from scipy import stats
+from scipy.stats import wilcoxon
+import seaborn as sns
+
 
 def populate_agent_list(agent_dir, label='nolabel'):
     model_patterns = [
@@ -107,6 +114,7 @@ def make_wrapped_env(config, clock, window, teammate_policy, run_name='no_name')
 def run_single_rl_eval(env, agent_model, render):
 
     base_env = env.envs[0].env
+    base_env.config['force_specific_level'] = 99
 
     obs = env.reset()
     done = False
@@ -123,7 +131,7 @@ def run_single_rl_eval(env, agent_model, render):
                     done = True
                     break
 
-        agent_action, _ = agent_model.predict(obs, deterministic=True) # TODO Check
+        agent_action, _ = agent_model.predict(obs, deterministic=True)
 
         obses, rewards, dones, infos = env.step([agent_action])
 
@@ -137,7 +145,7 @@ def run_single_rl_eval(env, agent_model, render):
 
         if render:
             base_env.render()
-            base_env.clock.tick(30)
+            base_env.clock.tick(60)
 
         episode_reward += reward
         num_steps += 1
@@ -146,7 +154,6 @@ def run_single_rl_eval(env, agent_model, render):
 
 
 def run_single_human_eval(env, agent_model, human_trajectory_file, level, render):
-    # TODO NOT READY
 
     base_env = env.envs[0].env
 
@@ -177,7 +184,7 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
         else:
             base_env.agents[base_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
 
-        agent_action, _ = agent_model.predict(obs, deterministic=True) # TODO Check
+        agent_action, _ = agent_model.predict(obs, deterministic=True)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -283,29 +290,44 @@ def main():
         env_fns = [make_wrapped_env(config, clock, window, temp_teammate_policy) for _ in range(1)]
         env = DummyVecEnv(env_fns)
         env = load_vecnormalize_wrapper(agent_vecnorm, env)
-        print(f'Loaded vecnorm stats from {agent_vecnorm}')
+        print(f'\n&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
+        print(f'&&&&&& NEW TESTING AGENT, loaded new vecnorm stats from {agent_vecnorm} &&&&&')
+        print(f'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&\n')
         base_env = env.envs[0].env
+        wrapper_env = env.envs[0]
+        print(f'BASE ENV IS {base_env}')
         base_env.teammate_active = True
+        wrapper_env.teammate_active = True
 
         #################################### Run RL agent evals ####################################
-        for teammate_tuple in heldout_agents + testing_agents:
-            for run in range(20):
+        print(f'\n#########################################################')
+        print(f'Evaluating testing agent {agent_name}')
+        print(f'#########################################################\n')
+        #for teammate_tuple in heldout_agents + testing_agents:
+        for teammate_tuple in testing_agents:
+
+            print(f'%%%%%% Running 3 episodes with teammate {teammate_tuple[2]}\n')
+
+            for run in range(20): # 20
                 teammate_model = teammate_tuple[0]
                 teammate_vecnorm = teammate_tuple[1]
                 teammate_name = teammate_tuple[2]
+
+
                 teammate = RLTeammatePolicy(teammate_model, env, None, None, None, norm_stats_path=teammate_vecnorm)
+                print(f'teammate is using model {teammate_model} and norm stats {teammate_vecnorm}')
 
-                base_env.teammate_policy = teammate
-                base_env.current_teammate = teammate
+                wrapper_env.teammate_policy = teammate
+                wrapper_env.current_teammate = teammate
 
-                print(f'\nRunning single RL eval with agent {agent_name} (model {agent_model}, vecnorm stats {agent_vecnorm}). Teammate is {teammate_name} (model {teammate_model}, vecnorm {teammate_vecnorm})')
+                #print(f'\nRunning single RL eval with agent {agent_name} (model {agent_model}, vecnorm stats {agent_vecnorm}). Teammate is {teammate_name} (model {teammate_model}, vecnorm {teammate_vecnorm})')
                 reward, target_ids, threat_ids, num_steps = run_single_rl_eval(env, agent_model, render)
                 rl_results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
 
 
         #################################### Run human trajectory evals ####################################
         all_human_trajectories = dual_trajectory_files + solo_trajectory_files
-        for trajectory_file in all_human_trajectories[0:160]:
+        for trajectory_file in all_human_trajectories[0:160]: # 160
             for run in range(1):
                 level = int(trajectory_file.split('_')[4][1])
 
@@ -377,54 +399,126 @@ def main():
     rl_df = pd.DataFrame(rl_data_rows)
     human_df = pd.DataFrame(human_data_rows)
 
+
+    print("RL DataFrame sample:")
+    print(rl_df[rl_df['agent'] == 'fcp'])  # Check all FCP results
+    print("\nUnique agent-teammate combinations for FCP:")
+    print(rl_df[rl_df['agent'] == 'fcp'][['agent', 'teammate', 'reward']].head(40))
+    print('\n')
+
+    print(rl_df[rl_df['agent'] == 'mixed75'])  # Check all FCP results
+    print("\nUnique agent-teammate combinations for mixed75:")
+    print(rl_df[rl_df['agent'] == 'mixed75'][['agent', 'teammate', 'reward']].head(40))
+    print('\n')
+
+    fcp_rewards = [row['reward'] for row in rl_data_rows if 'fcp' in row['agent']]
+    print(f"FCP rewards: {fcp_rewards}")
+    print(f"FCP unique rewards: {set(fcp_rewards)}")
+    print('\n')
+
+    mixed75_rewards = [row['reward'] for row in rl_data_rows if 'mixed75' in row['agent']]
+    print(f"mixed75 rewards: {mixed75_rewards}")
+    print(f"mixed75 unique rewards: {set(mixed75_rewards)}")
+    print('\n')
+
     # Calculate statistics
     rl_stats = rl_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
     human_stats = human_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
+
+    # ================ Save results to JSON ================
+
+    # Create timestamp for unique filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Prepare data structure for JSON export
+    results_data = {
+        'metadata': {
+            'timestamp': timestamp,
+            'config_file': config_filename,
+            'num_testing_agents': len(testing_agents),
+            'num_heldout_agents': len(heldout_agents),
+            'num_dual_trajectories': len(dual_trajectory_files),
+            'num_solo_trajectories': len(solo_trajectory_files),
+            'num_repeats_rl': 20,  # As specified in your RL evaluation loop
+            'num_repeats_human': 1  # As specified in your human evaluation loop
+        },
+        'raw_results': {
+            'rl_results': rl_data_rows,
+            'human_results': human_data_rows
+        },
+        'summary_stats': {
+            'rl_stats': rl_stats.to_dict('records'),
+            'human_stats': human_stats.to_dict('records')
+        }
+    }
+
+    # Save to JSON file
+    output_filename = f'offline_evaluation_results_{timestamp}.json'
+    with open(output_filename, 'w') as f:
+        json.dump(results_data, f, indent=2, default=str)
+
+    print(f'\n====== RESULTS SAVED TO: {output_filename} ======')
+
+    # Create 2-subplot figure
+    # Replace the plotting section (starting from "# Create 2-subplot figure") with this code:
+
+    # Define consistent colors and label mapping for agent types
+    agent_colors = {
+        'fcp': '#2E86AB',  # Blue
+        'mixed75': '#A23B72',  # Purple
+        'selfplay': '#F18F01',  # Orange
+        'strat-finetuned': '#C73E1D'  # Red
+    }
+
+    agent_labels = {
+        'fcp': 'FCP',
+        'mixed75': 'Strat-FCP',
+        'selfplay': 'SP',
+        'strat-finetuned': 'Strat-SP'
+    }
 
     # Create 2-subplot figure
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 10))
 
     # Top subplot: RL results
+    rl_colors = [agent_colors.get(agent, '#808080') for agent in rl_stats['agent']]
     bars1 = ax1.bar(range(len(rl_stats)), rl_stats['mean'],
-                    yerr=rl_stats['std'], capsize=5, alpha=0.7, color='skyblue')
-    ax1.set_xlabel('Testing Agents')
-    ax1.set_ylabel('Average Reward')
-    ax1.set_title('RL Agent Performance: Testing Agents vs RL Teammates')
+                    yerr=rl_stats['std'], capsize=5, alpha=0.9, color=rl_colors)
+    ax1.set_xlabel('Agent', fontsize=12)
+    ax1.set_ylabel('Average Reward', fontsize=12)
+    ax1.set_title('Performance with Held-Out RL Teammates', fontsize=20)
     ax1.set_xticks(range(len(rl_stats)))
-    ax1.set_xticklabels(rl_stats['agent'], rotation=45, ha='right')
+    ax1.set_xticklabels([agent_labels.get(agent, agent) for agent in rl_stats['agent']],rotation=45, ha='right')
+    ax1.set_ylim(0, 45)
     ax1.grid(axis='y', alpha=0.3)
 
-    # Add value labels on RL bars
-    for i, (bar, mean_val) in enumerate(zip(bars1, rl_stats['mean'])):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + rl_stats['std'][i] / 2,
-                 f'{mean_val:.1f}', ha='center', va='bottom')
-
     # Bottom subplot: Human results
+    human_colors = [agent_colors.get(agent, '#808080') for agent in human_stats['agent']]
     bars2 = ax2.bar(range(len(human_stats)), human_stats['mean'],
-                    yerr=human_stats['std'], capsize=5, alpha=0.7, color='lightcoral')
-    ax2.set_xlabel('Testing Agents')
-    ax2.set_ylabel('Average Reward')
-    ax2.set_title('Human Trajectory Performance: Testing Agents vs Human Teammates')
+                    yerr=human_stats['std'], capsize=5, alpha=0.9, color=human_colors)
+    ax2.set_xlabel('Agent', fontsize=12)
+    ax2.set_ylabel('Average Reward', fontsize=12)
+    ax2.set_title('Performance with Recorded Human Teammates', fontsize=20)
     ax2.set_xticks(range(len(human_stats)))
-    ax2.set_xticklabels(human_stats['agent'], rotation=45, ha='right')
+    ax2.set_xticklabels([agent_labels.get(agent, agent) for agent in human_stats['agent']],rotation=45, ha='right')
+    ax1.set_ylim(0, 45)
     ax2.grid(axis='y', alpha=0.3)
-
-    # Add value labels on Human bars
-    for i, (bar, mean_val) in enumerate(zip(bars2, human_stats['mean'])):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + human_stats['std'][i] / 2,
-                 f'{mean_val:.1f}', ha='center', va='bottom')
 
     plt.tight_layout()
     plt.show()
 
-    # Print summary statistics
     print(f'\n====== RL AGENT PERFORMANCE SUMMARY ======')
     for _, row in rl_stats.iterrows():
-        print(f'{row["agent"]}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+        agent_label = agent_labels.get(row["agent"], row["agent"])
+        print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
 
     print(f'\n====== HUMAN TRAJECTORY PERFORMANCE SUMMARY ======')
     for _, row in human_stats.iterrows():
-        print(f'{row["agent"]}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+        agent_label = agent_labels.get(row["agent"], row["agent"])
+        print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+
+
 
 
 if __name__ == '__main__':

@@ -1,0 +1,2 @@
+Comparison,H_Heuristic_Mean,H_RL_Mean,Mean_Difference,Percent_Improvement,Mann_Whitney_p,Significant,Cohens_d,Effect_Size,N_HH_Comparisons,N_HR_Comparisons,Hypothesis_Supported
+Human-Heuristic vs Human-RL,165231.70641192902,173219.13647171008,-7987.430059781065,4.611170695384203,1.4886313932392964e-15,True,-0.10685764008854665,negligible,15360,15360,True
