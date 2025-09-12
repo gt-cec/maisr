@@ -38,6 +38,8 @@ from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegi
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 
 
+
+
 def perform_kruskal_wallis_test(metric_name, human_vals, rl_vals, heuristic_vals):
     """
     Perform Kruskal-Wallis H test to determine if three groups are significantly different.
@@ -361,7 +363,22 @@ class SimilarityAnalysis:
         self.heuristic_trajectories = []
         self.rl_trajectories = []
 
-    # Ready to test    
+    def load_level_layouts(self):
+        """Load level layouts from JSON file for easy access to level configurations."""
+        try:
+            with open('utility/level_layouts.json', 'r') as f:
+                self.level_layouts = json.load(f)
+            print(f"Loaded level layouts for {len(self.level_layouts['levels'])} levels")
+        except FileNotFoundError:
+            print("Warning: level_layouts.json not found")
+            raise ValueError
+            self.level_layouts = None
+        except json.JSONDecodeError as e:
+            print(f"Error parsing level_layouts.json: {e}")
+            raise ValueError
+            self.level_layouts = None
+
+
     def process_human_trajectories(self):
         """
         Process human trajectory data from JSON files.
@@ -588,7 +605,16 @@ class SimilarityAnalysis:
 
                     if full_trajectories:
                         trajectory = FullTrajectory(name=f'seed{seed}', level=level, category='rl', actions=[], positions=[], target_ids=[], threat_ids=[])  # instantiate the trajectory
-                        # TODO: Fully populate target and threat positions at each step (they don't change)
+
+                        # Fully populate target and threat positions at each step (they don't change)
+                        for target in range(15):
+                            target_pos = self.level_layouts["levels"][level]["targets"][target]
+                            setattr(trajectory, f'target{target}_pos', target_pos)
+
+                        for threat in range(4):
+                            threat_pos = self.level_layouts["levels"][level]["threats"][threat]
+                            setattr(trajectory, f'threat{threat}_pos', threat_pos)
+
                     else:
                         trajectory = Trajectory(name = f'seed{seed}', level = level, category = 'rl', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
 
@@ -616,20 +642,16 @@ class SimilarityAnalysis:
 
                         if full_trajectories:
                             for target in range(15):
-                                trajectory.target{str(target)}_status = base_env.env.targets_identified[target] # TODO FIX
+                                setattr(trajectory, f'target{target}_status', base_env.env.targets_identified[target])
                             for threat in range(4):
-                                trajectory.threat{str(threat)}_status = base_env.env.threat_identified[target]  # TODO FIX
+                                setattr(trajectory, f'threat{threat}_status', base_env.env.threat_identified[threat])
                         step_count += 1
 
                     rl_trajectories.append(trajectory)
             
-        # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
+        # 3. Save the list of trajectories to a file
         out_file = os.path.join('./similarity_analysis', out_name)
-
         save_trajectories_to_json(rl_trajectories, out_file)
-
-        #with open(out_file, "w") as f:
-            #json.dump([traj.__dict__ for traj in rl_trajectories], f, indent=2)
         
         return rl_trajectories
         
@@ -721,6 +743,13 @@ class SimilarityAnalysis:
                     trajectory.positions.append((base_env.env.agents[1].x, base_env.env.agents[1].y))
                     trajectory.target_ids.append(base_env.env.targets_identified)
                     trajectory.threat_ids.append(base_env.env.num_threats_identified)
+
+                    if full_trajectories:
+                        for target in range(15):
+                            setattr(trajectory, f'target{target}_pos', base_env.env.targets_identified[target])
+                        for threat in range(4):
+                            setattr(trajectory, f'threat{threat}_status', base_env.env.threat_identified[threat])
+
                     step_count += 1
                         
                 self.heuristic_trajectories.append(trajectory)
@@ -4081,4 +4110,5 @@ class SimilarityAnalysis:
 
 if __name__ == '__main__':
     analyzer = SimilarityAnalysis()
+    analyzer.load_level_layouts()
     analyzer.run_analysis()
