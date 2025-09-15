@@ -206,7 +206,7 @@ def load_saved_trajectories(trajectory_type: str, subsample_episodes: int = 1):
             'attr': 'human_trajectories'
         },
         'rl': {
-            'file': 'rl_trajectories.json',
+            'file': 'rl_trajectories_nondeterministic.json',
             'attr': 'rl_trajectories'
         },
         'heuristic': {
@@ -611,7 +611,7 @@ class SimilarityAnalysis:
         return self.human_trajectories
 
 
-    def generate_rl_trajectories(self, agents_path, out_name, full_trajectories=False):
+    def generate_rl_trajectories(self, agents_path, out_name, full_trajectories=False, deterministic=True):
 
         level_string_dict = {1: 'level_1a', 2: 'level_1b', 3: 'level_2a', 4: 'level_2b', 5: 'level_3a', 6: 'level_3b', 7: 'level_4'}
 
@@ -683,7 +683,7 @@ class SimilarityAnalysis:
             seed = seed_match.group(1) if seed_match else "000"
             
             for level in self.level_list:
-                for run in range(8):
+                for run in range(8): #
                     config = self.config.copy()
                     config['force_specific_level'] = level
 
@@ -718,7 +718,7 @@ class SimilarityAnalysis:
                     base_env.env.agents[1].appearance = 'invisible'  # Forces a hold
 
                     while not done:
-                        agent_action, _ = agent_model.predict(obs, deterministic=True)
+                        agent_action, _ = agent_model.predict(obs, deterministic=deterministic)
 
                         obses, rewards, dones, infos = env.step([agent_action])
                         obs = obses[0]
@@ -989,14 +989,14 @@ class SimilarityAnalysis:
             if normalize_by_density:
                 total_points = len(positions)
                 if total_points > 0:
-                    heatmap = heatmap / total_points
+                    heatmap = heatmap * 1000 / total_points
 
-                total_mass = np.sum(heatmap)
-                #print(f'Total mass is: {total_mass}\n')
-                if total_mass > 0:
-                    heatmap = heatmap / total_mass
+                # total_mass = np.sum(heatmap)
+                # #print(f'Total mass is: {total_mass}\n')
+                # if total_mass > 0:
+                #     heatmap = heatmap / total_mass
 
-            return heatmap
+            return np.log(heatmap + 1)
 
         # Compute human and RL heatmaps
         print(f'Human heatmap:')
@@ -4159,7 +4159,7 @@ class SimilarityAnalysis:
     ####################################################################################################################
 
     def run_analysis(self):
-        load_saved = False
+        load_saved = True
 
         self.config = load_env_config('configs/Monolith_index_August.json')
         self.config['use_stuck_detection'] = False
@@ -4175,14 +4175,15 @@ class SimilarityAnalysis:
 
         else:
             #self.human_trajectories = self.process_human_trajectories()
-            self.heuristic_trajectories = self.generate_strategy_trajectories("heuristic_trajectories_fulltrajectories.json", full_trajectories=True)
-            #self.rl_agents_path = 'similarity_analysis/rl_agents'  # './offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
-            #self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents', "rl_trajectories_fulltrajectories.json", full_trajectories=True)
+            #self.heuristic_trajectories = self.generate_strategy_trajectories("heuristic_trajectories_fulltrajectories.json", full_trajectories=True)
+            self.rl_agents_path = 'similarity_analysis/rl_agents'  # './offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+            #self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents', "rl_trajectories.json")
+            self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents',"rl_trajectories_nondeterministic.json", deterministic=False)
 
             #self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents_2', "rl_trajectories_2.json")
         
         # Analyze similarity of position trajectories
-        #self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
+        self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
 
         # mse_results = self.analyze_progress_rate_mse(
         #     self.human_trajectories,
