@@ -308,7 +308,7 @@ def main():
 
             print(f'%%%%%% Running 3 episodes with teammate {teammate_tuple[2]}\n')
 
-            for run in range(20): # 20
+            for run in range(100): # 20
                 teammate_model = teammate_tuple[0]
                 teammate_vecnorm = teammate_tuple[1]
                 teammate_name = teammate_tuple[2]
@@ -327,7 +327,7 @@ def main():
 
         #################################### Run human trajectory evals ####################################
         all_human_trajectories = dual_trajectory_files + solo_trajectory_files
-        for trajectory_file in all_human_trajectories[0:160]: # 160
+        for trajectory_file in all_human_trajectories[0:250]: # 160
             for run in range(1):
                 level = int(trajectory_file.split('_')[4][1])
 

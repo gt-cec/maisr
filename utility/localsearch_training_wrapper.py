@@ -507,7 +507,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
         else: # Fallback greedy search
-            raise ValueError('fellback to greedy search')
+            #raise ValueError('fellback to greedy search')
 
             # Access teammate location
             teammate_x = self.env.agents[self.env.aircraft_ids[1]].x

@@ -345,94 +345,6 @@ def print_results_summary(rl_df: pd.DataFrame, human_df: pd.DataFrame, metadata:
         print(f"  Sample reward values: {human_df['reward'].head().tolist()}")
 
 
-# def plot_results(rl_df, human_df):
-#     """Create individual plots for each metric and teammate type combination."""
-#
-#     # Define consistent colors and label mapping for agent types
-#     agent_colors = {
-#         'fcp': '#2E86AB',  # Blue
-#         'mixed75': '#A23B72',  # Purple
-#         'selfplay': '#F18F01',  # Orange
-#         'strat-finetuned': '#C73E1D'  # Red
-#     }
-#
-#     agent_labels = {
-#         'fcp': 'FCP',
-#         'mixed75': 'Strat-FCP',
-#         'selfplay': 'SP',
-#         'strat-finetuned': 'Strat-SP'
-#     }
-#
-#     # Define y-axis limits for each metric
-#     y_limits = {
-#         'reward': (0, 40),
-#         'target_ids': (0, 15),
-#         'threat_ids': (0, 2.5)
-#     }
-#
-#     # Calculate statistics for all metrics
-#     metrics = ['reward', 'target_ids', 'threat_ids']
-#
-#     # Calculate stats for RL teammates
-#     rl_all_stats = {}
-#     for metric in metrics:
-#         rl_all_stats[metric] = rl_df.groupby('agent')[metric].agg(['mean', 'std', 'count']).reset_index()
-#
-#     # Calculate stats for human teammates
-#     human_all_stats = {}
-#     for metric in metrics:
-#         human_all_stats[metric] = human_df.groupby('agent')[metric].agg(['mean', 'std', 'count']).reset_index()
-#
-#     # Create plots for each metric and teammate type
-#     for metric in metrics:
-#         # Plot 1: RL teammates
-#         plt.figure(figsize=(8, 8))
-#         rl_data = rl_all_stats[metric]
-#         colors = [agent_colors.get(agent, '#808080') for agent in rl_data['agent']]
-#         bars = plt.bar(range(len(rl_data)), rl_data['mean'],
-#                        yerr=rl_data['std'], capsize=5, alpha=0.9, color=colors)
-#         plt.xlabel('Agent Type', fontsize=12)
-#         plt.ylabel(f'Average {metric.replace("_", " ").title()}', fontsize=12)
-#         plt.title(f'{metric.replace("_", " ").title()} vs Testing Agent Type for RL Teammates', fontsize=20)
-#         plt.xticks(range(len(rl_data)), [agent_labels.get(agent, agent) for agent in rl_data['agent']],
-#                    rotation=45, ha='right')
-#         plt.ylim(y_limits[metric])  # Set y-axis limits
-#         plt.grid(axis='y', alpha=0.3)
-#         plt.tight_layout()
-#         plt.show()
-#
-#         # Plot 2: Human teammates
-#         plt.figure(figsize=(8, 8))
-#         human_data = human_all_stats[metric]
-#         colors = [agent_colors.get(agent, '#808080') for agent in human_data['agent']]
-#         bars = plt.bar(range(len(human_data)), human_data['mean'],
-#                        yerr=human_data['std'], capsize=5, alpha=0.9, color=colors)
-#         plt.xlabel('Agent Type', fontsize=12)
-#         plt.ylabel(f'Average {metric.replace("_", " ").title()}', fontsize=12)
-#         plt.title(f'{metric.replace("_", " ").title()} vs Testing Agent Type for Recorded Human Teammates', fontsize=20)
-#         plt.xticks(range(len(human_data)), [agent_labels.get(agent, agent) for agent in human_data['agent']],
-#                    rotation=45, ha='right')
-#         plt.ylim(y_limits[metric])  # Set y-axis limits
-#         plt.grid(axis='y', alpha=0.3)
-#         plt.tight_layout()
-#         plt.show()
-#
-#     # Print summary statistics for all metrics
-#     print(f'\n====== PERFORMANCE SUMMARY FOR ALL METRICS ======')
-#
-#     for metric in metrics:
-#         print(f'\n--- {metric.replace("_", " ").title()} ---')
-#
-#         print(f'RL Teammates:')
-#         for _, row in rl_all_stats[metric].iterrows():
-#             agent_label = agent_labels.get(row["agent"], row["agent"])
-#             print(f'  {agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
-#
-#         print(f'Human Teammates:')
-#         for _, row in human_all_stats[metric].iterrows():
-#             agent_label = agent_labels.get(row["agent"], row["agent"])
-#             print(f'  {agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
-
 def plot_results(rl_df, human_df):
     """Create combined plots with split bars showing both RL and human teammate results."""
 
@@ -446,9 +358,9 @@ def plot_results(rl_df, human_df):
 
     agent_labels = {
         'fcp': 'FCP',
-        'mixed75': 'Strat-FCP',
+        'mixed75': 'Aug-FCP',
         'selfplay': 'SP',
-        'strat-finetuned': 'Strat-SP'
+        'strat-finetuned': 'Aug-SP'
     }
 
     # Define y-axis limits for each metric
@@ -473,7 +385,8 @@ def plot_results(rl_df, human_df):
 
     # Create combined plots for each metric
     for metric in metrics:
-        plt.figure(figsize=(12, 8))
+        # Create perfectly square figure
+        plt.figure(figsize=(10, 10))
 
         # Get data for both RL and human teammates
         rl_data = rl_all_stats[metric]
@@ -510,38 +423,27 @@ def plot_results(rl_df, human_df):
 
             colors.append(agent_colors.get(agent, '#808080'))
 
-
-        plt.grid(axis='y', alpha=0.5)
-
-        # Create the split bars
+        # Create the split bars (bars will be drawn on top of grid)
         bars1 = plt.bar(x_pos - bar_width / 2, rl_means, bar_width,
                         yerr=rl_stds, capsize=5, alpha=0.95,
                         color=colors, label='RL Teammates',
-                        edgecolor='black', linewidth=0.5)
+                        edgecolor='black', linewidth=0.5, zorder=3)
 
         bars2 = plt.bar(x_pos + bar_width / 2, human_means, bar_width,
                         yerr=human_stds, capsize=5, alpha=0.6,
                         color=colors, label='Human Teammates',
-                        edgecolor='black', linewidth=0.5)
+                        edgecolor='black', linewidth=0.5, zorder=3)
+
+        # Add grid behind bars
+        plt.grid(axis='y', alpha=0.6, zorder=1)
 
         # Customize the plot
-        plt.xlabel('Agent Type', fontsize=14)
-        plt.ylabel(f'Average {metric.replace("_", " ").title()}', fontsize=14)
-        plt.title(f'{metric.replace("_", " ").title()} Comparison: RL vs Human Teammates', fontsize=20)
+        plt.xlabel('Agent Type', fontsize=20)
+        plt.ylabel(f'Average {metric.replace("_", " ").title()}', fontsize=20)
+        plt.title(f'{metric.replace("_", " ").title()} Comparison: RL vs Human Teammates', fontsize=25)
         plt.xticks(x_pos, [agent_labels.get(agent, agent) for agent in common_agents])
         plt.ylim(y_limits[metric])
         #plt.legend(fontsize=12)
-
-
-        # Add value labels on bars
-        # def add_value_labels(bars, values):
-        #     for bar, value in zip(bars, values):
-        #         height = bar.get_height()
-        #         plt.text(bar.get_x() + bar.get_width() / 2., height + 0.5,
-        #                  f'{value:.1f}', ha='center', va='bottom', fontsize=10)
-        #
-        # add_value_labels(bars1, rl_means)
-        # add_value_labels(bars2, human_means)
 
         plt.tight_layout()
         plt.show()
@@ -572,6 +474,146 @@ def plot_results(rl_df, human_df):
                 agent_label = agent_labels.get(agent, agent)
                 diff = rl_row['mean'] - human_row['mean']
                 print(f'  {agent_label}: RL={rl_row["mean"]:.2f} vs Human={human_row["mean"]:.2f} (Δ={diff:+.2f})')
+
+# def plot_results(rl_df, human_df):
+#     """Create combined plots with split bars showing both RL and human teammate results."""
+#
+#     # Define consistent colors and label mapping for agent types
+#     agent_colors = {
+#         'fcp': '#2E86AB',  # Blue
+#         'mixed75': '#A23B72',  # Purple
+#         'selfplay': '#F18F01',  # Orange
+#         'strat-finetuned': '#C73E1D'  # Red
+#     }
+#
+#     agent_labels = {
+#         'fcp': 'FCP',
+#         'mixed75': 'Strat-FCP',
+#         'selfplay': 'SP',
+#         'strat-finetuned': 'Strat-SP'
+#     }
+#
+#     # Define y-axis limits for each metric
+#     y_limits = {
+#         'reward': (0, 40),
+#         'target_ids': (0, 15),
+#         'threat_ids': (0, 2.5)
+#     }
+#
+#     # Calculate statistics for all metrics
+#     metrics = ['reward', 'target_ids', 'threat_ids']
+#
+#     # Calculate stats for RL teammates
+#     rl_all_stats = {}
+#     for metric in metrics:
+#         rl_all_stats[metric] = rl_df.groupby('agent')[metric].agg(['mean', 'std', 'count']).reset_index()
+#
+#     # Calculate stats for human teammates
+#     human_all_stats = {}
+#     for metric in metrics:
+#         human_all_stats[metric] = human_df.groupby('agent')[metric].agg(['mean', 'std', 'count']).reset_index()
+#
+#     # Create combined plots for each metric
+#     for metric in metrics:
+#         plt.figure(figsize=(12, 8))
+#
+#         # Get data for both RL and human teammates
+#         rl_data = rl_all_stats[metric]
+#         human_data = human_all_stats[metric]
+#
+#         # Find common agents between both datasets
+#         common_agents = set(rl_data['agent']) & set(human_data['agent'])
+#         common_agents = sorted(list(common_agents))  # Sort for consistent ordering
+#
+#         if not common_agents:
+#             print(f"Warning: No common agents found for {metric}")
+#             continue
+#
+#         # Prepare data for plotting
+#         x_pos = np.arange(len(common_agents))
+#         bar_width = 0.35
+#
+#         rl_means = []
+#         rl_stds = []
+#         human_means = []
+#         human_stds = []
+#         colors = []
+#
+#         for agent in common_agents:
+#             # Get RL data
+#             rl_row = rl_data[rl_data['agent'] == agent].iloc[0]
+#             rl_means.append(rl_row['mean'])
+#             rl_stds.append(rl_row['std'])
+#
+#             # Get human data
+#             human_row = human_data[human_data['agent'] == agent].iloc[0]
+#             human_means.append(human_row['mean'])
+#             human_stds.append(human_row['std'])
+#
+#             colors.append(agent_colors.get(agent, '#808080'))
+#
+#
+#         plt.grid(axis='y', alpha=0.5)
+#
+#         # Create the split bars
+#         bars1 = plt.bar(x_pos - bar_width / 2, rl_means, bar_width,
+#                         yerr=rl_stds, capsize=5, alpha=0.95,
+#                         color=colors, label='RL Teammates',
+#                         edgecolor='black', linewidth=0.5)
+#
+#         bars2 = plt.bar(x_pos + bar_width / 2, human_means, bar_width,
+#                         yerr=human_stds, capsize=5, alpha=0.6,
+#                         color=colors, label='Human Teammates',
+#                         edgecolor='black', linewidth=0.5)
+#
+#         # Customize the plot
+#         plt.xlabel('Agent Type', fontsize=14)
+#         plt.ylabel(f'Average {metric.replace("_", " ").title()}', fontsize=14)
+#         plt.title(f'{metric.replace("_", " ").title()} Comparison: RL vs Human Teammates', fontsize=20)
+#         plt.xticks(x_pos, [agent_labels.get(agent, agent) for agent in common_agents])
+#         plt.ylim(y_limits[metric])
+#         #plt.legend(fontsize=12)
+#
+#
+#         # Add value labels on bars
+#         # def add_value_labels(bars, values):
+#         #     for bar, value in zip(bars, values):
+#         #         height = bar.get_height()
+#         #         plt.text(bar.get_x() + bar.get_width() / 2., height + 0.5,
+#         #                  f'{value:.1f}', ha='center', va='bottom', fontsize=10)
+#         #
+#         # add_value_labels(bars1, rl_means)
+#         # add_value_labels(bars2, human_means)
+#
+#         plt.tight_layout()
+#         plt.show()
+#
+#     # Print summary statistics for all metrics
+#     print(f'\n====== PERFORMANCE SUMMARY FOR ALL METRICS ======')
+#
+#     for metric in metrics:
+#         print(f'\n--- {metric.replace("_", " ").title()} ---')
+#
+#         print(f'RL Teammates:')
+#         for _, row in rl_all_stats[metric].iterrows():
+#             agent_label = agent_labels.get(row["agent"], row["agent"])
+#             print(f'  {agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+#
+#         print(f'Human Teammates:')
+#         for _, row in human_all_stats[metric].iterrows():
+#             agent_label = agent_labels.get(row["agent"], row["agent"])
+#             print(f'  {agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+#
+#         # Print direct comparison for common agents
+#         common_agents = set(rl_all_stats[metric]['agent']) & set(human_all_stats[metric]['agent'])
+#         if common_agents:
+#             print(f'\nDirect Comparison (RL vs Human):')
+#             for agent in sorted(common_agents):
+#                 rl_row = rl_all_stats[metric][rl_all_stats[metric]['agent'] == agent].iloc[0]
+#                 human_row = human_all_stats[metric][human_all_stats[metric]['agent'] == agent].iloc[0]
+#                 agent_label = agent_labels.get(agent, agent)
+#                 diff = rl_row['mean'] - human_row['mean']
+#                 print(f'  {agent_label}: RL={rl_row["mean"]:.2f} vs Human={human_row["mean"]:.2f} (Δ={diff:+.2f})')
 
 # Example usage:
 if __name__ == "__main__":

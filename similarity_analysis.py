@@ -10,6 +10,7 @@ from scipy.optimize import linear_sum_assignment
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3.common.monitor import Monitor
+from dataclasses import dataclass, field
 
 import re
 import itertools
@@ -86,20 +87,103 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
     vec_normalize.norm_reward = False
     return vec_normalize
 
-def save_trajectories_to_json(trajectories, output_file):
+
+def save_trajectories_to_json(trajectories, output_file, full_trajectories=False):
     """Save trajectories to JSON with proper numpy array handling"""
     serializable_data = []
-    for traj in trajectories:
-        traj_dict = {
-            'category': traj.category,
-            'level': traj.level,
-            'name': traj.name,
-            'positions': [list(pos) if hasattr(pos, '__iter__') else pos for pos in (traj.positions or [])],
-            'actions': [int(action) if hasattr(action, 'item') else action for action in (traj.actions or [])],
-            'target_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.target_ids or [])],
-            'threat_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.threat_ids or [])]
-        }
-        serializable_data.append(traj_dict)
+
+    if full_trajectories:
+        for traj in trajectories:
+            traj_dict = {
+                'category': traj.category,
+                'level': traj.level,
+                'name': traj.name,
+                'positions': [list(pos) if hasattr(pos, '__iter__') else pos for pos in (traj.positions or [])],
+                'actions': [int(action) if hasattr(action, 'item') else action for action in (traj.actions or [])],
+                'target_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.target_ids or [])],
+                'threat_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.threat_ids or [])]
+            }
+
+            # Add target positions and statuses (targets 0-14)
+            for target_idx in range(15):
+                target_pos_attr = f'target{target_idx}_pos'
+                target_status_attr = f'target{target_idx}_status'
+
+                if hasattr(traj, target_pos_attr):
+                    target_pos = getattr(traj, target_pos_attr)
+                    if target_pos is not None:
+                        if isinstance(target_pos, list) and len(target_pos) > 0:
+                            # If it's a list of positions, convert each position to list
+                            if hasattr(target_pos[0], '__iter__'):
+                                traj_dict[target_pos_attr] = [list(pos) for pos in target_pos]
+                            else:
+                                traj_dict[target_pos_attr] = target_pos
+                        else:
+                            traj_dict[target_pos_attr] = target_pos
+                    else:
+                        traj_dict[target_pos_attr] = []
+                else:
+                    traj_dict[target_pos_attr] = []
+
+                if hasattr(traj, target_status_attr):
+                    target_status = getattr(traj, target_status_attr)
+                    if hasattr(target_status, 'item'):
+                        traj_dict[target_status_attr] = int(target_status.item())
+                    elif isinstance(target_status, (list, tuple)):
+                        traj_dict[target_status_attr] = [int(status) if hasattr(status, 'item') else status for status
+                                                         in target_status]
+                    else:
+                        traj_dict[target_status_attr] = int(target_status) if target_status is not None else 0
+                else:
+                    traj_dict[target_status_attr] = 0
+
+            # Add threat positions and statuses (threats 0-3)
+            for threat_idx in range(4):
+                threat_pos_attr = f'threat{threat_idx}_pos'
+                threat_status_attr = f'threat{threat_idx}_status'
+
+                if hasattr(traj, threat_pos_attr):
+                    threat_pos = getattr(traj, threat_pos_attr)
+                    if threat_pos is not None:
+                        if isinstance(threat_pos, list) and len(threat_pos) > 0:
+                            # If it's a list of positions, convert each position to list
+                            if hasattr(threat_pos[0], '__iter__'):
+                                traj_dict[threat_pos_attr] = [list(pos) for pos in threat_pos]
+                            else:
+                                traj_dict[threat_pos_attr] = threat_pos
+                        else:
+                            traj_dict[threat_pos_attr] = threat_pos
+                    else:
+                        traj_dict[threat_pos_attr] = []
+                else:
+                    traj_dict[threat_pos_attr] = []
+
+                if hasattr(traj, threat_status_attr):
+                    threat_status = getattr(traj, threat_status_attr)
+                    if hasattr(threat_status, 'item'):
+                        traj_dict[threat_status_attr] = int(threat_status.item())
+                    elif isinstance(threat_status, (list, tuple)):
+                        traj_dict[threat_status_attr] = [int(status) if hasattr(status, 'item') else status for status
+                                                         in threat_status]
+                    else:
+                        traj_dict[threat_status_attr] = int(threat_status) if threat_status is not None else 0
+                else:
+                    traj_dict[threat_status_attr] = 0
+
+            serializable_data.append(traj_dict)
+    else:
+        # Original behavior for basic trajectories
+        for traj in trajectories:
+            traj_dict = {
+                'category': traj.category,
+                'level': traj.level,
+                'name': traj.name,
+                'positions': [list(pos) if hasattr(pos, '__iter__') else pos for pos in (traj.positions or [])],
+                'actions': [int(action) if hasattr(action, 'item') else action for action in (traj.actions or [])],
+                'target_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.target_ids or [])],
+                'threat_ids': [int(tid) if hasattr(tid, 'item') else tid for tid in (traj.threat_ids or [])]
+            }
+            serializable_data.append(traj_dict)
 
     with open(output_file, "w") as f:
         json.dump(serializable_data, f, indent=2)
@@ -309,45 +393,50 @@ class FullTrajectory:
     category: str  # 'human', 'rl', or 'heuristic'
     level: int
     name: str
-    positions: List[Tuple[float, float]]
-    target0_pos: List[Tuple[float, float]]
-    target0_status: int
-    target1_pos: List[Tuple[float, float]]
-    target1_status: int
-    target2_pos: List[Tuple[float, float]]
-    target2_status: int
-    target3_pos: List[Tuple[float, float]]
-    target3_status: int
-    target4_pos: List[Tuple[float, float]]
-    target4_status: int
-    target5_pos: List[Tuple[float, float]]
-    target5_status: int
-    target6_pos: List[Tuple[float, float]]
-    target6_status: int
-    target7_pos: List[Tuple[float, float]]
-    target7_status: int
-    target8_pos: List[Tuple[float, float]]
-    target8_status: int
-    target9_pos: List[Tuple[float, float]]
-    target9_status: int
-    target10_pos: List[Tuple[float, float]]
-    target10_status: int
-    target11_pos: List[Tuple[float, float]]
-    target11_status: int
-    target12_pos: List[Tuple[float, float]]
-    target12_status: int
-    target13_pos: List[Tuple[float, float]]
-    target13_status: int
-    target14_pos: List[Tuple[float, float]]
-    target14_status: int
-    threat0_pos: List[Tuple[float, float]]
-    threat0_status: int
-    threat1_pos: List[Tuple[float, float]]
-    threat1_status: int
-    threat2_pos: List[Tuple[float, float]]
-    threat2_status: int
-    threat3_pos: List[Tuple[float, float]]
-    threat3_status: int
+
+    positions: List[Tuple[float, float]] = field(default_factory=list)
+    actions: List[int] = field(default_factory=list)  # List of actions (0–15) per timestep
+    target_ids: List[int] = field(default_factory=list)  # History of targets identified per timestep.
+    threat_ids: List[int] =field(default_factory=list)  # History of threats identified per timestep
+
+    target0_pos: List[Tuple[float, float]] = field(default_factory=list)
+    target0_status:  List[int] = field(default_factory=list)
+    target1_pos: List[Tuple[float, float]] = field(default_factory=list)
+    target1_status:   List[int] = field(default_factory=list)
+    target2_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target2_status:   List[int] = field(default_factory=list)
+    target3_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target3_status:   List[int] = field(default_factory=list)
+    target4_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target4_status:   List[int] = field(default_factory=list)
+    target5_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target5_status:   List[int] = field(default_factory=list)
+    target6_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target6_status:   List[int] = field(default_factory=list)
+    target7_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target7_status:   List[int] = field(default_factory=list)
+    target8_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target8_status:   List[int] = field(default_factory=list)
+    target9_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target9_status:   List[int] = field(default_factory=list)
+    target10_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target10_status:   List[int] = field(default_factory=list)
+    target11_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target11_status:   List[int] = field(default_factory=list)
+    target12_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target12_status:   List[int] = field(default_factory=list)
+    target13_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target13_status:   List[int] = field(default_factory=list)
+    target14_pos: List[Tuple[float, float]]= field(default_factory=list)
+    target14_status:   List[int] = field(default_factory=list)
+    threat0_pos: List[Tuple[float, float]]= field(default_factory=list)
+    threat0_status:   List[int] = field(default_factory=list)
+    threat1_pos: List[Tuple[float, float]]= field(default_factory=list)
+    threat1_status:   List[int] = field(default_factory=list)
+    threat2_pos: List[Tuple[float, float]]= field(default_factory=list)
+    threat2_status:   List[int] = field(default_factory=list)
+    threat3_pos: List[Tuple[float, float]]= field(default_factory=list)
+    threat3_status:   List[int] = field(default_factory=list)
 
 
 class SimilarityAnalysis:
@@ -478,7 +567,6 @@ class SimilarityAnalysis:
                         actions.append(action_idx)
 
                         # Extract target and threat identification counts
-                        # Use the cumulative totals if available
                         if "targets_identified_total" in step:
                             target_count = step["targets_identified_total"]
                         else:
@@ -523,7 +611,10 @@ class SimilarityAnalysis:
         return self.human_trajectories
 
 
-    def generate_rl_trajectories(self, agents_path, out_name, full_trajectories):
+    def generate_rl_trajectories(self, agents_path, out_name, full_trajectories=False):
+
+        level_string_dict = {1: 'level_1a', 2: 'level_1b', 3: 'level_2a', 4: 'level_2b', 5: 'level_3a', 6: 'level_3b', 7: 'level_4'}
+
         render = False
 
         rl_trajectories = []
@@ -606,13 +697,15 @@ class SimilarityAnalysis:
                     if full_trajectories:
                         trajectory = FullTrajectory(name=f'seed{seed}', level=level, category='rl', actions=[], positions=[], target_ids=[], threat_ids=[])  # instantiate the trajectory
 
+                        level_string = level_string_dict[level]
+
                         # Fully populate target and threat positions at each step (they don't change)
                         for target in range(15):
-                            target_pos = self.level_layouts["levels"][level]["targets"][target]
+                            target_pos = self.level_layouts["levels"][level_string]["targets"][target]
                             setattr(trajectory, f'target{target}_pos', target_pos)
 
                         for threat in range(4):
-                            threat_pos = self.level_layouts["levels"][level]["threats"][threat]
+                            threat_pos = self.level_layouts["levels"][level_string]["threats"][threat]
                             setattr(trajectory, f'threat{threat}_pos', threat_pos)
 
                     else:
@@ -642,21 +735,22 @@ class SimilarityAnalysis:
 
                         if full_trajectories:
                             for target in range(15):
-                                setattr(trajectory, f'target{target}_status', base_env.env.targets_identified[target])
+                                getattr(trajectory, f'target{target}_status').append(base_env.env.targets[target, 2])
                             for threat in range(4):
-                                setattr(trajectory, f'threat{threat}_status', base_env.env.threat_identified[threat])
+                                getattr(trajectory, f'threat{threat}_status').append(base_env.env.threat_identified[threat])
                         step_count += 1
 
                     rl_trajectories.append(trajectory)
             
         # 3. Save the list of trajectories to a file
         out_file = os.path.join('./similarity_analysis', out_name)
-        save_trajectories_to_json(rl_trajectories, out_file)
+        save_trajectories_to_json(rl_trajectories, out_file, full_trajectories=full_trajectories)
         
         return rl_trajectories
         
 
-    def generate_strategy_trajectories(self):
+    def generate_strategy_trajectories(self, out_name, full_trajectories = False):
+
         # Step 1: Create list of heuristic agent parameter combinations. Each element in the list is itself a list of three strings (risk_tolerance, action_noise, spatial_coordination)
         risk_tolerance = ["low", "medium", "high", "max_greedy"]
         action_noise = ["stable", "noisy", "very_noisy"]
@@ -667,6 +761,8 @@ class SimilarityAnalysis:
         print(f'Generated {len(combinations)} strategy combinations')
 
         render = False
+        level_string_dict = {1: 'level_1a', 2: 'level_1b', 3: 'level_2a', 4: 'level_2b', 5: 'level_3a', 6: 'level_3b', 7: 'level_4'}
+
         if render:
             if hasattr(ctypes, 'windll') and hasattr(ctypes.windll, 'user32'): ctypes.windll.user32.SetProcessDPIAware()
             pygame.display.init()
@@ -679,6 +775,7 @@ class SimilarityAnalysis:
             pygame.font.init()
             window = None
             clock = None
+
 
         # Step 2: Generate game trajectories for each heuristic combination for each level
         for combination in combinations:
@@ -713,7 +810,23 @@ class SimilarityAnalysis:
 
                 teammate.env = base_env.env
 
-                trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}_{planning_horizon}_{decision_speed}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+                if full_trajectories:
+                    trajectory = FullTrajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}_{planning_horizon}_{decision_speed}', level = level, category = 'heuristic', actions=[], positions=[], target_ids=[], threat_ids=[])  # instantiate the trajectory
+
+                    level_string = level_string_dict[level]
+
+                    # Fully populate target and threat positions at each step (they don't change)
+                    for target in range(15):
+                        target_pos = self.level_layouts["levels"][level_string]["targets"][target]
+                        setattr(trajectory, f'target{target}_pos', target_pos)
+
+                    for threat in range(4):
+                        threat_pos = self.level_layouts["levels"][level_string]["threats"][threat]
+                        setattr(trajectory, f'threat{threat}_pos', threat_pos)
+
+                else:
+                    trajectory = Trajectory(name = f'{risk_tolerance}-{action_noise}_{spatial_coordination}_{planning_horizon}_{decision_speed}', level = level, category = 'heuristic', actions = [], positions = [], target_ids = [], threat_ids = []) # instantiate the trajectory
+
                 step_count = 0
                 obs = env.reset()
                 done = False
@@ -746,17 +859,17 @@ class SimilarityAnalysis:
 
                     if full_trajectories:
                         for target in range(15):
-                            setattr(trajectory, f'target{target}_pos', base_env.env.targets_identified[target])
+                            getattr(trajectory, f'target{target}_status').append(base_env.env.targets[target, 2])
                         for threat in range(4):
-                            setattr(trajectory, f'threat{threat}_status', base_env.env.threat_identified[threat])
+                            getattr(trajectory, f'threat{threat}_status').append(base_env.env.threat_identified[threat])
 
                     step_count += 1
                         
                 self.heuristic_trajectories.append(trajectory)
 
         # 3. Save the list of trajectories to a file type of your choice so we don't have regenerate it if we need to re-run
-        out_file = os.path.join('./similarity_analysis', "strategy_trajectories.json")
-        save_trajectories_to_json(self.heuristic_trajectories, out_file)
+        out_file = os.path.join('./similarity_analysis', out_name)
+        save_trajectories_to_json(self.heuristic_trajectories, out_file, full_trajectories=full_trajectories)
 
         return self.heuristic_trajectories
         
@@ -4046,7 +4159,7 @@ class SimilarityAnalysis:
     ####################################################################################################################
 
     def run_analysis(self):
-        load_saved = True
+        load_saved = False
 
         self.config = load_env_config('configs/Monolith_index_August.json')
         self.config['use_stuck_detection'] = False
@@ -4062,11 +4175,11 @@ class SimilarityAnalysis:
 
         else:
             #self.human_trajectories = self.process_human_trajectories()
-            #self.heuristic_trajectories = self.generate_strategy_trajectories()
-            self.rl_agents_path = 'similarity_analysis/rl_agents'  # './offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
-            self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents', "rl_trajectories.json")
+            self.heuristic_trajectories = self.generate_strategy_trajectories("heuristic_trajectories_fulltrajectories.json", full_trajectories=True)
+            #self.rl_agents_path = 'similarity_analysis/rl_agents'  # './offline_study/offline_study_testing_agents/'  #'./trained_models/pretrained_teammates/' # Where the RL agent .zip and .pkl files are stored
+            #self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents', "rl_trajectories_fulltrajectories.json", full_trajectories=True)
 
-            self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents_2', "rl_trajectories_2.json")
+            #self.rl_trajectories = self.generate_rl_trajectories('similarity_analysis/rl_agents_2', "rl_trajectories_2.json")
         
         # Analyze similarity of position trajectories
         #self.compare_position_heatmaps_2d(self.human_trajectories, self.rl_trajectories, self.heuristic_trajectories) # Ready to test
@@ -4088,7 +4201,7 @@ class SimilarityAnalysis:
         # )
         #
         # #Analyze metric similarity
-        self.analyze_metric_similarity()
+        #self.analyze_metric_similarity()
 
 
         #####################################
