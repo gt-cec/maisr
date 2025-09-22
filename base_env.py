@@ -55,7 +55,6 @@ class MAISREnvVec(gym.Env):
         self.max_steps = self.config['max_steps'] # Max inner steps of the environment (before frame stacking)
         self.max_detections = 10
 
-        self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
 
         self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
         self.render_mode = render_mode
@@ -291,7 +290,7 @@ class MAISREnvVec(gym.Env):
 
         ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
         self.targets[:, 0] = np.arange(self.config['num_targets']) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
-        self.targets[:, 1] = np.random.choice([0, 1], size=self.config['num_targets'], p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
+        self.targets[:, 1] = 0 # np.random.choice([0, 1], size=self.config['num_targets'], p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
         self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
 
         map_half_size = self.config["gameboard_size"] / 2  # Convert to [-150, +150] coordinate system
@@ -628,7 +627,7 @@ class MAISREnvVec(gym.Env):
             new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
             new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
 
-        if self.step_count_inner >= self.max_steps: # TODO: Temporarily hard-coding 490 steps
+        if self.step_count_inner >= self.max_steps:
             self.terminated = True
 
         if not self.failed and self.num_threats_identified > self.config['max_threat_ids']:
@@ -1425,7 +1424,7 @@ class MAISREnvVec(gym.Env):
                 self.config["gameboard_size"]))  # Right border
                 self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
 
-            # Handle flash when agent is damaged (TODO: Make this a different graphic)
+            # Handle flash when agent is damaged
             if current_time > 1000 and (current_time - self.agent_damage_flash_start < self.damage_flash_duration):
                 progress = (current_time - self.agent_damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
                 alpha = int(255 * (1 - progress))
@@ -1579,50 +1578,6 @@ class MAISREnvVec(gym.Env):
                 center=(675, 1030))
             self.window.blit(corner_round_text_surface, corner_round_rect)
 
-            # # Countdown from 5 seconds at start of game
-            # (TODO TEMP REMOVED)
-            # if current_time <= self.start_countdown_time:
-            #     countdown_font = pygame.font.SysFont(None, 120)
-            #     message_font = pygame.font.SysFont(None, 60)
-            #     round_font = pygame.font.SysFont(None, 72)
-            #     countdown_start = 0
-            #     countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
-            #     countdown_surface.set_alpha(128)  # 50% transparent
-            #
-            #     time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
-            #
-            #     # Draw semi-transparent overlay
-            #     countdown_surface.fill((100, 100, 100))
-            #     self.window.blit(countdown_surface, (0, 0))
-            #
-            #     # Draw round name
-            #     if self.user_group == 'test':
-            #         round_text = f"ROUND {self.round_number+1}/4"
-            #     else:
-            #         if self.round_number == 0: round_text = "TRAINING ROUND"
-            #         else: round_text = f"ROUND {self.round_number}/4"
-            #     round_text_surface = round_font.render(round_text, True, (255, 255, 255))
-            #     round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
-            #     self.window.blit(round_text_surface, round_rect)
-            #
-            #     # Draw "Get Ready!" message
-            #     ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
-            #     ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
-            #     self.window.blit(ready_text, ready_rect)
-            #
-            #     # Draw countdown number
-            #     countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
-            #     text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
-            #     self.window.blit(countdown_text, text_rect)
-            #
-            #     pygame.time.wait(50)  # Control update rate
-            #
-            #     # Handle any quit events during countdown
-            #     for event in pygame.event.get():
-            #         if event.type == pygame.QUIT:
-            #             pygame.quit()
-            #             return
-
             if self.paused and not self.unpause_countdown:
                 pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
                 pause_surface.set_alpha(128*2)  # 50% transparent
@@ -1636,9 +1591,6 @@ class MAISREnvVec(gym.Env):
 
                 self.window.blit(pause_text, text_rect)
                 self.window.blit(pause_subtext, pause_sub_rect)
-
-        #if self.terminated or self.truncated:
-            #self._render_game_complete() TODO temp removed
 
         pygame.display.update()
         if self.render_mode == 'human':

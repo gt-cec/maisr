@@ -13,6 +13,10 @@ This codebase is a PyGame variant of the [CEC ISR domain](https://github.com/gt-
 ## Train new agents
 Run ``train_ppo.py`` to train a new policy using PPO. 
 
+## Run a user study
+
+``experiments/exp2_user_study/run_userstudy.py``
+
 ## Run the env with 1 human + 1 loaded agents
 
 
@@ -149,3 +153,8 @@ Contains these classes:
 
 #### `agents.py`
  
+
+# Citation
+If you use this repository in your work, please cite:
+
+(Coming soon)

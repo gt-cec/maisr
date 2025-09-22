@@ -524,7 +524,7 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
                 eval_lengths = []
                 teammate_names = []
 
-                timescale_correction = 10 # TODO make this dynamic
+                timescale_correction = 10
 
                 for level in range(7):
 
@@ -1043,7 +1043,6 @@ def train_generic(
 
     policy_kwargs = dict(
         activation_fn=torch.nn.Tanh,
-        # TODO Make this use env_config['network_numlayers"
         net_arch=dict(
             pi=[env_config['network_size']] * env_config['network_numlayers'],
             vf=[env_config['network_size']] * env_config['network_numlayers']
@@ -1163,7 +1162,7 @@ if __name__ == "__main__":
     config_filename = 'configs/Monolith_index_August.json'
     num_envs = 2 if args.testing else multiprocessing.cpu_count() # Use all CPU cores for multiprocessing, but only use 2 if args.testing (for faster init)
     train_type = 'monolith' # What type of agent to train. "monolith" for a single policy that chooses directional or target index control. "mode_selector" for a hybrid agent that chooses subpolicies (not currently implemented)
-    project_name = 'insert_wandb_project_name'
+    project_name = 'maisr-rl-mixedtraining'#'insert_wandb_project_name'
     machine = socket.gethostname()
 
     config = load_env_config(config_filename)
