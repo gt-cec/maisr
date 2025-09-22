@@ -3,20 +3,14 @@ import ctypes
 import pygame
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
-from wandb.cli.cli import local
 
-from env_multi_new import MAISREnvVec
-from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from training_wrappers.modeselector_training_wrapper import MaisrModeSelectorWrapper
-#from policies.greedy_heuristic_improved import greedy_heuristic_nearest_n
-#from policies.sub_policies import SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat
+from base_env import MAISREnvVec
+from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.league_management import LocalSearch, SubPolicy, ChangeRegions, GoToNearestThreat
-from utility.data_logging import load_env_config
-
+from utility.config_management import load_env_config
 
 
 if __name__ == "__main__":
-
     use_normalize = True
     config = load_env_config(config_filename = 'configs/Monolith_R8H_july10.json')
 

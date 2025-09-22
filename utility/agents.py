@@ -1,4 +1,4 @@
-# agents.py: includes classes for the aircraft and ship agents
+# agents.py: Defines the aircraft class. Used by base_env
 
 import pygame  # for rendering
 import math  # for math functions

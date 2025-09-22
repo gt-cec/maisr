@@ -1,0 +1,2629 @@
+import json
+import os
+
+import gymnasium as gym
+import numpy as np
+import pygame
+import random
+
+import utility.agents as agents
+from utility.gui import Button, HealthWindow, TimeWindow
+
+
+class MAISREnvVec(gym.Env):
+    """Multi-Agent ISR Environment following the Gym format"""
+
+    def __init__(self, config={}, window=None, clock=None, render_mode='headless',
+                 tag='none',
+                 run_name='no name',
+                 seed=None,
+                 subject_id='999', user_group='99', round_number='99',
+                 agent_appearance=None,
+                 running_experiment = False):
+
+        super().__init__()
+
+        self.config = config # Loaded from .json into a dictionary
+        self.run_name = run_name # For logging
+        self.running_experiment = running_experiment
+
+        self.agent_appearance = agent_appearance
+
+        self.use_buttons = False
+        self.teammate_active = self.config['teammate_active_at_start']
+        
+        self.save_plot_freq = 7*self.config['num_fixed_levels']
+
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+
+        # Define finite set of level seeds and start locations for easier learning (can specify whether to use these using config["levels_per_lesson"] and config['"agent_start_locations_per_lesson"]
+        self.start_location_list = [(-0.040025224653889024, -0.9625879446233576), (-0.7540669154968491, -0.7678726873009407),
+                                    (0.9345335196185689, -0.39997004285253945), (-0.5163174741656262, 0.5376409004137273),
+                                    (0.6583087133274226, 0.5564162525991561), (0.7272350284428963, 0.18485499597619803),
+                                    (0.30589404581350754, -0.290256375901367), (0.79881559364427, 0.9301793065831461),
+                                    (0.8434517570450266, 0.2828723363229593), (0.0450388363149643, 0.6458992596871613)]
+        self.level_seeds = [42, 123, 465, 299, 928, 1, 22, 7, 81, 0, 1337, 2023, 9876, 5432, 8888, 1234, 7777, 3141,
+                            2718, 9999, 1111, 6666, 4444, 8080, 3333, 7890, 1029, 5678, 9012, 2468, 1357, 8642, 9753,
+                            1470, 2581, 3692, 7410, 8520, 9630, 1590, 7531, 4682, 9173, 2640, 5791, 8462, 3951, 6284,
+                            7395, 1683, 4729, 5064, 8317, 9428, 2756, 6049, 3870, 7152, 4681]
+
+        self.difficulty = self.config['starting_difficulty'] # Curriculum learning level (starts at 0)
+        #self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
+
+        self.max_steps = self.config['max_steps'] # Max inner steps of the environment (before frame stacking)
+        self.max_detections = 10
+
+        self.highval_target_ratio = 0 # The ratio of targets that are high value (more points for IDing, but also have chance of detecting the player). TODO make configurable in config
+
+        self.tag = tag # Name for differentiating envs for training, eval, software testing etc.
+        self.render_mode = render_mode
+
+        self.generate_plot_list() # Generate list of levels to plot
+
+        self.check_valid_config() # Check that config parameters are valid
+
+        if self.tag in ['train_mp0', 'eval']:
+            print(f'Env initialized: Tag={tag}, obs_type={self.config['obs_type']}, action_type={self.config['action_type']}')
+
+        self.config['num_targets'] = self.config['num_targets']
+
+        ######################################### OBSERVATION AND ACTION SPACES ########################################
+        if self.config['action_type'] == 'Discrete8':
+            self.action_space = gym.spaces.Discrete(8)  # 8 directions
+        elif self.config['action_type'] == 'Discrete16':
+            self.action_space = gym.spaces.Discrete(16)  # 16 directions
+        elif self.config['action_type'] == 'target_index':
+            total_observed_entities = self.config['num_observed_targets'] + self.config['num_observed_threats']
+            self.action_space = gym.spaces.Discrete(total_observed_entities)
+        elif self.config['action_type'] == 'continuous-normalized':
+            self.action_space = gym.spaces.Box(
+                low=np.array([-1, -1], dtype=np.float32),
+                high=np.array([1, 1], dtype=np.float32),
+                dtype=np.float32)
+        else: 
+            raise ValueError("Invalid action type")
+
+        if self.config['obs_type'] == 'pixel':  # CNN observation space - grayscale 84x84
+            import cv2
+            self.observation_space = gym.spaces.Box(
+                low=0, high=255,
+                shape=(84, 84, 1),  # Height, Width, Channels (grayscale)
+                dtype=np.uint8)
+
+        elif self.config['obs_type'] == 'full':
+            self.obs_size = 2 + 3 * self.config['num_targets'] + 2 * self.config['num_threats'] + (2 if self.config['observe_teammate'] else 0) + (2 if self.config['observe_teammate_direction'] else 0)
+
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),
+                dtype=np.float32)
+
+        elif self.config['obs_type'] == 'nearest':
+            self.obs_size = 2 * self.config['num_observed_targets'] + 2 * self.config['num_observed_threats'] + (2 if self.config['observe_teammate'] else 0) + (2 if self.config['observe_teammate_direction'] else 0) + (1 if self.config['observe_teammate_priority'] else 0)
+
+            self.observation_space = gym.spaces.Box(
+                low=-1, high=1,
+                shape=(self.obs_size,),
+                dtype=np.float32)
+
+            if self.tag == 'train_mp0':
+                print(f'[Base env] Using obs space size {self.obs_size} ({self.config['num_observed_targets']} nearest targets, {self.config['num_observed_threats']} nearest threats\n')
+
+        else:
+            raise ValueError("Obs type not recognized")
+
+
+        ################################################# HUMAN THINGS #################################################
+        self.subject_id = subject_id
+        self.round_number = round_number
+        self.user_group = user_group
+        self.human_training = True if (self.round_number == 0 and self.user_group != 'test') else False  # True for the training round at start of experiment, false for rounds 1-4 (NOTE: This is NOT agent training!)
+
+        self.paused = False
+        self.unpause_countdown = False
+
+        # Track score points (for human eyes only)
+        self.score = 0
+        self.low_qual_points = 10  # Points earned for gathering low quality info about a target
+        self.high_qual_points = 10  # Points earned for gathering high quality info about a target
+        self.time_points = 15  # Points given per second remaining
+        self.human_hp_remaining_points = 70
+        self.wingman_dead_points = -300  # Points subtracted for agent wingman dying
+        self.human_dead_points = -400  # Points subtracted for human dying
+
+        self.show_agent_waypoint = True #self.config['show_agent_waypoint']
+
+        # constants
+        self.AGENT_BASE_DRAW_WIDTH = 10  # an agent scale unit of 1 draws this many pixels wide
+        self.AGENT_COLOR_UNOBSERVED = (255, 215, 0)  # gold
+        self.AGENT_COLOR_OBSERVED = (128, 0, 128)  # purple
+        self.AGENT_COLOR_THREAT = (255, 0, 0)  # red
+        self.AGENT_THREAT_RADIUS = [0, 1.4, 2.5, 4]  # threat radius for each level
+
+        self.AIRCRAFT_NOSE_LENGTH = 10  # pixel length of aircraft nose (forward of wings)
+        self.AIRCRAFT_TAIL_LENGTH = 25  # pixel length of aircraft tail (behind wings)
+        self.AIRCRAFT_TAIL_WIDTH = 7  # pixel width of aircraft tail (perpendicular to body)
+        self.AIRCRAFT_WING_LENGTH = 18  # pixel length of aircraft wings (perpendicular to body)
+        self.AIRCRAFT_LINE_WIDTH = 5  # pixel width of aircraft lines
+        self.AIRCRAFT_ENGAGEMENT_RADIUS = 30  # pixel width of aircraft engagement (to identify WEZ of threats)
+        self.AIRCRAFT_ISR_RADIUS = 85  # 170  # pixel width of aircraft scanner (to identify hostile vs benign)
+
+        self.GAMEBOARD_NOGO_RED = (255, 200, 200)  # color of the red no-go zone
+        self.GAMEBOARD_NOGO_YELLOW = (255, 225, 200)  # color of the yellow no-go zone
+        self.FLIGHTPLAN_EDGE_MARGIN = .2  # proportion distance from edge of gameboard to flight plan, e.g., 0.2 = 20% in, meaning a flight plan of (1,1) would go to 80%,80% of the gameboard
+        self.AIRCRAFT_COLORS = [(0, 160, 160), (0, 0, 255), (200, 0, 200), (80, 80,80)]  # colors of aircraft 1, 2, 3, ... add more colors here, additional aircraft will repeat the last color
+
+        if render_mode in ['rgb_array', 'human']:
+            self.window = window
+            self.clock = clock
+            self.start_countdown_time = 5000  # How long in milliseconds to count down at the beginning of the game before it starts
+
+            # Set GUI locations
+            self.gameboard_offset = 0  # How far from left edge to start drawing gameboard
+            self.window_x = self.config["window_size"][0]
+            self.window_y = self.config["window_size"][1]
+            self.window = pygame.display.set_mode((self.window_x, self.window_y))
+
+            self.right_pane_edge = self.config['gameboard_size'] + 20  # Left edge of gameplan button windows
+            self.comm_pane_edge = self.right_pane_edge
+            self.gameplan_button_width = 180
+            self.quadrant_button_height = 120
+            self.autonomous_button_y = 590
+
+            if render_mode == 'human':
+                # Initialize buttons
+                self.gameplan_button_color = (255, 120, 80)
+                self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+                self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60 + 55, self.gameplan_button_width,60)
+                self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60 + 55,self.gameplan_button_width, 60)
+                self.NW_quad_button = Button("NW", self.right_pane_edge + 15, 60 + 80 + 10 + 10 + 50,self.gameplan_button_width, self.quadrant_button_height)
+                self.NE_quad_button = Button("NE", self.right_pane_edge + 30 + self.gameplan_button_width,60 + 80 + 10 + 10 + 50, self.gameplan_button_width, self.quadrant_button_height)
+                self.SW_quad_button = Button("SW", self.right_pane_edge + 15, 50 + 2 * (self.quadrant_button_height) + 50,self.gameplan_button_width, self.quadrant_button_height)
+                self.SE_quad_button = Button("SE", self.right_pane_edge + 30 + self.gameplan_button_width,50 + 2 * (self.quadrant_button_height) + 50, self.gameplan_button_width,self.quadrant_button_height)
+                self.full_quad_button = Button("FULL", self.right_pane_edge + 200 - 35 - 10,60 + 2 * (80 + 10) + 20 - 35 + 5 + 50, 100, 100)
+                self.waypoint_button = Button("WAYPOINT", self.right_pane_edge + 30 + self.gameplan_button_width,3 * (self.quadrant_button_height) + 115, self.gameplan_button_width, 80)
+                self.hold_button = Button("HOLD", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115,self.gameplan_button_width, 80)
+
+                # ID request button cluster
+                self.info_button_1 = Button("Button 1", self.right_pane_edge + 15, 750, 120, 80)
+                self.info_button_2 = Button("Button 2", self.right_pane_edge + 150, 750, 120, 80)
+                self.info_button_3 = Button("Button 3", self.right_pane_edge + 285, 750, 120, 80)
+
+                self.agent_waypoint_clicked = False # Flag to determine whether clicking on the map sets the humans' waypoint or the agent's. True when "waypoint" gameplan button set.
+                self.human_quadrant = None
+
+                # Comm log
+                self.comm_messages = []
+                self.max_messages = 4
+                self.message_font = pygame.font.SysFont(None,30)
+                self.ai_color = self.AIRCRAFT_COLORS[0]
+                self.human_color = self.AIRCRAFT_COLORS[1]
+
+                self.display_time = 0 # Time that is used for the on-screen timer. Accounts for pausing.
+                self.button_latch_dict = {'target_id':False,'wez_id':False,'hold':False,'waypoint':False,'NW':False,'SW':False,'NE':False,'SE':False,'full':False,'autonomous':True,'pause':False,'risk_low':False, 'risk_medium':True, 'risk_high':False,'manual_priorities':False,'tag_team':False,'fan_out':False} # Hacky way to get the buttons to visually latch even when they're redrawn every frame
+                self.button_latch_dict.update({
+                    'info_button_1': False,
+                    'info_button_2': False,
+                    'info_button_3': False
+                })
+                self.pause_font = pygame.font.SysFont(None, 74)
+                self.pause_subtitle_font = pygame.font.SysFont(None, 40)
+
+                # For visual damage flash
+                self.damage_flash_duration = 500  # Duration of flash in milliseconds
+                self.damage_flash_start = 0  # When the last damage was taken
+                self.damage_flash_alpha = 0  # Current opacity of flash effect
+                self.agent_damage_flash_start = 0
+                self.agent_damage_flash_alpha = 0
+                self.last_health_points = {0: 10, 1: 10}  # Track health points to detect changes
+
+                # Calculate required height of agent status info
+                self.agent_info_height_req = 0
+                self.time_window = TimeWindow(self.config["gameboard_size"] * 0.43, self.config["gameboard_size"]+5,current_time=self.display_time, time_limit=self.config['time_limit'])
+
+        if self.config['obs_type'] == 'pixel': # Create offscreen surface for pixel observations
+            pygame.display.init()
+            pygame.font.init()
+            self.pixel_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]))
+
+        self.episode_counter = 0
+        self.reset()
+
+
+    def reset(self, seed=None, options=None):
+
+        if hasattr(self, "recorded_teammate_positions"):  # list of [x,y]
+            num_microsteps = self.max_steps  # or max_steps per episode
+            self.interpolated_teammate_positions = self.interpolate_trajectory(
+                self.recorded_teammate_positions,
+                num_microsteps
+            )
+            self.teammate_step_idx = 0
+
+        # Load settings based on difficulty level
+        self.config['gameboard_size'] = self.config["gameboard_size_per_lesson"][str(self.difficulty)]
+        self.num_levels = self.config["levels_per_lesson"][str(self.difficulty)]
+
+        self.teammate_going_to_threat = False
+
+        if self.config['use_curriculum']:
+            self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
+
+        if self.config['force_specific_level'] != 99:
+            self.level_idx = self.config['force_specific_level']
+        elif self.config['use_fixed_levels']:
+            num_fixed_levels = 7
+            try:
+                self.level_idx = (self.episode_counter+int(self.tag[-1])) % num_fixed_levels
+            except:
+                self.level_idx = (self.episode_counter) % num_fixed_levels
+
+        # Init threat and target matrices
+        self.threats = np.zeros((self.config['num_threats'], 2), dtype=np.float32)  # [threat_id][x_pos, y_pos]
+        self.targets = np.zeros((self.config['num_targets'], 5), dtype=np.float32)
+
+        # Set seed for this level
+        seed_list = self.level_seeds[0:self.num_levels]
+        if self.tag in ['eval','test_suite']: current_seed_index = self.episode_counter % len(seed_list)
+        else: current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
+        current_seed = seed_list[current_seed_index]
+        np.random.seed(current_seed)
+        random.seed(current_seed)
+
+        self.agents = [] # List of names of all current agents. Typically integers
+        self.aircraft_ids = []  # Indices of the aircraft agents
+        self.action_history, self.agent_location_history = [], [] # For plotting
+        self.teammate_location_history = []
+
+        self.score = 0
+        self.display_time = 0  # Time that is used for the on-screen timer. Accounts for pausing.
+        self.pause_start_time = 0
+        self.total_pause_time = 0
+        self.init = True
+        self.failed = False
+        self.just_failed = False
+
+        self.final_wrapper_reward = 0 # Used for saving plots
+        self.target_potential, self.threat_potential = None, None # Initialize potential for reward shaping
+
+
+        ##################### Create vectorized ships/targets. Format: [info_level, x_pos, y_pos] ######################
+        self.targets[:, 0] = np.arange(self.config['num_targets']) # Assign IDs (column 0) (Note, this does not go into the observation vector. It is just for reference)
+        self.targets[:, 1] = np.random.choice([0, 1], size=self.config['num_targets'], p=[1 - self.highval_target_ratio, self.highval_target_ratio]) # Assign target values (column 1) - regular (0) or high-value (1)
+        self.targets[:, 2] = 0 # Initialize info_level (column 2) to all 0 (unknown)
+
+        map_half_size = self.config["gameboard_size"] / 2  # Convert to [-150, +150] coordinate system
+
+        if self.config['use_fixed_levels']:
+            agent_x, agent_y, teammate_x, teammate_y = self.load_level_from_json() # This method also sets target locations, which is why it's here
+
+        else:
+            margin = map_half_size * 0.03  # 3% margin from edges
+            self.targets[:, 3] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
+            self.targets[:, 4] = np.random.uniform(-map_half_size + margin, map_half_size - margin, size=self.config['num_targets'])
+
+        self.target_timers = np.zeros(self.config['num_targets'], dtype=np.int32)  # How long each target has been sensed for
+        self.detections = 0 # Number of times a target has detected us. Results in a score penalty
+        self.targets_identified = 0
+
+        # Create threats
+        self.threat_timers = np.zeros((self.config['num_aircraft'], self.config['num_threats']), dtype=np.int32)  # [aircraft_id][threat_id]
+        self.threat_identified = np.zeros(self.config['num_threats'], dtype=bool)  # Whether each threat is identified
+        self.num_threats_identified = 0
+
+        # Place threats
+        if self.config['use_fixed_levels']:
+            pass # Already handled above
+        else:
+            margin = map_half_size * 0.03  # 3% margin from edges
+            for i in range(self.config['num_threats']):
+                max_attempts = 50
+                threat_placed = False
+
+                for attempt in range(max_attempts):
+                    candidate_x = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                    candidate_y = np.random.uniform(-map_half_size + margin, map_half_size - margin)
+                    candidate_pos = np.array([candidate_x, candidate_y])
+
+                    # Check distance from all targets
+                    valid_position = True
+                    if self.config['num_targets'] > 0:
+                        target_positions = self.targets[:, 3:5]
+                        distances_to_targets = np.sqrt(np.sum((target_positions - candidate_pos) ** 2, axis=1))
+                        if np.min(distances_to_targets) < 50.0:  # Minimum distance from any target
+                            valid_position = False
+
+                    # Check distance from other threats
+                    if i > 0 and valid_position:
+                        distance_to_other_threat = np.sqrt(np.sum((self.threats[0] - candidate_pos) ** 2))
+                        if distance_to_other_threat < 50.0:
+                            valid_position = False
+
+                    if valid_position:
+                        self.threats[i, 0] = candidate_x
+                        self.threats[i, 1] = candidate_y
+                        threat_placed = True
+                        break
+
+                if not threat_placed:
+                    # Final fallback
+                    self.threats[i, 0] = np.random.uniform(-0.9, 0.9)
+                    self.threats[i, 1] = np.random.uniform(-0.9, 0.9)
+
+        # Decay shaping rewards
+        self.config['target_potential_coeff'] = self.config['target_potential_coeff'] * self.config['shaping_decay_rate']
+        self.config['threat_potential_coeff'] = self.config['threat_potential_coeff'] * self.config['shaping_decay_rate']
+
+        ############################################# Set agent start locations ##############################################
+        map_half_size = self.config["gameboard_size"] / 2
+
+        if self.config['use_fixed_levels']:
+            pass # Already handled above
+
+        elif self.config["agent_start_locations_per_lesson"][str(self.difficulty)] == 99:
+            agent_x, agent_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
+            teammate_x, teammate_y = np.random.uniform(-1,1) * map_half_size, np.random.uniform(-1,1) * map_half_size
+
+        else:
+            self.start_locations = self.start_location_list[0:self.config["agent_start_locations_per_lesson"][str(self.difficulty)]]
+
+            if self.tag in ['eval','test_suite']:
+                start_loc_index = self.episode_counter % len(self.start_locations)
+                teammate_start_loc_index = (self.episode_counter + 1) % len(self.start_locations)
+            else:
+                start_loc_index = (self.episode_counter+int(self.tag[-1])) % len(self.start_locations)
+                teammate_start_loc_index = (self.episode_counter+int(self.tag[-1])+1) % len(self.start_locations)
+
+            agent_x, agent_y = self.start_locations[start_loc_index][0] * map_half_size, self.start_locations[start_loc_index][1] * map_half_size
+            teammate_x, teammate_y = self.start_locations[teammate_start_loc_index][0] * map_half_size, self.start_locations[teammate_start_loc_index][1] * map_half_size
+
+        agent_starts = [(agent_x, agent_y), (teammate_x, teammate_y)]
+
+
+        ############################################# Create the aircraft ##############################################
+        for i in range(self.config['num_aircraft']):
+            appearance = self.agent_appearance if i == 0 else None
+            agents.Aircraft(self, 0, max_health=10, color=self.AIRCRAFT_COLORS[i], speed=self.config['game_speed'] * self.config['agent_speed'], appearance=appearance)
+
+            self.agents[self.aircraft_ids[i]].x, self.agents[self.aircraft_ids[i]].y = agent_starts[i]
+
+        # Reset step, episode, and reward counters
+        self.step_count_inner = 0
+        self.step_count_outer = 0
+        self.ep_reward = 0
+        self.episode_counter += 1
+
+        self.all_targets_identified = False
+        self.terminated = False
+        self.truncated = False
+
+        self.observation = self.get_observation()
+
+        info = {}
+        return self.observation, info
+
+
+    def step(self, action):
+        """ Skip frames by repeating the action multiple times.
+        The actual environment dynamics are processed in _single_step(), which is called by this method.
+        """
+
+        total_reward, info, total_potential_gain = 0, None, 0
+        
+        # Track status from prior step for info gathering later
+        prev_targets_identified = self.targets_identified
+        prev_threats_identified = self.num_threats_identified
+        prev_detections = self.detections
+
+        # Initialize consolidation containers
+        consolidated_new_identifications = []
+        consolidated_score_breakdown = {
+            "target_points": 0,
+            "threat_points": 0,
+            "time_points": 0,
+            "completion_points": 0,
+            "penalty_points": 0
+        }
+        consolidated_reward_components = {}
+        final_info = None
+        steps_executed = 0
+
+        for frame in range(self.config['frame_skip']):
+            observation, reward, self.terminated, self.truncated, info = self._single_step(action)
+            total_reward += reward
+            total_potential_gain += info["potential_gain"]
+            steps_executed += 1
+
+            # Accumulate new identifications
+            if "new_identifications" in info:
+                consolidated_new_identifications.extend(info["new_identifications"])
+
+            # Accumulate score breakdown
+            if "score_breakdown" in info:
+                for key, value in info["score_breakdown"].items():
+                    consolidated_score_breakdown[key] += value
+
+            # Accumulate reward components
+            if "reward_components" in info:
+                for key, value in info["reward_components"].items():
+                    consolidated_reward_components[key] = consolidated_reward_components.get(key, 0) + value
+
+            # Keep the final info as base
+            final_info = info.copy()
+
+            # Break early if the episode is done to avoid unnecessary computation
+            if self.terminated or self.truncated:
+                break
+
+        self.step_count_outer += 1
+
+        # Update final info with consolidated data
+        final_info["outerstep_potential_gain"] = total_potential_gain
+        final_info['new_target_ids'] = self.targets_identified - prev_targets_identified
+        final_info['new_threat_ids'] = self.num_threats_identified - prev_threats_identified
+        final_info['new_detections'] = self.detections - prev_detections
+        final_info["new_identifications"] = consolidated_new_identifications
+        final_info["score_breakdown"] = consolidated_score_breakdown
+        final_info["reward_components"] = consolidated_reward_components
+        final_info["frame_skip_steps"] = steps_executed
+        final_info['threat_ids'] = np.sum(self.threat_identified)
+
+        return observation, total_reward, self.terminated, self.truncated, final_info
+
+
+    def _single_step(self, action: np.ndarray):
+        """
+        Process a single step in the environment. This is called by step() to allow us to modulate the agent's observation and action rate.
+
+        Action must be either:
+            1. Discrete16 input: np.ndarray of 1 element, e.g. [5]
+            2. Continuous input: np.ndarray of 2 elements from -1 to +1, e.g. [0.5, -0.5]
+        """
+        if not isinstance(action, (np.ndarray, int, np.int32, np.int64)):
+            raise ValueError(f'[single_step] Action is a {type(action)}')
+
+        self.step_count_inner += 1
+        if self.target_potential:
+            last_target_potential = self.target_potential
+        else:
+            last_target_potential = 0
+        if self.threat_potential:
+            last_threat_potential = self.threat_potential
+        else:
+            last_threat_potential = 0
+
+        new_reward = {'high val target id': 0, 'regular val target id': 0, 'early finish': 0, 'threat_identification':0, 'teammate_target_ids':0} # Track events that give reward. Will be passed to get_reward at end of step
+        new_score = 0 # For tracking score to display to the human
+        info = {
+            "new_identifications": [], # List to track newly identified targets/threats
+            "reward_components": {},
+            "detections": self.detections,  # Current detection count
+            "target_ids": 0,
+            "threat_ids": 0,
+            'episode': {'r': 0, 'l': self.step_count_inner},
+            "score_breakdown": {"target_points": 0, "threat_points": 0, "time_points": 0, "completion_points": 0, "penalty_points": 0}}
+
+
+        ############################################### Process action ################################################
+        if isinstance(action, np.ndarray) and action.ndim > 0:
+            if len(action) == 2:
+                waypoint = self._denormalize_waypoint(action)
+            else:
+                if self.config['action_type'] == 'target_index':
+                    waypoint = self._index_to_waypoint(int(action[0]))
+                else:
+                    waypoint = self._direction_to_waypoint(action)
+        else:
+            if self.config['action_type'] == 'target_index':
+                waypoint = self._index_to_waypoint(int(action))
+            else:
+                waypoint = self._direction_to_waypoint(action)
+
+        self.agents[self.aircraft_ids[0]].waypoint_override = waypoint
+
+        if hasattr(self, "interpolated_teammate_positions"):
+            pos = self.interpolated_teammate_positions[self.teammate_step_idx]
+            self.agents[self.aircraft_ids[1]].x = pos[0]
+            self.agents[self.aircraft_ids[1]].y = pos[1]
+            self.agents[self.aircraft_ids[1]].waypoint_override = pos
+            self.teammate_step_idx = min(self.teammate_step_idx + 1, len(self.interpolated_teammate_positions) - 1)
+
+        # Log actions to action_history plot
+        self.action_history.append(self.agents[0].waypoint_override)
+        self.agent_location_history.append((self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y))
+
+        if self.config['num_aircraft'] == 2:
+            self.teammate_location_history.append((self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y))
+
+        ################################ Move the agents and check for gameplay updates ################################
+        for aircraft in [agent for agent in self.agents if agent.agent_class == "aircraft" and agent.alive]:
+
+            aircraft_pos = np.array([aircraft.x, aircraft.y])  # Get aircraft position
+            aircraft_idx = aircraft.agent_idx  # Get the aircraft's index (0 or 1)
+
+            if not aircraft.appearance == 'invisible':
+                aircraft.move() # Move using the waypoint override set above
+
+            # # Calculate distances to all targets
+            target_positions = self.targets[:, 3:5]  # x,y coordinates
+            distances = np.sqrt(np.sum((target_positions - aircraft_pos) ** 2, axis=1))
+
+            # Find targets within ISR range (for identification)
+            in_isr_range = distances <= self.AIRCRAFT_ENGAGEMENT_RADIUS
+
+            # Check if in range of threats and update identification
+            for threat_idx in range(self.config['num_threats']):
+                threat_pos = np.array([self.threats[threat_idx, 0], self.threats[threat_idx, 1]])
+                distance_to_threat = np.sqrt(np.sum((threat_pos - aircraft_pos) ** 2))
+                in_threat_range = distance_to_threat <= self.config['threat_radius']
+
+                if in_threat_range:
+                    self.threat_timers[aircraft_idx, threat_idx] += 1
+
+                    # Check if threat should be identified (10+ consecutive steps in range)
+                    # Any aircraft can identify a threat
+                    if self.threat_timers[aircraft_idx, threat_idx] >= self.config['time_to_id'] and not self.threat_identified[threat_idx]:
+                        self.threat_identified[threat_idx] = True
+                        self.num_threats_identified += 1
+                        info['threat_ids'] += 1
+                        #print(f'info[threat ids] = {info['threat_ids']}')
+
+                        # Add reward for identifying threat
+                        new_reward['threat_identification'] = new_reward.get('threat_identification', 0) + 1
+                        new_score += self.config.get('threat_identification_reward', 50)
+
+                        info["new_identifications"].append({
+                            "type": "threat identified",
+                            "threat_id": threat_idx,
+                            "aircraft": aircraft.agent_idx,
+                            "time": self.display_time
+                        })
+
+                        #print(f"Aircraft {aircraft_idx} identified threat {threat_idx}")
+                else:
+                    # Reset timer for this specific aircraft-threat combination if not in range
+                    self.threat_timers[aircraft_idx, threat_idx] = 0
+
+
+            # Process newly identified targets
+            for target_idx in range(self.config['num_targets']):
+                if in_isr_range[target_idx] and self.targets[target_idx, 2] < 1.0: # If target is in range and not fully identified
+                    self.targets_identified += 1
+                    self.targets[target_idx, 2] = 1.0
+
+                    # Add reward (for agent) and score (for human).
+                    if self.targets[target_idx, 1] == 0.0:
+                        new_score += self.config['base_env_target_id_reward']
+                        new_reward['regular val target id'] += 1
+                        if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
+                    else:
+                        new_score += self.config['base_env_target_id_reward']
+                        new_reward['high val target id'] += 1
+                        if aircraft_idx == 1: new_reward['teammate_target_ids'] += 1
+
+                    # Update info dictionary
+                    info["score_breakdown"]["target_points"] += self.config['base_env_target_id_reward'] if self.targets[target_idx, 1] == 0.0 else self.config['base_env_target_id_reward']
+                    info["new_identifications"].append({
+                        "type": "target identified",
+                        "target_id": int(self.targets[target_idx, 0]),
+                        "aircraft": aircraft.agent_idx,
+                        "time": self.display_time
+                    })
+
+                # Handle aircraft being detected by high value targets
+                if self.config['prob_detect'] > 0.0 and in_threat_range: # If prob detect is zero, skip
+                    if np.random.random() < self.config['prob_detect']: # Roll RNG to see if we're detected
+                        self.detections += 1
+                        self.damage_flash_start = pygame.time.get_ticks()
+                        #new_reward['detections'] += 1
+                        info["detections"] = self.detections
+
+        self.all_targets_identified = np.all(self.targets[:, 2] == 1.0)
+        self.all_threats_identified = np.all(self.threat_identified == 1.0)
+
+        if self.all_targets_identified and self.all_threats_identified:
+            self.terminated = True
+            new_score += (self.config['time_limit'] - self.display_time / 1000) * self.time_points
+            new_reward['early finish'] = self.max_steps - self.step_count_inner # Number of steps finished early (will be multiplied by reward coeff in get_reward
+
+        if self.step_count_inner >= self.max_steps: # TODO: Temporarily hard-coding 490 steps
+            self.terminated = True
+
+        if not self.failed and self.num_threats_identified > self.config['max_threat_ids']:
+            self.failed = True
+            self.just_failed = True
+            #print(f'%%% TOO MANY THREAT IDS, TERMINATED')
+
+        # Advance time (only relevant for human play)
+        if self.render_mode == 'headless': self.display_time = self.display_time + (1000/60) # If agent training, each step is 1/60th of a second
+        elif not self.paused: self.display_time = pygame.time.get_ticks() - self.total_pause_time
+        if self.init: self.init = False
+
+        self.observation = self.get_observation()  # Get observation
+
+        # Calculate potential (distance improvement to target)
+        self.target_potential, self.threat_potential = self.get_potential()
+        target_potential_gain = max(-0.1, min(0.1, self.target_potential - last_target_potential))  # Cap between -10 and +10
+        threat_potential_gain = max(-0.1, min(0.1, self.threat_potential - last_threat_potential))  # Cap between -10 and +10
+        info['inner_step_potential_gain'] = target_potential_gain + threat_potential_gain
+
+        # Calculate reward
+        reward = self.get_reward(new_reward, target_potential_gain, threat_potential_gain)  # For agent
+        self.ep_reward += reward
+        self.score += new_score  # For human
+
+        # Populate info dict
+        info['episode'] = {'r': self.ep_reward, 'l': self.step_count_inner, }
+        info['reward_components'] = new_reward
+        info['detections'] = self.detections
+        info["target_ids"] = self.targets_identified
+        info["potential_gain"] = target_potential_gain + threat_potential_gain
+
+        info['done'] = self.terminated or self.truncated
+        info['steps_left'] = self.max_steps/self.config['frame_skip'] - self.step_count_outer
+        info['failed'] = getattr(self, 'failed', False)
+
+        if self.terminated or self.truncated:
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps\n\n')
+
+            if "teammate_checkpoint" in info:
+                self.teammate_checkpoint_info = info["teammate_checkpoint"]
+
+            # Keep individual plots for specific episodes if needed
+            if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0", "human_eval0"] and self.episode_counter in self.episodes_to_plot:
+                self.save_action_history_plot()
+
+            if self.render_mode == 'human':
+                pygame.time.wait(50)
+
+        return self.observation, reward, self.terminated, self.truncated, info
+
+
+    def get_reward(self, new_reward, target_potential_gain, threat_potential_gain):
+
+        if self.running_experiment:
+            return 0
+
+        teammate_target_ids = new_reward['teammate_target_ids']
+        agent_target_ids = new_reward['regular val target id'] - teammate_target_ids
+
+        optimal_distance = self.config["team_min_optimal_distance"]  # Optimal spread distance
+        max_bonus_distance = self.config["team_max_bonus_distance"]  # Distance for maximum bonus
+
+        fail_penalty = 0
+
+        # Calculate spread-out bonus between aircraft
+        spread_bonus = 0
+        if self.config['num_aircraft'] >= 2 and self.teammate_active:
+            agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+            teammate_pos = np.array([self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y])
+
+            distance = np.linalg.norm(agent_pos - teammate_pos)
+
+            if distance >= optimal_distance:
+                # Give bonus for being spread out, capped at max_bonus_distance
+                normalized_distance = min(distance, max_bonus_distance) / max_bonus_distance
+                spread_bonus = self.config["team_spread_bonus_coeff"] * normalized_distance
+
+        # Calculate proximity penalty between aircraft
+        proximity_penalty = 0
+        if self.config['num_aircraft'] >= 2:
+            agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+            teammate_pos = np.array([self.agents[self.aircraft_ids[1]].x, self.agents[self.aircraft_ids[1]].y])
+
+            distance = np.linalg.norm(agent_pos - teammate_pos)
+            min_distance = self.config['team_dist_penalty_threshold']  # Minimum desired distance
+
+            if distance < min_distance: # Penalty increases as aircraft get closer
+                proximity_penalty = self.config['team_dist_shaping_coeff'] * (min_distance - distance)
+
+        # Apply threat potential reward
+        if (self.num_threats_identified >= self.config['max_threat_ids'] or (self.num_threats_identified == 1 and self.teammate_going_to_threat and self.config['use_teammate_priority_shaping'])):
+            threats_are_good = False
+        else: threats_are_good = True
+
+        if threats_are_good:
+            threat_potential_reward = threat_potential_gain * self.config.get("potential_ratio", 1) * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size']) * self.config['threat_reward_scaling']
+        else:
+            threat_potential_reward = - 0.15 * threat_potential_gain * self.config['threat_potential_coeff'] * (300 / self.config['gameboard_size'])
+
+
+        if self.num_threats_identified <= self.config['max_threat_ids']:
+            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward'] * self.config['threat_reward_scaling']
+        else:
+            threat_id_reward = -2.2 * new_reward['threat_identification'] * self.config['threat_id_reward']
+
+        reward = (agent_target_ids * self.config['base_env_target_id_reward']) + \
+                 (teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']) + \
+                 (new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']) + \
+                 (target_potential_gain * self.config.get("potential_ratio", 1) * self.config['target_potential_coeff'] * (300 / self.config['gameboard_size'])) + \
+                 threat_potential_reward + \
+                 proximity_penalty + spread_bonus + fail_penalty + threat_id_reward
+
+        # Add debugging print statements
+        if self.config['print_reward_debug'] and self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10] and self.step_count_inner in [1, 176, 1401]:
+            print(f'\n=== REWARD DEBUG (Ep {self.episode_counter}, Step {self.step_count_outer}) ===')
+
+            # Target ID rewards
+            agent_target_reward = agent_target_ids * self.config['base_env_target_id_reward']
+            teammate_target_reward = teammate_target_ids * self.config['base_env_target_id_reward'] * self.config['teammate_reward_scale']
+            print(f'Agent Target IDs: {agent_target_ids} IDs * {self.config["base_env_target_id_reward"]} rew/ID = {agent_target_reward}')
+            print(f'Teammate Target IDs: {teammate_target_ids} IDs * {self.config["base_env_target_id_reward"]} rew/ID * {self.config["teammate_reward_scale"]} scale = {teammate_target_reward} reward')
+
+            # Early finish reward
+            early_finish_reward = new_reward['early finish'] * self.config['shaping_coeff_earlyfinish']
+            print(f'Early finish: {new_reward["early finish"]} early steps * {self.config["shaping_coeff_earlyfinish"]} coeff = {early_finish_reward} reward')
+
+            # Threat identification reward
+            threat_id_reward = new_reward['threat_identification'] * self.config['threat_id_reward']
+            print(f'Threat ID: {new_reward["threat_identification"]} IDs * {self.config["threat_id_reward"]} rew/ID = {threat_id_reward} reward')
+
+            # Potential-based rewards
+            target_potential_reward = target_potential_gain * self.config.get("potential_ratio", 1) * self.config['target_potential_coeff'] * (300 / self.config['gameboard_size'])
+            print(f'Target potential: {target_potential_gain:.4f} potential * {self.config["target_potential_coeff"]} coeff * {300 / self.config["gameboard_size"]:.2f} scale = {target_potential_reward:.4f} reward')
+            print(f'Threat potential: threat_gain={threat_potential_gain:.4f}, identified={self.num_threats_identified}/{self.config["max_threat_ids"]}, reward={threat_potential_reward:.4f}')
+            print(f'Fail penalty: {fail_penalty}')
+
+
+            # Team dynamics
+            if self.config['num_aircraft'] >= 2:
+                team_distance = np.linalg.norm(agent_pos - teammate_pos)
+                print(f'Team distance: {team_distance:.2f}')
+                print(f'Spread bonus: dist={team_distance:.2f}, optimal={optimal_distance}, max_bonus={max_bonus_distance}, bonus={spread_bonus:.4f} reward')
+                print(f'Proximity penalty: dist={team_distance:.2f}, min_dist={min_distance}, coeff = {self.config['team_dist_shaping_coeff']} -> penalty={proximity_penalty:.4f} reward')
+
+            # Total reward calculation
+            total_reward = agent_target_reward + teammate_target_reward + early_finish_reward + threat_id_reward + target_potential_reward + threat_potential_reward + time_penalty + proximity_penalty + spread_bonus
+            print(f'TOTAL INNER STEP REWARD: {total_reward:.4f}')
+            print('=== END REWARD DEBUG ===\n')
+
+        return reward
+
+    def get_potential(self):
+        """
+        Calculate potential for shaping rewards
+        Calculate potential as negative distance to nearest unknown target.
+        Returns a higher (less negative) value when closer to unknown targets.
+        """
+
+        map_half_size = self.config["gameboard_size"] / 2
+        agent_x = self.agents[self.aircraft_ids[0]].x
+        agent_y = self.agents[self.aircraft_ids[0]].y
+        agent_pos = np.array([agent_x, agent_y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:, 3:5]  # x,y coordinates
+        unidentified_mask = self.targets[:, 2] < 1.0
+
+        if self.config['use_dynamic_potential']:
+            teammate_targets = self._get_teammate_flying_targets()
+            if teammate_targets: # Exclude all targets the teammate is flying toward
+                unidentified_mask[teammate_targets] = False
+
+        if not np.any(unidentified_mask): # No unidentified targets remaining
+            nearest_target_distance = 0
+        else: # Calculate distances to unidentified targets only
+            unidentified_target_positions = target_positions[unidentified_mask]
+            target_distances = np.sqrt(np.sum((unidentified_target_positions - agent_pos) ** 2, axis=1))
+            nearest_target_distance = np.min(target_distances)
+
+        # Calculate threat potential
+        threat_positions = self.threats
+        unidentified_threat_mask = ~self.threat_identified
+
+        if not np.any(unidentified_threat_mask):
+            nearest_threat_distance = 0
+        else:
+            unidentified_threat_positions = threat_positions[unidentified_threat_mask]
+            threat_distances = np.sqrt(np.sum((unidentified_threat_positions - agent_pos) ** 2, axis=1))
+            nearest_threat_distance = np.min(threat_distances)
+
+        return -nearest_target_distance, -nearest_threat_distance
+
+    def get_observation(self):
+        """Main function to return the observation vector. Calls specific observation functions depending on obs type. """
+        if self.config['obs_type'] == 'full':
+            self.observation = self.get_observation_full()
+
+        elif self.config['obs_type'] == 'nearest':
+            self.observation = self.get_observation_nearest_n()
+
+        elif self.config['obs_type'] == 'pixel':
+            self.observation = self.get_observation_pixel()
+
+        return self.observation
+
+    # def get_observation_nearest(self):
+    #     """
+    #     State will include the following features:
+    #         0 unit_vector_x,           # (-1 to +1) x component of unit vector to nearest unknown target
+    #         1 unit_vector_y,           # (-1 to +1) y component of unit vector to nearest unknown target
+    #     """
+    #
+    #     self.observation = np.zeros(2, dtype=np.float32)
+    #
+    #     agent_pos = np.array([self.agents[self.aircraft_ids[0]].x, self.agents[self.aircraft_ids[0]].y])
+    #
+    #     # Get target positions and info levels
+    #     target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+    #     target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+    #
+    #     unknown_mask = target_info_levels < 1.0 # Create mask for unknown targets (info_level < 1.0)
+    #
+    #     if np.any(unknown_mask):
+    #         unknown_positions = target_positions[unknown_mask]
+    #         distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+    #         nearest_idx = np.argmin(distances)
+    #
+    #         nearest_target_pos = unknown_positions[nearest_idx]
+    #         vector_to_target = nearest_target_pos - agent_pos
+    #
+    #         distance = np.linalg.norm(vector_to_target)
+    #
+    #         if distance > 0:
+    #             unit_vector = vector_to_target / distance
+    #             self.observation[0] = unit_vector[0]
+    #             self.observation[1] = unit_vector[1]
+    #         else: # Agent is exactly at target position
+    #
+    #             self.observation[0] = 0.0
+    #             self.observation[1] = 0.0
+    #     else: # No unknown targets remaining, return zero vector
+    #
+    #         self.observation[0] = 0.0
+    #         self.observation[1] = 0.0
+    #
+    #     return self.observation
+
+
+    def get_observation_nearest_n(self, agent_id=0):
+        """
+        Observation is a vector containing the relative x and y distance to nearest config[num_observed_targets] unknown targets, nearest config[num_observed_threats] unknown threats,  and optionally the position of the teammate (agent 1) and the teammate's current goal (whether it is heading towards a target or a threat)
+        State will include the following features:
+            For each of the N nearest unknown targets:
+                unit_vector_x,           # (-1 to +1) x component of unit vector to target
+                unit_vector_y,           # (-1 to +1) y component of unit vector to target
+        """
+
+        # Get N from config
+        N = self.config['num_observed_targets']
+        M = self.config['num_observed_threats']
+
+        # Initialize observation array (2 * N for x,y components of N targets)
+        self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        # Get target positions and info levels
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+
+        unknown_mask = target_info_levels < 1.0
+
+        if np.any(unknown_mask):
+            unknown_positions = target_positions[unknown_mask]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+
+            # Get indices of N nearest targets (or all if fewer than N)
+            num_targets_to_use = min(N, len(distances))
+            nearest_indices = np.argsort(distances)[:num_targets_to_use]
+
+            # Fill observation with unit vectors to nearest N targets
+            for i in range(num_targets_to_use):
+                target_idx = nearest_indices[i]
+                target_pos = unknown_positions[target_idx]
+                vector_to_target = target_pos - agent_pos
+
+                distance = np.linalg.norm(vector_to_target)
+
+                if distance > 0:
+                    unit_vector = vector_to_target
+                    self.observation[i * 2] = unit_vector[0]  # x component
+                    self.observation[i * 2 + 1] = unit_vector[1]  # y component
+                else:
+                    # Agent is exactly at target position
+                    self.observation[i * 2] = 0.0
+                    self.observation[i * 2 + 1] = 0.0
+
+            # dx, dy vector to threat as last two elements of the observation
+            start_idx = 2 * N  # Start after targets
+            for j in range(M):
+                threat_pos = self.threats[j]
+                vector_to_threat = threat_pos - agent_pos
+                self.observation[start_idx + j * 2] = vector_to_threat[0]
+                self.observation[start_idx + j * 2 + 1] = vector_to_threat[1]
+
+        # Observe teammate
+        if self.config['observe_teammate']:
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+            # Calculate the correct index for teammate data
+            teammate_idx = 2 * (self.config['num_observed_targets'] + self.config['num_observed_threats'])
+
+            if self.config['observe_teammate_direction']:
+                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
+                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
+
+                if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                    waypoint = np.array(teammate_agent.waypoint_override)
+                    direction_vector = waypoint - teammate_pos
+                    distance = np.linalg.norm(direction_vector)
+                    teammate_heading = direction_vector / distance if distance > 0 else [0, 0]
+                else:
+                    teammate_heading = [0, 0]
+
+                self.observation[teammate_idx + 2] = teammate_heading[0]
+                self.observation[teammate_idx + 3] = teammate_heading[1]
+            else:
+                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
+                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
+
+        # === New feature: teammate flying toward a threat ===
+        if self.config['observe_teammate_priority']:
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+            # Compute teammate heading
+            if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                waypoint = np.array(teammate_agent.waypoint_override)
+                heading_vec = waypoint - teammate_pos
+                heading_dist = np.linalg.norm(heading_vec)
+                if heading_dist > 0:
+                    heading_unit = heading_vec / heading_dist
+                else:
+                    heading_unit = np.array([0.0, 0.0])
+            else:
+                heading_unit = np.array([0.0, 0.0])
+
+            # Combine threats and targets with labels
+            entities = [(pos, "threat") for pos in self.threats] + [(pos, "target") for pos in self.targets[:, 3:5]]
+
+            closest_entity_type = None
+            closest_forward_dist = float("inf")
+            beam_half_width = 25.0  # 50-pixel wide beam
+
+            for pos, etype in entities:
+                vec_to_entity = pos - teammate_pos
+                forward_dist = np.dot(vec_to_entity, heading_unit)  # projection along heading
+
+                if forward_dist <= 0:
+                    continue  # Only consider entities in front
+
+                # Perpendicular distance to heading line
+                perp_dist = np.linalg.norm(vec_to_entity - forward_dist * heading_unit)
+                if perp_dist <= beam_half_width:
+                    if forward_dist < closest_forward_dist:
+                        closest_forward_dist = forward_dist
+                        closest_entity_type = etype
+
+            # 1 if teammate is flying toward a threat, else 0
+            if closest_entity_type == "threat":
+                self.observation[-1] = 1.0
+                self.teammate_going_to_threat = True
+            else:
+                self.observation[-1] = 0.0
+                self.teammate_going_to_threat = False
+
+
+        if self.tag == 'train_mp0' and self.episode_counter in [0, 1, 5, 10, 50] and self.step_count_inner in [0,1,2,3,4, 173, 174, 175, 176, 177, 1399, 1398, 1400, 1401, 1402]:
+            print(f'======= Obs check (ep {self.episode_counter}, step {self.step_count_outer + 1}) =======')
+            idx = 0
+            for i in range(self.config['num_observed_targets']):
+                print(f'  Target {i}: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
+                idx += 2
+            for i in range(self.config['num_observed_threats']):
+                print(f'  Threat {i}: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
+                idx += 2
+            if self.config['observe_teammate']:
+                print(f'  Teammate: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
+                idx += 2
+                if self.config['observe_teammate_direction']:
+                    print(f'  Teammate dir: x={self.observation[idx]:.3f}, y={self.observation[idx + 1]:.3f}')
+        return self.observation
+
+    # TODO test
+    def get_observation_pixel(self):
+        """
+        Create a pixel-based observation for CNN training.
+        Returns a monochrome 84x84 numpy array where:
+        - Background: white (255)
+        - Aircraft: dark gray (100)
+        - Unidentified targets: dark (50)
+        - Identified targets: light (200)
+        - Threats: medium gray (150)
+        """
+
+
+        # Clear the pixel surface with white background
+        self.pixel_surface.fill((255, 255, 255))
+
+        map_half_size = self.config["gameboard_size"] / 2
+
+        # Draw targets with different intensities based on identification status
+        for target in self.targets:
+            screen_x = int(target[3] + map_half_size)  # Convert from centered coords to screen coords
+            screen_y = int(target[4] + map_half_size)
+
+            # Determine target size and color based on value and identification
+            base_size = 12 if target[1] == 1 else 8  # High-value vs regular targets
+
+            if target[2] == 1.0:  # Identified targets - light gray
+                target_color = (200, 200, 200)
+            else:  # Unidentified targets - dark gray
+                target_color = (50, 50, 50)
+
+            # Draw filled circle for target
+            pygame.draw.circle(self.pixel_surface, target_color, (screen_x, screen_y), base_size)
+
+            # Add small border for better visibility
+            pygame.draw.circle(self.pixel_surface, (0, 0, 0), (screen_x, screen_y), base_size, 1)
+
+        # Draw threats
+        if hasattr(self, 'threats'):
+            for threat_idx in range(self.config['num_threats']):
+                threat_screen_x = int(self.threats[threat_idx, 0] + map_half_size)
+                threat_screen_y = int(self.threats[threat_idx, 1] + map_half_size)
+                threat_radius = self.config['threat_radius']
+
+                # Use medium gray for threats
+                threat_color = (150, 150, 150)
+
+                # Draw threat circle
+                pygame.draw.circle(self.pixel_surface, threat_color, (threat_screen_x, threat_screen_y), threat_radius, 3)
+
+                # Draw upside-down triangle marker
+                triangle_size = 8
+                triangle_points = [
+                    (threat_screen_x, threat_screen_y + triangle_size),
+                    (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+                    (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+                ]
+                pygame.draw.polygon(self.pixel_surface, threat_color, triangle_points)
+
+        # Draw aircraft (agents) as dark shapes
+        for agent in self.agents:
+            if agent.agent_class == "aircraft" and agent.alive:
+                aircraft_color = (100, 100, 100)  # Dark gray for aircraft
+
+                # Draw aircraft as a small filled circle
+                screen_x = int(agent.x + map_half_size)
+                screen_y = int(agent.y + map_half_size)
+                aircraft_size = 6
+
+                pygame.draw.circle(self.pixel_surface, aircraft_color,(screen_x, screen_y), aircraft_size)
+
+                # Add directional indicator if agent has a waypoint
+                if hasattr(agent, 'waypoint_override') and agent.waypoint_override:
+                    waypoint_x = int(agent.waypoint_override[0] + map_half_size)
+                    waypoint_y = int(agent.waypoint_override[1] + map_half_size)
+
+                    # Draw thin line to waypoint
+                    pygame.draw.line(self.pixel_surface, aircraft_color,(screen_x, screen_y), (waypoint_x, waypoint_y), 1)
+
+        # Draw boundary box
+        boundary_color = (0, 0, 0)  # Black boundary
+        pygame.draw.rect(self.pixel_surface, boundary_color, (0, 0, self.config["gameboard_size"], self.config["gameboard_size"]), 2)
+
+        # Convert pygame surface to numpy array
+        # pygame surface is in RGB format, we need to convert to grayscale
+        pixel_array = pygame.surfarray.array3d(self.pixel_surface)  # Shape: (width, height, 3)
+        pixel_array = pixel_array.transpose(1, 0, 2)  # Shape: (height, width, 3)
+
+        # Convert to grayscale using standard weights
+        grayscale_array = np.dot(pixel_array[..., :3], [0.299, 0.587, 0.114])
+
+        # Resize to 84x84 using OpenCV for better quality
+        resized_array = cv2.resize(grayscale_array.astype(np.uint8), (84, 84), interpolation=cv2.INTER_AREA)
+
+        # Add channel dimension to match expected observation space (84, 84, 1)
+        observation = np.expand_dims(resized_array, axis=2).astype(np.uint8)
+
+        return observation
+
+    def get_observation_full(self, agent_id=0):
+        """
+        Observation is a vector containing the relative x and y distance to all unknown targets and all unknown threats,  and optionally the position of the teammate (agent 1) and the teammate's current goal (whether it is heading towards a target or a threat)
+        State includes the following features:
+                0 agent_x,                 # (-1 to +1) normalized position
+                1 agent_y,                 # (-1 to +1) normalized position
+
+                for target i:
+                2+i*3 target_info_level    # 0 if unknown, 1 if known
+                3+i*3 target_x,            # (-1 to +1) normalized position
+                4+i*3 target_y,            # (-1 to +1) normalized position
+
+
+
+        """
+
+        self.observation = np.zeros(self.obs_size, dtype=np.float32)
+
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        map_half_size = self.config["gameboard_size"] / 2
+        self.observation[0] = (self.agents[self.aircraft_ids[0]].x) / map_half_size
+        self.observation[1] = (self.agents[self.aircraft_ids[0]].y) / map_half_size
+
+        # Process target data
+        targets_per_entry = 3  # Each target has 3 features in the observation
+        target_features = np.zeros((self.config['num_targets'], targets_per_entry), dtype=np.float32)
+
+        target_features[:self.config['num_targets'], 0] = self.targets[:, 2]  # info levels
+        target_features[:self.config['num_targets'], 1] = (self.targets[:, 3]) / map_half_size
+        target_features[:self.config['num_targets'], 2] = (self.targets[:, 4]) / map_half_size
+
+        target_start_idx = 2
+        self.observation[target_start_idx:target_start_idx + self.config['num_targets'] * targets_per_entry] = target_features.flatten()
+
+        # Observe teammate
+        if self.config['observe_teammate']:
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+            # Calculate the correct index for teammate data
+            teammate_idx = 2 * (self.config['num_observed_targets'] + self.config['num_observed_threats'])
+
+            if self.config['observe_teammate_direction']:
+                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
+                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
+
+                if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                    waypoint = np.array(teammate_agent.waypoint_override)
+                    direction_vector = waypoint - teammate_pos
+                    distance = np.linalg.norm(direction_vector)
+                    teammate_heading = direction_vector / distance if distance > 0 else [0, 0]
+                else:
+                    teammate_heading = [0, 0]
+
+                self.observation[teammate_idx + 2] = teammate_heading[0]
+                self.observation[teammate_idx + 3] = teammate_heading[1]
+            else:
+                self.observation[teammate_idx] = teammate_pos[0] - agent_pos[0]
+                self.observation[teammate_idx + 1] = teammate_pos[1] - agent_pos[1]
+
+        # === New feature: teammate flying toward a threat ===
+        if self.config['observe_teammate_priority']:
+            teammate_id = 1 if agent_id == 0 else 0
+            teammate_agent = self.agents[self.aircraft_ids[teammate_id]]
+            teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+            # Compute teammate heading
+            if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+                waypoint = np.array(teammate_agent.waypoint_override)
+                heading_vec = waypoint - teammate_pos
+                heading_dist = np.linalg.norm(heading_vec)
+                if heading_dist > 0:
+                    heading_unit = heading_vec / heading_dist
+                else:
+                    heading_unit = np.array([0.0, 0.0])
+            else:
+                heading_unit = np.array([0.0, 0.0])
+
+            # Combine threats and targets with labels
+            entities = [(pos, "threat") for pos in self.threats] + [(pos, "target") for pos in self.targets[:, 3:5]]
+
+            closest_entity_type = None
+            closest_forward_dist = float("inf")
+            beam_half_width = 25.0  # 50-pixel wide beam
+
+            for pos, etype in entities:
+                vec_to_entity = pos - teammate_pos
+                forward_dist = np.dot(vec_to_entity, heading_unit)  # projection along heading
+
+                if forward_dist <= 0:
+                    continue  # Only consider entities in front
+
+                # Perpendicular distance to heading line
+                perp_dist = np.linalg.norm(vec_to_entity - forward_dist * heading_unit)
+                if perp_dist <= beam_half_width:
+                    if forward_dist < closest_forward_dist:
+                        closest_forward_dist = forward_dist
+                        closest_entity_type = etype
+
+            # 1 if teammate is flying toward a threat, else 0
+            if closest_entity_type == "threat":
+                self.observation[-1] = 1.0
+                self.teammate_going_to_threat = True
+            else:
+                self.observation[-1] = 0.0
+                self.teammate_going_to_threat = False
+
+        return self.observation
+
+
+    def _get_unidentified_entities(self, agent_id=0):
+        """
+        Get lists of unidentified targets and threats, sorted by distance from agent.
+        Returns indices into the original targets/threats arrays.
+        """
+        agent_pos = np.array([self.agents[self.aircraft_ids[agent_id]].x, self.agents[self.aircraft_ids[agent_id]].y])
+
+        # Get unidentified targets
+        target_positions = self.targets[:self.config['num_targets'], 3:5]  # x,y coordinates
+        target_info_levels = self.targets[:self.config['num_targets'], 2]  # info levels
+        unknown_target_mask = target_info_levels < 1.0
+
+        unidentified_targets = []
+        if np.any(unknown_target_mask):
+            unknown_positions = target_positions[unknown_target_mask]
+            unknown_indices = np.where(unknown_target_mask)[0]
+            distances = np.sqrt(np.sum((unknown_positions - agent_pos) ** 2, axis=1))
+
+            # Sort by distance and get original indices
+            sorted_indices = np.argsort(distances)
+            unidentified_targets = unknown_indices[sorted_indices].tolist()
+
+        # Get unidentified threats
+        unidentified_threats = []
+        if hasattr(self, 'threat_identified'):
+            unidentified_threat_mask = ~self.threat_identified
+            if np.any(unidentified_threat_mask):
+                threat_positions = self.threats[unidentified_threat_mask]
+                threat_indices = np.where(unidentified_threat_mask)[0]
+                distances = np.sqrt(np.sum((threat_positions - agent_pos) ** 2, axis=1))
+
+                # Sort by distance and get original indices
+                sorted_indices = np.argsort(distances)
+                unidentified_threats = threat_indices[sorted_indices].tolist()
+
+        return unidentified_targets, unidentified_threats
+
+
+    # def _render_game_to_surface_enhanced(self, surface):
+    #     """
+    #     Render game elements to a pygame surface with enhanced target visibility for pixel observations.
+    #     Uses distinct grayscale values and shapes to ensure unknown vs known targets are clearly differentiable.
+    #     """
+    #
+    #     # Draw outer box (same as human render)
+    #     self.__render_box_to_surface__(surface, 1, (0, 0, 0), 3)  # outer box
+    #
+    #     # Draw aircraft (same as human render)
+    #     for agent in self.agents:
+    #         agent.draw(surface)
+    #
+    #     # Enhanced target rendering with clear grayscale differentiation
+    #     map_half_size = self.config["gameboard_size"] / 2
+    #
+    #     for target in self.targets:
+    #         screen_x = target[3] + map_half_size
+    #         screen_y = target[4] + map_half_size
+    #
+    #         # Base size for targets
+    #         base_size = 10 if target[1] == 1 else 7  # High-value vs regular targets
+    #
+    #         if target[2] == 1.0:  # Known/identified targets
+    #             # Use very dark gray (almost black) for known targets - will be ~51 in grayscale
+    #             target_color = (11, 11, 11)
+    #             # Draw filled circle for known targets
+    #             pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+    #
+    #             # Add a white center dot to make them even more distinct
+    #             pygame.draw.circle(surface, (255, 255, 255), (int(screen_x), int(screen_y)), max(2, base_size // 3))
+    #
+    #         else:  # Unknown targets (info_level < 1.0)
+    #             # Use light gray for unknown targets - will be ~204 in grayscale
+    #             target_color = (204, 204, 204)
+    #             # Draw filled circle for unknown targets
+    #             pygame.draw.circle(surface, target_color, (int(screen_x), int(screen_y)), base_size)
+    #
+    #             # Add black border to make them stand out against white background
+    #             pygame.draw.circle(surface, (0, 0, 0), (int(screen_x), int(screen_y)), base_size, 2)
+    #
+    #     # Draw the threat for pixel observations
+    #     if hasattr(self, 'threat'):
+    #         threat_screen_x = int(self.threat[0] + map_half_size)
+    #         threat_screen_y = int(self.threat[1] + map_half_size)
+    #         threat_radius = self.config['threat_radius']
+    #
+    #         # Draw circle (lighter for pixel obs)
+    #         pygame.draw.circle(surface, (200, 200, 0), (threat_screen_x, threat_screen_y), threat_radius, 2)
+    #
+    #         # Draw upside-down triangle
+    #         triangle_size = 12
+    #         triangle_points = [
+    #             (threat_screen_x, threat_screen_y + triangle_size),
+    #             (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+    #             (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+    #         ]
+    #         pygame.draw.polygon(surface, (200, 200, 0), triangle_points)
+
+    def __render_box_to_surface__(self, surface, distance_from_edge, color=(0, 0, 0), width=2):
+        """Utility function for drawing a square box to a specific surface"""
+        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge), (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge), (distance_from_edge, distance_from_edge), width)
+
+
+
+    ######################## Rendering functions ########################
+    def render(self):
+        window_width, window_height = self.config['window_size'][0], self.config['window_size'][0]
+        game_width = self.config["gameboard_size"]
+        ui_width = window_width - game_width
+
+        if self.render_mode == 'human' and self.use_buttons:
+            if self.agent_info_height_req > 0: self.comm_pane_height = 220+self.agent_info_height_req
+            else: self.comm_pane_height = 10
+
+        # gameboard background
+        self.window.fill((255, 255, 255))  # white background
+        self.__render_box__(1, (0, 0, 0), 3)  # outer box
+        #pygame.draw.rect(self.window, (100, 100, 100), (game_width+self.gameboard_offset, 0, ui_width, window_height))
+        #pygame.draw.rect(self.window, (100, 100, 100), (0, game_width, game_width, window_height))  # Fill bottom portion with gray
+
+        current_time = pygame.time.get_ticks()
+
+        # Draw the aircraft
+        for agent in self.agents:
+            agent.draw(self.window)
+
+        # Draw the targets
+        SHIP_REGULAR_UNOBSERVED = (255, 215, 0)
+        SHIP_REGULAR_LOWQ = (130, 0, 210)
+        SHIP_REGULAR_HIGHQ = (0, 255, 210)
+
+        for target in self.targets:
+            target_width = 7 if target[1] == 0 else 10
+            target_color = SHIP_REGULAR_HIGHQ if target[2] == 1.0 else SHIP_REGULAR_LOWQ if target[2] == 0.5 else SHIP_REGULAR_UNOBSERVED
+
+            map_half_size = self.config["gameboard_size"] / 2
+            screen_x = target[3] + map_half_size
+            screen_y = target[4] + map_half_size
+            pygame.draw.circle(self.window, target_color, (float(screen_x), float(screen_y)), target_width)
+
+        # Draw the threat (gold upside-down triangle with circle)
+        if hasattr(self, 'threats'):
+            map_half_size = self.config["gameboard_size"] / 2
+
+            for threat_idx in range(self.config['num_threats']):
+                threat_screen_x = int(self.threats[threat_idx, 0] + map_half_size)
+                threat_screen_y = int(self.threats[threat_idx, 1] + map_half_size)
+                threat_radius = self.config['threat_radius']
+
+                # Change color based on identification status
+                threat_color = (0, 255, 0) if self.threat_identified[threat_idx] else (
+                255, 215, 0)  # Green if identified, gold if not
+
+                # Draw the circle around the threat
+                pygame.draw.circle(self.window, threat_color, (threat_screen_x, threat_screen_y), threat_radius, 3)
+
+                # Draw upside-down triangle (pointing down)
+                triangle_size = 8
+                triangle_points = [
+                    (threat_screen_x, threat_screen_y + triangle_size),
+                    (threat_screen_x - triangle_size, threat_screen_y - triangle_size),
+                    (threat_screen_x + triangle_size, threat_screen_y - triangle_size)
+                ]
+                pygame.draw.polygon(self.window, threat_color, triangle_points)
+
+        # Draw green lines and black crossbars
+        self.__render_box__(35, (0, 128, 0), 2)  # inner box
+        pygame.draw.line(self.window, (0, 0, 0), (self.config["gameboard_size"] // 2, 0),(self.config["gameboard_size"] // 2, self.config["gameboard_size"]), 2)
+        pygame.draw.line(self.window, (0, 0, 0), (0, self.config["gameboard_size"] // 2),(self.config["gameboard_size"], self.config["gameboard_size"] // 2), 2)
+
+        # Handle damage flashes when human is damaged
+        if self.render_mode == 'human':
+            if current_time > 1000 and (current_time - self.damage_flash_start < self.damage_flash_duration):
+                progress = (current_time - self.damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+                alpha = int(255 * (1 - progress))
+                border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
+                border_width = 50
+                border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+                pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
+                pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
+                pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
+                pygame.draw.rect(border_surface, border_color, (
+                self.config["gameboard_size"] - border_width, 0, border_width,
+                self.config["gameboard_size"]))  # Right border
+                self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+
+            # Handle flash when agent is damaged (TODO: Make this a different graphic)
+            if current_time > 1000 and (current_time - self.agent_damage_flash_start < self.damage_flash_duration):
+                progress = (current_time - self.agent_damage_flash_start) / self.damage_flash_duration  # Calculate alpha based on time elapsed
+                alpha = int(255 * (1 - progress))
+                border_surface = pygame.Surface((self.config["gameboard_size"], self.config["gameboard_size"]),pygame.SRCALPHA)
+                border_width = 50
+                border_color = (255, 0, 0, alpha)  # Red with calculated alpha
+                pygame.draw.rect(border_surface, border_color,(0, 0, self.config["gameboard_size"], border_width))  # Top border
+                pygame.draw.rect(border_surface, border_color, (0, self.config["gameboard_size"] - border_width, self.config["gameboard_size"],border_width))  # Bottom border
+                pygame.draw.rect(border_surface, border_color,(0, 0, border_width, self.config["gameboard_size"]))  # Left border
+                pygame.draw.rect(border_surface, border_color, (
+                self.config["gameboard_size"] - border_width, 0, border_width,
+                self.config["gameboard_size"]))  # Right border
+                self.window.blit(border_surface, (0, 0))  # Blit the border surface onto the main window
+
+            if self.use_buttons:
+                # Draw Agent Gameplan sub-window
+                self.quadrant_button_height = 120
+                self.gameplan_button_width = 180
+
+                pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.right_pane_edge, 10, 405, 665))  # Agent gameplan sub-window box
+                gameplan_text_surface = pygame.font.SysFont(None, 36).render('Agent Gameplan', True, (0,0,0))
+                self.window.blit(gameplan_text_surface, gameplan_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40 // 2)))
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10),(self.right_pane_edge + 405, 10), 4)  # Top edge of gameplan panel
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10), (self.right_pane_edge, 675), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 10), (self.right_pane_edge + 405, 675), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 10+665), (self.right_pane_edge + 405, 10+665),4)  # Top edge of gameplan panel
+
+                #self.manual_priorities_button = Button("Manual Priorities", self.right_pane_edge + 15, 20,self.gameplan_button_width * 2 + 15, 65)
+                self.manual_priorities_button.is_latched = self.button_latch_dict['manual_priorities']
+                self.manual_priorities_button.color = (50, 180, 180)
+                self.manual_priorities_button.draw(self.window)
+
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 20+65+6), (self.right_pane_edge + 405, 20+65+6), 4)
+
+                type_text_surface = pygame.font.SysFont(None, 26).render('SEARCH TYPE', True, (0,0,0))
+                self.window.blit(type_text_surface, type_text_surface.get_rect(center=(self.right_pane_edge+425 // 2, 10+40+110 // 2)))
+
+                #self.target_id_button = Button("TARGET", self.right_pane_edge + 15, 60+55, self.gameplan_button_width, 60)# (255, 120, 80))
+                self.target_id_button.is_latched = self.button_latch_dict['target_id']
+                self.target_id_button.color = self.gameplan_button_color
+                self.target_id_button.draw(self.window)
+
+                #self.wez_id_button = Button("WEAPON", self.right_pane_edge + 30 + self.gameplan_button_width, 60+55, self.gameplan_button_width, 60) # 15 pixel gap b/w buttons
+                self.wez_id_button.is_latched = self.button_latch_dict['wez_id']
+                self.wez_id_button.color = self.gameplan_button_color
+                self.wez_id_button.draw(self.window)
+
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 130+45+5),(self.right_pane_edge+405,130+45+5),4) # Separating line between target/WEZ ID selection and quadrant select
+
+                search_area_text_surface = pygame.font.SysFont(None, 26).render('SEARCH AREA', True, (0, 0, 0))
+                self.window.blit(search_area_text_surface,search_area_text_surface.get_rect(center=(self.right_pane_edge + 425 // 2, 50 + 10 + 40 + 195 // 2)))
+
+                self.NW_quad_button.is_latched = self.button_latch_dict['NW']
+                self.NW_quad_button.color = self.gameplan_button_color
+                self.NW_quad_button.draw(self.window)
+
+                self.NE_quad_button.is_latched = self.button_latch_dict['NE']
+                self.NE_quad_button.color = self.gameplan_button_color
+                self.NE_quad_button.draw(self.window)
+
+                self.SW_quad_button.is_latched = self.button_latch_dict['SW']
+                self.SW_quad_button.color = self.gameplan_button_color
+                self.SW_quad_button.draw(self.window)
+
+                self.SE_quad_button.is_latched = self.button_latch_dict['SE']
+                self.SE_quad_button.color = self.gameplan_button_color
+                self.SE_quad_button.draw(self.window)
+
+                self.full_quad_button.color = self.gameplan_button_color#(50,180,180)
+                self.full_quad_button.is_latched = self.button_latch_dict['full']
+                self.full_quad_button.draw(self.window)
+
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 465), (self.right_pane_edge + 405, 465),4)  # Separating line between quadrant select and hold/waypoint
+
+                self.waypoint_button.is_latched = self.button_latch_dict['waypoint']
+                self.waypoint_button.color = self.gameplan_button_color
+                self.waypoint_button.draw(self.window)
+
+                self.hold_button.is_latched = self.button_latch_dict['hold']
+                self.hold_button.color = self.gameplan_button_color
+                self.hold_button.draw(self.window)
+
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 3 * (self.quadrant_button_height) + 115 + 90), (self.right_pane_edge + 405, 3 * (self.quadrant_button_height) + 115 + 90),4)  # Separating line between hold/waypoint and regroup/tag team
+
+                self.autonomous_button = Button("Auto Priorities", self.right_pane_edge + 15, 3 * (self.quadrant_button_height) + 115 + 90+20,self.gameplan_button_width * 2 + 15, 65)
+                self.autonomous_button.is_latched = self.button_latch_dict['autonomous']
+                self.autonomous_button.color = (50, 180, 180)
+                self.autonomous_button.draw(self.window)
+
+                # Draw new button cluster
+                pygame.draw.rect(self.window, (230, 230, 230),
+                                 pygame.Rect(self.right_pane_edge, 730, 405, 130))  # Button cluster background
+                cluster_text_surface = pygame.font.SysFont(None, 36).render('Info Cluster', True, (0, 0, 0))
+                self.window.blit(cluster_text_surface,
+                                 cluster_text_surface.get_rect(center=(self.right_pane_edge + 202, 745)))
+
+                # Draw border around button cluster
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 730), (self.right_pane_edge + 405, 730),
+                                 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 730), (self.right_pane_edge, 860), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge + 405, 730),
+                                 (self.right_pane_edge + 405, 860), 4)
+                pygame.draw.line(self.window, (0, 0, 0), (self.right_pane_edge, 860), (self.right_pane_edge + 405, 860),
+                                 4)
+
+                # Draw the three buttons
+                self.info_button_1.is_latched = self.button_latch_dict['info_button_1']
+                self.info_button_1.color = (100, 150, 200)
+                self.info_button_1.draw(self.window)
+
+                self.info_button_2.is_latched = self.button_latch_dict['info_button_2']
+                self.info_button_2.color = (100, 150, 200)
+                self.info_button_2.draw(self.window)
+
+                self.info_button_3.is_latched = self.button_latch_dict['info_button_3']
+                self.info_button_3.color = (100, 150, 200)
+                self.info_button_3.draw(self.window)
+
+                # Draw info display area (blue box at top)
+                info_display_rect = pygame.Rect(self.right_pane_edge + 15, 20, 375, 200)
+                pygame.draw.rect(self.window, (70, 130, 180), info_display_rect)  # Blue background
+                pygame.draw.rect(self.window, (0, 0, 0), info_display_rect, 3)  # Black border
+
+                # Draw Comm Log
+                pygame.draw.rect(self.window, (200, 200, 200), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+680, 400, 40))  # Comm log title box
+                pygame.draw.rect(self.window, (230,230,230), pygame.Rect(self.comm_pane_edge, self.comm_pane_height+35+680, 400, 150))  # Comm Log sub-window box
+                comm_text_surface = pygame.font.SysFont(None, 28).render('COMM LOG', True, (0, 0, 0))
+                self.window.blit(comm_text_surface, comm_text_surface.get_rect(center=(self.comm_pane_edge + 395 // 2, self.comm_pane_height + 40+1320 // 2)))
+
+                # Draw incoming comm log text
+                y_offset = self.comm_pane_height+50+680
+                for entry in self.comm_messages:
+                    message = entry[0]
+                    is_ai = entry[1]
+                    color = self.ai_color if is_ai else self.human_color
+                    message_surface = self.message_font.render(message, True, color)
+                    self.window.blit(message_surface, (self.comm_pane_edge+10, y_offset))
+                    y_offset += 30  # Adjust this value to change spacing between messages
+
+                # Draw health boxes
+                agent0_health_window = HealthWindow(self.aircraft_ids[0],10,game_width+5, 'AGENT HP',self.AIRCRAFT_COLORS[0])
+                agent0_health_window.update(self.agents[self.aircraft_ids[0]].health_points)
+                agent0_health_window.draw(self.window)
+
+        if self.render_mode == 'human':
+
+            corner_round_text = f'STEP {self.step_count_outer}'#f"ROUND {self.round_number + 1}/4" if self.user_group == 'test' else f"ROUND {self.round_number}/4"
+            corner_round_font = pygame.font.SysFont(None, 36)
+            corner_round_text_surface = corner_round_font.render(corner_round_text, True, (255, 255, 255))
+            corner_round_rect = corner_round_text_surface.get_rect(
+                center=(675, 1030))
+            self.window.blit(corner_round_text_surface, corner_round_rect)
+
+            # # Countdown from 5 seconds at start of game
+            # (TODO TEMP REMOVED)
+            # if current_time <= self.start_countdown_time:
+            #     countdown_font = pygame.font.SysFont(None, 120)
+            #     message_font = pygame.font.SysFont(None, 60)
+            #     round_font = pygame.font.SysFont(None, 72)
+            #     countdown_start = 0
+            #     countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+            #     countdown_surface.set_alpha(128)  # 50% transparent
+            #
+            #     time_left = self.start_countdown_time/1000 - (current_time - countdown_start) / 1000
+            #
+            #     # Draw semi-transparent overlay
+            #     countdown_surface.fill((100, 100, 100))
+            #     self.window.blit(countdown_surface, (0, 0))
+            #
+            #     # Draw round name
+            #     if self.user_group == 'test':
+            #         round_text = f"ROUND {self.round_number+1}/4"
+            #     else:
+            #         if self.round_number == 0: round_text = "TRAINING ROUND"
+            #         else: round_text = f"ROUND {self.round_number}/4"
+            #     round_text_surface = round_font.render(round_text, True, (255, 255, 255))
+            #     round_rect = round_text_surface.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 120))
+            #     self.window.blit(round_text_surface, round_rect)
+            #
+            #     # Draw "Get Ready!" message
+            #     ready_text = message_font.render("Get Ready!", True, (255, 255, 255))
+            #     ready_rect = ready_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 - 50))
+            #     self.window.blit(ready_text, ready_rect)
+            #
+            #     # Draw countdown number
+            #     countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+            #     text_rect = countdown_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2 + 20))
+            #     self.window.blit(countdown_text, text_rect)
+            #
+            #     pygame.time.wait(50)  # Control update rate
+            #
+            #     # Handle any quit events during countdown
+            #     for event in pygame.event.get():
+            #         if event.type == pygame.QUIT:
+            #             pygame.quit()
+            #             return
+
+            if self.paused and not self.unpause_countdown:
+                pause_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                pause_surface.set_alpha(128*2)  # 50% transparent
+                pause_surface.fill((100, 100, 100))  # Gray color
+                self.window.blit(pause_surface, (0, 0))
+
+                pause_text = self.pause_font.render('GAME PAUSED', True, (255, 255, 255))
+                pause_subtext = self.pause_subtitle_font.render('[RIGHT CLICK TO UNPAUSE]', True, (255, 255, 255))
+                text_rect = pause_text.get_rect(center=(self.window.get_width() // 2, self.window.get_height() // 2))
+                pause_sub_rect = pause_subtext.get_rect(center=(self.window.get_width() // 2, (self.window.get_height() // 2) + 45))
+
+                self.window.blit(pause_text, text_rect)
+                self.window.blit(pause_subtext, pause_sub_rect)
+
+        #if self.terminated or self.truncated:
+            #self._render_game_complete() TODO temp removed
+
+        pygame.display.update()
+        if self.render_mode == 'human':
+            self.clock.tick_busy_loop(self.config['tick_rate'])
+
+
+    # utility function for drawing a square box
+    def __render_box__(self, distance_from_edge, color=(0, 0, 0), width=2, surface=None):
+        """Utility function for drawing a square box"""
+        surface = surface if surface is not None else self.window
+        pygame.draw.line(surface, color, (distance_from_edge, distance_from_edge),(distance_from_edge, self.config["gameboard_size"] - distance_from_edge), width)
+        pygame.draw.line(surface, color, (distance_from_edge, self.config["gameboard_size"] - distance_from_edge), (
+        self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge),width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, self.config["gameboard_size"] - distance_from_edge),(self.config["gameboard_size"] - distance_from_edge, distance_from_edge), width)
+        pygame.draw.line(surface, color, (self.config["gameboard_size"] - distance_from_edge, distance_from_edge),(distance_from_edge, distance_from_edge), width)
+
+
+    def render_subpolicy_indicators(self, agent0_subpolicy_id, agent0_subpolicy_name, agent1_subpolicy_id, agent1_subpolicy_name):
+        """Render colored squares indicating the current active subpolicy for each agent"""
+        if self.render_mode != 'human':
+            return
+
+
+        # Define colors for each subpolicy
+        subpolicy_colors = {
+            0: (0, 200, 0),  # Green for Local Search
+            1: (0, 100, 255),  # Blue for Change Region
+            2: (255, 50, 50),  # Red for Go to Threat
+            3: (255, 165, 0),  # Orange for hold
+            4: (0, 100, 255),  # Blue for Change Region
+            5: (0, 100, 255),  # Blue for Change Region
+            6: (0, 100, 255),  # Blue for Change Region
+        }
+
+        subpolicy_names = {
+            0: "local",
+            1: "changeregion_NW",
+            2: "threat",
+            3: "hold",
+            4: "changeregion_NE",
+            5: "changeregion_SE",
+            6: "changeregion_SW",
+            7: "waypoint_override",
+        }
+
+        # Indicator dimensions and positions - moved to top-left for visibility
+        indicator_size = 80
+        margin = 10
+
+        # Position indicators in top-left corner where they'll definitely be visible
+        agent0_indicator_x = self.config['gameboard_size']+margin
+        agent0_indicator_y = margin
+
+        # Position for AI indicator (below agent0 indicator)
+        agent1_indicator_x = agent0_indicator_x
+        agent1_indicator_y = agent0_indicator_y + indicator_size + margin
+
+        #print(f"[DEBUG] Drawing agent0 indicator at ({agent0_indicator_x}, {agent0_indicator_y})")
+        #print(f"[DEBUG] Drawing AI indicator at ({agent1_indicator_x}, {agent1_indicator_y})")
+
+        # Draw agent0 subpolicy indicator
+        agent0_color = subpolicy_colors.get(int(agent0_subpolicy_id), (128, 128, 128))
+        pygame.draw.rect(self.window, agent0_color,
+                         (agent0_indicator_x, agent0_indicator_y, indicator_size, indicator_size))
+        pygame.draw.rect(self.window, (0, 0, 0),
+                         (agent0_indicator_x, agent0_indicator_y, indicator_size, indicator_size), 3)
+
+        # Draw AI subpolicy indicator
+        agent1_color = subpolicy_colors.get(agent1_subpolicy_id, (128, 128, 128))
+        pygame.draw.rect(self.window, agent1_color,
+                         (agent1_indicator_x, agent1_indicator_y, indicator_size, indicator_size))
+        pygame.draw.rect(self.window, (0, 0, 0),
+                         (agent1_indicator_x, agent1_indicator_y, indicator_size, indicator_size), 3)
+
+        # Add text labels
+        font = pygame.font.SysFont(None, 24)
+        small_font = pygame.font.SysFont(None, 20)
+
+        # agent0 indicator text
+        agent0_title = font.render("AGENT 0", True, (255, 255, 255))
+        agent0_title_rect = agent0_title.get_rect(
+            center=(agent0_indicator_x + indicator_size // 2, agent0_indicator_y + 20)
+        )
+
+        agent0_subpolicy_text = small_font.render(subpolicy_names.get(int(agent0_subpolicy_id), "unknown"), True,
+                                                 (255, 255, 255))
+        agent0_subpolicy_rect = agent0_subpolicy_text.get_rect(
+            center=(agent0_indicator_x + indicator_size // 2, agent0_indicator_y + indicator_size - 15)
+        )
+
+        # AI indicator text
+        agent1_title = font.render("Teammate", True, (255, 255, 255))
+        agent1_title_rect = agent1_title.get_rect(
+            center=(agent1_indicator_x + indicator_size // 2, agent1_indicator_y + 20)
+        )
+
+        agent1_subpolicy_text = small_font.render(subpolicy_names.get(agent1_subpolicy_id, "unknown"), True, (255, 255, 255))
+        agent1_subpolicy_rect = agent1_subpolicy_text.get_rect(
+            center=(agent1_indicator_x + indicator_size // 2, agent1_indicator_y + indicator_size - 15)
+        )
+
+        # Draw text with semi-transparent backgrounds for readability
+        text_items = [
+            (agent0_title, agent0_title_rect),
+            (agent0_subpolicy_text, agent0_subpolicy_rect),
+            (agent1_title, agent1_title_rect),
+            (agent1_subpolicy_text, agent1_subpolicy_rect)
+        ]
+
+        for text_surface, text_rect in text_items:
+            text_bg_rect = text_rect.inflate(10, 6)
+            text_bg_surface = pygame.Surface((text_bg_rect.width, text_bg_rect.height))
+            text_bg_surface.set_alpha(128)
+            text_bg_surface.fill((0, 0, 0))
+            self.window.blit(text_bg_surface, text_bg_rect)
+            self.window.blit(text_surface, text_rect)
+
+
+    def _render_game_complete(self):
+        """Render the game complete screen with final statistics"""
+        # Create semi-transparent overlay
+        overlay = pygame.Surface((self.window_x, self.window_y))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(128)
+        self.window.blit(overlay, (0, 0))
+
+        # Create stats window
+        window_width = 500
+        window_height = 400
+        window_x = self.window_x // 2 - window_width // 2
+        window_y = self.window_y // 2 - window_height // 2
+
+        # Draw stats window background
+        pygame.draw.rect(self.window, (230, 230, 230),
+                         pygame.Rect(window_x, window_y, window_width, window_height))
+        pygame.draw.rect(self.window, (200, 200, 200),
+                         pygame.Rect(window_x, window_y, window_width, 60))
+
+        # Initialize fonts
+        title_font = pygame.font.SysFont(None, 48)
+        stats_font = pygame.font.SysFont(None, 36)
+
+        # Render title
+        if self.config['num aircraft'] > 1:
+            if self.detections >= 3:
+                title_surface = title_font.render('GAME OVER (>5 DETECTIONS)', True, (0, 0, 0))
+        elif self.display_time/1000 >= self.config['time_limit']:
+            title_surface = title_font.render('GAME COMPLETE: TIME UP', True, (0, 0, 0))
+        else:
+            title_surface = title_font.render('GAME COMPLETE', True, (0, 0, 0))
+
+        self.window.blit(title_surface, title_surface.get_rect(center=(window_x + window_width // 2, window_y + 30)))
+
+        # Calculate statistics
+        agent_status = "ALIVE" if self.agents[self.aircraft_ids[0]].alive else "DESTROYED"
+        agent_status_color = (0, 255, 0) if agent_status == "ALIVE" else (255, 0, 0)
+        if self.config['num aircraft'] > 1:
+            human_status = 'ALIVE' if self.agents[self.human_idx].alive else "DESTROYED"
+            human_status_color = (0, 255, 0) if human_status == "ALIVE" else (255, 0, 0)
+
+        # Create stats text surfaces
+        stats_items = [
+            f"Final Score: {round(self.score,0)}",
+            f"Targets Identified: {self.targets_identified} / {self.config['num_targets']}",
+            #f"Threat Levels Observed: {self.identified_threat_types} / {self.config['num_targets']}",
+            #f"Human Status: {human_status}",
+            f"Agent Status: {agent_status}"]
+
+        # Render stats
+        y_offset = window_y + 100
+        for i, text in enumerate(stats_items):
+            if i == len(stats_items) - 2:  # Human Status line
+                text_surface = stats_font.render(text.split(': ')[0] + ': ', True, (0, 0, 0))
+                status_surface = stats_font.render(human_status, True, human_status_color)
+
+                # Center align the text
+                total_width = text_surface.get_width() + status_surface.get_width()
+                start_x = window_x + (window_width - total_width) // 2
+
+                self.window.blit(text_surface, (start_x, y_offset))
+                self.window.blit(status_surface, (start_x + text_surface.get_width(), y_offset))
+
+            elif i == len(stats_items) - 1:  # Agent Status line
+                text_surface = stats_font.render(text.split(': ')[0] + ': ', True, (0, 0, 0))
+                status_surface = stats_font.render(agent_status, True, agent_status_color)
+
+                # Center align the text
+                total_width = text_surface.get_width() + status_surface.get_width()
+                start_x = window_x + (window_width - total_width) // 2
+
+                self.window.blit(text_surface, (start_x, y_offset))
+                self.window.blit(status_surface, (start_x + text_surface.get_width(), y_offset))
+            else:
+                text_surface = stats_font.render(text, True, (0, 0, 0))
+                self.window.blit(text_surface, text_surface.get_rect(
+                    center=(window_x + window_width // 2, y_offset)))
+            y_offset += 50
+
+        # Add decorative elements
+        border_width = 4
+        pygame.draw.rect(self.window, (100, 100, 100),
+                         pygame.Rect(window_x, window_y, window_width, window_height),
+                         border_width)
+
+        # Add "Press any key to continue" message
+        continue_font = pygame.font.SysFont(None, 24)
+        continue_surface = continue_font.render('Press any key to continue...', True, (100, 100, 100))
+        self.window.blit(continue_surface, continue_surface.get_rect(
+            center=(window_x + window_width // 2, window_y + window_height - 40)))
+
+
+    def pause(self, unpause_key):
+        print('Game paused')
+        self.pause_start_time = pygame.time.get_ticks()
+        self.button_latch_dict['pause'] = True
+        self.paused = True
+
+        countdown_font = pygame.font.SysFont(None, 120)
+        countdown_duration = 3  # seconds
+
+        while self.paused:
+            pygame.time.wait(50)  # Reduced wait time for smoother rendering
+            self.render()
+
+            ev = pygame.event.get()
+            for event in ev:
+                #if event.type == unpause_key:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 3:
+                        # Start countdown
+                        countdown_start = pygame.time.get_ticks()
+                        countdown_surface = pygame.Surface((self.window.get_width(), self.window.get_height()))
+                        countdown_surface.set_alpha(128)  # 50% transparent
+
+                        while (pygame.time.get_ticks() - countdown_start) < countdown_duration * 1000:
+                            self.unpause_countdown = True
+                            current_time = pygame.time.get_ticks()
+                            time_left = countdown_duration - (current_time - countdown_start) / 1000
+
+                            # Regular render
+                            self.render()
+
+                            # Draw countdown
+                            countdown_text = countdown_font.render(str(max(1, int(time_left + 1))), True, (255, 255, 255))
+                            text_rect = countdown_text.get_rect(
+                                center=(self.window.get_width() // 2, self.window.get_height() // 2))
+
+                            # Draw semi-transparent overlay
+                            countdown_surface.fill((100, 100, 100))
+                            self.window.blit(countdown_surface, (0, 0))
+
+                            # Draw countdown number
+                            self.window.blit(countdown_text, text_rect)
+
+                            pygame.display.update()
+                            pygame.time.wait(50)  # Control update rate
+
+                            # Handle any quit events during countdown
+                            for evt in pygame.event.get():
+                                if evt.type == pygame.QUIT:
+                                    pygame.quit()
+                                    return
+
+                        self.paused = False
+                        self.unpause_countdown = False
+                        self.button_latch_dict['pause'] = False
+                        pause_end_time = pygame.time.get_ticks()
+                        pause_duration = pause_end_time - self.pause_start_time
+                        self.total_pause_time += pause_duration
+                        print('Paused for %s' % pause_duration)
+                        return  # Exit the pause function
+
+    def close(self):
+        if self.render_mode == 'human' and pygame.get_init():
+            pygame.quit()
+
+
+    def process_action(self, action, agent_id=0):
+        """
+        If the action type is Discrete8, this converts the discrete action chosen into an x,y in the appropriate direction
+
+        Args:
+            action (ndarray, size 1): Agent discrete action to convert to waypoint coords
+
+        Returns:
+            waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+        """
+        try:
+            if len(action) == 2:
+                #print(f'Action is {action} (type {type(action)}')
+                action = action.flatten()
+                if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+                    raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
+                map_half_size = self.config["gameboard_size"] / 2
+                x_coord = action[0]# * map_half_size
+                y_coord = action[1]# * map_half_size
+                waypoint = (float(x_coord), float(y_coord))
+                #if agent_id == 0: print(f'[Process action] {action} converted to {waypoint}')
+                return waypoint
+        except:
+            pass
+
+        #if action.ndim < 2:
+        if isinstance(action, (np.int32, np.int64, int)): # Discrete direction action
+            action = int(action)
+
+            direction_map = {
+                0: (0, 1),  # North (0°)
+                1: (0.383, 0.924),  # NNE (22.5°)
+                2: (0.707, 0.707),  # NE (45°)
+                3: (0.924, 0.383),  # ENE (67.5°)
+                4: (1, 0),  # East (90°)
+                5: (0.924, -0.383),  # ESE (112.5°)
+                6: (0.707, -0.707),  # SE (135°)
+                7: (0.383, -0.924),  # SSE (157.5°)
+                8: (0, -1),  # South (180°)
+                9: (-0.383, -0.924),  # SSW (202.5°)
+                10: (-0.707, -0.707),  # SW (225°)
+                11: (-0.924, -0.383),  # WSW (247.5°)
+                12: (-1, 0),  # West (270°)
+                13: (-0.924, 0.383),  # WNW (292.5°)
+                14: (-0.707, 0.707),  # NW (315°)
+                15: (-0.383, 0.924)  # NNW (337.5°)
+            }
+
+            current_x = self.agents[self.aircraft_ids[agent_id]].x
+            current_y = self.agents[self.aircraft_ids[agent_id]].y
+
+            dx_norm, dy_norm = direction_map[action]
+
+            # Calculate waypoint at fixed distance in chosen direction
+            waypoint_distance = 50
+            x_coord = current_x + (dx_norm * waypoint_distance)
+            y_coord = current_y + (dy_norm * waypoint_distance)
+
+            # Clip to map boundaries
+            map_half_size = self.config["gameboard_size"] / 2
+            x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+            y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+
+            waypoint = (float(x_coord), float(y_coord))
+            return waypoint
+
+        # else:
+        #     print(f'Action is {action} (type {type(action)}')
+        #     #if action.ndim > 1: # x,y waypoint
+        #     action = action.flatten()
+        #     #if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+        #         #raise ValueError('ERROR: Actions are not normalized to -1, +1')
+        #
+        #     map_half_size = self.config["gameboard_size"] / 2
+        #     x_coord = action[0] * map_half_size
+        #     y_coord = action[1] * map_half_size
+
+        #else:
+            #raise ValueError(f'Error in process action, action is a {type(action)}')
+
+        # waypoint = (float(x_coord), float(y_coord))
+        # return waypoint
+
+
+    ###################################### Setters (used during training) ######################################
+
+    def set_subpolicy_history(self, subpolicy_history):
+        """Method to receive subpolicy history from wrapper"""
+        self.subpolicy_history = subpolicy_history
+
+
+    def set_wrapper_observations(self, wrapper_observations):
+        """Method to receive wrapper observations from wrapper"""
+        self.wrapper_observations = wrapper_observations
+
+    def set_difficulty(self, difficulty):
+        """Method to change difficulty level from an external method"""
+        self.difficulty = difficulty
+        print(f'env.set_difficulty: Difficulty is now {self.difficulty}')
+
+    ###################################### Utilities ######################################
+
+    def load_level_from_json(self, level_data_path="./utility/level_layouts.json"):
+        try:
+            with open(level_data_path, 'r') as f:
+                level_data = json.load(f)['levels']
+        except:
+            with open("../utility/level_layouts.json", 'r') as f:
+                level_data = json.load(f)['levels']
+
+        # Map level index to level name
+        level_names = list(level_data.keys())
+        level_name = level_names[self.level_idx % len(level_names)]
+        level = level_data[level_name]
+
+        # Load agent positions
+        agent_x, agent_y = level['agents'][0]
+        teammate_x, teammate_y = level['agents'][1]
+
+        # Load target positions
+        target_positions = np.array(level['targets'], dtype=np.float32)
+        self.targets[:, 3:5] = target_positions[:self.config['num_targets']]
+
+        # Load threat positions
+        threat_positions = np.array(level['threats'], dtype=np.float32)
+        self.threats[:, 0:2] = threat_positions[:self.config['num_threats']]
+
+        return agent_x, agent_y, teammate_x, teammate_y
+
+
+    def check_valid_config(self):
+        valid_obs_types = ['full', 'pixel', 'nearest']
+        valid_action_types = ['Discrete8', 'Discrete16', 'target_index']
+        valid_render_modes = ['headless', 'human', 'rgb_array']
+
+        if self.config['obs_type'] not in valid_obs_types:
+            raise ValueError(f"obs_type invalid, got '{self.config['obs_type']}'")
+        if self.config['action_type'] not in valid_action_types:
+            raise ValueError(f"action_type invalid, got '{self.config['action_type']}'")
+        if self.render_mode not in valid_render_modes:
+            raise ValueError('Render mode must be headless, rgb_array, human')
+
+
+    def save_action_history_plot(self, note=''):
+        """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib
+            matplotlib.use('Agg')
+            import datetime
+            #import os
+            #import numpy as np
+
+            # Create directory if it doesn't exist
+            os.makedirs(f'outputs/{self.run_name}/episode_plots', exist_ok=True)
+
+            # Calculate map bounds for centered coordinate system
+            map_half_size = self.config["gameboard_size"] / 2  # 150 for a 300x300 map
+
+            # Extract agent location history (already in centered coordinates)
+            agent_x_coords = [pos[0] for pos in self.agent_location_history]
+            agent_y_coords = [pos[1] for pos in self.agent_location_history]
+
+            teammate_x_coords = [pos[0] for pos in self.teammate_location_history]
+            teammate_y_coords = [pos[1] for pos in self.teammate_location_history]
+
+            # Create a new figure
+            fig_height = 12 if hasattr(self, 'wrapper_observations') else 10
+            plt.figure(figsize=(12, fig_height))
+
+            # Set up the plot with centered coordinate limits
+            plt.xlim(-map_half_size, map_half_size)
+            plt.ylim(-map_half_size, map_half_size)
+
+            # Plot targets (already in centered coordinates)
+            for i in range(self.config['num_targets']):
+                target_x = self.targets[i, 3]  # Already in centered coordinates
+                target_y = self.targets[i, 4]  # Already in centered coordinates
+
+                size_factor = 1000 / self.config["gameboard_size"]  # Assuming 1000 was the original reference size
+                marker_size = (100 * size_factor) if self.targets[i, 1] == 1 else (50 * size_factor)
+
+                if i == 0:  # Color target 0 differently for debugging
+                    color = 'forestgreen' if self.targets[i, 2] == 1.0 else 'chocolate'
+                else:
+                    color = 'lime' if self.targets[i, 2] == 1.0 else 'orange'
+
+                plt.scatter(target_x, target_y, s=marker_size, color=color, alpha=0.9, marker='o', edgecolors='black')
+
+                plt.annotate(f'T{i}', (target_x, target_y), xytext=(5, 5), textcoords='offset points', fontsize=8)
+
+            # Plot the threat if it exists
+            if hasattr(self, 'threats'):
+                for threat_idx, threat in enumerate(self.threats):
+                    threat_x = threat[0]
+                    threat_y = threat[1]
+                    threat_radius = self.config['threat_radius'] * (1000 / self.config["gameboard_size"])  # Scale for plot
+
+                    # Change color based on identification status (same as render method)
+                    threat_color = 'lime' if self.threat_identified[threat_idx] else 'gold'
+
+                    # Draw threat circle
+                    circle = plt.Circle((threat_x, threat_y), threat_radius, fill=False, color=threat_color, linewidth=2, alpha=0.7)
+                    plt.gca().add_patch(circle)
+
+                    # Draw upside-down triangle marker
+                    plt.scatter(threat_x, threat_y, s=200, color=threat_color, marker='v', alpha=0.8, label='Threat', edgecolors='black')
+
+                    plt.annotate(f'Thr{i}', (threat_x, threat_y), xytext=(5, 5), textcoords='offset points', fontsize=8)
+
+            # Define subpolicy colors and labels
+            subpolicy_colors = {
+                0: '#2E8B57',  # Local Search - Sea Green
+                1: '#4169E1',  # Change Region (NW) - Royal Blue
+                2: '#DC143C',  # Go to Threat - Crimson
+                3: '#FF8C00',  # Evade/Hold - Dark Orange
+                4: '#4169E1',  # Change Region (NE) - Royal Blue (same as 1)
+                5: '#4169E1',  # Change Region (SE) - Royal Blue (same as 1)
+                6: '#4169E1',  # Change Region (SW) - Royal Blue (same as 1)
+                7: '#9932CC',  # Waypoint Override - Dark Violet
+                -1: '#808080'  # Unknown/Default - Gray
+            }
+
+            subpolicy_labels = {
+                0: 'Local Search',
+                1: 'Change Region',
+                2: 'Go to Threat',
+                3: 'Evade',
+                -1: 'Unknown',
+                4: 'Change Region',
+                5: 'Change Region',
+                6: 'Change Region',
+                7: 'Change Region'
+            }
+
+            # Plot agent trajectory with subpolicy coloring
+            if agent_x_coords and agent_y_coords:
+                # Plot the trajectory line first (in gray)
+                plt.plot(agent_x_coords, agent_y_coords, 'gray', alpha=0.3, linewidth=1, zorder=1)
+
+                # Check if we have subpolicy history
+                if hasattr(self, 'subpolicy_history') and self.subpolicy_history:
+
+                    # The subpolicy history should match step_count_outer, not the location history
+                    # Each outer step corresponds to frame_skip inner steps (location history entries)
+                    frame_skip = self.config.get('frame_skip', 1) * self.config['action_rate']
+
+                    # Create properly aligned subpolicy data
+                    subpolicy_data = []
+
+                    # Each entry in subpolicy_history corresponds to frame_skip location entries
+                    for i, policy in enumerate(self.subpolicy_history):
+                        # Convert policy to a regular Python int immediately
+                        if hasattr(policy, 'item'):  # numpy scalar
+                            clean_policy = int(policy.item())
+                        elif isinstance(policy, (np.ndarray, np.generic)):  # numpy array or generic
+                            clean_policy = int(policy.flatten()[0])
+                        else:  # regular int/float
+                            clean_policy = int(policy)
+
+                        # Add this policy for frame_skip consecutive location points
+                        for _ in range(frame_skip):
+                            if len(subpolicy_data) < len(agent_x_coords):
+                                subpolicy_data.append(clean_policy)
+
+                    # If we still don't have enough entries, pad with the last known policy
+                    while len(subpolicy_data) < len(agent_x_coords):
+                        last_policy = subpolicy_data[-1] if subpolicy_data else 0
+                        subpolicy_data.append(last_policy)
+
+                    # Trim to exact length if needed
+                    subpolicy_data = subpolicy_data[:len(agent_x_coords)]
+
+                    # Print policy distribution for debugging
+                    from collections import Counter
+                    policy_counts = Counter(subpolicy_data)
+                    #print("Policy distribution in plot data:")
+                    for policy, count in sorted(policy_counts.items()):
+                        percentage = (count / len(subpolicy_data)) * 100
+                        policy_name = subpolicy_labels.get(int(policy), f'Policy {policy}')
+                        #print(f"  {policy_name}: {count}/{len(subpolicy_data)} ({percentage:.1f}%)")
+
+                    # Group points by subpolicy for plotting
+                    subpolicy_points = {}
+                    for i, (x, y, policy) in enumerate(zip(agent_x_coords, agent_y_coords, subpolicy_data)):
+                        # Convert policy to int to avoid numpy array key issues
+                        policy_key = int(policy) if hasattr(policy, 'item') else int(policy)
+
+                        # Group ChangeRegion policies (1,4,5,6) under policy key 1
+                        if policy_key in [4, 5, 6]:
+                            grouped_key = 1  # Group all ChangeRegion under key 1
+                        else:
+                            grouped_key = policy_key
+                        if grouped_key not in subpolicy_points:
+                            subpolicy_points[grouped_key] = {'x': [], 'y': [], 'indices': []}
+                        subpolicy_points[grouped_key]['x'].append(x)
+                        subpolicy_points[grouped_key]['y'].append(y)
+                        subpolicy_points[grouped_key]['indices'].append(i)
+
+                    # Plot each subpolicy group with its own color
+                    legend_handles = []
+                    for policy_key, points in subpolicy_points.items():
+                        color = subpolicy_colors.get(policy_key, '#808080')
+                        if policy_key in [1, 4, 5, 6]: label = 'Change Region'
+                        elif policy_key == 0: label = 'Local Search'
+                        elif policy_key == 2: label = 'Go to Threat'
+                        elif policy_key == 3: label = 'Hold'
+                        elif policy_key == 7: label = 'Waypoint Override'
+                        else: label = f'Policy {policy_key}'
+
+                        scatter = plt.scatter(points['x'], points['y'], s=15, color=color, alpha=0.8, marker='o', label=f"{label} ({len(points['x'])})", zorder=3, edgecolors='none', linewidth=0.5)
+                        legend_handles.append(scatter)
+
+                else:
+                    plt.scatter(agent_x_coords, agent_y_coords, s=15, c=range(len(agent_x_coords)),
+                                cmap='Greens', alpha=0.7, marker='o', zorder=3,
+                                vmin=-len(agent_x_coords) * 0.3, vmax=len(agent_x_coords))
+
+            # Plot teammate trajectory
+            if teammate_x_coords and teammate_y_coords:
+                plt.scatter(teammate_x_coords, teammate_y_coords, s=15, c=range(len(teammate_x_coords)),
+                            cmap='Blues', alpha=0.7, marker='o', zorder=3,
+                            vmin=-len(teammate_x_coords) * 0.3, vmax=len(teammate_x_coords))
+
+            # Only plot waypoint history for waypoint-based action types
+            if self.config['action_type'] != 'direct-control':
+                # Extract x and y coordinates from action history (waypoints, already in centered coordinates)
+                x_coords = [action[0] for action in self.action_history]
+                y_coords = [action[1] for action in self.action_history]
+
+                # Plot waypoint history (action history) as a line with points
+                if x_coords and y_coords:
+                    plt.plot(x_coords, y_coords, 'b-', alpha=0.15, linewidth=1)
+
+                    # Plot only every fourth waypoint
+                    x_coords_subset = x_coords[::self.config['frame_skip']*2]  # Plot one action per outer step instead of every action
+                    y_coords_subset = y_coords[::self.config['frame_skip']*2]
+                    subset_indices = list(range(0, len(x_coords), self.config['frame_skip']*2))  # Corresponding indices for colormap
+
+                    plt.scatter(x_coords_subset, y_coords_subset, s=10, c=subset_indices,cmap='cool', alpha=0.7, marker='x', label='Agent Waypoints', zorder=1)
+
+
+            # Add start/end position markers
+            if agent_x_coords and agent_y_coords:
+                plt.scatter(agent_x_coords[0], agent_y_coords[0], s=120, color='lime', marker='*',
+                            label='Start Position', zorder=5, edgecolors='black', linewidth=1)
+                plt.scatter(agent_x_coords[-1], agent_y_coords[-1], s=120, color='darkgreen', marker='*',
+                            label='End Position', zorder=5, edgecolors='black', linewidth=1)
+
+            # Add grid lines centered at origin
+            plt.grid(True, alpha=0.3)
+            plt.gca().set_xticks(range(int(-map_half_size), int(map_half_size) + 1, 100))
+            plt.gca().set_yticks(range(int(-map_half_size), int(map_half_size) + 1, 100))
+
+            # Add labels and title
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            teammate_name = "No Teammate"
+            checkpoint_info = ""
+
+            if hasattr(self, 'config') and self.config.get('num_aircraft', 1) >= 2:
+                # Try to get teammate name from the wrapper (if using teammate manager)
+                if self.tag == 'human_eval0':
+                    teammate_name = 'recorded_human_trajectory'
+                elif hasattr(self, 'teammate_name'):
+                    teammate_name = self.teammate_name
+                elif hasattr(self, 'current_teammate') and hasattr(self.current_teammate, 'name'):
+                    teammate_name = self.current_teammate.name
+                else:
+                    teammate_name = "Unknown Teammate"
+
+                # Add checkpoint info if available
+                if hasattr(self, 'teammate_checkpoint_info') and self.teammate_checkpoint_info:
+                    checkpoint_info = f"\nCheckpoint: {self.teammate_checkpoint_info}"
+
+            plot_title = f'{self.tag} - Episode {self.episode_counter} (Reward: {self.final_wrapper_reward:.2f}, {self.targets_identified} targets, steps: {self.step_count_outer})\nTeammate: {teammate_name}{checkpoint_info}'
+            plt.title(plot_title, fontsize=10)
+
+            # Create legend with subpolicy colors
+            legend1 = plt.legend(loc='upper left', bbox_to_anchor=(0.92, 1), fontsize='small')
+
+            # Add a second legend for other elements if needed
+            other_elements = []
+
+            # Add target legends
+            other_elements.extend([
+                plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
+                           markersize=8, label='Identified Target'),
+                plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='orange',
+                           markersize=8, label='Unknown Target')
+            ])
+
+            # Add centered quadrant lines (origin at center)
+            plt.axhline(y=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Horizontal line at y=0
+            plt.axvline(x=0, color='black', linestyle='-', alpha=0.5, linewidth=1.5)  # Vertical line at x=0
+
+            # Add subpolicy timeline at the bottom
+            if hasattr(self, 'subpolicy_history') and self.subpolicy_history:
+                # Create a subplot for the timeline
+                fig = plt.gcf()
+
+                # Adjust main plot to make room for timeline
+                main_ax = plt.gca()
+                main_ax.set_position([0.1, 0.2, 0.7, 0.7])  # [left, bottom, width, height]
+
+                # Create timeline subplot
+                timeline_ax = fig.add_axes([0.1, 0.05, 0.7, 0.06])
+
+                # Use the original subpolicy history for timeline (one entry per outer step)
+                policies = [int(p) if hasattr(p, 'item') else int(p) for p in self.subpolicy_history]
+                steps = list(range(len(policies)))
+
+                #print(f'Timeline using {len(policies)} policy entries for {len(steps)} steps')
+
+                # Create color mapping for timeline
+                timeline_colors = [subpolicy_colors.get(p, '#808080') for p in policies]
+
+                # Plot timeline as horizontal bars - each bar represents one outer step
+                for i in range(len(steps)):
+                    timeline_ax.barh(0, 1.0, left=steps[i], height=0.5,
+                                     color=timeline_colors[i], alpha=0.8,
+                                     edgecolor='none')
+
+                # Configure timeline axes
+                timeline_ax.set_xlim(0, len(steps))
+                timeline_ax.set_ylim(-0.5, 0.5)
+                timeline_ax.set_xlabel('Episode Steps (Outer)')
+                timeline_ax.set_ylabel('Policy')
+                timeline_ax.set_yticks([])
+                timeline_ax.grid(True, alpha=0.3, axis='x')
+
+                # Add mode labels on the timeline
+                current_mode = policies[0] if policies else 0
+                mode_start = 0
+
+                for i, mode in enumerate(policies[1:], 1):
+                    if mode != current_mode:
+                        # Add label for the previous mode segment
+                        segment_length = i - mode_start
+                        if segment_length > max(3, len(policies) * 0.05):  # Label segments > 5% of episode or 3 steps
+                            mid_point = (mode_start + i - 1) / 2
+                            timeline_ax.text(mid_point, 0, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
+                                             ha='center', va='center', fontsize=6,
+                                             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
+
+                        current_mode = mode
+                        mode_start = i
+
+                # Add label for the final segment
+                final_segment_length = len(policies) - mode_start
+                if final_segment_length > max(3, len(policies) * 0.05):
+                    mid_point = (mode_start + len(policies) - 1) / 2
+                    timeline_ax.text(mid_point, 0, subpolicy_labels.get(current_mode, f'Mode {current_mode}'),
+                                     ha='center', va='center', fontsize=6,
+                                     bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7))
+
+            if other_elements:
+                #legend2 = plt.legend(handles=other_elements, loc='upper left', bbox_to_anchor=(0.82, 0.6),fontsize='small')
+                try:
+                    main_ax.add_artist(legend1)  # Keep both legends
+                except:
+                    pass
+
+            if hasattr(self, 'wrapper_observations') and self.wrapper_observations:
+                obs_ax = plt.subplot2grid((4, 1), (3, 0))
+                obs_ax.axis('off')  # Turn off axis for text area
+
+                # Format observation text
+                obs_text_lines = []
+                obs_labels = ['Steps', 'Detections', '% Tgts Left',
+                              '% Tgts in Quad', 'Dist to Teammate', 'Adapt Sig']
+
+                for step, obs in self.wrapper_observations.items():
+                    obs_line = f"Step {step}: "
+                    obs_values = [f"{obs_labels[i]}: {obs[i]:.1f}" for i in range(len(obs)) if i < len(obs_labels)]
+                    obs_line += " | ".join(obs_values)
+                    obs_text_lines.append(obs_line)
+
+                # Add text to the bottom subplot
+                full_obs_text = "\n".join(obs_text_lines)
+                obs_ax.text(0.00, 0.35, "Wrapper Observations:", transform=obs_ax.transAxes,
+                            fontsize=10, fontweight='bold', verticalalignment='top')
+                obs_ax.text(0.00, 0.25, full_obs_text, transform=obs_ax.transAxes,
+                            fontsize=8, verticalalignment='top', fontfamily='monospace',
+                            bbox=dict(boxstyle='round,pad=0.5', facecolor='lightgray', alpha=0.7))
+
+            # Save the figure with a timestamp
+            filename = f'outputs/{self.run_name}/episode_plots/{note}{self.tag}_ep{self.episode_counter}.png'
+            plt.savefig(filename, dpi=100, bbox_inches='tight')
+            plt.close()
+
+
+            try: print(f"Action history plot saved to ...{filename[-35:]}")
+            except: print(f"Action history plot saved to ...{filename[-20:]}")
+
+        except ImportError as e:
+            print(f"Could not save action history plot: {e}")
+        except Exception as e:
+            print(f"Error saving action history plot: {e}")
+
+
+    def generate_plot_list(self):
+        """Generate list of episodes to plot"""
+
+        if self.config['force_specific_level'] != 99:
+            self.num_levels = 1
+        elif self.config['num_fixed_levels'] != 99:
+            self.num_levels = self.config["num_fixed_levels"]
+        else:
+            self.num_levels = 7  # default
+
+        self.episodes_to_plot = []
+        for j in range(self.num_levels):
+            self.episodes_to_plot.extend(
+                [1 + j, 2 + j, 3 + j, 5 + j, 7 + j, 10 + j, 20 + j, 40 + j, 50 + j, 80 + j, 100 + j, 150 + j, 200 + j])
+            self.episodes_to_plot.extend([(100 * i) + j for i in range(200)])
+        self.episodes_to_plot = list(set(self.episodes_to_plot))
+        self.episodes_to_plot.sort()
+        return
+
+    ################### Helper functions ###################
+
+    def _index_to_waypoint(self, index, agent_id=0):
+        """
+        Convert target/threat index to (x,y) waypoint coordinates. Used for target_index action space.
+
+        Args:
+            index (int): Index into available unidentified entities
+                        0 to num_observed_targets-1: unidentified targets (by distance)
+                        num_observed_targets to num_observed_targets+num_observed_threats-1: unidentified threats (by distance)
+            agent_id (int): ID of the agent requesting the waypoint
+        Returns:
+            tuple: (x, y) waypoint coordinates
+        """
+        num_observed_targets = self.config['num_observed_targets']
+        num_observed_threats = self.config['num_observed_threats']
+        unidentified_targets, unidentified_threats = self._get_unidentified_entities(agent_id)
+
+        # Validate index
+        total_observed = num_observed_targets + num_observed_threats
+        if index < 0 or index >= total_observed:  # Fallback to current position if invalid index
+            current_x = self.agents[self.aircraft_ids[agent_id]].x
+            current_y = self.agents[self.aircraft_ids[agent_id]].y
+            return (float(current_x), float(current_y))
+
+        if index < num_observed_targets:  # Target index - select from unidentified targets
+            if index < len(unidentified_targets):
+                target_idx = unidentified_targets[index]
+                target_x = self.targets[target_idx, 3]  # x coordinate
+                target_y = self.targets[target_idx, 4]  # y coordinate
+                return (float(target_x), float(target_y))
+            else:  # Not enough unidentified targets, fallback to current position
+                current_x = self.agents[self.aircraft_ids[agent_id]].x
+                current_y = self.agents[self.aircraft_ids[agent_id]].y
+                return (float(current_x), float(current_y))
+        else:  # Threat index - select from unidentified threats
+            threat_action_idx = index - num_observed_targets
+            if threat_action_idx < len(unidentified_threats):
+                threat_idx = unidentified_threats[threat_action_idx]
+                threat_x = self.threats[threat_idx, 0]  # x coordinate
+                threat_y = self.threats[threat_idx, 1]  # y coordinate
+                return (float(threat_x), float(threat_y))
+            else:  # Not enough unidentified threats, fallback to current position
+                current_x = self.agents[self.aircraft_ids[agent_id]].x
+                current_y = self.agents[self.aircraft_ids[agent_id]].y
+                return (float(current_x), float(current_y))
+
+
+    def _direction_to_waypoint(self, action, agent_id=0):
+        """ Converts a chosen direction command into a pixel waypoint. Used for Discrete8 and Discrete16 action spaces.
+
+        Args: action (ndarray, size 1): Agent discrete action to convert to waypoint coords
+
+        Returns: waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+        """
+        # if action.ndim < 2:
+        if isinstance(action, tuple):
+            action = action[0]
+        try:
+            action = int(action)
+        except Exception as e:
+            print(e)
+            if hasattr(self, 'current_teammate') and hasattr(self.current_teammate, 'name'):
+                teammate_name = self.current_teammate.name
+            else:
+                teammate_name = "None"
+            print(f'Action was {action} (type {type(action)}, agent {agent_id}, teammate is {teammate_name})')
+
+        direction_map = {
+            0: (0, 1),  # North (0°)
+            1: (0.383, 0.924),  # NNE (22.5°)
+            2: (0.707, 0.707),  # NE (45°)
+            3: (0.924, 0.383),  # ENE (67.5°)
+            4: (1, 0),  # East (90°)
+            5: (0.924, -0.383),  # ESE (112.5°)
+            6: (0.707, -0.707),  # SE (135°)
+            7: (0.383, -0.924),  # SSE (157.5°)
+            8: (0, -1),  # South (180°)
+            9: (-0.383, -0.924),  # SSW (202.5°)
+            10: (-0.707, -0.707),  # SW (225°)
+            11: (-0.924, -0.383),  # WSW (247.5°)
+            12: (-1, 0),  # West (270°)
+            13: (-0.924, 0.383),  # WNW (292.5°)
+            14: (-0.707, 0.707),  # NW (315°)
+            15: (-0.383, 0.924)  # NNW (337.5°)
+        }
+
+        current_x = self.agents[self.aircraft_ids[agent_id]].x
+        current_y = self.agents[self.aircraft_ids[agent_id]].y
+
+        try:
+            dx_norm, dy_norm = direction_map[action]
+        except:
+            raise ValueError(f'ERROR, action is {action}, agent index is {agent_id}')
+        # print('reached direction map')
+
+        # Calculate waypoint at fixed distance in chosen direction
+        waypoint_distance = 50
+        x_coord = current_x + (dx_norm * waypoint_distance)
+        y_coord = current_y + (dy_norm * waypoint_distance)
+
+        # Clip to map boundaries
+        map_half_size = self.config["gameboard_size"] / 2
+        x_coord = np.clip(x_coord, -map_half_size, map_half_size)
+        y_coord = np.clip(y_coord, -map_half_size, map_half_size)
+
+        waypoint = (float(x_coord), float(y_coord))
+        return waypoint
+
+
+    def _denormalize_waypoint(self, action):
+        """ Converts a normalized (-1, +1) waypoint back to game pixel space.
+
+        Args: action (ndarray, size 2): Normalized (x,y) waypoint output from agent
+        Returns: waypoint (tuple, size 2): (x,y) waypoint with range [0, gameboard_size]
+        """
+        action = action.flatten()
+        if action[0] > 1.1 or action[1] > 1.1 or action[0] < -1.1 or action[1] < -1.1:
+            raise ValueError('ERROR: Actions are not normalized to -1, +1')
+
+        map_half_size = self.config["gameboard_size"] / 2
+        x_coord = action[0] * map_half_size
+        y_coord = action[1] * map_half_size
+        waypoint = (float(x_coord), float(y_coord))
+        return waypoint
+
+
+    def _get_teammate_flying_targets(self):
+        """Return indices of all unknown targets that the teammate is currently flying toward.
+        A target is considered 'flying toward' if it is within a 25-pixel-wide and
+        300-pixel-long beam extending from the teammate along its waypoint heading.
+        """
+        teammate_agent = self.agents[self.aircraft_ids[1]]
+        teammate_pos = np.array([teammate_agent.x, teammate_agent.y])
+
+        # Compute heading unit vector
+        if hasattr(teammate_agent, 'waypoint_override') and teammate_agent.waypoint_override:
+            waypoint = np.array(teammate_agent.waypoint_override)
+            heading_vec = waypoint - teammate_pos
+            heading_dist = np.linalg.norm(heading_vec)
+            heading_unit = heading_vec / heading_dist if heading_dist > 0 else np.array([0.0, 0.0])
+        else:
+            heading_unit = np.array([0.0, 0.0])
+
+        # Only consider unknown targets
+        unknown_target_mask = self.targets[:, 2] < 1.0
+        target_positions = self.targets[:, 3:5]
+
+        beam_half_width = 25.0  # Half-width → 50-pixel wide beam
+        beam_length = 300.0  # Maximum forward reach
+
+        flying_target_indices = []
+
+        for idx, pos in enumerate(target_positions):
+            if not unknown_target_mask[idx]:
+                continue
+
+            vec_to_target = pos - teammate_pos
+            forward_dist = np.dot(vec_to_target, heading_unit)
+
+            # Must be in front and within beam length
+            if forward_dist <= 0 or forward_dist > beam_length:
+                continue
+
+            # Check perpendicular distance to heading line
+            perp_dist = np.linalg.norm(vec_to_target - forward_dist * heading_unit)
+            if perp_dist <= beam_half_width:
+                flying_target_indices.append(idx)
+
+        #if flying_target_indices:
+            #print(f'[Dynamic Shaping] excluding indices {flying_target_indices} from potential shaping')
+        return flying_target_indices
+
+
+    @staticmethod
+    def interpolate_trajectory(trajectory, num_microsteps):
+        """
+        Linearly interpolate trajectory (N x 2) into num_microsteps x 2
+        trajectory: list or np.array of [x, y] positions
+        """
+        trajectory = np.array(trajectory)
+        orig_steps = len(trajectory)
+        new_times = np.linspace(0, orig_steps - 1, num_microsteps)
+
+        x_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 0])
+        y_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 1])
+
+        return np.stack([x_interp, y_interp], axis=1)
+
+

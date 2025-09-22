@@ -1,5 +1,0 @@
-Comparison,Group1,Group2,Chi2_Statistic,P_Value,Significant
-Human vs RL,Human,RL,924.826485007644,1.7107196836283505e-187,True
-RL vs seed000,RL,seed000,1454.8421710867829,2.6206239994733795e-301,True
-Human vs All Heuristic,Human,All_Heuristic,3219.332310110816,0.0,True
-Human vs seed000,Human,seed000,3219.332310110816,0.0,True

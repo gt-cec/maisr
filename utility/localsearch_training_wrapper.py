@@ -163,52 +163,16 @@ class MaisrLocalSearchWrapper(gym.Env):
         if self.env.config['action_type'] == 'target_index':
             # Action is already an index, pass it through
             processed_action = action
-            #print(f'\n\n %%%%%%%% Agent took action {action} %%%%%%%%%% \n \n')
 
         # Get teammate action
         if self.env.config['num_aircraft'] == 2 and self.teammate_active:
             if self.env.tag == 'human_eval0':
                 pass
-
             else:
                 self.teammate_action = self.get_teammate_action()
                 if isinstance(self.teammate_action, np.ndarray):
                     self.teammate_action = (self.teammate_action[0], self.teammate_action[1])
                 self.env.agents[self.env.aircraft_ids[1]].waypoint_override = self.teammate_action
-
-
-        ############################################### Stuck detection ################################################
-        if self.env.config['use_stuck_detection']:
-            self.recent_actions.append(action)
-            if len(self.recent_actions) > self.action_history_length:
-                self.recent_actions.pop(0)
-
-            current_pos = np.array([self.env.agents[self.env.aircraft_ids[0]].x, self.env.agents[self.env.aircraft_ids[0]].y])
-            self.position_history.append(current_pos.copy())
-
-            if len(self.position_history) > self.history_length * 2:
-                self.position_history = self.position_history[-self.history_length:]
-            self.update_progress_tracking()
-
-            # Check for stuck condition and activate override if needed
-            #self.is_agent_stuck()
-            if not self.override_active and self.is_agent_stuck():
-                self.override_target_pos = self.get_nearest_unknown_target()
-                if self.override_target_pos is not None:
-                    self.override_active = True
-
-            # Use override action if active
-            if self.override_active:
-                override_action = self.get_override_action()
-
-                if override_action is not None:
-                    action = override_action
-                    self.override_step_counter += 1
-                    if self.override_step_counter >= self.max_override_steps:
-                        print("Override deactivated after 5 steps.")
-                        self.override_active = False
-                        self.override_target_pos = None
-                        self.override_step_counter = 0
 
         ###############################################################################################################
 
@@ -346,9 +310,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
     def get_teammate_action(self):
 
-        #obs_agent1_raw = self.env.get_observation_nearest_n(1)
-        #obs_agent1_norm = self.current_teammate._normalize_observation(obs_agent1_raw)
-
         # Get action from RL teammates
         if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
             print('target index or model is true')
@@ -363,11 +324,8 @@ class MaisrLocalSearchWrapper(gym.Env):
 
             return self.env._index_to_waypoint(int(teammate_target_index))
 
-        # if isinstance(self.current_teammate, RecordedTrajectoryTeammate):
-        #     return self.current_teammate.get_action()
 
         elif self.teammate_manager or self.teammate_policy:
-            #print('teammate manager or policy is true')
 
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] in ['selfplay','fcp']:
@@ -507,7 +465,6 @@ class MaisrLocalSearchWrapper(gym.Env):
                 raise ValueError(f'ERROR: Got invalid subpolicy selection {self.teammate_subpolicy_choice} (type {type(self.teammate_subpolicy_choice)})')
 
         else: # Fallback greedy search
-            #raise ValueError('fellback to greedy search')
 
             # Access teammate location
             teammate_x = self.env.agents[self.env.aircraft_ids[1]].x
@@ -605,7 +562,6 @@ class MaisrLocalSearchWrapper(gym.Env):
         obs[10] =  # Agent distance to quadrant NW
         obs[11] =  # Teammate distance to quadrant NW
         """
-        # TODO use agent_id to return observation relative to that agent
         obs = np.zeros(12, dtype=np.float32)
 
         # Get agent position
@@ -748,11 +704,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return distance
 
-    def get_adaptation_signal(self):
-        """Gets adaptation signal, e.g. from external physiological measurement
-        Currently placeholder as 0 until implemented"""
-
-        return 0
 
     def unknown_targets_in_current_quadrant(self, agent_id):
         """Returns the number of unknown targets in the agent's quadrant"""
@@ -778,53 +729,6 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         return num_unknown_targets
 
-
-    ############################ Functions for stuck detection ############################
-
-    def is_agent_stuck(self, agent_id=0):
-        if len(self.recent_actions) < self.action_history_length:
-            return False
-
-        # Compute pairwise action differences in circular space
-        diffs = []
-        for i in range(len(self.recent_actions) - 1):
-            a1 = self.recent_actions[i]
-            a2 = self.recent_actions[i + 1]
-            # Circular distance: min steps around the 16-direction circle
-            diff = min(abs(a1 - a2), 16 - abs(a1 - a2))
-            diffs.append(diff)
-
-        avg_diff = sum(diffs) / len(diffs)
-
-        condition_1 = avg_diff > self.oscillation_threshold
-        if condition_1: print('[STUCK DETECTION] Oscillating actions detected')
-
-        # Condition 2: No forward progress
-        current_pos = np.array([
-            self.env.agents[self.env.aircraft_ids[agent_id]].x,
-            self.env.agents[self.env.aircraft_ids[agent_id]].y
-        ])
-
-        # Check if agent hasn't moved much in recent history
-        recent_positions = np.array(self.position_history[-self.history_length:])
-        distances_from_current = np.linalg.norm(recent_positions - current_pos, axis=1)
-
-        # If most recent positions are within stuck_threshold, agent is stuck
-        stuck_positions = np.sum(distances_from_current < self.stuck_threshold)
-        stuck_ratio = stuck_positions / len(distances_from_current)
-        condition_3 = stuck_ratio > 0.8
-        if condition_3: print('[STUCK DETECTION] Stuck ratio exceeded')
-
-        # Also check for no progress towards targets
-        # steps_since_progress = self.env.step_count_outer - self.last_progress_step
-        # condition_2 = steps_since_progress > self.no_progress_threshold
-        # if condition_2: print('[STUCK DETECTION] No progress detected')
-
-        #print(f"[DEBUG] avg_diff={avg_diff:.2f}, stuck_ratio={stuck_ratio:.2f}, steps_since_progress=")
-
-        return condition_1 or condition_3 # condition_2
-
-
     def get_nearest_unknown_target(self, agent_id=0):
         """Find the nearest unknown target position"""
         agent_pos = np.array([
@@ -847,95 +751,9 @@ class MaisrLocalSearchWrapper(gym.Env):
         return unknown_positions[nearest_idx]
 
 
-    def get_override_action(self, agent_id=0):
-        """Get action to move towards override target"""
-        if self.override_target_pos is None:
-            return None
-
-        agent_pos = np.array([
-            self.env.agents[self.env.aircraft_ids[agent_id]].x,
-            self.env.agents[self.env.aircraft_ids[agent_id]].y
-        ])
-
-        # Calculate direction to target
-        direction_vector = self.override_target_pos - agent_pos
-        distance_to_target = np.linalg.norm(direction_vector)
-
-        # Check if we've arrived at target
-        # if distance_to_target < self.override_arrival_threshold:
-        #     self.override_active = False
-        #     self.override_target_pos = None
-        #     print(f"Override complete - arrived at target (distance: {distance_to_target:.1f})")
-        #     return None
-
-        if distance_to_target > 0:
-            # Normalize direction vector
-            unit_direction = direction_vector / distance_to_target
-
-            # Your environment's direction mapping:
-            # 0: (0, 1)   # North
-            # 1: (0.383, 0.924)  # NNE
-            # 2: (0.707, 0.707)  # NE
-            # 3: (0.924, 0.383)  # ENE
-            # 4: (1, 0)   # East
-            # etc.
-
-            # Calculate angle from positive x-axis (standard math convention)
-            angle = np.arctan2(unit_direction[1], unit_direction[0])
-
-            # Convert to environment's convention where:
-            # - Action 0 points North (0, 1) = 90° in standard math
-            # - Action 4 points East (1, 0) = 0° in standard math
-            # So we need to map: math_angle to env_action
-
-            # Environment action 0 = 90° math angle
-            # Environment action 4 = 0° math angle
-            # Environment rotates clockwise from North
-
-            # Convert math angle to environment angle
-            # Rotate by 90° and reverse direction (clockwise vs counterclockwise)
-            env_angle = (np.pi / 2 - angle) % (2 * np.pi)
-
-            # Convert to discrete action (16 directions)
-            action = int(env_angle / (2 * np.pi / 16)) % 16
-
-            # print(f"Override debug:")
-            # print(f"  Agent pos: {agent_pos}")
-            # print(f"  Target pos: {self.override_target_pos}")
-            # print(f"  Direction vector: {direction_vector}")
-            # print(f"  Unit direction: {unit_direction}")
-            # print(f"  Math angle: {angle:.3f} rad ({np.degrees(angle):.1f}°)")
-            # print(f"  Env angle: {env_angle:.3f} rad ({np.degrees(env_angle):.1f}°)")
-            # print(f"  Selected action: {action}")
-
-            # Let's also verify what this action should do
-            direction_map = {
-                0: (0, 1), 1: (0.383, 0.924), 2: (0.707, 0.707), 3: (0.924, 0.383),
-                4: (1, 0), 5: (0.924, -0.383), 6: (0.707, -0.707), 7: (0.383, -0.924),
-                8: (0, -1), 9: (-0.383, -0.924), 10: (-0.707, -0.707), 11: (-0.924, -0.383),
-                12: (-1, 0), 13: (-0.924, 0.383), 14: (-0.707, 0.707), 15: (-0.383, 0.924)
-            }
-            expected_direction = direction_map.get(action, (0, 0))
-            #print(f"  Expected movement direction: {expected_direction}")
-
-            return action
-
-        return None
-
-
     def set_league_type(self, new_league_type):
         self.teammate_manager.league_type = new_league_type
 
-    def update_progress_tracking(self):
-        """Update progress tracking for stuck detection"""
-        # Check if any new targets were identified this step
-        current_identified = self.env.targets_identified
-        if not hasattr(self, 'last_targets_identified'):
-            self.last_targets_identified = current_identified
-
-        if current_identified > self.last_targets_identified:
-            self.last_progress_step = self.env.step_count_outer
-            self.last_targets_identified = current_identified
 
     def change_league_ratio(self, new_ratio):
         if self.teammate_manager is not None:

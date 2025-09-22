@@ -1,8 +1,0 @@
-timestamp,survey_type,episode_config,compared_agents,preferred_overall,performed_better,adapted_better
-935250,teammate_preference,A1,"('green', 'purple')",green,purple,green
-1027595,teammate_preference,C1,"('red', 'green')",green,green,green
-1099774,teammate_preference,B3,"('purple', 'red')",red,red,red
-1435455,teammate_preference,C3,"('red', 'green')",red,red,red
-1601545,teammate_preference,A4,"('green', 'purple')",purple,purple,purple
-1751776,teammate_preference,B5,"('purple', 'red')",purple,purple,purple
-2020788,teammate_preference,A7,"('green', 'purple')",purple,purple,purple

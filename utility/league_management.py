@@ -1,8 +1,8 @@
 import glob
 import os
 import random
-from multiprocessing.managers import Value
 
+import itertools
 import numpy as np
 from abc import ABC, abstractmethod
 import pygame
@@ -11,7 +11,7 @@ import gymnasium as gym
 import math
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional, List
-from env_multi_new import MAISREnvVec
+from base_env import MAISREnvVec
 
 class SubPolicy(ABC):
     """Abstract base class for all sub-policies"""
@@ -38,7 +38,7 @@ class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
     def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir,
-                 subpolicies=None, overfit_test = None, current_model = None, fcp_ratio=1.0):
+                 subpolicies=None, overfit_test = None, current_model = None):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -58,7 +58,6 @@ class TeammateManager:
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
-        self.fcp_ratio = fcp_ratio
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
@@ -1551,7 +1550,10 @@ class GoToNearestThreat(SubPolicy):
 
 
 class EvadeDetection(SubPolicy):
-    """Sub-policy that avoids threats and minimizes detection risk"""
+    """
+    Sub-policy that avoids threats and minimizes detection risk
+    Not used in the human heuristic modeling project
+    """
 
     def __init__(self, model_path: str=None, norm_statistics_path=None):
         super().__init__("evade_detection")
@@ -2150,7 +2152,6 @@ class LocalSearch(SubPolicy):
         self._reset_circumnavigation_state()
 
 
-import itertools
 
 class TargetSearchLocalTSP(SubPolicy):
     """
@@ -2941,7 +2942,9 @@ class TargetSearchLocalTSP(SubPolicy):
 
 
 class ChangeRegions(SubPolicy):
-    """Sub-policy that moves to a specific region of the map"""
+    """Sub-policy that moves to a specific region of the map
+    Not used in the human heuristic modeling project
+    """
 
     def __init__(self, model_path=None):
         super().__init__(f"change_region")

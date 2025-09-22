@@ -2,9 +2,9 @@ import ctypes
 import pygame
 import numpy as np
 from stable_baselines3 import PPO
-from env_multi_new import MAISREnvVec
-from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from utility.data_logging import load_env_config
+from base_env import MAISREnvVec
+from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
+from utility.config_management import load_env_config
 from utility.league_management import (GenericTeammatePolicy, LocalSearch,
                                        ChangeRegions, GoToNearestThreat, EvadeDetection,
                                        RLTeammatePolicy)
