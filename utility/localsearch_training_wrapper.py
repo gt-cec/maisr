@@ -79,22 +79,22 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.last_real_direction = None
 
         # For detecting stuck agent
-        if self.env.config['use_stuck_detection']:
-            self.recent_actions = []
-            self.action_history_length = 10  # Can be tuned
-            self.oscillation_threshold = 3.5  # Max average difference before declaring stuck
-
-            self.position_history = []  # Track recent positions
-            self.history_length = 10  # Number of positions to track
-            self.stuck_threshold = 4  # Pixel distance threshold for being "stuck"
-            self.override_active = False
-            self.override_target_pos = None
-            self.override_arrival_threshold = 150  # Distance to target before giving control back
-            self.last_progress_step = 0
-            self.no_progress_threshold = 20  # Steps without progress before override
-
-            self.override_step_counter = 0  # Track override steps
-            self.max_override_steps = 20  # Run override for 5 steps
+        # if self.env.config['use_stuck_detection']:
+        #     self.recent_actions = []
+        #     self.action_history_length = 10  # Can be tuned
+        #     self.oscillation_threshold = 3.5  # Max average difference before declaring stuck
+        #
+        #     self.position_history = []  # Track recent positions
+        #     self.history_length = 10  # Number of positions to track
+        #     self.stuck_threshold = 4  # Pixel distance threshold for being "stuck"
+        #     self.override_active = False
+        #     self.override_target_pos = None
+        #     self.override_arrival_threshold = 150  # Distance to target before giving control back
+        #     self.last_progress_step = 0
+        #     self.no_progress_threshold = 20  # Steps without progress before override
+        #
+        #     self.override_step_counter = 0  # Track override steps
+        #     self.max_override_steps = 20  # Run override for 5 steps
 
         #print(f'Wrapped env created for local search training. Action space = {self.action_space}, obs space = {self.observation_space}')
 
@@ -107,21 +107,6 @@ class MaisrLocalSearchWrapper(gym.Env):
         self.current_subpolicy = None
 
         self.env.final_wrapper_reward = 0
-
-        # Reset stuck detection variables
-        if self.env.config['use_stuck_detection']:
-
-            self.recent_actions = []
-
-            self.position_history = []
-            self.override_active = False
-            self.override_target_pos = None
-            self.last_progress_step = 0
-            self.last_targets_identified = 0
-
-            self.override_step_counter = 0
-
-        # Reset teammate selection for new episode
 
         #if self.env.tag == 'human_eval0':
 
@@ -136,8 +121,7 @@ class MaisrLocalSearchWrapper(gym.Env):
                     self.teammate_manager.reset_for_episode()
                     self.current_teammate = self.teammate_manager.select_random_teammate()
                     self.current_teammate.env = self.env
-                    if self.env.tag != 'userstudy_0':
-                        print(f'[localsearchwrapper] Teammate manager is true, current teammate set to {self.current_teammate.name}')
+
             else:
                 self.teammate_manager.reset_for_episode()
                 self.current_teammate = self.teammate_manager.select_random_teammate()
@@ -250,7 +234,7 @@ class MaisrLocalSearchWrapper(gym.Env):
         obs[4] = self.get_distance_to_teammate(agent_id) / self.env.config['gameboard_size']
 
         # obs[5]: Adaptation signal (placeholder)
-        obs[5] = self.get_adaptation_signal()
+        obs[5] = 0 #self.get_adaptation_signal()
 
         # obs[6] and obs[7]: dx, dy to nearest threat
         agent_pos = np.array(
@@ -320,13 +304,11 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_target_index = self._unwrap_action(self.current_teammate.model.predict(teammate_obs, deterministic=True))
             except:
                 teammate_target_index = self._unwrap_action(self.current_teammate.model.predict(teammate_obs[:-1], deterministic=True))
-                #print(f'Teammate obs was wrong size, dropped the last element')
 
             return self.env._index_to_waypoint(int(teammate_target_index))
 
 
         elif self.teammate_manager or self.teammate_policy:
-
             # Get teammate observation (and normalize it)
             if self.env.config['league_type'] in ['selfplay','fcp']:
 

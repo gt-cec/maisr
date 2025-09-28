@@ -1,12 +1,10 @@
-import numpy as np
 import ctypes
 import pygame
-from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
-from utility.league_management import LocalSearch, SubPolicy, ChangeRegions, GoToNearestThreat
+from utility.league_management import LocalSearch
 from utility.config_management import load_env_config
 
 
@@ -23,7 +21,7 @@ if __name__ == "__main__":
     window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
     pygame.display.set_caption("MAISR Human Interface")
 
-    base_env = MAISREnvVec(
+    base_env = MaisrEnv(
         config=config,
         clock=clock,
         window=window,

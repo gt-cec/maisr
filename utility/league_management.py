@@ -11,7 +11,7 @@ import gymnasium as gym
 import math
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional, List
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 
 class SubPolicy(ABC):
     """Abstract base class for all sub-policies"""
@@ -38,7 +38,7 @@ class TeammateManager:
     """Manages pool of teammate policies and selection based on league type"""
 
     def __init__(self, league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir,
-                 subpolicies=None, overfit_test = None, current_model = None):
+                 subpolicies=None, overfit_test = None, current_model = None, verbose = False):
         """
         Initialize teammate manager with specified league type and balance method.
 
@@ -49,10 +49,23 @@ class TeammateManager:
             balance_method (str): "uniform" for current random sampling, "complex" for advanced balancing
         """
         self.league_type = league_type
-        self.subpolicies = subpolicies or {}
+        #self.subpolicies = #subpolicies or {}
+
+        self.subpolicies = {
+            'local_search': LocalSearch(model_path=None),
+            'change_region': ChangeRegions(model_path=None),
+            'go_to_threat': GoToNearestThreat(model_path=None),
+            #'local_tsp_nocoord': TargetSearchLocalTSP(search_radius=200),
+            #'global_tsp_nocoord': TargetSearchLocalTSP(search_radius=1000),
+            #'local_tsp_yescoord': TargetSearchLocalTSP(search_radius=200, spatial_coord=True),
+            #'global_tsp_yescoord': TargetSearchLocalTSP(search_radius=1000, spatial_coord=True)
+
+        }
+
         self.balance_method = balance_method
         self.current_teammate = None
         self.current_model = current_model
+        self.verbose = verbose
 
         self.episode_count = 0
         self.overfit_test = overfit_test
@@ -62,7 +75,7 @@ class TeammateManager:
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
         if league_type not in valid_league_types:
-            raise ValueError(f"league_type must be one of {valid_league_types}")
+            raise ValueError(f"league_type is {league_type} must be one of {valid_league_types}")
 
         # Validate balance method
         valid_balance_methods = ["uniform", "complex"]
@@ -289,7 +302,6 @@ class TeammateManager:
         # Select checkpoint based on type
         if selection_strategy_enabled:  # Selfplay strategy
             selection_strategy = random.random()
-            #selection_strategy = 0.4 # TODO temp force
 
             if selection_strategy < 0.5:
                 # Select from most recent 3 checkpoints
@@ -313,7 +325,8 @@ class TeammateManager:
 
         try:
             # Load the selected checkpoint
-            print(f"\nLoading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" + (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
+            if self.verbose:
+                print(f"\nLoading {teammate_type} checkpoint: {os.path.basename(selected_checkpoint)}" + (f" (strategy: {strategy_name})" if selection_strategy_enabled else ""))
             model = PPO.load(selected_checkpoint)
 
             # Find the corresponding norm stats .pkl file for the selected checkpoint. If not found, set to None.
@@ -527,18 +540,17 @@ class TeammateManager:
         # else:
         #     raise ValueError(f"Unknown planning_horizon value: {planning_horizon}")
 
-        heuristic_agent = HeuristicAgent(
-            mode_selector=mode_selector,
-            risk_tolerance=risk_tolerance,
-            spatial_coord=spatial_coord,
-        )
+        #policy_selector = PolicySelector( mode_selector=mode_selector, risk_tolerance=risk_tolerance, spatial_coord=spatial_coord,
 
-        teammate = GenericTeammatePolicy(
+
+        teammate = ConfigurableHeuristicTeammate(
             env=None,
             local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
+            policy_selector=PolicySelector(mode_selector=mode_selector,
+                                           risk_tolerance=risk_tolerance,
+                                           spatial_coord=spatial_coord),
             use_collision_avoidance=False,
             action_stability=action_stability,
             decision_speed=decision_speed
@@ -651,18 +663,18 @@ class TeammateManager:
             search_method=planning_horizon
         )
 
-        heuristic_agent = HeuristicAgent(
+        heuristic_agent = PolicySelector(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
         )
 
-        teammate = GenericTeammatePolicy(
+        teammate = ConfigurableHeuristicTeammate(
             env=None,
             local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
+            policy_selector=heuristic_agent,
             use_collision_avoidance=False,
             action_stability=action_stability,
             decision_speed=decision_speed
@@ -690,18 +702,18 @@ class TeammateManager:
             search_method=planning_horizon
         )
 
-        heuristic_agent = HeuristicAgent(
+        heuristic_agent = PolicySelector(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
         )
 
-        teammate = GenericTeammatePolicy(
+        teammate = ConfigurableHeuristicTeammate(
             env=None,
             local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
+            policy_selector=heuristic_agent,
             use_collision_avoidance=False,
             action_stability=action_stability,
             decision_speed=decision_speed
@@ -729,18 +741,18 @@ class TeammateManager:
             search_method=planning_horizon
         )
 
-        heuristic_agent = HeuristicAgent(
+        heuristic_agent = PolicySelector(
             mode_selector=mode_selector,
             risk_tolerance=risk_tolerance,
             spatial_coord=spatial_coord,
         )
 
-        teammate = GenericTeammatePolicy(
+        teammate = ConfigurableHeuristicTeammate(
             env=None,
             local_search_policy=target_search_policy,
             go_to_highvalue_policy=self.subpolicies.get('go_to_threat'),
             change_region_subpolicy=self.subpolicies.get('change_region'),
-            mode_selector_agent=heuristic_agent,
+            policy_selector=heuristic_agent,
             use_collision_avoidance=False,
             action_stability=action_stability,
             decision_speed=decision_speed
@@ -788,20 +800,22 @@ class RLTeammatePolicy(TeammatePolicy):
                  change_region_subpolicy,
                  use_collision_avoidance: bool = False,
                  norm_stats_path: str = None,
+                 verbose = False
                  ):
 
         self.model = model
         self.env = env
         self.use_collision_avoidance = use_collision_avoidance
+        self.verbose = verbose
 
-        #self.norm_stats = None
         if norm_stats_path and os.path.exists(norm_stats_path):
             try:
                 #self.norm_stats = np.load(norm_stats_path, allow_pickle=True).item()
                 import pickle
                 with open(norm_stats_path, 'rb') as f:
                     self.norm_stats = pickle.load(f)
-                print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
+                if self.verbose:
+                    print(f"[RLTeammatePolicy] Loaded normalization stats from {norm_stats_path}")
             except Exception as e:
                 print(f"[RLTeammatePolicy] Failed to load norm stats from {norm_stats_path}: {e}")
                 self.norm_stats = None
@@ -825,25 +839,30 @@ class RLTeammatePolicy(TeammatePolicy):
 
 
     def choose_subpolicy(self, observation, current_subpolicy):
-        """Choose subpolicy using the trained RL model"""
-        try:
-            self.last_observation = observation
-            normalized_obs = self._normalize_observation(observation) # Apply normalization if available
-
-            action, _ = self.model.predict(normalized_obs, deterministic=False) # Use the RL model to predict the action (subpolicy choice)
-
-            # Ensure action is a valid subpolicy choice (0, 1, 2, or 3)
-            if hasattr(action, 'item'):  # Handle numpy scalars
-                action = action.item()
-            action = int(action)
-            action = max(0, min(3, action))  # Clamp to valid range
-
-            return action
-
-        except Exception as e:
-            print(f"[RLTeammatePolicy] Error in choose_subpolicy: {e}")
-            #print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
-            return 0  # Fallback to local search
+        """Choose subpolicy using the trained RL model
+        NOTE: This is currently not used for pure RL teammates. Instead, the training wrapper gets the RL teammate's action
+        directly by calling current_teammate.model.predict(obs).
+        However, you could use this method if you train an RL policy to choose between subpolicies.
+        """
+        pass
+        # try:
+        #     self.last_observation = observation
+        #     normalized_obs = self._normalize_observation(observation) # Apply normalization if available
+        #
+        #     action, _ = self.model.predict(normalized_obs, deterministic=False) # Use the RL model to predict the action (subpolicy choice)
+        #
+        #     # Ensure action is a valid subpolicy choice (0, 1, 2, or 3)
+        #     if hasattr(action, 'item'):  # Handle numpy scalars
+        #         action = action.item()
+        #     action = int(action)
+        #     action = max(0, min(3, action))  # Clamp to valid range
+        #
+        #     return action
+        #
+        # except Exception as e:
+        #     print(f"[RLTeammatePolicy] Error in choose_subpolicy: {e}")
+        #     #print(f"[RLTeammatePolicy] Falling back to local search (subpolicy 0)")
+        #     return 0  # Fallback to local search
 
     def set_live_normalization_stats(self, obs_rms, ret_rms):
         """Set live normalization stats from the training environment"""
@@ -912,7 +931,7 @@ class RLTeammatePolicy(TeammatePolicy):
         # For now, return False as placeholder
         return False
 
-class HeuristicAgent:
+class PolicySelector:
     """
     Heuristic agent that chooses subpolicies based on risk tolerance and spatial coordination settings.
 
@@ -1037,7 +1056,7 @@ class HeuristicAgent:
         # If mode_selector is "none", always choose localsearch
         if self.mode_selector == "none":
             self._update_tracking(0)
-            #print(f"[HeuristicAgent] mode_selector=none -> localsearch(0)")
+            #print(f"[PolicySelector] mode_selector=none -> localsearch(0)")
             return 0
 
         # Check if we should choose gotothreat based on risk tolerance and detections
@@ -1061,7 +1080,7 @@ class HeuristicAgent:
 
             self._update_tracking(choice)
             #action_name = ["localsearch", "changeregion", "gotothreat"][choice]
-            #print(f"[HeuristicAgent] {reason} -> {action_name}({choice})")
+            #print(f"[PolicySelector] {reason} -> {action_name}({choice})")
             return choice
 
         # Choose between localsearch (0) and changeregion (1) based on spatial coordination
@@ -1089,7 +1108,7 @@ class HeuristicAgent:
 
         self._update_tracking(choice)
         #action_name = ["localsearch", "changeregion", "gotothreat"][choice]
-        #print(f"[HeuristicAgent] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
+        #print(f"[PolicySelector] detections={detections}, risk={self.risk_tolerance}, {reason} -> {action_name}({choice})")
         return choice
 
     def _update_tracking(self, chosen_subpolicy):
@@ -1125,7 +1144,7 @@ class HeuristicAgent:
             self._debug_counter = 0
 
         #if self._debug_counter % 10 == 0:  # Log every 50 calls
-            #print(f"[HeuristicAgent] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
+            #print(f"[PolicySelector] Risk: {self.risk_tolerance}, Detections: {detections}, Should go to threat: {should_go}")
 
         return should_go
 
@@ -1308,20 +1327,20 @@ class HeuristicAgent:
         return quadrant_counts
 
 
-class GenericTeammatePolicy(TeammatePolicy):
+class ConfigurableHeuristicTeammate(TeammatePolicy):
     def __init__(self,
                  env,
                  local_search_policy: SubPolicy,
                  go_to_highvalue_policy: SubPolicy,
                  change_region_subpolicy: SubPolicy,
-                 mode_selector_agent: HeuristicAgent = None,
+                 policy_selector: PolicySelector = None,
                  use_collision_avoidance: bool = False,
                  action_stability='stable',
                  decision_speed='fast'
                  ):
 
         self.env = env
-        self.mode_selector_agent = mode_selector_agent
+        self.policy_selector = policy_selector
         self.use_collision_avoidance = use_collision_avoidance
         self.action_stability = action_stability
         self.decision_speed = decision_speed
@@ -1341,19 +1360,19 @@ class GenericTeammatePolicy(TeammatePolicy):
         return observation
 
     def choose_subpolicy(self, observation, current_subpolicy):
-        """Choose subpolicy using the embedded HeuristicAgent"""
-        if self.mode_selector_agent is None:
+        """Choose subpolicy using the embedded PolicySelector"""
+        if self.policy_selector is None:
             # Fallback to local search if no agent provided
             return 0
 
         # Use the heuristic agent to make the decision
         # We need to get the environment from the wrapper context
-        # For now, we'll pass None and add error handling in HeuristicAgent
+        # For now, we'll pass None and add error handling in PolicySelector
         if self.env is not None:
-            return self.mode_selector_agent.choose_subpolicy(self.env, agent_id=1)  # Assuming teammate is agent 1
+            return self.policy_selector.choose_subpolicy(self.env, agent_id=1)  # Assuming teammate is agent 1
         else:
             # If no environment available, fallback to local search
-            print("[GenericTeammatePolicy] Warning: No environment available, defaulting to localsearch")
+            print("[ConfigurableHeuristicTeammate] Warning: No environment available, defaulting to localsearch")
             raise ValueError
             return 0
 

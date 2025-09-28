@@ -30,11 +30,12 @@ while not import_complete:
         from stable_baselines3.common.evaluation import evaluate_policy
         from stable_baselines3.common.callbacks import BaseCallback
 
-        from base_env import MAISREnvVec
-        from utility.league_management import TeammateManager, GenericTeammatePolicy, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
+        from base_env import MaisrEnv
+        from utility.league_management import TeammateManager, ConfigurableHeuristicTeammate, SubPolicy, LocalSearch, ChangeRegions, GoToNearestThreat, TargetSearchLocalTSP, RecordedTrajectoryTeammate
         from utility.config_management import load_env_config
         import_complete = True
-    except:
+    except Exception as e:
+        print(f'Import exception: {e}')
         import_complete = False
 
 
@@ -207,15 +208,16 @@ class LeagueTypeTransitionCallback(BaseCallback):
         else:
             return self.initial_league_type
 
-class PrintObsEvery50Steps(BaseCallback):
+class PrintObsCallback(BaseCallback):
     """
-    Custom callback to print the agent's environment observation every 50 steps.
+    Custom callback to print the agent's environment observation every n steps.
     """
-    def __init__(self, verbose: int = 0):
+    def __init__(self, print_freq = 50, verbose: int = 0):
         super().__init__(verbose)
+        self.print_freq = print_freq
 
     def _on_step(self) -> bool:
-        if self.num_timesteps % 50 == 0:
+        if self.num_timesteps % self.print_freq == 0:
             observations = self.locals.get('new_obs')
             if observations is None:
                 observations = self.locals.get('obs')
@@ -228,18 +230,20 @@ class PrintObsEvery50Steps(BaseCallback):
         return True
 
 
-class EnhancedWandbCallback_Monolith(BaseCallback):
+class EnhancedWandbCallback(BaseCallback):
     """Custom Callback that:
     1. Logs training metrics to WandB
     2. Evaluates the agent periodically (also logged to WandB)
     3. Determines if the agent should progress to the next stage of the training curriculum
     4. Logs additional PPO training metrics
+
+    # TODO: We plan to break this into multiple callbacks in the future.
     """
 
     def __init__(self, env_config, verbose=0, eval_env=None, human_eval_env=None,run=None,
                  use_curriculum=False, min_target_ids_to_advance=8, run_name='no_name',
                  log_freq=4, teammate_manager=None):
-        super(EnhancedWandbCallback_Monolith, self).__init__(verbose)
+        super(EnhancedWandbCallback, self).__init__(verbose)
         self.avg_mean_diffs = []
         self.avg_var_diffs = []
         self.config = env_config
@@ -758,45 +762,46 @@ class EnhancedWandbCallback_Monolith(BaseCallback):
         return True
 
 
-def make_env(env_config, rank, seed, run_name='no_name'):
-    """
-    Callable function that creates a MAISR environment. This function is passed to the vectorized environment
-    instantiation in train()
-    """
-    def _init():
-        env = MAISREnvVec(
-            config=env_config,
-            render_mode='headless',
-            run_name=run_name,
-            tag=f'train_mp{rank}',
-            seed=seed + rank,
-        )
-        env = Monitor(env)
-        env.reset()
-        return env
-    return _init
+# def make_env(env_config, rank, seed, run_name='no_name', save_episode_plots = True):
+#     """
+#     Callable function that creates a MAISR environment. This function is passed to the vectorized environment
+#     instantiation in train()
+#     """
+#     def _init():
+#         env = MAISREnvVec(
+#             config=env_config,
+#             render_mode='headless',
+#             run_name=run_name,
+#             tag=f'train_mp{rank}',
+#             seed=seed + rank,
+#             save_episode_plots = save_episode_plots
+#         )
+#         env = Monitor(env)
+#         env.reset()
+#         return env
+#     return _init
 
 
 def setup_teammate_pool(league_type, balance_method, selfplay_checkpoint_dir, pretrained_teammate_dir, overfit_test, fcp_ratio=1.0):
     """Setup teammate manager with specified league type"""
 
-    # Create subpolicies for teammates to use
-    subpolicies = {
-        'local_search': LocalSearch(model_path=None),  # Using heuristic
-        'change_region': ChangeRegions(model_path=None),  # Using heuristic
-        'go_to_threat': GoToNearestThreat(model_path=None),  # Using heuristic
-        'local_tsp_nocoord': TargetSearchLocalTSP(search_radius = 200),
-        'global_tsp_nocoord': TargetSearchLocalTSP(search_radius = 1000),
-
-        'local_tsp_yescoord': TargetSearchLocalTSP(search_radius=200, spatial_coord=True),
-        'global_tsp_yescoord': TargetSearchLocalTSP(search_radius=1000, spatial_coord=True)
-
-    }
+    # Specify the subpolicies for teammates to use. The
+    # subpolicies = {
+    #     'local_search': LocalSearch(model_path=None),  # Using heuristic
+    #     'change_region': ChangeRegions(model_path=None),  # Using heuristic
+    #     'go_to_threat': GoToNearestThreat(model_path=None),  # Using heuristic
+    #     'local_tsp_nocoord': TargetSearchLocalTSP(search_radius = 200),
+    #     'global_tsp_nocoord': TargetSearchLocalTSP(search_radius = 1000),
+    #
+    #     'local_tsp_yescoord': TargetSearchLocalTSP(search_radius=200, spatial_coord=True),
+    #     'global_tsp_yescoord': TargetSearchLocalTSP(search_radius=1000, spatial_coord=True)
+    #
+    # }
 
     teammate_manager = TeammateManager(
         league_type,
         balance_method,
-        subpolicies=subpolicies,
+        #subpolicies=subpolicies,
         selfplay_checkpoint_dir=selfplay_checkpoint_dir,
         pretrained_teammate_dir=pretrained_teammate_dir,
         overfit_test=overfit_test
@@ -820,6 +825,7 @@ def train_generic(
         save_model=True,
         save_checkpoints = False,
         overfit_test=None,
+        save_episode_plots = True
 
 ):
     """
@@ -899,7 +905,7 @@ def train_generic(
 
     print(f"Training with {n_envs} environments in parallel\n")
 
-    def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False):
+    def make_wrapped_env(env_config, rank, seed, run_name='no_name', render=False, save_episode_plots=True):
         def _init():
 
             if rank != 0:
@@ -907,12 +913,13 @@ def train_generic(
                 import os
                 sys.stdout = open(os.devnull, 'w')
 
-            base_env = MAISREnvVec( # Create base environment
+            base_env = MaisrEnv( # Create base environment
                 config=env_config,
                 render_mode='headless',
                 run_name=run_name,
                 tag=f'train_mp{rank}',
                 seed=seed + rank,
+                save_episode_plots = save_episode_plots
             )
 
             #localsearch_model = PPO.load('trained_models/local_search_2000000.0timesteps_0.1threatpenalty_0615_1541_6envs_maisr_trained_model.zip')
@@ -938,7 +945,7 @@ def train_generic(
         return _init
 
     # Instantiate main env
-    env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name) for i in range(n_envs)]
+    env_fns = [make_wrapped_env(env_config, i, env_config['seed'] + i, run_name=run_name, save_episode_plots=save_episode_plots) for i in range(n_envs)]
     if n_envs > 1:
         env = SubprocVecEnv(env_fns)
     else:
@@ -959,7 +966,7 @@ def train_generic(
 
 
     # Create and wrap eval environment
-    base_eval_env = MAISREnvVec(env_config,None,render_mode='headless',tag='eval',run_name=run_name)
+    base_eval_env = MaisrEnv(env_config, None, render_mode='headless', tag='eval', run_name=run_name, save_episode_plots=save_episode_plots)
     eval_env = MaisrLocalSearchWrapper(
         base_eval_env,
         env_config['obs_noise_std_localsearch'],
@@ -972,7 +979,7 @@ def train_generic(
     eval_env = DummyVecEnv([lambda: eval_env])
 
 
-    base_human_eval_env = MAISREnvVec(env_config, None, render_mode='headless', tag='human_eval0', run_name=run_name)
+    base_human_eval_env = MaisrEnv(env_config, None, render_mode='headless', tag='human_eval0', run_name=run_name)
     human_eval_env = MaisrLocalSearchWrapper(
         base_human_eval_env,
         env_config['obs_noise_std_localsearch'],
@@ -1001,7 +1008,7 @@ def train_generic(
 
     wandb_callback = WandbCallback(gradient_save_freq=50, verbose=1, model_save_path = None) #f"{save_dir}/{run_name}/wandb_modelsave" if save_model else None)
 
-    enhanced_wandb_callback = EnhancedWandbCallback_Monolith(
+    enhanced_wandb_callback = EnhancedWandbCallback(
         env_config,
         eval_env=eval_env,
         human_eval_env=human_eval_env,
@@ -1010,7 +1017,7 @@ def train_generic(
         teammate_manager=teammate_manager
     )
 
-    printcallback = PrintObsEvery50Steps(verbose=1)
+    printcallback = PrintObsCallback(verbose=1)
 
     callbacks = [wandb_callback, enhanced_wandb_callback]  # printcallback
 
@@ -1148,27 +1155,32 @@ def train_generic(
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='MAISR RL training script')
-    parser.add_argument('--version', required=True, help='Which training version to run. You can define multiple versions later in this script')
-    parser.add_argument('--seed', required=True, help='Seed to run')
+    parser.add_argument('--version', required=False, help='Which training version to run. You can define multiple versions later in this script')
+    parser.add_argument('--seed', required=False, help='Seed to run')
     parser.add_argument('--testing', action='store_true', help='Set to testing mode. Simplifies some aspects of training for faster debugging')
 
     args = parser.parse_args()
-    version = args.version
-    condition = args.condition
+    version = args.version if args.version else 'main'
 
     print(f'\n############################ STARTING TRAINING ############################')
 
     ############## ---- SETTINGS ---- ##############
-    config_filename = 'configs/Monolith_index_August.json'
+    config_filename = 'configs/main_config.json'
     num_envs = 2 if args.testing else multiprocessing.cpu_count() # Use all CPU cores for multiprocessing, but only use 2 if args.testing (for faster init)
     train_type = 'monolith' # What type of agent to train. "monolith" for a single policy that chooses directional or target index control. "mode_selector" for a hybrid agent that chooses subpolicies (not currently implemented)
     project_name = 'maisr-rl-mixedtraining'#'insert_wandb_project_name'
-    machine = socket.gethostname()
+    save_episode_plots = True # If True, episode plots are saved to outputs/{run name}/episode_plots
+    verbosity = {
+        'league_manager': False,
+        'rl_teammates': False,
 
+    }
+
+    machine = socket.gethostname() # If you want to label you runs based on which machine they were trained on. Can also replace with a string or '' to skip
     config = load_env_config(config_filename)
 
     # Add parameters to the config so they're logged
-    config['seed'] = int(args.seed)
+    config['seed'] = int(args.seed) if args.seed else 99
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
 
@@ -1178,13 +1190,14 @@ if __name__ == "__main__":
         project_name = 'Add your project name here' # For WandB
 
         # If you want to sweep over multiple hyperparameter settings, you can define them here. These will override the values in the config.json
+        # Note: All dictionary keys need to be enclosed in lists, even if they are single items.
         hyperparams = {
             "network_size": [128, 196],
             "lr": [0.001, 0.0015],
             'entropy_regularization': [0.07, 0.08],
             "teammate_reward_scale": [0.5, 0.75],
-            "teammate_active_at_start": True,
-            "league_type": 'selfplay',
+            "teammate_active_at_start": [True],
+            "league_type": ['strategy_diverse'], # ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
             "obs_noise": [0.00, 0.01],
         }
 
@@ -1231,6 +1244,7 @@ if __name__ == "__main__":
 
     param_names = list(hyperparams.keys())
     param_values = list(hyperparams.values())
+    print(param_values)
 
     # Loop through the hyperparameters selected in the version block above
     for param_combination in itertools.product(*param_values):

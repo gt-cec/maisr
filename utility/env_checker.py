@@ -9,7 +9,7 @@ from PIL import Image
 import glob
 from stable_baselines3 import PPO
 
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.config_management import load_env_config
 from train_ppo import train_generic
 
@@ -207,7 +207,7 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,
@@ -217,7 +217,7 @@ def test_env_heuristic(heuristic, config, render=True, test_dir=None):
         )
 
     else:
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             render_mode='headless',
             tag='test_suite',
@@ -290,7 +290,7 @@ def test_env_badheuristic(badheuristic, config, render=False,test_dir=None):
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,
@@ -300,7 +300,7 @@ def test_env_badheuristic(badheuristic, config, render=False,test_dir=None):
         )
 
     else:
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             render_mode='headless',
             tag='test_suite'
@@ -383,7 +383,7 @@ def test_env_humanplaytest(config, test_dir=None):
     pygame.display.set_caption("MAISR Human Interface")
 
     # Create environment with human rendering
-    env = MAISREnvVec(
+    env = MaisrEnv(
         config=config,
         clock=clock,
         window=window,
@@ -534,7 +534,7 @@ def test_env_random(config, render=False,test_dir=None):
         window = pygame.display.set_mode((window_width, window_height), flags=pygame.NOFRAME)
         pygame.display.set_caption("MAISR Human Interface")
 
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,
@@ -544,7 +544,7 @@ def test_env_random(config, render=False,test_dir=None):
         )
 
     else:
-        env = MAISREnvVec(
+        env = MaisrEnv(
             config=config,
             render_mode='headless',
             tag='test_suite'
@@ -613,7 +613,7 @@ def test_curriculum(config):
     from stable_baselines3.common.monitor import Monitor
 
     # Training environment (vectorized and normalized like in train_sb3)
-    env = MAISREnvVec(
+    env = MaisrEnv(
         config=config,
         render_mode='headless',
         tag='curriculum_test_train_0'
@@ -623,7 +623,7 @@ def test_curriculum(config):
     env = VecNormalize(env)
 
     # Evaluation environment (normalized but not training, like in train_sb3)
-    eval_env = MAISREnvVec(
+    eval_env = MaisrEnv(
         config=config,
         render_mode='headless',
         tag='curriculum_test_eval_0'
@@ -773,7 +773,7 @@ def test_cnn_observations(config):
     config['obs_type'] = 'pixel'
 
     # Create environment with pixel observations
-    env = MAISREnvVec(
+    env = MaisrEnv(
         config=config,
         render_mode='headless',
         tag='test_0'
@@ -812,7 +812,7 @@ def test_cnn_observations(config):
     print("\nComparing vector vs pixel observations...")
 
     # Create vector environment for comparison
-    env_vector = MAISREnvVec(
+    env_vector = MaisrEnv(
         config=config,
         render_mode='headless',
         tag='test_vector_0',

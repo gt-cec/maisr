@@ -1,5 +1,4 @@
 import ctypes
-from dataclasses import dataclass
 from typing import List, Tuple, Dict
 import os, json, math
 import glob
@@ -14,10 +13,8 @@ from dataclasses import dataclass, field
 
 import re
 import itertools
-import pickle
 import numpy as np
 import pandas as pd
-from scipy.stats import wasserstein_distance
 import matplotlib.pyplot as plt
 
 # For target-threat cluster analysis
@@ -31,9 +28,8 @@ from scipy.spatial.distance import cdist
 from scipy.stats import mannwhitneyu, pearsonr, kruskal
 
 # For action distribution comparison
-from scipy.stats import chisquare
 
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.config_management import load_env_config
 from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, GenericTeammatePolicy, TargetSearchLocalTSP, HeuristicAgent
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
@@ -342,7 +338,7 @@ def waypoint_to_direction_index(current_pos, target_waypoint):
 
 def make_wrapped_env(env_config, clock = None, window = None, run_name='no_name', teammate=None):
     def _init():
-        base_env = MAISREnvVec( # Create base environment
+        base_env = MaisrEnv( # Create base environment
             config=env_config,
             clock=clock,
             window=window,

@@ -5,7 +5,7 @@ import numpy as np
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from training_wrappers.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config_management import load_env_config
 from experiments.exp2_user_study.rl_data_logger import ExperimentDataLogger
@@ -28,7 +28,7 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
 
 def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_name='no_name'):
     def _init():
-        base_env = MAISREnvVec(
+        base_env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,

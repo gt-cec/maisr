@@ -16,4 +16,3 @@ dependencies:
   - stable-baselines3
   - pip:
     - gymnasium
-    - imitation

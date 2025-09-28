@@ -1,6 +1,7 @@
 import json
 import os
 
+import cv2
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -10,7 +11,7 @@ import utility.agents as agents
 from utility.gui import Button, HealthWindow, TimeWindow
 
 
-class MAISREnvVec(gym.Env):
+class MaisrEnv(gym.Env):
     """Multi-Agent ISR Environment following the Gym format"""
 
     def __init__(self, config={}, window=None, clock=None, render_mode='headless',
@@ -19,13 +20,14 @@ class MAISREnvVec(gym.Env):
                  seed=None,
                  subject_id='999', user_group='99', round_number='99',
                  agent_appearance=None,
-                 running_experiment = False):
+                 running_experiment = False, save_episode_plots = True):
 
         super().__init__()
 
         self.config = config # Loaded from .json into a dictionary
         self.run_name = run_name # For logging
         self.running_experiment = running_experiment
+        self.save_episode_plots = save_episode_plots
 
         self.agent_appearance = agent_appearance
 
@@ -248,7 +250,7 @@ class MAISREnvVec(gym.Env):
         self.teammate_going_to_threat = False
 
         if self.config['use_curriculum']:
-            self.generate_plot_list()  # Generate list of episodes to plot using save_action_history_plot()
+            self.generate_plot_list()  # Generate list of episodes to plot using save_episode_plot()
 
         if self.config['force_specific_level'] != 99:
             self.level_idx = self.config['force_specific_level']
@@ -265,7 +267,7 @@ class MAISREnvVec(gym.Env):
 
         # Set seed for this level
         seed_list = self.level_seeds[0:self.num_levels]
-        if self.tag in ['eval','test_suite']: current_seed_index = self.episode_counter % len(seed_list)
+        if self.tag in ['eval','test_suite','play_env']: current_seed_index = self.episode_counter % len(seed_list)
         else: current_seed_index = (self.episode_counter+int(self.tag[-1])) % len(seed_list) # Shuffling seeds for each subprocess env to avoid overfitting
         current_seed = seed_list[current_seed_index]
         np.random.seed(current_seed)
@@ -671,8 +673,9 @@ class MAISREnvVec(gym.Env):
                 self.teammate_checkpoint_info = info["teammate_checkpoint"]
 
             # Keep individual plots for specific episodes if needed
-            if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0", "human_eval0"] and self.episode_counter in self.episodes_to_plot:
-                self.save_action_history_plot()
+            if self.save_episode_plots:
+                if self.tag in ['eval', 'train_mp0', 'bc', "userstudy_0", "human_eval0"] and self.episode_counter in self.episodes_to_plot:
+                    self.save_episode_plot()
 
             if self.render_mode == 'human':
                 pygame.time.wait(50)
@@ -2012,7 +2015,7 @@ class MAISREnvVec(gym.Env):
             raise ValueError('Render mode must be headless, rgb_array, human')
 
 
-    def save_action_history_plot(self, note=''):
+    def save_episode_plot(self, note=''):
         """ Save plot of the agent's trajectory, actions, and targets for the entire episode. """
         try:
             import matplotlib.pyplot as plt
@@ -2577,5 +2580,3 @@ class MAISREnvVec(gym.Env):
         y_interp = np.interp(new_times, np.arange(orig_steps), trajectory[:, 1])
 
         return np.stack([x_interp, y_interp], axis=1)
-
-

@@ -10,7 +10,7 @@ import re
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config_management import load_env_config
 from utility.league_management import (RLTeammatePolicy)
@@ -73,7 +73,7 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
 
 def make_wrapped_env(config, clock, window, teammate_policy, run_name='no_name'):
     def _init():
-        base_env = MAISREnvVec(
+        base_env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,

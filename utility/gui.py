@@ -418,34 +418,6 @@ class ScoreWindow:
     def update(self,score):
         self.score = score # Note: The truth source for score is env.score. This gets updated from that.
 
-# class HealthWindow:
-#     def __init__(self, agent_id, x, y, text, title_color):
-#         self.rect = pygame.Rect(x,y,150,70)
-#         self.color = (200,200,200)
-#         self.font = pygame.font.SysFont(None, 42)
-#         self.agent_id = agent_id
-#         self.damage = 0
-#         self.text = text
-#         self.damage_text_color = (0,0,0)
-#         self.title_color = title_color
-#
-#     def draw(self,win):
-#         pygame.draw.rect(win, self.color, self.rect)
-#         text_surface = self.font.render(self.text, True, self.title_color)
-#         text_rect = text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 0.5*self.rect.height // 2))
-#         win.blit(text_surface, text_rect)
-#
-#         if self.damage >= 70: self.damage_text_color = (255,0,0)
-#         elif self.damage >= 40: self.damage_text_color = (210,160,0)
-#
-#         health_num_text_surface = self.font.render(str(round(self.damage,1)) + '/10', True,self.damage_text_color)  # TODO: Update with agent health
-#         health_num_text_rect = health_num_text_surface.get_rect(center=(self.rect.x + self.rect.width // 2, self.rect.y + 1.4*self.rect.height // 2))
-#         win.blit(health_num_text_surface, health_num_text_rect)
-#
-#     def update(self,damage):
-#         self.damage = damage # Note: The truth source for score is env.score. This gets updated from that.
-
-
 class HealthWindow:
     def __init__(self, agent_id, x, y, text, title_color):
         self.rect = pygame.Rect(x, y, 150, 70)

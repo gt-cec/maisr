@@ -5,7 +5,7 @@ import numpy as np
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config_management import load_env_config
 from experiments.exp2_user_study.rl_data_logger import ExperimentDataLogger
@@ -68,7 +68,7 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
 
 def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_name='no_name'):
     def _init():
-        base_env = MAISREnvVec(
+        base_env = MaisrEnv(
             config=config,
             clock=clock,
             window=window,
@@ -96,7 +96,7 @@ def make_wrapped_env(config, clock, window, agent_appearance, subject_id, run_na
     return _init
 
 
-class HumanSubpolicyController:
+class HumanController:
     """Handles human input for subpolicy selection via keyboard and mouse clicks"""
 
     def __init__(self, env):
@@ -779,7 +779,7 @@ def main(subject_id=None, start_level=0, skip_instructions=None,collect_solo_tra
             current_agent_model = current_agents[agent_letter]
 
             # Initialize human controller for this episode
-            human_controller = HumanSubpolicyController(env)
+            human_controller = HumanController(env)
             sockets.human_controller = human_controller
 
             agent_model_name = agent_models[agent_letter] # For logging

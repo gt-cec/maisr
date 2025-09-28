@@ -2,7 +2,7 @@ import ctypes
 import pygame
 import numpy as np
 from stable_baselines3 import PPO
-from base_env import MAISREnvVec
+from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config_management import load_env_config
 from utility.league_management import (GenericTeammatePolicy, LocalSearch,
@@ -221,7 +221,7 @@ def main():
     }
 
     # Create base environment
-    base_env = MAISREnvVec(
+    base_env = MaisrEnv(
         config=config,
         clock=clock,
         window=window,
