@@ -353,17 +353,6 @@ def run_episode(env, agent0_controller, agent1_controller, config, window, clock
                 custom_waypoint = agent1_controller.get_custom_waypoint()
                 custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
                 base_env.agents[base_env.aircraft_ids[1]].waypoint_override = custom_waypoint
-        # if hasattr(agent1_controller, 'get_current_waypoint'):
-        #     # Human direct controller
-        #     waypoint = agent1_controller.get_current_waypoint()
-        #     base_env.agents[base_env.aircraft_ids[1]].waypoint_override = waypoint
-        # elif hasattr(agent1_controller, 'get_current_action'):
-        #     # Human subpolicy controller
-        #     human_action = agent1_controller.get_current_action()
-        #     if agent1_controller.should_override_waypoint():
-        #         custom_waypoint = agent1_controller.get_custom_waypoint()
-        #         custom_waypoint = (int(custom_waypoint[0]), int(custom_waypoint[1]))
-        #         base_env.agents[base_env.aircraft_ids[1]].waypoint_override = custom_waypoint
 
         # Take step in environment
         obs, reward, done, info = env.step([agent0_action])
