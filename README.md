@@ -40,7 +40,7 @@ Run ``experiments/exp2_user_study/run_userstudy.py``. The current version of the
 
 ``base_env.py``: Defines the main MAISR environment based on the gymnasium API.
 
-## Utilities:
+## Utilities
 ``/human_trajectories_for_training/``: Folder containing recorded human trajectories that can be instantiated as 
 teammates during agent evaluation in training.
 
