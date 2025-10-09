@@ -45,6 +45,7 @@ class Agent:
             self.target_point = (self.x,self.y) # Temporary hack, should loiter in place.
 
         dx, dy = self.target_point[0] - self.x, self.target_point[1] - self.y
+
         self.direction = math.atan2(dy, dx)
         dist = math.hypot(dx, dy)
 
@@ -126,7 +127,6 @@ class Aircraft(Agent):
                     if (self.waypoint_type=='target'):
                         pygame.draw.rect(window, self.color, pygame.Rect(self.target_point[0]-30,self.target_point[1]-30,60,60), 2) # Draw large box at waypoint location
                     #pygame.draw.rect(window, (0,0,0),pygame.Rect(self.target_point[0] - 3, self.target_point[1] - 3, 6, 6)) # Draw inner box at waypoint location
-
 
     # check if another agent is in the ISR range
     def in_isr_range(self, agent=None, distance=None) -> bool:
