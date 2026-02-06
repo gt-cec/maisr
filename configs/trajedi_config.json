@@ -1,0 +1,47 @@
+{
+  "n_seeds": 2,
+  "n_populations": 3,
+  "training_rounds": 20,
+  "steps_per_phase": 10240,
+  "eval_frequency": 2,
+  "n_eval_episodes": 10,
+  "n_envs_per_agent": 4,
+  
+  "_comment_div_factor": "Scaling factor for diversity bonus. Higher = more diversity pressure",
+  "div_factor": 5.0,
+  
+  "_comment_div_factor_decay": "Decay rate for div_factor over training. 1.0 = no decay",
+  "div_factor_decay": 1.0,
+  
+  "_comment_gamma": "Temporal discounting for JSD computation. Controls trajectory vs action-level diversity.",
+  "_comment_gamma_values": "gamma=1.0: trajectory-level (sensitive), gamma=0.0: action-level (stringent), gamma=0.5: balanced",
+  "gamma": 0.5,
+  
+  "_recommended_settings": {
+    "for_simple_environments": {
+      "gamma": 0.8,
+      "div_factor": 5.0,
+      "comment": "Tight solution spaces benefit from trajectory-level diversity"
+    },
+    "for_complex_environments": {
+      "gamma": 0.3,
+      "div_factor": 7.0,
+      "comment": "Environments with action nullspaces need stringent action-level diversity"
+    },
+    "for_MAISR": {
+      "gamma": 0.5,
+      "div_factor": 5.0,
+      "comment": "Multi-aircraft coordination - balanced diversity recommended"
+    },
+    "for_testing": {
+      "n_seeds": 2,
+      "n_populations": 2,
+      "training_rounds": 5,
+      "steps_per_phase": 2048,
+      "eval_frequency": 1,
+      "n_eval_episodes": 3,
+      "gamma": 0.5,
+      "div_factor": 3.0
+    }
+  }
+}

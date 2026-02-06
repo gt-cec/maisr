@@ -30,24 +30,34 @@ from training.trajedi.trajedi_callbacks import TrajeDiDiversityCallback
 
 class DiversityComputer:
     """
-    Computes Jensen-Shannon Divergence (JSD) across a population of PPO policies.
+    Computes Jensen-Shannon Divergence (JSD) with temporal discounting.
 
-    JSD = H(avg_policy) - avg(H(individual_policies))
+    Implements the full TrajeDi objective from Eq. 5:
+    JSDγ = - 1/n ∑_i ∑_τ P(τ|πi) ∑_t (1/T) log(δ̂_t(τ) / δ_i,t(τ))
 
-    Higher JSD means more behavioral diversity in the population.
+    where δ_i,t(τ) = ∏_{t'=0}^T [π_i(a_t'|τ_t')]^γ^|t-t'|
     """
 
-    def __init__(self, epsilon: float = 1e-8):
+    def __init__(self, gamma: float = 0.5, epsilon: float = 1e-8):
+        """
+        Args:
+            gamma: Temporal discounting factor
+                - gamma=1: Full trajectory-level diversity (most sensitive)
+                - gamma=0: Action-level diversity (most stringent)
+                - gamma in (0,1): Interpolates between the two
+            epsilon: Small constant for numerical stability
+        """
+        self.gamma = gamma
         self.epsilon = epsilon
 
     @torch.no_grad()
     def get_action_probs(self, model: PPO, observations: torch.Tensor) -> torch.Tensor:
         """
-        Get action probability distribution from a PPO model for given observations.
+        Get action probability distribution from a PPO model.
 
         Args:
             model: SB3 PPO model
-            observations: (batch_size, obs_dim) tensor of observations
+            observations: (batch_size, obs_dim) tensor
 
         Returns:
             (batch_size, n_actions) tensor of action probabilities
@@ -59,52 +69,145 @@ class DiversityComputer:
         probs = torch.softmax(logits, dim=-1)
         return probs
 
-    def compute_jsd(
-        self,
-        observations: torch.Tensor,
-        models: List[PPO]
+    def compute_local_action_kernel(
+            self,
+            observations: torch.Tensor,
+            actions: torch.Tensor,
+            models: List[PPO],
+            timestep_idx: int,
+            n_steps: int,
     ) -> torch.Tensor:
         """
-        Compute per-state JSD across population action distributions.
+        Compute local action kernel δ_i,t(τ) for each policy.
+
+        δ_i,t(τ) = ∏_{t'=0}^T [π_i(a_t'|obs_t')]^γ^|t-t'|
 
         Args:
-            observations: (batch_size, obs_dim) tensor
-            models: List of PPO models (population members)
+            observations: (n_steps, obs_dim) - single trajectory
+            actions: (n_steps,) - actions taken
+            models: List of PPO models
+            timestep_idx: Current timestep t
+            n_steps: Total trajectory length T
 
         Returns:
-            (batch_size,) tensor of JSD values per state
+            (n_models,) tensor of kernel values, one per policy
+        """
+        kernels = []
+
+        for model in models:
+            # Get action probs for all timesteps: (n_steps, n_actions)
+            all_probs = self.get_action_probs(model, observations)
+
+            # Get probability of actual actions taken: (n_steps,)
+            action_probs = all_probs[torch.arange(n_steps), actions]
+            action_probs = action_probs.clamp(min=self.epsilon)
+
+            # Apply temporal discounting: γ^|t - t'|
+            temporal_distances = torch.abs(torch.arange(n_steps, device=observations.device) - timestep_idx)
+            discount_factors = self.gamma ** temporal_distances.float()
+
+            # Compute kernel: ∏_{t'} [π(a_t'|obs_t')]^γ^|t-t'|
+            # In log space: ∑_{t'} γ^|t-t'| * log(π(a_t'|obs_t'))
+            log_kernel = (discount_factors * torch.log(action_probs)).sum()
+            kernel = torch.exp(log_kernel)
+
+            kernels.append(kernel)
+
+        return torch.stack(kernels)
+
+    def compute_jsd_trajectory(
+            self,
+            observations: torch.Tensor,
+            actions: torch.Tensor,
+            models: List[PPO],
+    ) -> torch.Tensor:
+        """
+        Compute JSD for a single trajectory using local action kernels.
+
+        Args:
+            observations: (n_steps, obs_dim) - single trajectory observations
+            actions: (n_steps,) - single trajectory actions
+            models: List of PPO models
+
+        Returns:
+            (n_steps,) tensor of JSD values, one per timestep
+        """
+        n_steps = observations.shape[0]
+        n_models = len(models)
+
+        if n_models < 2:
+            return torch.zeros(n_steps, device=observations.device)
+
+        jsd_per_timestep = []
+
+        for t in range(n_steps):
+            # Compute local action kernel for each policy at timestep t
+            # kernels: (n_models,)
+            kernels = self.compute_local_action_kernel(
+                observations, actions, models, timestep_idx=t, n_steps=n_steps
+            )
+
+            # Average kernel: δ̂_t(τ) = (1/n) ∑_i δ_i,t(τ)
+            avg_kernel = kernels.mean()
+
+            # JSD contribution at timestep t:
+            # ∑_i (1/n) log(δ̂_t(τ) / δ_i,t(τ))
+            # = (1/n) ∑_i [log(δ̂_t) - log(δ_i,t)]
+            avg_kernel_clamped = avg_kernel.clamp(min=self.epsilon)
+            kernels_clamped = kernels.clamp(min=self.epsilon)
+
+            jsd_t = (torch.log(avg_kernel_clamped) - torch.log(kernels_clamped)).mean()
+            jsd_per_timestep.append(jsd_t)
+
+        return torch.stack(jsd_per_timestep)
+
+    def compute_jsd(
+            self,
+            observations: torch.Tensor,
+            actions: torch.Tensor,
+            models: List[PPO],
+            n_envs: int,
+    ) -> torch.Tensor:
+        """
+        Compute JSD for a batch of parallel trajectories.
+
+        Args:
+            observations: (n_steps * n_envs, obs_dim) flattened observations
+            actions: (n_steps * n_envs,) flattened actions
+            models: List of PPO models
+            n_envs: Number of parallel environments
+
+        Returns:
+            (n_steps * n_envs,) tensor of JSD values
         """
         if len(models) < 2:
             return torch.zeros(observations.shape[0], device=observations.device)
 
-        # Collect action probs from each model
-        all_probs = []
-        for model in models:
-            probs = self.get_action_probs(model, observations)
-            all_probs.append(probs)
+        # Reshape to (n_steps, n_envs, obs_dim)
+        obs_dim = observations.shape[-1]
+        n_total = observations.shape[0]
+        n_steps = n_total // n_envs
 
-        # Stack: (n_models, batch_size, n_actions)
-        stacked = torch.stack(all_probs, dim=0)
+        obs_reshaped = observations.reshape(n_steps, n_envs, obs_dim)
+        actions_reshaped = actions.reshape(n_steps, n_envs)
 
-        # Average policy: (batch_size, n_actions)
-        avg_probs = stacked.mean(dim=0)
+        # Compute JSD for each environment trajectory separately
+        jsd_all_envs = []
 
-        # H(avg_policy) per state
-        avg_probs_clamped = avg_probs.clamp(min=self.epsilon)
-        H_avg = -(avg_probs_clamped * torch.log(avg_probs_clamped)).sum(dim=-1)
+        for env_idx in range(n_envs):
+            obs_traj = obs_reshaped[:, env_idx, :]  # (n_steps, obs_dim)
+            actions_traj = actions_reshaped[:, env_idx]  # (n_steps,)
 
-        # avg H(individual policies) per state
-        individual_entropies = []
-        for probs in all_probs:
-            probs_clamped = probs.clamp(min=self.epsilon)
-            H_i = -(probs_clamped * torch.log(probs_clamped)).sum(dim=-1)
-            individual_entropies.append(H_i)
+            jsd_traj = self.compute_jsd_trajectory(obs_traj, actions_traj, models)
+            jsd_all_envs.append(jsd_traj)
 
-        avg_H = torch.stack(individual_entropies, dim=0).mean(dim=0)
+        # Stack back: (n_steps, n_envs)
+        jsd_reshaped = torch.stack(jsd_all_envs, dim=1)
 
-        # JSD = H(avg) - avg(H)
-        jsd = H_avg - avg_H
-        return jsd
+        # Flatten: (n_steps * n_envs,)
+        return jsd_reshaped.reshape(-1)
+
+
 
 
 class PopulationPool:
@@ -259,8 +362,16 @@ class TrajeDiPPOTrainer:
         self.n_envs_per_agent = trajedi_config["n_envs_per_agent"]
         self.div_factor_schedule = trajedi_config.get("div_factor_schedule", "constant")
 
-        self.diversity_computer = DiversityComputer()
+        # gamma = 1.0: Full trajectory-level diversity (sensitive)
+        # gamma = 0.0: Action-level diversity (stringent)
+        # gamma in (0, 1): Interpolates between the two
+        self.gamma = trajedi_config.get("gamma", 0.5)
+
+        self.diversity_computer = DiversityComputer(gamma=self.gamma)
         self.pools: List[PopulationPool] = []
+
+        print(f"  TrajeDi gamma: {self.gamma}")
+        print(f"  Diversity factor: {self.div_factor}")
 
         # Output directories
         self.output_dir = f"outputs/{run_name}"
@@ -438,12 +549,16 @@ class TrajeDiPPOTrainer:
             return self.div_factor
         return self.div_factor
 
-    def _train_pool_round(self, pool: PopulationPool, round_num: int):
+    def _train_pool_round(self, pool, round_num: int):
         """
-        Train one round for a single pool.
+        Train one pool for one round with FIXED BR training strategy.
 
-        Phase 1: Train each population agent with diversity bonus (paired with BR)
-        Phase 2: Train BR agent against a random population member (pure reward)
+        PHASE 1: Train population agents with BR as teammate + diversity bonus
+        PHASE 2: Train BR with ALL population members as teammates (not just one random)
+
+        Args:
+            pool: PopulationPool instance
+            round_num: Current training round number
         """
         # Sync normalization stats from BR to all pop agents
         pool.sync_normalization()
@@ -451,8 +566,10 @@ class TrajeDiPPOTrainer:
         current_div_factor = self._get_current_div_factor(round_num)
 
         # === PHASE 1: Train population agents with diversity bonus ===
+        print(f"    Phase 1: Training {len(pool.pop_agents)} population agents with diversity...")
+
         for pop_idx, (pop_agent, pop_env, pop_tm) in enumerate(
-            zip(pool.pop_agents, pool.pop_envs, pool.pop_tms)
+                zip(pool.pop_agents, pool.pop_envs, pool.pop_tms)
         ):
             # Set BR as teammate for this population agent
             self._set_teammate(pop_tm, pool.br_agent, pop_env, name=f"BR_seed{pool.seed_idx}")
@@ -474,18 +591,47 @@ class TrajeDiPPOTrainer:
                 reset_num_timesteps=False,
             )
 
-        # === PHASE 2: Train BR against random pop member (pure reward) ===
-        random_pop_idx = random.randrange(len(pool.pop_agents))
-        random_pop_agent = pool.pop_agents[random_pop_idx]
-        self._set_teammate(
-            pool.br_tm, random_pop_agent, pool.br_env,
-            name=f"Pop{random_pop_idx}_seed{pool.seed_idx}"
-        )
+        # === PHASE 2: Train BR against ALL population members ===
+        # This matches the paper's Algorithm 1, where BR collects experience
+        # with all population members, not just one random member
+        print(f"    Phase 2: Training BR with all {len(pool.pop_agents)} population members...")
 
-        pool.br_agent.learn(
-            total_timesteps=self.steps_per_phase,
-            reset_num_timesteps=False,
-        )
+        n_pop = len(pool.pop_agents)
+        steps_per_pop_member = self.steps_per_phase // n_pop
+
+        # Distribute timesteps across all population members
+        for pop_idx, pop_agent in enumerate(pool.pop_agents):
+            # Set this population member as BR's teammate
+            self._set_teammate(
+                pool.br_tm,
+                pop_agent,
+                pool.br_env,
+                name=f"Pop{pop_idx}_seed{pool.seed_idx}"
+            )
+
+            # Train BR for a fraction of the total steps
+            pool.br_agent.learn(
+                total_timesteps=steps_per_pop_member,
+                reset_num_timesteps=False,
+            )
+
+            if self.verbose > 0:
+                print(f"      BR trained {steps_per_pop_member} steps with Pop{pop_idx}")
+
+        # If there are remaining steps due to integer division, train with random member
+        remaining_steps = self.steps_per_phase - (steps_per_pop_member * n_pop)
+        if remaining_steps > 0:
+            random_pop_idx = random.randrange(n_pop)
+            self._set_teammate(
+                pool.br_tm,
+                pool.pop_agents[random_pop_idx],
+                pool.br_env,
+                name=f"Pop{random_pop_idx}_seed{pool.seed_idx}_extra"
+            )
+            pool.br_agent.learn(
+                total_timesteps=remaining_steps,
+                reset_num_timesteps=False,
+            )
 
     def _evaluate_self_play(self) -> Dict[int, float]:
         """Evaluate BR_i with itself as teammate (self-play score)."""
