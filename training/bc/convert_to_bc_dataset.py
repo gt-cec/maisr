@@ -15,7 +15,6 @@ import math
 import os
 import pickle
 from pathlib import Path
-
 import numpy as np
 from imitation.data.types import Trajectory
 
@@ -134,23 +133,41 @@ def process_episode(timesteps: list[dict]) -> Trajectory | None:
     )
 
 
+
+
 def build_dataset(input_folder: str) -> list[Trajectory]:
     """
-    Scan a folder for .json recording files and convert each into a Trajectory.
-    Returns a list of Trajectory objects (one per file/episode).
+    Scan nested participant folders for .json recording files and convert each into a Trajectory.
+    Expected structure:
+      input_folder/
+        subject_<ID>/
+          timestep_data/
+            *.json
     """
-    folder = Path(input_folder)
-    json_files = sorted(folder.glob("*.json"))
+    root = Path(input_folder)
+
+    # Find JSONs inside: subject_<ID>/timestep_data/*.json
+    json_files = sorted(root.glob("subject_*/timestep_data/*.json"))
+
+    # If you want to be robust to extra nesting, use:
+    # json_files = sorted(root.rglob("timestep_data/*.json"))
 
     if not json_files:
-        raise FileNotFoundError(f"No .json files found in {input_folder}")
+        raise FileNotFoundError(
+            f"No .json files found under {root} (expected subject_*/timestep_data/*.json)"
+        )
 
     trajectories: list[Trajectory] = []
 
     for jf in json_files:
-        print(f"Processing {jf.name} ...")
+        # Useful context in logs:
+        # e.g., subject_12/timestep_data/episode_003.json
+        rel = jf.relative_to(root)
+        print(f"Processing {rel} ...")
+
         timesteps = load_json_file(jf)
         traj = process_episode(timesteps)
+
         if traj is not None:
             trajectories.append(traj)
             print(f"  → {len(traj.acts)} state-action pairs, terminal={traj.terminal}")
@@ -162,6 +179,7 @@ def build_dataset(input_folder: str) -> list[Trajectory]:
     print(f"Total state-action pairs: {total_pairs}")
 
     return trajectories
+
 
 
 def main():
@@ -187,21 +205,6 @@ def main():
     with open(args.output, "wb") as f:
         pickle.dump(trajectories, f)
     print(f"\nSaved {len(trajectories)} trajectories to {args.output}")
-
-    # Also print a quick sanity check of how to load & use with BC
-    print(
-        "\n── Quick usage with imitation BC ──\n"
-        "  import pickle\n"
-        "  from imitation.data.types import Trajectory\n"
-        "  from imitation.algorithms.bc import BC\n"
-        "  from imitation.data import rollout\n"
-        "\n"
-        f'  with open("{args.output}", "rb") as f:\n'
-        "      trajectories = pickle.load(f)\n"
-        "\n"
-        "  transitions = rollout.flatten_trajectories(trajectories)\n"
-        "  # transitions is a Transitions object usable directly with BC\n"
-    )
 
 
 if __name__ == "__main__":

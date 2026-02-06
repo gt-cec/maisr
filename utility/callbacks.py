@@ -1,3 +1,12 @@
+import glob
+import json
+
+import numpy as np
+from stable_baselines3.common.callbacks import BaseCallback
+import wandb
+import random
+import os
+
 class LeagueTypeTransitionCallback(BaseCallback):
     """
     Custom callback that transitions the league type after a preset number of timesteps.
@@ -473,7 +482,6 @@ class EnhancedWandbCallback(BaseCallback):
                     current_pos = base_human_env.agents[base_human_env.aircraft_ids[1]].x, base_human_env.agents[base_human_env.aircraft_ids[1]].y
                     waypoints = [wp if wp is not None else current_pos for wp in waypoints]
                     #print(f"[Eval] Waypoints: {waypoints}")
-
 
                     print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
                     obs = self.human_eval_env.reset()
