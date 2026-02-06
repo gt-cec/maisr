@@ -20,6 +20,14 @@ import pandas as pd
 
 
 def populate_agent_list(agent_dir, label='nolabel'):
+    """
+    Loads a collection of RL agents to be evaluated in the offline evaluation.
+    Returns a list containing tuples containing:
+        * The model object for the agent's policy
+        * The vecnormalize stats to load when running the agent
+        * The agent's name
+    """
+
     model_patterns = [
         os.path.join(agent_dir, "*_model.zip"),
         os.path.join(agent_dir, "**/*_model.zip")
@@ -77,8 +85,8 @@ def make_wrapped_env(config, clock, window, teammate_policy, run_name='no_name')
             config=config,
             clock=clock,
             window=window,
-            render_mode='human',
-            run_name=f'user_study_subj{subject_id}',
+            render_mode='human' if window else 'headless',
+            run_name=run_name,
             tag=f'offlinestudy0',
             #agent_appearance='black',
             running_experiment=False
@@ -230,17 +238,16 @@ def main():
 
         window_width, window_height = config['window_size'][0], config['window_size'][1]
         window = pygame.display.set_mode((window_width, window_height))
-        pygame.display.set_caption(f"MAISR User Study - Subject {subject_id}")
+
     else:
         pygame.font.init()
         window = None
         clock = None
 
     ####################################     Instantiate testing agents     ####################################
-    testing_agent_dir = 'offline_study_testing_agents'
-    heldout_agent_dir = './heldout_agents'
-    human_trajectory_dir = '../userstudy_logs' # human_trajectories_for_training
-    # TODO populate
+    testing_agent_dir = 'revisions_testing_agents' # Agents being tested
+    heldout_agent_dir = './heldout_agents' # Held out agents to test with
+    human_trajectory_dir = '../userstudy_logs' # human_trajectories_for_training # Held out humans to test with
 
     testing_agents = populate_agent_list(testing_agent_dir, label='testagent')
     heldout_agents = populate_agent_list(heldout_agent_dir, label='heldout')
@@ -293,16 +300,15 @@ def main():
         print(f'\n#########################################################')
         print(f'Evaluating testing agent {agent_name}')
         print(f'#########################################################\n')
-        #for teammate_tuple in heldout_agents + testing_agents:
+
+        num_episodes = 100
         for teammate_tuple in testing_agents:
+            print(f'%%%%%% Running {num_episodes} episodes with teammate {teammate_tuple[2]}\n')
 
-            print(f'%%%%%% Running 3 episodes with teammate {teammate_tuple[2]}\n')
-
-            for run in range(100): # 20
+            for run in range(num_episodes): # 20
                 teammate_model = teammate_tuple[0]
                 teammate_vecnorm = teammate_tuple[1]
                 teammate_name = teammate_tuple[2]
-
 
                 teammate = RLTeammatePolicy(teammate_model, env, None, None, None, norm_stats_path=teammate_vecnorm)
                 print(f'teammate is using model {teammate_model} and norm stats {teammate_vecnorm}')
@@ -472,8 +478,7 @@ def main():
 
     # Top subplot: RL results
     rl_colors = [agent_colors.get(agent, '#808080') for agent in rl_stats['agent']]
-    bars1 = ax1.bar(range(len(rl_stats)), rl_stats['mean'],
-                    yerr=rl_stats['std'], capsize=5, alpha=0.9, color=rl_colors)
+    bars1 = ax1.bar(range(len(rl_stats)), rl_stats['mean'], yerr=rl_stats['std'], capsize=5, alpha=0.9, color=rl_colors)
     ax1.set_xlabel('Agent', fontsize=12)
     ax1.set_ylabel('Average Reward', fontsize=12)
     ax1.set_title('Performance with Held-Out RL Teammates', fontsize=20)
@@ -506,9 +511,6 @@ def main():
     for _, row in human_stats.iterrows():
         agent_label = agent_labels.get(row["agent"], row["agent"])
         print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
-
-
-
 
 
 if __name__ == '__main__':

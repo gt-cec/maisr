@@ -71,6 +71,7 @@ class TeammateManager:
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
+        self.maxent_teammate_dir = f'trained_models/maxent_population'
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
@@ -160,6 +161,8 @@ class TeammateManager:
             return self._create_selfplay_teammate()
         elif self.league_type == "baseline":
             return self._create_baseline_teammate()
+        elif self.league_type == 'maxent':
+            return self._create_rl_teammate('maxent')
 
         elif self.league_type == "vanilla":
             # 25% selfplay, 25% heuristic , 50% RL
@@ -249,6 +252,10 @@ class TeammateManager:
             checkpoint_dir = self.pretrained_teammate_dir
             fallback_prefix = "Pretrained"
             selection_strategy_enabled = False  # Pretrained uses simple random selection
+        elif teammate_type == "maxent":
+            checkpoint_dir = self.maxent_teammate_dir
+            fallback_prefix = "Maxent"
+            selection_strategy_enabled = False
         else:
             raise ValueError(f"teammate_type must be 'selfplay' or 'pretrained', got {teammate_type}")
 

@@ -62,7 +62,7 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
         return obs
     
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, truncated, terminated, info = self.env.step(action)
         
         # Compute PE bonus using observation from BEFORE action was taken
         if self.last_obs is not None:
@@ -71,7 +71,7 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
             info['pe_bonus'] = pe_bonus
         
         self.last_obs = obs
-        return obs, reward, done, info
+        return obs, reward, truncated, terminated, info
     
     def _compute_pe_bonus(self, obs, action):
         """Compute -α log(π̄(a|s))"""
@@ -138,7 +138,7 @@ def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_m
     teammate_manager = TeammateManager(
         league_type=env_config['league_type'],
         balance_method=env_config['balance_method'],
-        selfplay_checkpoint_dir=f"outputs/{agent_run_name}/checkpoints",
+        selfplay_checkpoint_dir=f"outputs/maxent/{agent_run_name}/checkpoints",
         pretrained_teammate_dir='trained_models/pretrained_teammates',
         overfit_test=None,
     )
@@ -198,7 +198,7 @@ def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_m
     else:
         env = DummyVecEnv(env_fns)
 
-    env = VecMonitor(env, filename=f'outputs/{agent_run_name}/logs/{run_name}_agent{agent_idx}_vecmonitor')
+    env = VecMonitor(env, filename=f'outputs/maxent/{agent_run_name}/logs/{run_name}_agent{agent_idx}_vecmonitor')
     env = VecNormalize(env)
     env.training = True
     env.norm_reward = True
@@ -306,7 +306,7 @@ def setup_callbacks(env_config, eval_env, agent_idx, run_name, run, n_envs,
 
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq,
-        save_path=f"outputs/{agent_run_name}/checkpoints",
+        save_path=f"outputs/maxent/{agent_run_name}/checkpoints",
         name_prefix=f"agent{agent_idx}_checkpoint",
         save_replay_buffer=True,
         save_vecnormalize=True,
@@ -359,7 +359,7 @@ def train_population(env_config, args, run_name):
     for agent_idx in range(population_size):
         agent_run_name = f"{run_name}/agent_{agent_idx}"
         for subfolder in ['trained_models', 'checkpoints', 'vecnorm_stats', 'logs']:
-            os.makedirs(f"outputs/{agent_run_name}/{subfolder}", exist_ok=True)
+            os.makedirs(f"outputs/maxent/{agent_run_name}/{subfolder}", exist_ok=True)
 
     # Initialize all models (need to create them all upfront for PE computation)
     print('\n[Phase 1] Initializing all agents...')
@@ -397,7 +397,7 @@ def train_population(env_config, args, run_name):
         teammate_managers.append(teammate_manager)
         
         # Create model
-        tb_log_dir = f"outputs/logs/tb_runs/{run.id}"
+        tb_log_dir = f"outputs/maxent/logs/tb_runs/{run.id}"
         model = create_agent_model(env_config, env, agent_idx, args.seed, tb_log_dir)
         population_models[agent_idx] = model
         print(f'  Agent {agent_idx} model created')
@@ -418,8 +418,8 @@ def train_population(env_config, args, run_name):
         teammate_manager.current_teammate.env = env
         
         # Save initial checkpoint
-        initial_path = f"outputs/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_0_steps.zip"
-        vecnorm_path = f"outputs/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_vecnormalize_0_steps.pkl"
+        initial_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_0_steps.zip"
+        vecnorm_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_vecnormalize_0_steps.pkl"
         model.save(initial_path)
         if isinstance(env, VecNormalize):
             env.save(vecnorm_path)
@@ -478,11 +478,11 @@ def train_population(env_config, args, run_name):
                 'ret_mean': env.ret_rms.mean,
                 'ret_var': env.ret_rms.var,
             }
-            np.save(f"outputs/{agent_run_name}/trained_models/agent{agent_idx}_norm_stats.npy", stats)
-            env.save(f"outputs/{agent_run_name}/vecnorm_stats/agent{agent_idx}_vecnormalize.pkl")
+            np.save(f"outputs/maxent/{agent_run_name}/trained_models/agent{agent_idx}_norm_stats.npy", stats)
+            env.save(f"outputs/maxent/{agent_run_name}/vecnorm_stats/agent{agent_idx}_vecnormalize.pkl")
 
             # Save model
-            final_model_path = f"outputs/{agent_run_name}/trained_models/agent{agent_idx}_model.zip"
+            final_model_path = f"outputs/maxent/{agent_run_name}/trained_models/agent{agent_idx}_model.zip"
             model.save(final_model_path)
             print(f'  Agent {agent_idx} saved to {final_model_path}')
             
@@ -508,25 +508,16 @@ def train_population(env_config, args, run_name):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='MAISR MEP Phase 1 - Corrected Implementation')
-    parser.add_argument('--total_timesteps', type=float, default=3e6,
-                        help='Total timesteps per agent')
-    parser.add_argument('--num_checkpoints', type=int, default=6,
-                        help='Number of evenly spaced checkpoints per agent')
-    parser.add_argument('--population_size', type=int, default=6,
-                        help='Number of agents in the population')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='Base random seed')
-    parser.add_argument('--testing', action='store_true',
-                        help='Reduced timesteps/envs for debugging')
-    parser.add_argument('--n_envs', type=int, default=None,
-                        help='Parallel envs per agent (default: cpu_count)')
-    parser.add_argument('--ent_coef', type=float, default=0.01,
-                        help='Population entropy weight (α in paper)')
-    parser.add_argument('--config', type=str, default='configs/main_config.json',
-                        help='Path to config JSON file')
-    parser.add_argument('--project_name', type=str, default='maisr-mep-corrected',
-                        help='WandB project name')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--total_timesteps', type=float, default=3e6, help='Total timesteps per agent')
+    parser.add_argument('--num_checkpoints', type=int, default=6, help='Number of evenly spaced checkpoints per agent')
+    parser.add_argument('--population_size', type=int, default=6, help='Number of agents in the population')
+    parser.add_argument('--seed', type=int, default=42, help='Base random seed')
+    parser.add_argument('--testing', action='store_true', help='Reduced timesteps/envs for debugging')
+    parser.add_argument('--n_envs', type=int, default=None, help='Parallel envs per agent (default: cpu_count)')
+    parser.add_argument('--ent_coef', type=float, default=0.01, help='Population entropy weight (α in paper)')
+    parser.add_argument('--config', type=str, default='configs/main_config.json', help='Path to config JSON file')
+    parser.add_argument('--project_name', type=str, default='maisr-mep-corrected', help='WandB project name')
     args = parser.parse_args()
 
     # Handle defaults
@@ -564,7 +555,7 @@ if __name__ == "__main__":
     print(f'{"#" * 80}\n')
 
     # Create top-level output directory
-    os.makedirs(f"outputs/{run_name}", exist_ok=True)
+    os.makedirs(f"outputs/maxent/{run_name}", exist_ok=True)
 
     # Train population
     train_population(env_config, args, run_name)
