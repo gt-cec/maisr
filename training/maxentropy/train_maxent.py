@@ -439,8 +439,9 @@ def train_population(env_config, args, run_name):
     for iteration in range(num_iterations):
         print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
         
-        # Sample agent to train (round-robin)
-        agent_idx = iteration % population_size
+        # Sample agent to train (uniform random)
+        #agent_idx = iteration % population_size
+        agent_idx = np.random.randint(0, population_size)  # Uniform random sampling
         
         print(f'Training agent {agent_idx}')
         model = population_models[agent_idx]
