@@ -57,12 +57,12 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
         self.last_obs = None
         
     def reset(self, **kwargs):
-        obs = self.env.reset(**kwargs)
+        obs, info = self.env.reset(**kwargs)
         self.last_obs = obs
-        return obs
+        return obs, info
     
     def step(self, action):
-        obs, reward, truncated, terminated, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action)
         
         # Compute PE bonus using observation from BEFORE action was taken
         if self.last_obs is not None:
@@ -510,7 +510,7 @@ def train_population(env_config, args, run_name):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--total_timesteps', type=float, default=3e6, help='Total timesteps per agent')
-    parser.add_argument('--num_checkpoints', type=int, default=6, help='Number of evenly spaced checkpoints per agent')
+    parser.add_argument('--num_checkpoints', type=int, default=9, help='Number of evenly spaced checkpoints per agent')
     parser.add_argument('--population_size', type=int, default=6, help='Number of agents in the population')
     parser.add_argument('--seed', type=int, default=42, help='Base random seed')
     parser.add_argument('--testing', action='store_true', help='Reduced timesteps/envs for debugging')
