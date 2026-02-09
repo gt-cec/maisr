@@ -129,3 +129,91 @@ class TrajeDiDiversityCallback(BaseCallback):
                 f"  [DivCallback] Pool {self.pool_idx} Pop {self.pop_idx}: "
                 f"mean_jsd={mean_jsd:.4f}, bonus={self.div_factor * mean_jsd:.4f}, gamma={self.diversity_computer.gamma}"
             )
+
+
+class TrajeDiMetricsCallback(BaseCallback):
+    """
+    Callback to log per-agent training metrics for TrajeDi-PPO.
+
+    Logs episode rewards, lengths, recent statistics, and PPO training metrics
+    for both population agents and BR agents.
+    """
+
+    def __init__(
+            self,
+            agent_type: str,
+            pool_idx: int,
+            wandb_run=None,
+            agent_idx: Optional[int] = None,
+            verbose: int = 0,
+    ):
+        """
+        Args:
+            agent_type: "br" or "pop" (Best Response or Population)
+            pool_idx: Pool/seed index for logging
+            wandb_run: Optional wandb run for logging
+            agent_idx: Population member index (for pop agents only)
+            verbose: Verbosity level
+        """
+        super().__init__(verbose)
+        self.agent_type = agent_type
+        self.pool_idx = pool_idx
+        self.agent_idx = agent_idx
+        self.wandb_run = wandb_run
+
+        # Episode tracking
+        self.episode_rewards = []
+        self.episode_lengths = []
+
+        # Build metric prefix
+        if agent_type == "pop":
+            assert agent_idx is not None, "agent_idx required for population agents"
+            self.prefix = f"trajedi/pool{pool_idx}_pop{agent_idx}"
+        else:  # BR agent
+            self.prefix = f"trajedi/pool{pool_idx}_br"
+
+    def _on_step(self) -> bool:
+        """Collect episode statistics from VecMonitor info dicts."""
+        # Get infos from all parallel environments
+        infos = self.locals.get('infos', [])
+
+        for info in infos:
+            if info and 'episode' in info:
+                # Episode completed
+                ep_reward = info['episode']['r']
+                ep_length = info['episode']['l']
+                self.episode_rewards.append(ep_reward)
+                self.episode_lengths.append(ep_length)
+
+                # Log to wandb immediately
+                if self.wandb_run is not None:
+                    self.wandb_run.log({
+                        f"{self.prefix}/episode_reward": ep_reward,
+                        f"{self.prefix}/episode_length": ep_length,
+                        f"{self.prefix}/num_episodes": len(self.episode_rewards),
+                    })
+
+        return True
+
+    def _on_rollout_end(self) -> None:
+        """Log recent episode statistics and PPO training metrics."""
+        if self.wandb_run is None:
+            return
+
+        # Log recent episode statistics (last 10 episodes)
+        if len(self.episode_rewards) >= 1:
+            recent_rewards = self.episode_rewards[-10:]
+            self.wandb_run.log({
+                f"{self.prefix}/recent_mean_reward": np.mean(recent_rewards),
+                f"{self.prefix}/recent_std_reward": np.std(recent_rewards) if len(recent_rewards) > 1 else 0.0,
+                f"{self.prefix}/recent_min_reward": np.min(recent_rewards),
+                f"{self.prefix}/recent_max_reward": np.max(recent_rewards),
+            })
+
+        # Log PPO training metrics from model's logger
+        if hasattr(self.logger, 'name_to_value'):
+            for key, value in self.logger.name_to_value.items():
+                # Only log training and rollout metrics
+                if any(prefix in key for prefix in ['train/', 'rollout/']):
+                    metric_name = f"{self.prefix}/{key}"
+                    self.wandb_run.log({metric_name: value})

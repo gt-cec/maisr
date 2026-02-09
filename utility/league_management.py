@@ -260,12 +260,13 @@ class TeammateManager:
             raise ValueError(f"teammate_type must be 'selfplay' or 'pretrained', got {teammate_type}")
 
 
+
         # Validation checks
         if checkpoint_dir is None:
             print(f"Warning: No {teammate_type}_checkpoint_dir specified, falling back to baseline teammate")
             raise ValueError
 
-        if not os.path.exists(checkpoint_dir):
+        if not os.path.exists(checkpoint_dir) and teammate_type != 'maxent':
             print(f"Warning: {teammate_type.title()} directory {checkpoint_dir} does not exist, falling back to baseline")
             raise ValueError
 

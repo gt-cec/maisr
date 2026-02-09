@@ -25,7 +25,7 @@ from base_env import MaisrEnv
 from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegions, RLTeammatePolicy
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training.trajedi.trajedi_teammate_manager import TrajeDiTeammateManager
-from training.trajedi.trajedi_callbacks import TrajeDiDiversityCallback
+from training.trajedi.trajedi_callbacks import TrajeDiDiversityCallback, TrajeDiMetricsCallback
 
 
 class DiversityComputer:
@@ -584,12 +584,27 @@ class TrajeDiPPOTrainer:
                 pop_idx=pop_idx,
             )
 
-            # Train with diversity bonus
+            # Create metrics callback for this population agent
+            metrics_callback = TrajeDiMetricsCallback(
+                agent_type="pop",
+                agent_idx=pop_idx,
+                pool_idx=pool.seed_idx,
+                wandb_run=self.wandb_run,
+            )
+
+            # Train with both callbacks
             pop_agent.learn(
                 total_timesteps=self.steps_per_phase,
-                callback=diversity_callback,
+                callback=[diversity_callback, metrics_callback],
                 reset_num_timesteps=False,
             )
+
+        # Log Phase 1 completion
+        if self.wandb_run is not None:
+            self.wandb_run.log({
+                f"trajedi/pool{pool.seed_idx}_phase1_complete": round_num,
+                f"trajedi/pool{pool.seed_idx}_phase1_total_steps": self.steps_per_phase * len(pool.pop_agents),
+            })
 
         # === PHASE 2: Train BR against ALL population members ===
         # This matches the paper's Algorithm 1, where BR collects experience
@@ -598,6 +613,14 @@ class TrajeDiPPOTrainer:
 
         n_pop = len(pool.pop_agents)
         steps_per_pop_member = self.steps_per_phase // n_pop
+
+        # Create BR metrics callback ONCE (reused across all pop members)
+        br_metrics_callback = TrajeDiMetricsCallback(
+            agent_type="br",
+            agent_idx=None,
+            pool_idx=pool.seed_idx,
+            wandb_run=self.wandb_run,
+        )
 
         # Distribute timesteps across all population members
         for pop_idx, pop_agent in enumerate(pool.pop_agents):
@@ -612,6 +635,7 @@ class TrajeDiPPOTrainer:
             # Train BR for a fraction of the total steps
             pool.br_agent.learn(
                 total_timesteps=steps_per_pop_member,
+                callback=br_metrics_callback,
                 reset_num_timesteps=False,
             )
 
@@ -630,8 +654,16 @@ class TrajeDiPPOTrainer:
             )
             pool.br_agent.learn(
                 total_timesteps=remaining_steps,
+                callback=br_metrics_callback,
                 reset_num_timesteps=False,
             )
+
+        # Log Phase 2 completion
+        if self.wandb_run is not None:
+            self.wandb_run.log({
+                f"trajedi/pool{pool.seed_idx}_phase2_complete": round_num,
+                f"trajedi/pool{pool.seed_idx}_phase2_total_steps": self.steps_per_phase,
+            })
 
     def _evaluate_self_play(self) -> Dict[int, float]:
         """Evaluate BR_i with itself as teammate (self-play score)."""
@@ -751,10 +783,28 @@ class TrajeDiPPOTrainer:
         for round_num in range(1, self.training_rounds + 1):
             print(f"\n--- Round {round_num}/{self.training_rounds} ---")
 
+            # Track round timing
+            import time
+            round_start_time = time.time()
+
             # Train each pool
             for pool in self.pools:
                 print(f"  Training pool {pool.seed_idx}...")
                 self._train_pool_round(pool, round_num)
+
+            # Log timing and efficiency metrics
+            round_duration = time.time() - round_start_time
+            total_steps_this_round = len(self.pools) * (
+                self.steps_per_phase * self.n_populations +  # Phase 1
+                self.steps_per_phase  # Phase 2
+            )
+
+            if self.wandb_run is not None:
+                self.wandb_run.log({
+                    "trajedi/round_duration_seconds": round_duration,
+                    "trajedi/steps_per_second": total_steps_this_round / round_duration if round_duration > 0 else 0,
+                    "trajedi/total_steps_this_round": total_steps_this_round,
+                })
 
             # Evaluate periodically
             if round_num % self.eval_frequency == 0 or round_num == 1:

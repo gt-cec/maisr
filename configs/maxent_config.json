@@ -1,0 +1,103 @@
+{
+	"window_size": [1000,1100],
+	"gameboard_size": 1000,
+	"tick_rate": 10,
+	"time_limit": 245,
+	"game_speed": 0.7,
+	"agent_speed": 2.8,
+	"num_aircraft": 2,
+	"seed": 42,
+
+	"max_steps": 1500,
+	"frame_skip": 35,
+	"action_rate": 20,
+
+	"num_targets": 15,
+	"num_threats": 4,
+	"time_to_id": 1,
+	"prob_detect": 0,
+	"threat_radius": 30,
+	"max_threat_ids": 2,
+
+    "league_type": "selfplay",
+	"switch_leagues": false,
+	"balance_method": "uniform",
+
+	"obs_type": "nearest",
+	"obs_noise_std_localsearch": 0.01,
+	"observe_teammate": true,
+	"observe_teammate_direction": true,
+	"observe_teammate_priority": true,
+	"num_observed_targets": 5,
+	"num_observed_threats": 2,
+
+	"action_type": "Discrete16",
+	"action_noise_std": 0,
+
+	"base_env_target_id_reward": 2,
+	"teammate_reward_scale": 0.75,
+	"threat_id_reward": 11,
+	"shaping_decay_rate": 1,
+
+	"potential_ratio": 1.0,
+	"target_potential_coeff": 0.05,
+	"threat_potential_coeff": 0.18,
+	"shaping_coeff_earlyfinish": 0.2,
+	"threat_reward_scaling": 0.3,
+
+	"use_dynamic_potential": true,
+	"use_teammate_priority_shaping": false,
+
+	"team_dist_shaping_coeff": 0,
+	"team_dist_penalty_threshold": 150,
+
+	"team_spread_bonus_coeff": 0.0025,
+	"team_min_optimal_distance": 200,
+	"team_max_bonus_distance": 350,
+
+	"algo": "PPO",
+	"policy_type": "MLPPolicy",
+	"network_size": 128,
+	"network_numlayers": 2,
+	"activation_fn": "Tanh",
+	"lr": 0.0005,
+	"batch_size": 1024,
+	"gamma": 0.985,
+
+	"ppo_update_steps": 512,
+	"entropy_regularization": 0.07,
+	"use_entropy_decay_schedule": true,
+	"entropy_decay_steps": 3e6,
+	"entropy_decay_trigger_threshold": 0.34,
+	"entropy_decay_threat_threshold": 1.5,
+	"entropy_final_ratio": 0.5,
+
+	"vf_coef":0.5,
+	"n_epochs":10,
+	"clip_range": 0.2,
+	"run_human_eval": true,
+
+	"num_timesteps": 3e6,
+	"save_freq": 125000,
+	"n_eval_episodes": 7,
+	"eval_freq": 1000,
+
+	"teammate_active_at_start": true,
+	"twoship_switch_threshold": 6,
+
+	"verbose": false,
+	"print_reward_debug": false,
+
+	"use_curriculum": false,
+	"levels_per_lesson": {"0": 5, "1": 5, "2":  5},
+	"gameboard_size_per_lesson": {"0": 1000, "1": 1000, "2": 1000},
+	"agent_start_locations_per_lesson": {"0": 1, "1": 1, "2": 1},
+	"use_fixed_levels": true,
+	"num_fixed_levels": 7,
+	"force_specific_level": 99,
+
+	"min_target_ids_to_advance": 8,
+	"starting_difficulty": 0,
+	"max_difficulty": 2
+
+}
