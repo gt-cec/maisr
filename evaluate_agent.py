@@ -23,6 +23,7 @@ import glob
 import json
 import re
 from abc import ABC, abstractmethod
+import gymnasium as gym
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Callable
@@ -40,11 +41,36 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.league_management import TeammatePolicy, RLTeammatePolicy, RecordedTrajectoryTeammate
-from utility.config_management import load_config
+from utility.config_management import load_env_config
 
 import pygame
 
+import torch.serialization
 
+torch.serialization.add_safe_globals([
+    gym.spaces.box.Box,
+    gym.spaces.discrete.Discrete,
+    gym.spaces.multi_discrete.MultiDiscrete,
+    gym.spaces.multi_binary.MultiBinary,
+    gym.spaces.dict.Dict,
+    gym.spaces.tuple.Tuple,
+])
+torch.serialization.add_safe_globals([
+    np.ndarray,
+    np.dtype,                 # general dtype constructor
+    np.float32, np.float64,   # common scalar types
+])
+try:
+    torch.serialization.add_safe_globals([type(np.dtype("float32"))])
+except Exception:
+    pass
+# Allow-list all dtype class variants present in this numpy build
+dtype_classes = {type(np.dtype(name)) for name in ["float32","float64","int64","int32","uint8","bool"]}
+torch.serialization.add_safe_globals(list(dtype_classes))
+torch.serialization.add_safe_globals([
+    np._core.multiarray._reconstruct,
+    np._core.multiarray.scalar
+])
 # ============================================================================
 # CORE DATA STRUCTURES
 # ============================================================================
@@ -174,6 +200,20 @@ class BCAgentLoader(AgentLoader):
             try:
                 # Load BC policy
                 policy = ActorCriticPolicy.load(model_path)
+                import torch
+
+                _orig_torch_load = torch.load
+
+                def _torch_load_weights_only_false(*args, **kwargs):
+                    # Force legacy behavior for SB3 checkpoints (trusted files only)
+                    kwargs.setdefault("weights_only", False)
+                    return _orig_torch_load(*args, **kwargs)
+
+                torch.load = _torch_load_weights_only_false
+                try:
+                    policy = ActorCriticPolicy.load(model_path)  # your existing line
+                finally:
+                    torch.load = _orig_torch_load
 
                 # Extract metadata from filename if available
                 metadata = self._extract_metadata(model_path)
@@ -458,7 +498,7 @@ class EvaluationRunner:
 
     def __init__(self, config: EvaluationConfig):
         self.config = config
-        self.env_config = load_config(config.config_file)
+        self.env_config = load_env_config(config.config_file)
 
         # Setup pygame if rendering
         if config.render:
@@ -900,7 +940,7 @@ def main():
 
     # Configure evaluation settings
     config = EvaluationConfig(
-        config_file='configs/Monolith_index_August.json',
+        config_file='configs/main_config.json',
         render=False,
         num_episodes_rl=100,
         num_episodes_human=1,
