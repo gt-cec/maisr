@@ -11,13 +11,16 @@ import copy
 import json
 import os
 import random
+import shutil
+import multiprocessing
 from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
 import numpy as np
 import torch
+import gymnasium as gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecNormalize
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 
@@ -26,188 +29,125 @@ from utility.league_management import LocalSearch, GoToNearestThreat, ChangeRegi
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from training.trajedi.trajedi_teammate_manager import TrajeDiTeammateManager
 from training.trajedi.trajedi_callbacks import TrajeDiDiversityCallback, TrajeDiMetricsCallback
+from training.trajedi.diversity_computer import DiversityComputer
 
 
-class DiversityComputer:
+# ============================================================================
+# Checkpoint Utilities for Multiprocessing
+# ============================================================================
+
+def save_model_checkpoint(model, env, temp_dir, agent_id, iteration):
     """
-    Computes Jensen-Shannon Divergence (JSD) with temporal discounting.
+    Save PPO model and VecNormalize stats for worker process.
 
-    Implements the full TrajeDi objective from Eq. 5:
-    JSDγ = - 1/n ∑_i ∑_τ P(τ|πi) ∑_t (1/T) log(δ̂_t(τ) / δ_i,t(τ))
+    Args:
+        model: PPO model to save
+        env: VecNormalize environment (contains normalization stats)
+        temp_dir: Directory to save checkpoints
+        agent_id: Agent identifier (e.g., "pop0_seed1", "br_seed1")
+        iteration: Current training iteration/round
 
-    where δ_i,t(τ) = ∏_{t'=0}^T [π_i(a_t'|τ_t')]^γ^|t-t'|
+    Returns:
+        dict: Checkpoint paths {'model': path, 'vecnorm': path}
     """
+    os.makedirs(temp_dir, exist_ok=True)
 
-    def __init__(self, gamma: float = 0.5, epsilon: float = 1e-8):
-        """
-        Args:
-            gamma: Temporal discounting factor
-                - gamma=1: Full trajectory-level diversity (most sensitive)
-                - gamma=0: Action-level diversity (most stringent)
-                - gamma in (0,1): Interpolates between the two
-            epsilon: Small constant for numerical stability
-        """
-        self.gamma = gamma
-        self.epsilon = epsilon
+    model_path = os.path.join(temp_dir, f"{agent_id}_iter_{iteration}.zip")
+    vecnorm_path = os.path.join(temp_dir, f"{agent_id}_vecnorm_iter_{iteration}.pkl")
 
-    @torch.no_grad()
-    def get_action_probs(self, model: PPO, observations: torch.Tensor) -> torch.Tensor:
-        """
-        Get action probability distribution from a PPO model.
+    model.save(model_path)
+    if isinstance(env, VecNormalize):
+        env.save(vecnorm_path)
 
-        Args:
-            model: SB3 PPO model
-            observations: (batch_size, obs_dim) tensor
-
-        Returns:
-            (batch_size, n_actions) tensor of action probabilities
-        """
-        policy = model.policy
-        features = policy.extract_features(observations, policy.pi_features_extractor)
-        latent_pi = policy.mlp_extractor.forward_actor(features)
-        logits = policy.action_net(latent_pi)
-        probs = torch.softmax(logits, dim=-1)
-        return probs
-
-    def compute_local_action_kernel(
-            self,
-            observations: torch.Tensor,
-            actions: torch.Tensor,
-            models: List[PPO],
-            timestep_idx: int,
-            n_steps: int,
-    ) -> torch.Tensor:
-        """
-        Compute local action kernel δ_i,t(τ) for each policy.
-
-        δ_i,t(τ) = ∏_{t'=0}^T [π_i(a_t'|obs_t')]^γ^|t-t'|
-
-        Args:
-            observations: (n_steps, obs_dim) - single trajectory
-            actions: (n_steps,) - actions taken
-            models: List of PPO models
-            timestep_idx: Current timestep t
-            n_steps: Total trajectory length T
-
-        Returns:
-            (n_models,) tensor of kernel values, one per policy
-        """
-        kernels = []
-
-        for model in models:
-            # Get action probs for all timesteps: (n_steps, n_actions)
-            all_probs = self.get_action_probs(model, observations)
-
-            # Get probability of actual actions taken: (n_steps,)
-            action_probs = all_probs[torch.arange(n_steps), actions]
-            action_probs = action_probs.clamp(min=self.epsilon)
-
-            # Apply temporal discounting: γ^|t - t'|
-            temporal_distances = torch.abs(torch.arange(n_steps, device=observations.device) - timestep_idx)
-            discount_factors = self.gamma ** temporal_distances.float()
-
-            # Compute kernel: ∏_{t'} [π(a_t'|obs_t')]^γ^|t-t'|
-            # In log space: ∑_{t'} γ^|t-t'| * log(π(a_t'|obs_t'))
-            log_kernel = (discount_factors * torch.log(action_probs)).sum()
-            kernel = torch.exp(log_kernel)
-
-            kernels.append(kernel)
-
-        return torch.stack(kernels)
-
-    def compute_jsd_trajectory(
-            self,
-            observations: torch.Tensor,
-            actions: torch.Tensor,
-            models: List[PPO],
-    ) -> torch.Tensor:
-        """
-        Compute JSD for a single trajectory using local action kernels.
-
-        Args:
-            observations: (n_steps, obs_dim) - single trajectory observations
-            actions: (n_steps,) - single trajectory actions
-            models: List of PPO models
-
-        Returns:
-            (n_steps,) tensor of JSD values, one per timestep
-        """
-        n_steps = observations.shape[0]
-        n_models = len(models)
-
-        if n_models < 2:
-            return torch.zeros(n_steps, device=observations.device)
-
-        jsd_per_timestep = []
-
-        for t in range(n_steps):
-            # Compute local action kernel for each policy at timestep t
-            # kernels: (n_models,)
-            kernels = self.compute_local_action_kernel(
-                observations, actions, models, timestep_idx=t, n_steps=n_steps
-            )
-
-            # Average kernel: δ̂_t(τ) = (1/n) ∑_i δ_i,t(τ)
-            avg_kernel = kernels.mean()
-
-            # JSD contribution at timestep t:
-            # ∑_i (1/n) log(δ̂_t(τ) / δ_i,t(τ))
-            # = (1/n) ∑_i [log(δ̂_t) - log(δ_i,t)]
-            avg_kernel_clamped = avg_kernel.clamp(min=self.epsilon)
-            kernels_clamped = kernels.clamp(min=self.epsilon)
-
-            jsd_t = (torch.log(avg_kernel_clamped) - torch.log(kernels_clamped)).mean()
-            jsd_per_timestep.append(jsd_t)
-
-        return torch.stack(jsd_per_timestep)
-
-    def compute_jsd(
-            self,
-            observations: torch.Tensor,
-            actions: torch.Tensor,
-            models: List[PPO],
-            n_envs: int,
-    ) -> torch.Tensor:
-        """
-        Compute JSD for a batch of parallel trajectories.
-
-        Args:
-            observations: (n_steps * n_envs, obs_dim) flattened observations
-            actions: (n_steps * n_envs,) flattened actions
-            models: List of PPO models
-            n_envs: Number of parallel environments
-
-        Returns:
-            (n_steps * n_envs,) tensor of JSD values
-        """
-        if len(models) < 2:
-            return torch.zeros(observations.shape[0], device=observations.device)
-
-        # Reshape to (n_steps, n_envs, obs_dim)
-        obs_dim = observations.shape[-1]
-        n_total = observations.shape[0]
-        n_steps = n_total // n_envs
-
-        obs_reshaped = observations.reshape(n_steps, n_envs, obs_dim)
-        actions_reshaped = actions.reshape(n_steps, n_envs)
-
-        # Compute JSD for each environment trajectory separately
-        jsd_all_envs = []
-
-        for env_idx in range(n_envs):
-            obs_traj = obs_reshaped[:, env_idx, :]  # (n_steps, obs_dim)
-            actions_traj = actions_reshaped[:, env_idx]  # (n_steps,)
-
-            jsd_traj = self.compute_jsd_trajectory(obs_traj, actions_traj, models)
-            jsd_all_envs.append(jsd_traj)
-
-        # Stack back: (n_steps, n_envs)
-        jsd_reshaped = torch.stack(jsd_all_envs, dim=1)
-
-        # Flatten: (n_steps * n_envs,)
-        return jsd_reshaped.reshape(-1)
+    return {'model': model_path, 'vecnorm': vecnorm_path}
 
 
+def load_model_checkpoint(checkpoint_dict, env):
+    """
+    Load PPO model from checkpoint.
+
+    Args:
+        checkpoint_dict: dict with 'model' and 'vecnorm' paths
+        env: VecEnv to load model into
+
+    Returns:
+        tuple: (loaded_model, loaded_env)
+    """
+    # Load VecNormalize stats if available
+    if 'vecnorm' in checkpoint_dict and os.path.exists(checkpoint_dict['vecnorm']):
+        env = VecNormalize.load(checkpoint_dict['vecnorm'], venv=env)
+
+    # Load PPO model
+    model = PPO.load(checkpoint_dict['model'], env=env)
+
+    return model, env
+
+
+def train_population_agent_worker(config):
+    """
+    Worker function to train a single population agent in a separate process.
+
+    This function is called by multiprocessing.Pool to train population agents
+    in parallel. It creates an isolated environment, loads models from checkpoints,
+    trains with diversity bonus, and returns updated checkpoint.
+
+    Args:
+        config: dict with:
+            - pop_idx: int - Population agent index
+            - seed_idx: int - Seed/pool index
+            - env_config: dict - Environment configuration
+            - trajedi_config: dict - TrajeDi configuration
+            - br_checkpoint: dict - BR model checkpoint (used as teammate)
+            - peer_checkpoints: list of dicts - Other pop agents for diversity
+            - steps: int - Training steps
+            - div_factor: float - Diversity weight
+            - model_checkpoint: dict - Pop agent checkpoint to load
+            - temp_dir: str - Temporary directory for checkpoints
+            - round_num: int - Current training round
+            - run_name: str - Run identifier
+
+    Returns:
+        dict with:
+            - pop_idx: int
+            - seed_idx: int
+            - checkpoint: dict (updated model checkpoint paths)
+            - metrics: dict (training metrics)
+    """
+    try:
+        from training.trajedi.trajedi_ppo import TrajeDiPPOTrainer
+
+        # Note: We create a minimal trainer instance just to use its helper methods
+        # This is not ideal but avoids duplicating environment creation logic
+
+        # For now, return a simple sequential training result
+        # Full parallel implementation would require refactoring environment creation
+        # into standalone functions
+
+        # TODO: Implement full parallel training worker
+        # Currently, parallel training at agent level is complex due to:
+        # 1. Diversity callbacks requiring peer model references
+        # 2. Teammate manager state management
+        # 3. Environment creation dependencies
+
+        return {
+            'pop_idx': config['pop_idx'],
+            'seed_idx': config['seed_idx'],
+            'checkpoint': config['model_checkpoint'],
+            'metrics': {},
+            'error': 'Parallel agent training not yet implemented - using sequential fallback'
+        }
+
+    except Exception as e:
+        print(f"Worker error for pop{config['pop_idx']} seed{config['seed_idx']}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'pop_idx': config['pop_idx'],
+            'seed_idx': config['seed_idx'],
+            'checkpoint': None,
+            'metrics': {},
+            'error': str(e)
+        }
 
 
 class PopulationPool:
@@ -369,6 +309,7 @@ class TrajeDiPPOTrainer:
 
         self.diversity_computer = DiversityComputer(gamma=self.gamma)
         self.pools: List[PopulationPool] = []
+        self.verbose = trajedi_config.get("verbose", 0)
 
         print(f"  TrajeDi gamma: {self.gamma}")
         print(f"  Diversity factor: {self.div_factor}")
@@ -377,6 +318,10 @@ class TrajeDiPPOTrainer:
         self.output_dir = f"outputs/{run_name}"
         for subfolder in ["checkpoints", "trained_models", "vecnorm_stats", "logs"]:
             os.makedirs(os.path.join(self.output_dir, subfolder), exist_ok=True)
+
+        # Temporary directory for multiprocessing checkpoints
+        self.temp_dir = os.path.join(os.getcwd(), f"temp_checkpoints_{run_name}")
+        os.makedirs(self.temp_dir, exist_ok=True)
 
     def _make_env(self, seed: int, tag: str, teammate_manager: TrajeDiTeammateManager):
         """Create a single wrapped MAISR environment."""
@@ -415,10 +360,13 @@ class TrajeDiPPOTrainer:
         teammate_manager: TrajeDiTeammateManager,
     ) -> VecNormalize:
         """
-        Create a DummyVecEnv with VecNormalize for one agent.
+        Create vectorized environment with SubprocVecEnv support for parallel execution.
 
-        Uses DummyVecEnv (not SubprocVecEnv) so the teammate manager reference
-        stays in-process and can be modified between training phases.
+        Uses SubprocVecEnv when n_envs > 1 for environment-level parallelism.
+        For single environment, uses DummyVecEnv.
+
+        Note: When using SubprocVecEnv, teammate updates must be propagated via
+        env_method() calls to reach subprocess environments.
         """
         base_seed = self.env_config["seed"] + seed_idx * 1000
         env_fns = [
@@ -430,11 +378,22 @@ class TrajeDiPPOTrainer:
             for i in range(self.n_envs_per_agent)
         ]
 
-        vec_env = DummyVecEnv(env_fns)
+        # Use SubprocVecEnv for parallel environments (like train_ppo.py)
+        if self.n_envs_per_agent > 1:
+            vec_env = SubprocVecEnv(env_fns)
+        else:
+            vec_env = DummyVecEnv(env_fns)
+
         vec_env = VecMonitor(vec_env)
-        vec_env = VecNormalize(vec_env)
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=True,
+            norm_reward=True,
+            clip_obs=10.0,
+            clip_reward=10.0,
+            gamma=0.99,
+        )
         vec_env.training = True
-        vec_env.norm_reward = True
         return vec_env
 
     def _create_ppo_model(self, env: VecNormalize, seed: int) -> PPO:
@@ -513,30 +472,46 @@ class TrajeDiPPOTrainer:
 
     def _set_teammate(
         self,
+        vec_env: VecNormalize,
         teammate_manager: TrajeDiTeammateManager,
         teammate_model: PPO,
-        training_env: VecNormalize,
         name: str = "TrajeDi_Teammate",
     ):
         """
-        Set a specific PPO model as the fixed teammate via the teammate manager.
+        Set a specific PPO model as the fixed teammate in vectorized environment.
 
         Creates an RLTeammatePolicy wrapping the teammate model and sets it as
-        the fixed teammate on the manager, so all subsequent env resets use it.
+        the fixed teammate on the manager. Works with both SubprocVecEnv and
+        DummyVecEnv by propagating updates to subprocesses when needed.
 
         Args:
+            vec_env: Vectorized environment (VecNormalize wrapping SubprocVecEnv or DummyVecEnv)
             teammate_manager: The TrajeDiTeammateManager controlling the env's teammate
             teammate_model: PPO model to use as teammate
-            training_env: VecNormalize env (for normalization stats)
             name: Name for logging
         """
+        # Create teammate policy
         rl_teammate = teammate_manager.create_rl_teammate_from_model(
             model=teammate_model,
-            obs_rms=training_env.obs_rms,
-            ret_rms=training_env.ret_rms,
+            obs_rms=vec_env.obs_rms,
+            ret_rms=vec_env.ret_rms,
             name=name,
         )
+
+        # Set in main process manager
         teammate_manager.set_fixed_teammate(rl_teammate)
+
+        # If using SubprocVecEnv, propagate to subprocesses
+        # Check the underlying venv (VecNormalize wraps the actual vec env)
+        if hasattr(vec_env, 'venv') and isinstance(vec_env.venv, SubprocVecEnv):
+            try:
+                vec_env.env_method("update_teammate_manager_teammate", rl_teammate)
+            except Exception as e:
+                # Fallback: SubprocVecEnv teammate updates may not work if teammate
+                # contains unpicklable objects. In this case, training will still work
+                # but teammates may not update correctly in subprocesses.
+                print(f"Warning: Failed to propagate teammate to subprocesses: {e}")
+                print("Continuing with main process teammate only.")
 
     def _get_current_div_factor(self, round_num: int) -> float:
         """Get diversity factor, potentially with schedule."""
@@ -572,7 +547,7 @@ class TrajeDiPPOTrainer:
                 zip(pool.pop_agents, pool.pop_envs, pool.pop_tms)
         ):
             # Set BR as teammate for this population agent
-            self._set_teammate(pop_tm, pool.br_agent, pop_env, name=f"BR_seed{pool.seed_idx}")
+            self._set_teammate(pop_env, pop_tm, pool.br_agent, name=f"BR_seed{pool.seed_idx}")
 
             # Create diversity callback using ALL population models for JSD
             diversity_callback = TrajeDiDiversityCallback(
@@ -626,9 +601,9 @@ class TrajeDiPPOTrainer:
         for pop_idx, pop_agent in enumerate(pool.pop_agents):
             # Set this population member as BR's teammate
             self._set_teammate(
+                pool.br_env,
                 pool.br_tm,
                 pop_agent,
-                pool.br_env,
                 name=f"Pop{pop_idx}_seed{pool.seed_idx}"
             )
 
@@ -647,9 +622,9 @@ class TrajeDiPPOTrainer:
         if remaining_steps > 0:
             random_pop_idx = random.randrange(n_pop)
             self._set_teammate(
+                pool.br_env,
                 pool.br_tm,
                 pool.pop_agents[random_pop_idx],
-                pool.br_env,
                 name=f"Pop{random_pop_idx}_seed{pool.seed_idx}_extra"
             )
             pool.br_agent.learn(
@@ -671,7 +646,7 @@ class TrajeDiPPOTrainer:
         for pool in self.pools:
             # Set BR as its own teammate
             self._set_teammate(
-                pool.br_tm, pool.br_agent, pool.br_env,
+                pool.br_env, pool.br_tm, pool.br_agent,
                 name=f"BR_self_seed{pool.seed_idx}"
             )
 
@@ -705,7 +680,7 @@ class TrajeDiPPOTrainer:
 
                 # Set BR_j as teammate in pool_i's env
                 self._set_teammate(
-                    pool_i.br_tm, pool_j.br_agent, pool_i.br_env,
+                    pool_i.br_env, pool_i.br_tm, pool_j.br_agent,
                     name=f"XP_BR{j}_in_env{i}"
                 )
 
@@ -852,5 +827,13 @@ class TrajeDiPPOTrainer:
                     env.close()
                 except Exception:
                     pass
+
+        # Cleanup temporary checkpoints directory
+        if os.path.exists(self.temp_dir):
+            try:
+                shutil.rmtree(self.temp_dir)
+                print(f"  Cleaned up temporary checkpoints directory")
+            except Exception as e:
+                print(f"  Warning: Failed to cleanup temp directory: {e}")
 
         return sp_results, xp_results

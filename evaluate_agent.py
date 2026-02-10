@@ -91,7 +91,7 @@ class EvaluationConfig:
     """Configuration for evaluation run"""
     # Environment
     config_file: str = 'configs/Monolith_index_August.json'
-    render: bool = False
+    render: str = 'headless'
 
     # Episode counts
     num_episodes_rl: int = 100
@@ -170,7 +170,9 @@ class RLAgentLoader(AgentLoader):
             model=agent_spec.model,
             env=env,
             norm_stats_path=agent_spec.norm_stats,
-            name=agent_spec.display_name
+            local_search_policy=None,
+            go_to_highvalue_policy=None,
+            change_region_subpolicy=None
         )
 
 
@@ -199,7 +201,7 @@ class BCAgentLoader(AgentLoader):
         for display_name, model_path in model_paths:
             try:
                 # Load BC policy
-                policy = ActorCriticPolicy.load(model_path)
+                #policy = ActorCriticPolicy.load(model_path)
                 import torch
 
                 _orig_torch_load = torch.load
@@ -501,7 +503,7 @@ class EvaluationRunner:
         self.env_config = load_env_config(config.config_file)
 
         # Setup pygame if rendering
-        if config.render:
+        if config.render == 'human':
             pygame.init()
             self.window = pygame.display.set_mode((800, 800))
             self.clock = pygame.time.Clock()
@@ -621,7 +623,7 @@ class EvaluationRunner:
 
         while not done:
             # Handle pygame events
-            if self.config.render:
+            if self.config.render == 'human':
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT or (
                         event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
@@ -663,14 +665,16 @@ class EvaluationRunner:
         def _init():
             base_env = MaisrEnv(
                 config=self.env_config,
-                render_mode='human' if self.config.render else None,
+                render_mode=self.config.render,
                 window=self.window,
-                clock=self.clock
+                clock=self.clock,
+                tag='evalagent0'
             )
             wrapped_env = MaisrLocalSearchWrapper(
                 env=base_env,
                 teammate_policy=teammate_policy,
-                teammate_active=True
+                obs_noise_std=0.01
+                #teammate_active=True
             )
             return wrapped_env
         return _init
@@ -941,7 +945,7 @@ def main():
     # Configure evaluation settings
     config = EvaluationConfig(
         config_file='configs/main_config.json',
-        render=False,
+        render='headless',
         num_episodes_rl=100,
         num_episodes_human=1,
         max_human_trajectories=250,

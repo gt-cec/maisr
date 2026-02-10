@@ -13,6 +13,8 @@ import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 
+from training.trajedi.diversity_computer import DiversityComputer
+
 
 class TrajeDiDiversityCallback(BaseCallback):
     """

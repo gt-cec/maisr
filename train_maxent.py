@@ -38,6 +38,157 @@ from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.league_management import TeammateManager, LocalSearch, GoToNearestThreat, ChangeRegions
 from utility.config_management import load_env_config
 from utility.callbacks import EnhancedWandbCallback
+import shutil
+
+
+# ============================================================================
+# Checkpoint Utilities for Multiprocessing
+# ============================================================================
+
+def save_model_checkpoint(model, env, temp_dir, agent_idx, iteration):
+    """
+    Save PPO model and VecNormalize stats for worker process.
+
+    Args:
+        model: PPO model to save
+        env: VecNormalize environment (contains normalization stats)
+        temp_dir: Directory to save checkpoints
+        agent_idx: Agent index or identifier
+        iteration: Current training iteration
+
+    Returns:
+        dict: Checkpoint paths {'model': path, 'vecnorm': path}
+    """
+    os.makedirs(temp_dir, exist_ok=True)
+
+    model_path = os.path.join(temp_dir, f"agent_{agent_idx}_iter_{iteration}.zip")
+    vecnorm_path = os.path.join(temp_dir, f"vecnorm_{agent_idx}_iter_{iteration}.pkl")
+
+    model.save(model_path)
+    if isinstance(env, VecNormalize):
+        env.save(vecnorm_path)
+
+    return {'model': model_path, 'vecnorm': vecnorm_path}
+
+
+def load_model_checkpoint(checkpoint_dict, env):
+    """
+    Load PPO model from checkpoint.
+
+    Args:
+        checkpoint_dict: dict with 'model' and 'vecnorm' paths
+        env: VecEnv to load model into
+
+    Returns:
+        tuple: (loaded_model, loaded_env)
+    """
+    # Load VecNormalize stats if available
+    if 'vecnorm' in checkpoint_dict and os.path.exists(checkpoint_dict['vecnorm']):
+        env = VecNormalize.load(checkpoint_dict['vecnorm'], venv=env)
+
+    # Load PPO model
+    model = PPO.load(checkpoint_dict['model'], env=env)
+
+    return model, env
+
+
+def extract_training_metrics(model):
+    """
+    Extract training metrics from PPO model logger.
+
+    Args:
+        model: PPO model with logger
+
+    Returns:
+        dict: Training metrics
+    """
+    metrics = {}
+
+    if hasattr(model, 'logger') and hasattr(model.logger, 'name_to_value'):
+        for key, value in model.logger.name_to_value.items():
+            # Extract relevant metrics
+            if any(prefix in key for prefix in ['train/', 'rollout/', 'time/']):
+                clean_key = key.replace('train/', '').replace('rollout/', '')
+                metrics[clean_key] = value
+
+    return metrics
+
+
+def train_agent_worker(agent_config):
+    """
+    Worker function to train a single agent for one iteration in a separate process.
+
+    This function runs in isolation and uses checkpoints for model sharing between processes.
+
+    Args:
+        agent_config: dict with:
+            - agent_idx: int - Agent index
+            - env_config: dict - Environment configuration
+            - population_checkpoint_paths: list of checkpoint dicts - Peer models for PE bonus
+            - steps_per_iteration: int - Training steps
+            - model_checkpoint: dict - Checkpoint to load for this agent
+            - entropy_weight: float - α parameter for PE bonus
+            - run_name: str - Run identifier
+            - temp_dir: str - Temporary directory for checkpoints
+            - iteration: int - Current iteration number
+            - seed: int - Random seed
+
+    Returns:
+        dict with:
+            - agent_idx: int
+            - checkpoint: dict (updated model checkpoint paths)
+            - metrics: dict (training metrics)
+    """
+    try:
+        # 1. Create environment with SubprocVecEnv and PE wrapper
+        env, eval_env, teammate_manager = create_agent_env(
+            agent_config['env_config'],
+            agent_config['n_envs'],
+            agent_config['agent_idx'],
+            agent_config['run_name'],
+            agent_config['seed'],
+            agent_config['population_checkpoint_paths'],
+            agent_config['entropy_weight']
+        )
+
+        # 2. Load agent model from checkpoint
+        model, env = load_model_checkpoint(agent_config['model_checkpoint'], env)
+
+        # 3. Train for steps_per_iteration
+        model.learn(
+            total_timesteps=agent_config['steps_per_iteration'],
+            reset_num_timesteps=False,
+        )
+
+        # 4. Save updated checkpoint
+        checkpoint = save_model_checkpoint(
+            model, env, agent_config['temp_dir'],
+            agent_config['agent_idx'], agent_config['iteration']
+        )
+
+        # 5. Extract metrics
+        metrics = extract_training_metrics(model)
+
+        # 6. Cleanup
+        env.close()
+        eval_env.close()
+
+        return {
+            'agent_idx': agent_config['agent_idx'],
+            'checkpoint': checkpoint,
+            'metrics': metrics
+        }
+
+    except Exception as e:
+        print(f"Worker error for agent {agent_config['agent_idx']}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'agent_idx': agent_config['agent_idx'],
+            'checkpoint': None,
+            'metrics': {},
+            'error': str(e)
+        }
 
 
 class PopulationEntropyLoggingCallback(BaseCallback):
@@ -251,15 +402,19 @@ def setup_callbacks(env_config, eval_env, agent_idx, run_name, wandb_run,
 class PopulationEntropyVecWrapper(gym.Wrapper):
     """
     Environment wrapper that adds Population Entropy bonus to rewards.
-    
+
     Implements the PE reward from MEP paper:
         augmented_reward = task_reward - α log(π̄(a|s))
     where π̄(a|s) = (1/n) Σ π^(i)(a|s) is the mean action probability across population.
+
+    Modified to support multiprocessing via checkpoint-based model loading.
     """
-    
-    def __init__(self, env, population_models, entropy_weight, current_agent_idx):
+
+    def __init__(self, env, population_checkpoint_paths, entropy_weight, current_agent_idx):
         super().__init__(env)
-        self.population_models = population_models  # List of PPO models
+        # Store checkpoint paths instead of live models for multiprocessing
+        self.population_checkpoint_paths = population_checkpoint_paths  # List of checkpoint dicts or models
+        self.population_models = None  # Lazy-loaded from checkpoints
         self.entropy_weight = entropy_weight  # α parameter
         self.current_agent_idx = current_agent_idx
         self.last_obs = None
@@ -282,56 +437,100 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
         return obs, reward, truncated, terminated, info
     
     def _compute_pe_bonus(self, obs, action):
-        """Compute -α log(π̄(a|s))"""
+        """
+        Compute -α log(π̄(a|s)) with lazy loading from checkpoints.
+
+        Supports both checkpoint-based loading (for multiprocessing) and
+        live model references (for backward compatibility).
+        """
         try:
+            # Lazy load population models from checkpoints if needed
+            if self.population_models is None:
+                self._load_population_models()
+
             # Get action probabilities from all agents in population
             action_probs_list = []
-            
+
             for model in self.population_models:
                 if model is None:
                     continue
-                    
+
                 with torch.no_grad():
                     # Convert obs to tensor
                     obs_tensor = torch.as_tensor(obs).float().unsqueeze(0)
                     if hasattr(model.policy, 'device'):
                         obs_tensor = obs_tensor.to(model.policy.device)
-                    
+
                     # Get action distribution from policy
                     distribution = model.policy.get_distribution(obs_tensor)
-                    
+
                     # Get probabilities for discrete action space
                     if hasattr(distribution.distribution, 'probs'):
                         probs = distribution.distribution.probs.cpu().numpy()[0]
                     else:
                         # For continuous actions, would need different approach
                         return 0.0
-                    
+
                     action_probs_list.append(probs)
-            
+
             if len(action_probs_list) == 0:
                 return 0.0
-            
+
             # Compute mean policy π̄(a|s) = (1/n) Σ π^(i)(a|s)
             mean_policy = np.mean(action_probs_list, axis=0)
-            
+
             # Get probability of taken action under mean policy
             mean_prob = mean_policy[action]
-            
+
             # PE bonus: -α log(π̄(a|s))
             # Clip to avoid log(0)
             pe_bonus = -self.entropy_weight * np.log(np.clip(mean_prob, 1e-10, 1.0))
-            
+
             return float(pe_bonus)
-            
+
         except Exception as e:
             print(f"Error computing PE bonus: {e}")
             return 0.0
 
+    def _load_population_models(self):
+        """
+        Lazy load population models from checkpoint paths.
+        Supports both checkpoint dicts and live model references.
+        """
+        self.population_models = []
 
-def wrap_env_with_pe(env, population_models, entropy_weight, agent_idx):
-    """Wrap a single env with PE reward"""
-    return PopulationEntropyVecWrapper(env, population_models, entropy_weight, agent_idx)
+        for item in self.population_checkpoint_paths:
+            if item is None:
+                self.population_models.append(None)
+            elif isinstance(item, dict) and 'model' in item:
+                # Load from checkpoint dict
+                try:
+                    # Create minimal dummy env for loading model
+                    dummy_env = DummyVecEnv([lambda: gym.make('CartPole-v1')])
+                    model, _ = load_model_checkpoint(item, dummy_env)
+                    self.population_models.append(model)
+                except Exception as e:
+                    print(f"Warning: Failed to load model from checkpoint: {e}")
+                    self.population_models.append(None)
+            else:
+                # Assume it's a live model reference (backward compatibility)
+                self.population_models.append(item)
+
+
+def wrap_env_with_pe(env, population_checkpoint_paths, entropy_weight, agent_idx):
+    """
+    Wrap a single env with PE reward.
+
+    Args:
+        env: Base environment
+        population_checkpoint_paths: List of checkpoint dicts or live models
+        entropy_weight: α parameter for PE bonus
+        agent_idx: Current agent index
+
+    Returns:
+        Wrapped environment with PE bonus
+    """
+    return PopulationEntropyVecWrapper(env, population_checkpoint_paths, entropy_weight, agent_idx)
 
 
 def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_models, entropy_weight):
@@ -580,34 +779,120 @@ def train_population(env_config, args, run_name):
 
         shared_wandb_run.log({"curriculum/difficulty_level": 0}, step=0)
 
-    print(f'\n[Phase 2] Training population with PE reward...')
+    print(f'\n[Phase 2] Training population with PE reward (PARALLEL)...')
     print(f'  All {population_size} agents initialized')
     print(f'  PE wrapper will compute π̄(a|s) from all {population_size} policies\n')
 
-    # Training loop: iterate through agents cyclically
+    # Create temporary directory for checkpoints
+    temp_dir = os.path.join(os.getcwd(), f"temp_checkpoints_{run_name}")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Calculate optimal parallelism
+    # Don't exceed population size or available CPU cores
+    n_parallel_agents = min(
+        population_size,
+        max(1, multiprocessing.cpu_count() // args.n_envs)
+    )
+
+    print(f'  Training with up to {n_parallel_agents} parallel agents')
+    print(f'  CPU count: {multiprocessing.cpu_count()}, n_envs: {args.n_envs}\n')
+
+    # Training loop: train agents in parallel batches
     steps_per_iteration = args.n_envs * 2048
     num_iterations = total_timesteps // steps_per_iteration
+    global_step = 0
 
-    for iteration in range(num_iterations):
-        print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
+    try:
+        # Create multiprocessing pool for parallel agent training
+        with multiprocessing.Pool(processes=n_parallel_agents) as pool:
+            for iteration in range(num_iterations):
+                print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
 
-        agent_idx = np.random.randint(0, population_size)
+                # Save current population checkpoints for PE computation
+                population_checkpoints = []
+                for idx, (model, env) in enumerate(zip(population_models, environments)):
+                    checkpoint = save_model_checkpoint(
+                        model, env, temp_dir, idx, iteration
+                    )
+                    population_checkpoints.append(checkpoint)
 
-        print(f'Training agent {agent_idx}')
-        model = population_models[agent_idx]
-        env = environments[agent_idx]
-        eval_env = eval_environments[agent_idx]
-        teammate_manager = teammate_managers[agent_idx]
-        callbacks = all_callbacks[agent_idx]
+                # Select batch of agents to train this iteration
+                # Train up to n_parallel_agents at once
+                n_agents_this_iter = min(population_size, n_parallel_agents)
+                agents_to_train = np.random.choice(
+                    population_size,
+                    size=n_agents_this_iter,
+                    replace=False
+                )
 
-        # Train this agent for one iteration
-        model = train_agent_iteration(
-            agent_idx, model, env, eval_env, teammate_manager,
-            callbacks, steps_per_iteration, iteration
-        )
+                print(f'  Training agents: {agents_to_train}')
 
-        # Update the population model reference
-        population_models[agent_idx] = model
+                # Prepare worker configs
+                worker_configs = []
+                for agent_idx in agents_to_train:
+                    worker_configs.append({
+                        'agent_idx': int(agent_idx),
+                        'env_config': env_config,
+                        'population_checkpoint_paths': population_checkpoints,
+                        'steps_per_iteration': steps_per_iteration,
+                        'model_checkpoint': population_checkpoints[agent_idx],
+                        'entropy_weight': args.ent_coef,
+                        'run_name': run_name,
+                        'temp_dir': temp_dir,
+                        'iteration': iteration,
+                        'seed': args.seed,
+                        'n_envs': args.n_envs,
+                    })
+
+                # Train agents in parallel
+                print(f'  Starting parallel training of {len(worker_configs)} agents...')
+                results = pool.map(train_agent_worker, worker_configs)
+
+                # Load updated models back into main process
+                for result in results:
+                    if result['checkpoint'] is None:
+                        print(f"  Warning: Agent {result['agent_idx']} training failed")
+                        continue
+
+                    agent_idx = result['agent_idx']
+                    print(f"  Loading updated model for agent {agent_idx}")
+
+                    # Load updated model and environment
+                    population_models[agent_idx], environments[agent_idx] = \
+                        load_model_checkpoint(result['checkpoint'], environments[agent_idx])
+
+                    # Log metrics to wandb
+                    for metric_name, metric_value in result['metrics'].items():
+                        shared_wandb_run.log({
+                            f"agent_{agent_idx}/{metric_name}": metric_value,
+                            "iteration": iteration,
+                        }, step=global_step)
+
+                global_step += steps_per_iteration
+
+                # Periodic evaluation (every 5 iterations)
+                if iteration % 5 == 0:
+                    for agent_idx in agents_to_train:
+                        try:
+                            mean_reward, std_reward = evaluate_policy(
+                                population_models[agent_idx],
+                                eval_environments[agent_idx],
+                                n_eval_episodes=5,
+                                deterministic=True
+                            )
+                            shared_wandb_run.log({
+                                f"agent_{agent_idx}/eval_mean_reward": mean_reward,
+                                f"agent_{agent_idx}/eval_std_reward": std_reward,
+                            }, step=global_step)
+                            print(f"  Agent {agent_idx} eval: {mean_reward:.2f} +/- {std_reward:.2f}")
+                        except Exception as e:
+                            print(f"  Evaluation failed for agent {agent_idx}: {e}")
+
+    finally:
+        # Cleanup temporary directory
+        if os.path.exists(temp_dir):
+            print(f'\n  Cleaning up temporary checkpoints...')
+            shutil.rmtree(temp_dir)
 
     # Save final models
     print(f'\n[Phase 3] Saving final models...')

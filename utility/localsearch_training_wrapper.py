@@ -195,6 +195,24 @@ class MaisrLocalSearchWrapper(gym.Env):
     def close(self):
         self.env.close()
 
+    def update_teammate_manager_teammate(self, teammate):
+        """
+        Update fixed teammate in subprocess environment.
+        Called from main process via env_method() when using SubprocVecEnv.
+
+        This enables cross-process teammate updates for TrajeDi training,
+        where the teammate is set in the main process and needs to be
+        propagated to subprocess environments.
+
+        Args:
+            teammate: RLTeammatePolicy or other teammate type to set as fixed teammate
+        """
+        if self.teammate_manager is not None:
+            self.teammate_manager.set_fixed_teammate(teammate)
+            self.current_teammate = teammate
+            if hasattr(teammate, 'env'):
+                teammate.env = self.env
+
 ########################################################################################################################
 ######################################    Observations and sub-observations     ########################################
 ########################################################################################################################

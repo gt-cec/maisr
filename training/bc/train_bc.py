@@ -25,6 +25,13 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from imitation.algorithms.bc import BC
 from imitation.data import rollout
 
+from stable_baselines3.common.policies import ActorCriticPolicy
+
+import json
+from pathlib import Path
+import torch
+
+
 def load_env_config(json_path=None):
     """
     Load environment configuration from a JSON file if provided, otherwise use defaults.
@@ -150,7 +157,58 @@ def make_spaces(trajectories):
 
     observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
     action_space = spaces.Discrete(n_actions)
+    print(f'BC training - obs dim is {obs_dim}, action space is {action_space}')
     return observation_space, action_space
+
+def save_policy_weights_only(
+    policy: ActorCriticPolicy,
+    out_stem: str,
+    observation_space: spaces.Space,
+    action_space: spaces.Space,
+    hidden_sizes: list[int],
+    lr: float,
+    batch_size: int,
+    n_epochs: int,
+    seed: int,
+):
+    """
+    Save policy in a PyTorch-2.6-friendly format:
+      - out_stem.pth  : torch.save(state_dict)  (weights-only)
+      - out_stem.json : minimal JSON metadata (no gym/numpy pickling)
+    """
+    out_stem = str(out_stem)
+    stem = Path(out_stem)
+    stem.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1) weights only
+    torch.save(policy.state_dict(), stem.with_suffix(".pth"))
+
+    # 2) minimal metadata needed to recreate the policy module
+    # Keep it pure Python types (lists, ints, floats) to avoid numpy dtype pickles.
+    obs_shape = list(observation_space.shape) if getattr(observation_space, "shape", None) is not None else None
+
+    meta = {
+        "format": "bc_policy_weights_only_v1",
+        "policy_class": policy.__class__.__name__,
+        "obs_space": {
+            "type": observation_space.__class__.__name__,
+            "shape": obs_shape,
+            # bounds are optional for reconstruction; include if you want exact Box recreation
+            # but we can usually just rebuild from env later.
+        },
+        "act_space": {
+            "type": action_space.__class__.__name__,
+            "n": int(action_space.n) if hasattr(action_space, "n") else None,
+        },
+        "net_arch": [int(x) for x in hidden_sizes],
+        "lr": float(lr),
+        "batch_size": int(batch_size),
+        "n_epochs": int(n_epochs),
+        "seed": int(seed),
+    }
+
+    stem.with_suffix(".json").write_text(json.dumps(meta, indent=2))
+
 
 
 def train_bc(
@@ -221,7 +279,20 @@ def run_sweep(trajectories, device: str = "auto"):
         trainer, stats = train_bc(trajectories, device=device, **config)
 
         lr, batch_size, seed, n_epochs = stats['lr'], stats['batch_size'], stats['seed'], stats['n_epochs']
-        trainer.policy.save(f"bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}.pt")
+        #trainer.policy.save(f"bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}.pt")
+        out_stem = f"bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}"
+        save_policy_weights_only(
+            trainer.policy,
+            out_stem,
+            observation_space=trainer.observation_space,
+            action_space=trainer.action_space,
+            hidden_sizes=config["hidden_sizes"],
+            lr=lr,
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            seed=seed,
+        )
+        print(f"Saved weights-only policy to {out_stem}.pth (+ {out_stem}.json)")
 
         acc = stats["accuracy"]
         results.append({**config, "accuracy": acc})
@@ -237,8 +308,20 @@ def run_sweep(trajectories, device: str = "auto"):
     print(f"Best accuracy: {best_acc:.4f}")
 
     # Save best model
-    best_trainer.policy.save("bc_policy_best.pt")
-    print("Saved best policy to bc_policy_best.pt")
+    #best_trainer.policy.save("bc_policy_best.pt")
+    #print("Saved best policy to bc_policy_best.pt")
+    save_policy_weights_only(
+        best_trainer.policy,
+        "bc_policy_best",
+        observation_space=best_trainer.observation_space,
+        action_space=best_trainer.action_space,
+        hidden_sizes=best_config["hidden_sizes"],
+        lr=best_config["lr"],
+        batch_size=best_config["batch_size"],
+        n_epochs=best_config["n_epochs"],
+        seed=seed,  # same seed as used in loop; if you vary it, store per-run seed
+    )
+    print("Saved best weights-only policy to bc_policy_best.pth (+ bc_policy_best.json)")
 
     return results, best_trainer
 
@@ -275,8 +358,23 @@ def main():
             device=args.device,
         )
         print(f"\nTraining accuracy: {stats['accuracy']:.4f}")
-        trainer.policy.save(args.output)
-        print(f"Saved policy to {args.output}")
+        # Treat args.output as a stem; we will write .pth and .json
+        out_stem = str(Path(args.output).with_suffix(""))  # strip any .pt/.pth
+        save_policy_weights_only(
+            trainer.policy,
+            out_stem,
+            observation_space=trainer.observation_space,
+            action_space=trainer.action_space,
+            hidden_sizes=[64, 64],
+            lr=config['lr'],
+            batch_size=config['batch_size'],
+            n_epochs=args.n_epochs,
+            seed=args.seed,
+        )
+        print(f"Saved weights-only policy to {out_stem}.pth (+ {out_stem}.json)")
+
+        #trainer.policy.save(args.output)
+        #print(f"Saved policy to {args.output}")
 
 
 if __name__ == "__main__":

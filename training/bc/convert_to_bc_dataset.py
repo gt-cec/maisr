@@ -66,6 +66,141 @@ def direction_to_action(dx: float, dy: float) -> int:
     return best_idx
 
 
+def reconstruct_19dim_observation(
+    human_pos: tuple[float, float],
+    agent_pos: tuple[float, float],
+    target_positions: list,
+    target_info_levels: list,
+    threat_positions: list,
+    agent_action: int,
+    num_observed_targets: int = 5,
+    num_observed_threats: int = 2
+) -> np.ndarray:
+    """
+    Reconstruct a 19-dimensional observation matching the RL agent format.
+
+    Observation structure (19 dimensions):
+    - [0-9]:   5 nearest unknown targets (2 coords each) - raw distance vectors
+    - [10-13]: 2 nearest threats (2 coords each) - raw distance vectors
+    - [14-15]: Teammate position relative to human - raw distance vector
+    - [16-17]: Teammate heading (inferred from action) - unit vector
+    - [18]:    Teammate priority flag (1.0 if flying toward threat, 0.0 otherwise)
+
+    Args:
+        human_pos: (x, y) position of human agent
+        agent_pos: (x, y) position of AI teammate
+        target_positions: List of [x, y] target coordinates
+        target_info_levels: List of info levels for each target (< 1.0 means unknown)
+        threat_positions: List of [x, y] threat coordinates
+        agent_action: Integer action (0-15) representing teammate's direction
+        num_observed_targets: Number of nearest unknown targets to include
+        num_observed_threats: Number of nearest threats to include
+
+    Returns:
+        19-dimensional observation array as np.float32
+    """
+    observation = np.zeros(19, dtype=np.float32)
+
+    human_pos_arr = np.array(human_pos, dtype=np.float32)
+    agent_pos_arr = np.array(agent_pos, dtype=np.float32)
+
+    # ─── A. Find 5 Nearest Unknown Targets (indices 0-9) ───
+    target_positions_arr = np.array(target_positions, dtype=np.float32)
+    target_info_levels_arr = np.array(target_info_levels, dtype=np.float32)
+
+    unknown_mask = target_info_levels_arr < 1.0
+
+    if np.any(unknown_mask):
+        unknown_positions = target_positions_arr[unknown_mask]
+        # Calculate distances from human position
+        distances = np.sqrt(np.sum((unknown_positions - human_pos_arr) ** 2, axis=1))
+
+        # Get indices of N nearest targets (or all if fewer than N)
+        num_targets_to_use = min(num_observed_targets, len(distances))
+        nearest_indices = np.argsort(distances)[:num_targets_to_use]
+
+        # Fill observation with RAW distance vectors (not unit vectors)
+        for i in range(num_targets_to_use):
+            target_idx = nearest_indices[i]
+            target_pos = unknown_positions[target_idx]
+            vector_to_target = target_pos - human_pos_arr
+
+            observation[i * 2] = vector_to_target[0]
+            observation[i * 2 + 1] = vector_to_target[1]
+
+    # ─── B. Get 2 Nearest Threats (indices 10-13) ───
+    threat_positions_arr = np.array(threat_positions, dtype=np.float32)
+    threat_distances = np.sqrt(np.sum((threat_positions_arr - human_pos_arr) ** 2, axis=1))
+
+    num_threats_to_use = min(num_observed_threats, len(threat_distances))
+    nearest_threat_indices = np.argsort(threat_distances)[:num_threats_to_use]
+
+    start_idx = 2 * num_observed_targets
+    for j in range(num_threats_to_use):
+        threat_idx = nearest_threat_indices[j]
+        threat_pos = threat_positions_arr[threat_idx]
+        vector_to_threat = threat_pos - human_pos_arr
+
+        observation[start_idx + j * 2] = vector_to_threat[0]
+        observation[start_idx + j * 2 + 1] = vector_to_threat[1]
+
+    # ─── C. Calculate Teammate Position (indices 14-15) ───
+    teammate_idx = 2 * (num_observed_targets + num_observed_threats)
+    teammate_relative_pos = agent_pos_arr - human_pos_arr
+    observation[teammate_idx] = teammate_relative_pos[0]
+    observation[teammate_idx + 1] = teammate_relative_pos[1]
+
+    # ─── D. Calculate Teammate Heading (indices 16-17) ───
+    # Infer heading from agent_action using DIRECTION_MAP
+    if agent_action in DIRECTION_MAP:
+        heading = DIRECTION_MAP[agent_action]
+        observation[teammate_idx + 2] = heading[0]
+        observation[teammate_idx + 3] = heading[1]
+    else:
+        # Invalid action - no heading
+        observation[teammate_idx + 2] = 0.0
+        observation[teammate_idx + 3] = 0.0
+
+    # ─── E. Calculate Teammate Priority Flag (index 18) ───
+    heading_unit = np.array([observation[teammate_idx + 2], observation[teammate_idx + 3]], dtype=np.float32)
+    heading_magnitude = np.linalg.norm(heading_unit)
+
+    if heading_magnitude > 0:
+        # Heading is already a unit vector from DIRECTION_MAP
+        # Combine threats and targets with labels
+        entities = [(pos, "threat") for pos in threat_positions_arr] + \
+                   [(pos, "target") for pos in target_positions_arr]
+
+        closest_entity_type = None
+        closest_forward_dist = float("inf")
+        beam_half_width = 25.0  # 50-pixel wide beam
+
+        for pos, etype in entities:
+            vec_to_entity = pos - agent_pos_arr
+            forward_dist = np.dot(vec_to_entity, heading_unit)  # projection along heading
+
+            if forward_dist <= 0:
+                continue  # Only consider entities in front
+
+            # Perpendicular distance to heading line
+            perp_dist = np.linalg.norm(vec_to_entity - forward_dist * heading_unit)
+            if perp_dist <= beam_half_width:
+                if forward_dist < closest_forward_dist:
+                    closest_forward_dist = forward_dist
+                    closest_entity_type = etype
+
+        # 1.0 if teammate is flying toward a threat, else 0.0
+        if closest_entity_type == "threat":
+            observation[-1] = 1.0
+        else:
+            observation[-1] = 0.0
+    else:
+        # No valid heading - priority is 0
+        observation[-1] = 0.0
+
+    return observation
+
+
 def load_json_file(path: str) -> list[dict]:
     """Load a single JSON recording and return its timestep list."""
     with open(path, "r") as f:
@@ -103,7 +238,18 @@ def process_episode(timesteps: list[dict]) -> Trajectory | None:
             continue
 
         action = direction_to_action(dx, dy)
-        observation = np.array(ts["human_observation"], dtype=np.float32)
+
+        # Reconstruct 19-dimensional observation from raw game state
+        observation = reconstruct_19dim_observation(
+            human_pos=tuple(ts["human_position"]),
+            agent_pos=tuple(ts["agent_position"]),
+            target_positions=ts["target_positions"],
+            target_info_levels=ts["target_info_levels"],
+            threat_positions=ts["threat_positions"],
+            agent_action=ts["agent_action"][0] if isinstance(ts["agent_action"], list) else ts["agent_action"],
+            num_observed_targets=5,
+            num_observed_threats=2
+        )
 
         obs_list.append(observation)
         act_list.append(action)
