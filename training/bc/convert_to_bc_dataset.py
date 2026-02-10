@@ -17,6 +17,8 @@ import pickle
 from pathlib import Path
 import numpy as np
 from imitation.data.types import Trajectory
+import random
+
 
 # ── Direction mapping (16 discrete directions) ──────────────────────────
 DIRECTION_MAP = {
@@ -281,9 +283,15 @@ def process_episode(timesteps: list[dict]) -> Trajectory | None:
 
 
 
-def build_dataset(input_folder: str) -> list[Trajectory]:
+def build_dataset(input_folder: str, train_fraction: float = 0.8, seed: int = 42) -> list[Trajectory]:
     """
     Scan nested participant folders for .json recording files and convert each into a Trajectory.
+
+    Performs a subject-level split:
+      - Randomly selects ~80% of subjects for training
+      - Remaining subjects are held out for evaluation
+      - ONLY training subjects are included in the returned dataset
+
     Expected structure:
       input_folder/
         subject_<ID>/
@@ -292,22 +300,46 @@ def build_dataset(input_folder: str) -> list[Trajectory]:
     """
     root = Path(input_folder)
 
-    # Find JSONs inside: subject_<ID>/timestep_data/*.json
-    json_files = sorted(root.glob("subject_*/timestep_data/*.json"))
+    # ── Discover subjects ────────────────────────────────────────────────
+    subject_dirs = sorted([p for p in root.glob("subject_*") if p.is_dir()])
 
-    # If you want to be robust to extra nesting, use:
-    # json_files = sorted(root.rglob("timestep_data/*.json"))
+    if not subject_dirs:
+        raise FileNotFoundError(f"No subject_* directories found under {root}")
+
+    subject_ids = [p.name for p in subject_dirs]
+
+    # ── Train / eval split at SUBJECT level ──────────────────────────────
+    rng = random.Random(seed)
+    rng.shuffle(subject_ids)
+
+    num_subjects = len(subject_ids)
+    num_train = int(round(train_fraction * num_subjects))
+
+    train_subjects = set(subject_ids[:num_train])
+    eval_subjects = set(subject_ids[num_train:])
+
+    print(f"\nSubject split:")
+    print(f"  Total subjects: {num_subjects}")
+    print(f"  Training subjects ({len(train_subjects)}): {sorted(train_subjects)}")
+    print(f"  Eval subjects ({len(eval_subjects)}): {sorted(eval_subjects)}")
+
+    # ── Collect JSON files ONLY from training subjects ───────────────────
+    json_files = []
+    for subj in train_subjects:
+        subj_path = root / subj / "timestep_data"
+        if subj_path.exists():
+            json_files.extend(sorted(subj_path.glob("*.json")))
 
     if not json_files:
         raise FileNotFoundError(
-            f"No .json files found under {root} (expected subject_*/timestep_data/*.json)"
+            "No .json files found for training subjects "
+            f"(expected subject_*/timestep_data/*.json)"
         )
 
+    # ── Build trajectories ───────────────────────────────────────────────
     trajectories: list[Trajectory] = []
 
     for jf in json_files:
-        # Useful context in logs:
-        # e.g., subject_12/timestep_data/episode_003.json
         rel = jf.relative_to(root)
         print(f"Processing {rel} ...")
 
@@ -320,11 +352,13 @@ def build_dataset(input_folder: str) -> list[Trajectory]:
         else:
             print(f"  → Skipped (no valid state-action pairs)")
 
-    print(f"\nTotal trajectories: {len(trajectories)}")
+    print(f"\nFinal TRAINING dataset:")
+    print(f"  Trajectories: {len(trajectories)}")
     total_pairs = sum(len(t.acts) for t in trajectories)
-    print(f"Total state-action pairs: {total_pairs}")
+    print(f"  State-action pairs: {total_pairs}")
 
     return trajectories
+
 
 
 
@@ -340,7 +374,7 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="training/bc/expert_trajectories.pkl",
+        default="training/bc/expert_trajectories_80pct.pkl",
         help="Output path for the pickled trajectory dataset (default: expert_trajectories.pkl).",
     )
     args = parser.parse_args()

@@ -180,9 +180,12 @@ def load_vecnormalize_wrapper(vecnorm_path, env):
     """Load saved VecNormalize wrapper with stats from training and apply it to the new environment."""
     print(f"Loading VecNormalize stats from: {vecnorm_path}")
 
-    vec_normalize = VecNormalize.load(vecnorm_path, venv=env)
-    vec_normalize.training = False  # Disable further normalization updates
-    vec_normalize.norm_reward = False
+    if vecnorm_path:
+        vec_normalize = VecNormalize.load(vecnorm_path, venv=env)
+        vec_normalize.training = False  # Disable further normalization updates
+        vec_normalize.norm_reward = False
+    else:
+        vec_normalize = env
     return vec_normalize
 
 
@@ -227,14 +230,14 @@ def run_single_rl_eval(env, agent_model, render):
 
     while not done:
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                done = True
-                break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    done = True
-                    break
+        # for event in pygame.event.get():
+        #     if event.type == pygame.QUIT:
+        #         done = True
+        #         break
+        #     elif event.type == pygame.KEYDOWN:
+        #         if event.key == pygame.K_ESCAPE:
+        #             done = True
+        #             break
 
         agent_action, _ = agent_model.predict(obs, deterministic=True)
 
@@ -291,14 +294,14 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
 
         agent_action, _ = agent_model.predict(obs, deterministic=True)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                done = True
-                break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    done = True
-                    break
+        # for event in pygame.event.get():
+        #     if event.type == pygame.QUIT:
+        #         done = True
+        #         break
+        #     elif event.type == pygame.KEYDOWN:
+        #         if event.key == pygame.K_ESCAPE:
+        #             done = True
+        #             break
 
         obses, rewards, dones, infos = env.step([agent_action])
 
@@ -322,7 +325,6 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
 
 
 def main():
-
     config_filename = '../../configs/main_config.json'
     config = load_env_config(config_filename)
 
@@ -333,8 +335,9 @@ def main():
     config['prob_detect'] = 0  # 0.0003
     config['action_type'] = 'Discrete16'
 
-    num_repeats = 1 # How many times to run each level.
     render = False
+    num_episodes = 1
+    num_human_episodes = 1 # Should eb 250
 
     ####################################     Pygame setup     ####################################
     if render:
@@ -402,9 +405,9 @@ def main():
         print(f'Evaluating testing agent {agent_name}')
         print(f'#########################################################\n')
 
-        num_episodes = 100
+
         for teammate_tuple in testing_agents:
-            print(f'%%%%%% Running {num_episodes} episodes with teammate {teammate_tuple[2]}\n')
+            print(f'%%%%%% Evaluating {teammate_tuple[2]} with held-out RL teammates for {num_episodes} episodes\n')
 
             for run in range(num_episodes): # 20
                 teammate_model = teammate_tuple[0]
@@ -412,7 +415,7 @@ def main():
                 teammate_name = teammate_tuple[2]
 
                 teammate = RLTeammatePolicy(teammate_model, env, None, None, None, norm_stats_path=teammate_vecnorm)
-                print(f'teammate is using model {teammate_model} and norm stats {teammate_vecnorm}')
+                #print(f'teammate is using model {teammate_model} and norm stats {teammate_vecnorm}')
 
                 wrapper_env.teammate_policy = teammate
                 wrapper_env.current_teammate = teammate
@@ -424,7 +427,7 @@ def main():
 
         #################################### Run human trajectory evals ####################################
         all_human_trajectories = dual_trajectory_files + solo_trajectory_files
-        for trajectory_file in all_human_trajectories[0:250]: # 160
+        for trajectory_file in all_human_trajectories[0:num_human_episodes]:
             for run in range(1):
                 level = int(trajectory_file.split('_')[4][1])
 
@@ -434,173 +437,181 @@ def main():
                 human_results[(agent_name, teammate_name, run)] = reward, target_ids, threat_ids, num_steps
 
     #print(f'====== ====== FINAL RESULTS ====== ====== ')
-    #print(results)
 
-    def extract_agent_info(agent_name):
-        """Extract agent type and seed from agent name."""
-        # Remove path components
-        name = agent_name.split('/')[-1] if '/' in agent_name else agent_name
+    def build_unique_display_names(agent_names):
+        """
+        Given a list of agent filenames, automatically extract the minimal
+        distinguishing tokens between them.
+        Returns: {original_name: short_unique_label}
+        """
 
-        # Extract agent type
-        if 'mixed75' in name.lower():
-            agent_type = 'mixed75'
-        elif 'selfplay' in name.lower():
-            agent_type = 'selfplay'
-        elif 'fcp' in name.lower():
-            agent_type = 'fcp'
-        elif 'strategyfinetuned' in name.lower():
-            agent_type = 'strat-finetuned'
+        # strip paths + extensions
+        def clean(n):
+            b = os.path.basename(n)
+            return re.sub(r"\.(zip|pt|pth|tar|gz)$", "", b)
+
+        cleaned = [clean(n) for n in agent_names]
+
+        # tokenize on underscores (works well for ML checkpoint naming)
+        tokenized = [c.split("_") for c in cleaned]
+
+        # pad to equal length
+        max_len = max(len(t) for t in tokenized)
+        padded = [t + [""] * (max_len - len(t)) for t in tokenized]
+
+        # find which token positions vary across agents
+        varying_positions = []
+        for i in range(max_len):
+            column = [tokens[i] for tokens in padded]
+            if len(set(column)) > 1:
+                varying_positions.append(i)
+
+        # fallback: if everything identical (rare but possible)
+        if not varying_positions:
+            return {name: cleaned[i][-16:] for i, name in enumerate(agent_names)}
+
+        # build minimal distinguishing label
+        labels = {}
+        for i, name in enumerate(agent_names):
+            tokens = padded[i]
+            diff_tokens = [tokens[pos] for pos in varying_positions if tokens[pos]]
+            label = "_".join(diff_tokens)
+
+            # keep it readable
+            label = label.replace("learningrate", "lr")
+            label = label.replace("batchsize", "batch")
+
+            labels[name] = label
+
+        return labels
+
+    all_agents = set()
+    for (agent_name, _, _) in rl_results.keys():
+        all_agents.add(agent_name)
+    for (agent_name, _, _) in human_results.keys():
+        all_agents.add(agent_name)
+    display_map = build_unique_display_names(list(all_agents))
+
+    def extract_agent_info(agent_name: str, display_map):
+        """Return a unique agent id + a coarse type label for coloring."""
+        base = os.path.basename(agent_name)
+        base = base.replace("_model.zip", "").replace(".zip", "").replace(".pth", "").replace(".pt", "")
+        name_l = base.lower()
+
+        # agent type (for colors/legend)
+        if "mixed75" in name_l:
+            agent_type = "mixed75"
+        elif "selfplay" in name_l:
+            agent_type = "selfplay"
+        elif "fcp" in name_l:
+            agent_type = "fcp"
+        elif "strategyfinetuned" in name_l or "strat" in name_l:
+            agent_type = "strat-finetuned"
+        elif "bc" in name_l:
+            agent_type = 'bc'
         else:
-            agent_type = 'unknown'
+            agent_type = "unknown"
 
-        # Extract seed
-        seed_match = re.search(r'seed(\d+)', name.lower())
-        if seed_match:
-            seed = f"seed{seed_match.group(1)}"
-        else:
-            seed = 'unknown'
+        unique_part = display_map.get(agent_name, base[-20:])
+        display = f"{agent_type}-{unique_part}"
 
-        return f"{agent_type}"
+        return agent_type, display
 
     # Separate RL and human results
     rl_data_rows = []
     human_data_rows = []
 
     for (agent_name, teammate_name, run), (reward, target_ids, threat_ids, num_steps) in rl_results.items():
-        #agent_id = agent_name.split('/')[-1] if '/' in agent_name else agent_name
-        agent_id = extract_agent_info(agent_name)
+        agent_type, agent_display = extract_agent_info(agent_name, display_map)
         rl_data_rows.append({
-            'agent': agent_id,
-            'teammate': teammate_name,
-            'run': run,
-            'reward': reward,
-            'target_ids': target_ids,
-            'threat_ids': threat_ids,
-            'num_steps': num_steps
+            "agent": agent_display,          # UNIQUE per testing agent
+            "agent_type": agent_type,        # for coloring
+            "teammate": teammate_name,
+            "run": run,
+            "reward": reward,
+            "target_ids": target_ids,
+            "threat_ids": threat_ids,
+            "num_steps": num_steps,
         })
 
     for (agent_name, teammate_name, run), (reward, target_ids, threat_ids, num_steps) in human_results.items():
-        #agent_id = agent_name.split('/')[-1] if '/' in agent_name else agent_name
-        agent_id = extract_agent_info(agent_name)
+        agent_type, agent_display = extract_agent_info(agent_name, display_map)
         human_data_rows.append({
-            'agent': agent_id,
-            'teammate': teammate_name,
-            'run': run,
-            'reward': reward,
-            'target_ids': target_ids,
-            'threat_ids': threat_ids,
-            'num_steps': num_steps
+            "agent": agent_display,          # UNIQUE per testing agent
+            "agent_type": agent_type,        # for coloring
+            "teammate": teammate_name,
+            "run": run,
+            "reward": reward,
+            "target_ids": target_ids,
+            "threat_ids": threat_ids,
+            "num_steps": num_steps,
         })
 
-    # Create DataFrames
     rl_df = pd.DataFrame(rl_data_rows)
     human_df = pd.DataFrame(human_data_rows)
 
-
-    print("RL DataFrame sample:")
-    print(rl_df[rl_df['agent'] == 'fcp'])  # Check all FCP results
-    print("\nUnique agent-teammate combinations for FCP:")
-    print(rl_df[rl_df['agent'] == 'fcp'][['agent', 'teammate', 'reward']].head(40))
-    print('\n')
-
-    print(rl_df[rl_df['agent'] == 'mixed75'])  # Check all FCP results
-    print("\nUnique agent-teammate combinations for mixed75:")
-    print(rl_df[rl_df['agent'] == 'mixed75'][['agent', 'teammate', 'reward']].head(40))
-    print('\n')
-
-    fcp_rewards = [row['reward'] for row in rl_data_rows if 'fcp' in row['agent']]
-    print(f"FCP rewards: {fcp_rewards}")
-    print(f"FCP unique rewards: {set(fcp_rewards)}")
-    print('\n')
-
-    mixed75_rewards = [row['reward'] for row in rl_data_rows if 'mixed75' in row['agent']]
-    print(f"mixed75 rewards: {mixed75_rewards}")
-    print(f"mixed75 unique rewards: {set(mixed75_rewards)}")
-    print('\n')
-
-    # Calculate statistics
-    rl_stats = rl_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
-    human_stats = human_df.groupby('agent')['reward'].agg(['mean', 'std', 'count']).reset_index()
-
-    # ================ Save results to JSON ================
-
-    # Create timestamp for unique filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Prepare data structure for JSON export
-    results_data = {
-        'metadata': {
-            'timestamp': timestamp,
-            'config_file': config_filename,
-            'num_testing_agents': len(testing_agents),
-            'num_heldout_agents': len(heldout_agents),
-            'num_dual_trajectories': len(dual_trajectory_files),
-            'num_solo_trajectories': len(solo_trajectory_files),
-            'num_repeats_rl': 20,  # As specified in your RL evaluation loop
-            'num_repeats_human': 1  # As specified in your human evaluation loop
-        },
-        'raw_results': {
-            'rl_results': rl_data_rows,
-            'human_results': human_data_rows
-        },
-        'summary_stats': {
-            'rl_stats': rl_stats.to_dict('records'),
-            'human_stats': human_stats.to_dict('records')
-        }
-    }
-
-    # Save to JSON file
-    output_filename = f'offline_evaluation_results_{timestamp}.json'
-    with open(output_filename, 'w') as f:
-        json.dump(results_data, f, indent=2, default=str)
-
-    print(f'\n====== RESULTS SAVED TO: {output_filename} ======')
-
-    # Create 2-subplot figure
-    # Replace the plotting section (starting from "# Create 2-subplot figure") with this code:
+    # Calculate statistics PER TESTING AGENT (not collapsed by type)
+    rl_stats = rl_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
+    human_stats = human_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
 
     # Define consistent colors and label mapping for agent types
     agent_colors = {
-        'fcp': '#2E86AB',  # Blue
-        'mixed75': '#A23B72',  # Purple
-        'selfplay': '#F18F01',  # Orange
-        'strat-finetuned': '#C73E1D'  # Red
+        "bc": "#4C72B0",
+        "fcp": "#2E86AB",
+        "mixed75": "#A23B72",
+        "selfplay": "#F18F01",
+        "strat-finetuned": "#C73E1D",
+        "unknown": "#808080",
     }
 
     agent_labels = {
-        'fcp': 'FCP',
-        'mixed75': 'Strat-FCP',
-        'selfplay': 'SP',
-        'strat-finetuned': 'Strat-SP'
+        "fcp": "FCP",
+        "bc": "BC",
+        "mixed75": "Strat-FCP",
+        "selfplay": "SP",
+        "strat-finetuned": "Strat-SP",
+        "unknown": "Unknown",
     }
 
-    # Create 2-subplot figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 10))
+    # Sort so bars are grouped nicely by type then name
+    rl_stats = rl_stats.sort_values(["agent_type", "agent"])
+    human_stats = human_stats.sort_values(["agent_type", "agent"])
 
-    # Top subplot: RL results
-    rl_colors = [agent_colors.get(agent, '#808080') for agent in rl_stats['agent']]
-    bars1 = ax1.bar(range(len(rl_stats)), rl_stats['mean'], yerr=rl_stats['std'], capsize=5, alpha=0.9, color=rl_colors)
-    ax1.set_xlabel('Agent', fontsize=12)
-    ax1.set_ylabel('Average Reward', fontsize=12)
-    ax1.set_title('Performance with Held-Out RL Teammates', fontsize=20)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # RL subplot
+    rl_colors = [agent_colors.get(t, "#808080") for t in rl_stats["agent_type"]]
+    ax1.bar(range(len(rl_stats)), rl_stats["mean"], yerr=rl_stats["std"], capsize=5, alpha=0.9, color=rl_colors)
+    ax1.set_title("Performance with Held-Out RL Teammates", fontsize=16)
+    ax1.set_xlabel("Testing agent")
+    ax1.set_ylabel("Average reward")
     ax1.set_xticks(range(len(rl_stats)))
-    ax1.set_xticklabels([agent_labels.get(agent, agent) for agent in rl_stats['agent']],rotation=45, ha='right')
+    ax1.set_xticklabels(rl_stats["agent"], rotation=45, ha="right")
     ax1.set_ylim(0, 45)
-    ax1.grid(axis='y', alpha=0.3)
+    ax1.grid(axis="y", alpha=0.3)
 
-    # Bottom subplot: Human results
-    human_colors = [agent_colors.get(agent, '#808080') for agent in human_stats['agent']]
-    bars2 = ax2.bar(range(len(human_stats)), human_stats['mean'],
-                    yerr=human_stats['std'], capsize=5, alpha=0.9, color=human_colors)
-    ax2.set_xlabel('Agent', fontsize=12)
-    ax2.set_ylabel('Average Reward', fontsize=12)
-    ax2.set_title('Performance with Recorded Human Teammates', fontsize=20)
+    # Human subplot
+    human_colors = [agent_colors.get(t, "#808080") for t in human_stats["agent_type"]]
+    ax2.bar(range(len(human_stats)), human_stats["mean"], yerr=human_stats["std"], capsize=5, alpha=0.9, color=human_colors)
+    ax2.set_title("Performance with Recorded Human Teammates", fontsize=16)
+    ax2.set_xlabel("Testing agent")
+    ax2.set_ylabel("Average reward")
     ax2.set_xticks(range(len(human_stats)))
-    ax2.set_xticklabels([agent_labels.get(agent, agent) for agent in human_stats['agent']],rotation=45, ha='right')
-    ax1.set_ylim(0, 45)
-    ax2.grid(axis='y', alpha=0.3)
+    ax2.set_xticklabels(human_stats["agent"], rotation=45, ha="right")
+    ax2.set_ylim(0, 45)  # (bugfix: this used to incorrectly set ax1 twice)
+    ax2.grid(axis="y", alpha=0.3)
 
-    plt.tight_layout()
+    # Legend (type -> color)
+    legend_handles = []
+    legend_labels = []
+    for t in ["bc", "fcp", "mixed75", "selfplay", "strat-finetuned", "unknown"]:
+        if (rl_stats["agent_type"].eq(t).any()) or (human_stats["agent_type"].eq(t).any()):
+            legend_handles.append(plt.Line2D([0], [0], marker="s", color="w",
+                                             markerfacecolor=agent_colors[t], markersize=10))
+            legend_labels.append(agent_labels[t])
+    fig.legend(legend_handles, legend_labels, loc="upper center", ncol=len(legend_labels))
+
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
     plt.show()
 
     print(f'\n====== RL AGENT PERFORMANCE SUMMARY ======')

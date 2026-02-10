@@ -178,13 +178,13 @@ def save_policy_weights_only(
     """
     out_stem = str(out_stem)
     stem = Path(out_stem)
-    stem.parent.mkdir(parents=True, exist_ok=True)
+    pth_path = stem.parent / f"{stem.name}.pth"
+    json_path = stem.parent / f"{stem.name}.json"
+    torch.save(policy.state_dict(), pth_path)
 
-    # 1) weights only
-    torch.save(policy.state_dict(), stem.with_suffix(".pth"))
 
-    # 2) minimal metadata needed to recreate the policy module
-    # Keep it pure Python types (lists, ints, floats) to avoid numpy dtype pickles.
+    #torch.save(policy.state_dict(), stem.with_suffix(".pth"))
+
     obs_shape = list(observation_space.shape) if getattr(observation_space, "shape", None) is not None else None
 
     meta = {
@@ -193,8 +193,6 @@ def save_policy_weights_only(
         "obs_space": {
             "type": observation_space.__class__.__name__,
             "shape": obs_shape,
-            # bounds are optional for reconstruction; include if you want exact Box recreation
-            # but we can usually just rebuild from env later.
         },
         "act_space": {
             "type": action_space.__class__.__name__,
@@ -207,7 +205,7 @@ def save_policy_weights_only(
         "seed": int(seed),
     }
 
-    stem.with_suffix(".json").write_text(json.dumps(meta, indent=2))
+    json_path.write_text(json.dumps(meta, indent=2))
 
 
 
@@ -259,8 +257,8 @@ def run_sweep(trajectories, device: str = "auto"):
     """Grid search over hyperparameters."""
     param_grid = {
         "lr": [1e-3, 3e-4, 1e-4],
-        "batch_size": [128, 512, 1024],
-        "n_epochs": [20, 30],
+        "batch_size": [512, 1024],
+        "n_epochs": [10, 20, 30],
         "hidden_sizes": [[64, 64]],
     }
 
@@ -279,8 +277,7 @@ def run_sweep(trajectories, device: str = "auto"):
         trainer, stats = train_bc(trajectories, device=device, **config)
 
         lr, batch_size, seed, n_epochs = stats['lr'], stats['batch_size'], stats['seed'], stats['n_epochs']
-        #trainer.policy.save(f"bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}.pt")
-        out_stem = f"bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}"
+        out_stem = f"outputs/bc/bc_policy_lr{lr}_batch{batch_size}seed{seed}epochs{n_epochs}"
         save_policy_weights_only(
             trainer.policy,
             out_stem,
@@ -308,8 +305,6 @@ def run_sweep(trajectories, device: str = "auto"):
     print(f"Best accuracy: {best_acc:.4f}")
 
     # Save best model
-    #best_trainer.policy.save("bc_policy_best.pt")
-    #print("Saved best policy to bc_policy_best.pt")
     save_policy_weights_only(
         best_trainer.policy,
         "bc_policy_best",
