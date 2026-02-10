@@ -1974,13 +1974,29 @@ class MaisrEnv(gym.Env):
 
     ###################################### Utilities ######################################
 
-    def load_level_from_json(self, level_data_path="./utility/level_layouts.json"):
+    def load_level_from_json(self, level_data_path=None):
+        """
+        Load level layouts from JSON file.
+
+        Args:
+            level_data_path: Optional custom path to level layouts. If None, uses
+                            the default level_layouts.json from the utility directory.
+        """
+        if level_data_path is None:
+            # Resolve path relative to base_env.py location (project root)
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            level_data_path = os.path.join(base_dir, 'utility', 'level_layouts.json')
+
         try:
             with open(level_data_path, 'r') as f:
                 level_data = json.load(f)['levels']
-        except:
-            with open("../utility/level_layouts.json", 'r') as f:
-                level_data = json.load(f)['levels']
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Could not find level_layouts.json at: {level_data_path}\n"
+                f"Expected location: {os.path.join(os.path.dirname(__file__), 'utility', 'level_layouts.json')}"
+            )
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Error parsing level_layouts.json: {e}")
 
         # Map level index to level name
         level_names = list(level_data.keys())
