@@ -340,7 +340,7 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="expert_trajectories.pkl",
+        default="training/bc/expert_trajectories.pkl",
         help="Output path for the pickled trajectory dataset (default: expert_trajectories.pkl).",
     )
     args = parser.parse_args()

@@ -625,7 +625,7 @@ class TeammateManager:
 
     def _create_current_teammate_copy(self):
         """Create a copy of the current teammate for self-play when no checkpoints exist yet."""
-        print("[TeammateManager] No selfplay checkpoints found, creating copy of current teammate")
+        #print("[TeammateManager] No selfplay checkpoints found, creating copy of current teammate")
 
         #print(f'Teammate manager current model is {self.current_model}')
 
@@ -647,7 +647,7 @@ class TeammateManager:
             self.current_teammate = current_teammate
             return current_teammate
         else:
-            print("[TeammateManager] No current model available, creating baseline teammate")
+            #print("[TeammateManager] No current model available, creating baseline teammate")
             teammate = self._create_baseline_teammate()
             teammate.name = "SelfPlay_BaselineCopy_NoCurrentModel"
             self.current_teammate = teammate

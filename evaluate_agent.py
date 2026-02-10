@@ -17,11 +17,12 @@ Usage:
     Edit the main() function to configure which agents and teammates to evaluate,
     then run: python evaluate_agent.py
 """
-
+import ctypes
 import os
 import glob
 import json
 import re
+import traceback
 from abc import ABC, abstractmethod
 import gymnasium as gym
 from dataclasses import dataclass, field
@@ -176,106 +177,156 @@ class RLAgentLoader(AgentLoader):
         )
 
 
-class BCAgentLoader(AgentLoader):
-    """Loads Behavioral Cloning models from .pt files"""
 
-    def __init__(self, model_dir: str, pattern: str = 'bc_policy*.pt',
-                 name_from_filename: bool = True, models: Optional[Dict[str, str]] = None):
+class BCAgentLoader(AgentLoader):
+    """Loads Behavioral Cloning models saved as:
+       - <stem>.pth  (policy.state_dict)
+       - <stem>.json (minimal metadata, incl. net_arch)
+    """
+
+    def __init__(
+        self,
+        model_dir: str,
+        pattern: str = "bc_policy*.pth",
+        name_from_filename: bool = True,
+        models: Optional[Dict[str, str]] = None,
+    ):
         self.model_dir = model_dir
         self.pattern = pattern
         self.name_from_filename = name_from_filename
-        self.models = models  # Optional: explicit {name: path} mapping
+        self.models = models  # Optional: explicit {name: path_to_pth_or_stem} mapping
+
+    def _resolve_pair(self, path_or_stem: str) -> Tuple[str, str]:
+        """
+        Returns (pth_path, json_path). Accepts:
+          - /path/to/foo.pth
+          - /path/to/foo.json
+          - /path/to/foo        (stem)
+        """
+        base, ext = os.path.splitext(path_or_stem)
+        if ext == ".pth":
+            pth_path = path_or_stem
+            json_path = base + ".json"
+        elif ext == ".json":
+            json_path = path_or_stem
+            pth_path = base + ".pth"
+        else:
+            pth_path = path_or_stem + ".pth"
+            json_path = path_or_stem + ".json"
+        return pth_path, json_path
 
     def load_agents(self) -> List[AgentSpec]:
-        """Load BC models from .pt files"""
-        agents = []
+        agents: List[AgentSpec] = []
 
+        # Build list of (display_name, pth_path, json_path)
         if self.models:
-            # Load explicitly specified models
-            model_paths = [(name, path) for name, path in self.models.items()]
+            pairs = []
+            for name, path_or_stem in self.models.items():
+                pth_path, json_path = self._resolve_pair(path_or_stem)
+                pairs.append((name, pth_path, json_path))
         else:
-            # Find models matching pattern
             paths = glob.glob(os.path.join(self.model_dir, self.pattern))
-            model_paths = [(self._extract_name(p), p) for p in paths]
+            pairs = []
+            for pth_path in paths:
+                display_name = self._extract_name(pth_path)
+                json_path = os.path.splitext(pth_path)[0] + ".json"
+                pairs.append((display_name, pth_path, json_path))
 
-        for display_name, model_path in model_paths:
+        for display_name, pth_path, json_path in pairs:
             try:
-                # Load BC policy
-                #policy = ActorCriticPolicy.load(model_path)
-                import torch
+                if not os.path.exists(pth_path):
+                    raise FileNotFoundError(f"Missing weights file: {pth_path}")
 
-                _orig_torch_load = torch.load
+                # JSON is optional but recommended; we can default net_arch if missing
+                meta_json: Dict[str, Any] = {}
+                if os.path.exists(json_path):
+                    with open(json_path, "r") as f:
+                        meta_json = json.load(f)
 
-                def _torch_load_weights_only_false(*args, **kwargs):
-                    # Force legacy behavior for SB3 checkpoints (trusted files only)
-                    kwargs.setdefault("weights_only", False)
-                    return _orig_torch_load(*args, **kwargs)
+                # Load weights-only state dict (PyTorch 2.6+ safe)
+                state_dict = torch.load(pth_path, weights_only=True, map_location="cpu")
 
-                torch.load = _torch_load_weights_only_false
-                try:
-                    policy = ActorCriticPolicy.load(model_path)  # your existing line
-                finally:
-                    torch.load = _orig_torch_load
+                # net_arch: prefer JSON, else fall back to a safe default you used in training
+                net_arch = meta_json.get("net_arch", [64, 64])
 
-                # Extract metadata from filename if available
-                metadata = self._extract_metadata(model_path)
+                # IMPORTANT: use env spaces when creating the policy.
+                # This loader does NOT know env until create_policy(), so store pieces now.
                 agent_id = f"bc_{display_name}"
+                metadata = self._extract_metadata(pth_path)
+                metadata.update({"weights_path": pth_path, "json_path": json_path})
+                if meta_json:
+                    metadata.update({"bc_meta": meta_json})
 
+                # Store state_dict + net_arch temporarily; we'll build the actual policy in create_policy(env)
                 agents.append(AgentSpec(
                     agent_id=agent_id,
-                    agent_type='bc',
+                    agent_type="bc",
                     display_name=display_name,
-                    model=policy,
-                    norm_stats=None,  # BC doesn't use VecNormalize
-                    metadata=metadata
+                    model={"state_dict": state_dict, "net_arch": net_arch},  # placeholder
+                    norm_stats=None,
+                    metadata=metadata,
                 ))
-                print(f"Loaded BC agent: {display_name}")
+                print(f"Queued BC agent (weights-only): {display_name}")
+
             except Exception as e:
                 print(f"Error loading BC agent {display_name}: {e}")
+                print(traceback.format_exc())
 
         return agents
 
     def _extract_name(self, path: str) -> str:
-        """Extract display name from file path"""
-        basename = os.path.basename(path).replace('.pt', '')
-        if self.name_from_filename:
-            return basename
-        return basename
+        basename = os.path.basename(path).replace(".pth", "").replace(".pt", "")
+        return basename if self.name_from_filename else basename
 
     def _extract_metadata(self, path: str) -> Dict[str, Any]:
-        """Extract hyperparameters from filename (e.g., lr0.0003_bs64_ep10_s42)"""
-        metadata = {'model_path': path}
+        metadata: Dict[str, Any] = {"model_path": path}
         basename = os.path.basename(path)
 
-        # Try to extract learning rate
-        lr_match = re.search(r'lr([\d.e-]+)', basename)
+        lr_match = re.search(r"lr([\d.e-]+)", basename)
         if lr_match:
-            metadata['learning_rate'] = float(lr_match.group(1))
+            metadata["learning_rate"] = float(lr_match.group(1))
 
-        # Try to extract batch size
-        bs_match = re.search(r'bs(\d+)', basename)
+        bs_match = re.search(r"batch(\d+)|bs(\d+)", basename)
         if bs_match:
-            metadata['batch_size'] = int(bs_match.group(1))
+            metadata["batch_size"] = int(next(g for g in bs_match.groups() if g is not None))
 
-        # Try to extract epochs
-        ep_match = re.search(r'ep(\d+)', basename)
+        ep_match = re.search(r"epochs(\d+)|ep(\d+)", basename)
         if ep_match:
-            metadata['epochs'] = int(ep_match.group(1))
+            metadata["epochs"] = int(next(g for g in ep_match.groups() if g is not None))
 
-        # Try to extract seed
-        s_match = re.search(r's(\d+)', basename)
+        s_match = re.search(r"seed(\d+)|s(\d+)", basename)
         if s_match:
-            metadata['seed'] = int(s_match.group(1))
+            metadata["seed"] = int(next(g for g in s_match.groups() if g is not None))
 
         return metadata
 
-    def create_policy(self, agent_spec: AgentSpec, env) -> 'BCTeammatePolicy':
-        """Create BCTeammatePolicy wrapper"""
-        return BCTeammatePolicy(
-            model=agent_spec.model,
-            env=env,
-            name=agent_spec.display_name
+    def create_policy(self, agent_spec: AgentSpec, env) -> "BCTeammatePolicy":
+        """
+        Reconstruct the ActorCriticPolicy using the *current* env spaces,
+        then load the saved state_dict.
+        """
+        payload = agent_spec.model
+        if not isinstance(payload, dict) or "state_dict" not in payload:
+            raise ValueError("BC AgentSpec.model expected to be a dict with {'state_dict', 'net_arch'}")
+
+        state_dict = payload["state_dict"]
+        net_arch = payload.get("net_arch", [64, 64])
+
+        policy = ActorCriticPolicy(
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            lr_schedule=lambda _: 0.0,   # inference only
+            net_arch=net_arch,
         )
+        policy.load_state_dict(state_dict)
+        policy.eval()
+
+        return BCTeammatePolicy(
+            model=policy,
+            env=env,
+            name=agent_spec.display_name,
+        )
+
 
 
 class HeuristicAgentLoader(AgentLoader):
@@ -633,6 +684,22 @@ class EvaluationRunner:
 
             # Get action from agent
             if agent_spec.agent_type == 'bc':
+
+                if isinstance(agent_spec.model, dict) and "state_dict" in agent_spec.model:
+                    payload = agent_spec.model
+                    state_dict = payload["state_dict"]
+                    net_arch = payload.get("net_arch", [64, 64])
+
+                    policy = ActorCriticPolicy(
+                        observation_space=env.observation_space,
+                        action_space=env.action_space,
+                        lr_schedule=lambda _: 0.0,  # inference only
+                        net_arch=net_arch,
+                    )
+                    policy.load_state_dict(state_dict)
+                    policy.eval()
+                    agent_spec.model = policy  # overwrite placeholder with real policy
+
                 # BC policy needs tensor input
                 obs_tensor = torch.as_tensor(obs).float()
                 with torch.no_grad():
@@ -644,6 +711,9 @@ class EvaluationRunner:
 
             # Step environment
             obs, reward, done, info = env.step(action)
+            if self.config.render == 'human':
+                env.envs[0].env.render()
+                env.envs[0].env.clock.tick(60)
 
             # Extract metrics
             episode_reward += reward[0] if isinstance(reward, np.ndarray) else reward
@@ -663,6 +733,21 @@ class EvaluationRunner:
     def _make_wrapped_env(self, teammate_policy: TeammatePolicy):
         """Create wrapped MAISR environment with teammate support"""
         def _init():
+
+            if self.config.render == 'human':
+                if hasattr(ctypes, 'windll') and hasattr(ctypes.windll,'user32'): ctypes.windll.user32.SetProcessDPIAware()
+                pygame.display.init()
+                pygame.font.init()
+                self.clock = pygame.time.Clock()
+
+                window_width, window_height = 1000, 1100
+                self.window = pygame.display.set_mode((window_width, window_height))
+
+            else:
+                pygame.font.init()
+                self.window = None
+                self.clock = None
+
             base_env = MaisrEnv(
                 config=self.env_config,
                 render_mode=self.config.render,
@@ -937,6 +1022,8 @@ def main():
     Edit this function to specify which agents and teammates to evaluate.
     """
 
+    render = 'headless' # Or 'human'
+
     # Setup output directory with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = f"evaluation_results/bc_sweep_{timestamp}"
@@ -945,7 +1032,7 @@ def main():
     # Configure evaluation settings
     config = EvaluationConfig(
         config_file='configs/main_config.json',
-        render='headless',
+        render=render,
         num_episodes_rl=100,
         num_episodes_human=1,
         max_human_trajectories=250,
@@ -955,30 +1042,18 @@ def main():
         plot_types=['bar_comparison', 'metric_breakdown']
     )
 
-    # ===== CONFIGURE AGENTS TO EVALUATE =====
+
+    # ============================== CONFIGURE AGENTS TO EVALUATE ======================================================
     # Example 1: Evaluate all BC models from hyperparameter sweep
     bc_loader = BCAgentLoader(
         model_dir='training/bc',
-        pattern='bc_policy_lr*.pt',  # All sweep results
+        pattern='bc_policy*.pth',  # All sweep results
         name_from_filename=True
     )
 
-    # Example 2: Evaluate specific models (uncomment to use)
-    # bc_loader = BCAgentLoader(
-    #     model_dir='training/bc',
-    #     models={
-    #         'BC_Best': 'training/bc/bc_policy_best.pt',
-    #         'BC_Full': 'training/bc/bc_policy_full.pt',
-    #     }
-    # )
 
-    # Example 3: Also evaluate RL agents (uncomment to use)
-    # rl_loader = RLAgentLoader(
-    #     agent_dir='trained_models/my_experiment',
-    #     pattern='*_model.zip'
-    # )
 
-    # ===== CONFIGURE HELD-OUT TEAMMATES =====
+    # ============================================= CONFIGURE HELD-OUT TEAMMATES =======================================
     # Example 1: Held-out RL agents
     heldout_rl_loader = RLAgentLoader(
         agent_dir='experiments/exp2_user_study/saved_agents',
@@ -997,7 +1072,7 @@ def main():
         timescale_correction=10
     )
 
-    # ===== RUN EVALUATION =====
+    # ============================================= RUN EVALUATION =============================================
     runner = EvaluationRunner(config)
 
     # Load agents to evaluate

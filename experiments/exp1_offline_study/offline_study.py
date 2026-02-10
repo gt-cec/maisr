@@ -10,6 +10,8 @@ import re
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.policies import ActorCriticPolicy
+
 from base_env import MaisrEnv
 from utility.localsearch_training_wrapper import MaisrLocalSearchWrapper
 from utility.config_management import load_env_config
@@ -17,6 +19,9 @@ from utility.league_management import (RLTeammatePolicy)
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+import torch
+import gymnasium as gym
 
 
 def populate_agent_list(agent_dir, label='nolabel'):
@@ -66,6 +71,108 @@ def populate_agent_list(agent_dir, label='nolabel'):
         agent_list.append((model, norm_stats_path, name))
 
     print(f'Populated {len(agent_list)} {label} agents from directory {agent_dir}')
+    return agent_list
+
+def populate_agent_list_bc(agent_dir, label='nolabel'):
+    """
+    Loads a collection of BC policies saved as:
+      - <prefix>.json  (policy metadata: obs/act spaces, net_arch, etc.)
+      - <prefix>.pth   (torch state_dict weights)
+
+    Returns a list of tuples:
+        (policy, norm_stats_path=None, name)
+    """
+
+    def _space_from_json(space_spec: dict):
+        stype = space_spec.get("type", None)
+
+        if stype == "Box":
+            shape = tuple(space_spec["shape"])
+            # Low/high aren't stored in your example json; use unbounded float32.
+            # If your obs is bounded, add "low"/"high" fields in json and use them here.
+            return gym.spaces.Box(
+                low=-np.inf,
+                high=np.inf,
+                shape=shape,
+                dtype=np.float32,
+            )
+
+        if stype == "Discrete":
+            return gym.spaces.Discrete(int(space_spec["n"]))
+
+        raise ValueError(f"Unsupported space type in BC json: {stype} (spec={space_spec})")
+
+    # Find json files recursively; each should have a matching .pth with same prefix
+    json_patterns = [
+        os.path.join(agent_dir, "*.json"),
+        os.path.join(agent_dir, "**/*.json"),
+    ]
+
+    json_files = []
+    for pattern in json_patterns:
+        json_files.extend(glob.glob(pattern, recursive=True))
+
+    # Filter out non-policy jsons if needed; here we keep those with required keys
+    policy_json_files = []
+    for jp in json_files:
+        try:
+            with open(jp, "r") as f:
+                meta = json.load(f)
+            if isinstance(meta, dict) and "obs_space" in meta and "act_space" in meta and "net_arch" in meta:
+                policy_json_files.append(jp)
+        except Exception:
+            continue
+
+    # Sort newest first (similar to populate_agent_list)
+    policy_json_files = list(set(policy_json_files))
+    policy_json_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+
+    agent_list = []
+
+    for json_path in policy_json_files:
+        prefix = os.path.splitext(json_path)[0]
+        pth_path = prefix + ".pth"
+
+        if not os.path.exists(pth_path):
+            print(f"[populate_agent_list_bc] Skipping (missing weights): {json_path} -> expected {pth_path}")
+            continue
+
+        with open(json_path, "r") as f:
+            meta = json.load(f)
+
+        obs_space = _space_from_json(meta["obs_space"])
+        act_space = _space_from_json(meta["act_space"])
+
+        # Your bc_policy.json has net_arch like [64, 64] :contentReference[oaicite:2]{index=2}.
+        # ActorCriticPolicy expects either shared arch list[int] or dict(pi=..., vf=...).
+        # Use symmetric pi/vf MLPs by default.
+        arch = meta["net_arch"]
+        if isinstance(arch, list) and all(isinstance(x, int) for x in arch):
+            net_arch = dict(pi=arch, vf=arch)
+        else:
+            # If you later store a richer SB3 net_arch object, pass through.
+            net_arch = arch
+
+        # Load weights
+        try:
+            state_dict = torch.load(pth_path, weights_only=True, map_location="cpu")
+        except TypeError:
+            # Older torch versions don't support weights_only
+            state_dict = torch.load(pth_path, map_location="cpu")
+
+        policy = ActorCriticPolicy(
+            observation_space=obs_space,
+            action_space=act_space,
+            lr_schedule=lambda _: 0.0,  # inference only
+            net_arch=net_arch,
+        )
+        policy.load_state_dict(state_dict)
+        policy.eval()
+
+        name = f"{label}{prefix}"
+        agent_list.append((policy, None, name))
+
+    print(f"Populated {len(agent_list)} {label} BC agents from directory {agent_dir}")
     return agent_list
 
 
@@ -216,7 +323,7 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
 
 def main():
 
-    config_filename = '../../configs/Monolith_index_August.json'
+    config_filename = '../../configs/main_config.json'
     config = load_env_config(config_filename)
 
     #config['tick_rate'] = tick_rate
@@ -245,26 +352,22 @@ def main():
         clock = None
 
     ####################################     Instantiate testing agents     ####################################
-    testing_agent_dir = 'revisions_testing_agents' # Agents being tested
-    heldout_agent_dir = './heldout_agents' # Held out agents to test with
-    human_trajectory_dir = '../userstudy_logs' # human_trajectories_for_training # Held out humans to test with
+    testing_agent_dir = 'revisions_bc' # Agents being tested
+    heldout_agent_dir = 'heldout_agents' # Held out agents to test with
+    human_trajectory_dir = 'heldout_humans' # human_trajectories_for_training # Held out humans to test with
 
-    testing_agents = populate_agent_list(testing_agent_dir, label='testagent')
+    if testing_agent_dir == 'revisions_bc':
+        testing_agents = populate_agent_list_bc(testing_agent_dir, label = 'testagent')
+    else:
+        testing_agents = populate_agent_list(testing_agent_dir, label='testagent')
     heldout_agents = populate_agent_list(heldout_agent_dir, label='heldout')
 
-    print('Contents of testing_agents:')
-    print(testing_agents)
     print('Contents of heldout_agents:')
     print(heldout_agents)
 
-    # Now I have a list of (PPO model, vecnorm stat filename, name) tuples for my testing agents
-
-
     #################################### Load human trajectories ####################################
-    dual_traj_pattern = f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[ABC][13457]_*.json"
-    solo_traj_pattern = f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[PS][13457]_*.json"
-    dual_trajectory_files = glob.glob(dual_traj_pattern)
-    solo_trajectory_files = glob.glob(solo_traj_pattern)
+    dual_trajectory_files = glob.glob(f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[ABC][13457]_*.json")
+    solo_trajectory_files = glob.glob(f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[PS][13457]_*.json")
     if not dual_trajectory_files:
         print(f"[Human trajectory loading] No dual trajectories found")
         raise ValueError
@@ -273,7 +376,6 @@ def main():
         raise ValueError
     print(f'[Human trajectories] Loaded {len(dual_trajectory_files)} dual trajectories and {len(solo_trajectory_files)} solo trajectories')
 
-
     rl_results = {}
     human_results = {}
     for agent_tuple in testing_agents:
@@ -281,7 +383,6 @@ def main():
         agent_vecnorm = agent_tuple[1]
         agent_name = agent_tuple[2]
 
-        # TODO temp hack
         temp_teammate_policy = RLTeammatePolicy(agent_model, None, None, None, None, norm_stats_path=agent_vecnorm)
 
         env_fns = [make_wrapped_env(config, clock, window, temp_teammate_policy) for _ in range(1)]

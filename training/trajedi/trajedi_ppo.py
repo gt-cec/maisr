@@ -311,16 +311,16 @@ class TrajeDiPPOTrainer:
         self.pools: List[PopulationPool] = []
         self.verbose = trajedi_config.get("verbose", 0)
 
-        print(f"  TrajeDi gamma: {self.gamma}")
-        print(f"  Diversity factor: {self.div_factor}")
+        # print(f"  TrajeDi gamma: {self.gamma}")
+        # print(f"  Diversity factor: {self.div_factor}")
 
         # Output directories
-        self.output_dir = f"outputs/{run_name}"
+        self.output_dir = f"outputs/trajedi/{run_name}"
         for subfolder in ["checkpoints", "trained_models", "vecnorm_stats", "logs"]:
             os.makedirs(os.path.join(self.output_dir, subfolder), exist_ok=True)
 
         # Temporary directory for multiprocessing checkpoints
-        self.temp_dir = os.path.join(os.getcwd(), f"temp_checkpoints_{run_name}")
+        self.temp_dir = os.path.join(os.getcwd(), f"outputs/trajedi/temp_checkpoints_{run_name}")
         os.makedirs(self.temp_dir, exist_ok=True)
 
     def _make_env(self, seed: int, tag: str, teammate_manager: TrajeDiTeammateManager):

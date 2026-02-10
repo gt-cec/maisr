@@ -167,6 +167,8 @@ def main():
     # Force selfplay league type for TrajeDi (teammates are managed internally)
     env_config["league_type"] = "selfplay"
 
+    trajedi_config["n_envs_per_agent"] = multiprocessing.cpu_count()
+
     # Testing overrides
     if args.testing:
         trajedi_config["n_seeds"] = 2
@@ -194,13 +196,16 @@ def main():
 
     print(f"\nTrajeDi settings:")
     for k, v in trajedi_config.items():
-        print(f"  {k}: {v}")
+        if not k.startswith('_'):
+            print(f"  {k}: {v}")
     print(f"\nKey env settings:")
     print(f"  network_size: {env_config.get('network_size')}")
     print(f"  network_numlayers: {env_config.get('network_numlayers')}")
     print(f"  lr: {env_config.get('lr')}")
     print(f"  action_type: {env_config.get('action_type')}")
     print(f"  num_aircraft: {env_config.get('num_aircraft')}")
+    print(f'  diversity factor: {env_config.get("diversity factor")}')
+    print(f'  gamma: {env_config.get("gamma")}')
 
     # Initialize wandb
     print(f"\nInitializing WandB (project: {args.project})...")
@@ -214,7 +219,7 @@ def main():
             monitor_gym=True,
         )
         wandb_run.log_code(".")
-        print("  WandB initialized successfully")
+
     except Exception as e:
         print(f"  WandB init failed: {e}. Continuing without logging.")
 
