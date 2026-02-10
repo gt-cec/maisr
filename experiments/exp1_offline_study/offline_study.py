@@ -294,14 +294,6 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
 
         agent_action, _ = agent_model.predict(obs, deterministic=True)
 
-        # for event in pygame.event.get():
-        #     if event.type == pygame.QUIT:
-        #         done = True
-        #         break
-        #     elif event.type == pygame.KEYDOWN:
-        #         if event.key == pygame.K_ESCAPE:
-        #             done = True
-        #             break
 
         obses, rewards, dones, infos = env.step([agent_action])
 
@@ -336,8 +328,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 1
-    num_human_episodes = 1 # Should eb 250
+    num_episodes = 100
+    num_human_episodes = 100 # Should eb 250
 
     ####################################     Pygame setup     ####################################
     if render:
