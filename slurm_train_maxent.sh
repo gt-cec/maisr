@@ -39,9 +39,9 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 echo "[OK] Thread environment variables set (OMP/MKL threads: $SLURM_CPUS_PER_TASK)."
 
 # Training parameters
-TOTAL_TIMESTEPS=18e6
-POPULATION_SIZE=6
-NUM_CHECKPOINTS=18
+TOTAL_TIMESTEPS=1e6 #18e6
+POPULATION_SIZE=2 # 6
+NUM_CHECKPOINTS=9
 SEED=42
 ENT_COEF=0.01
 CONFIG_PATH="configs/maxent_config.json"
