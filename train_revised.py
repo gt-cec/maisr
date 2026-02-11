@@ -489,6 +489,7 @@ if __name__ == "__main__":
     parser.add_argument('--version', required=False, help='Which training version to run. You can define multiple versions later in this script')
     parser.add_argument('--seed', required=False, help='Seed to run')
     parser.add_argument('--testing', action='store_true', help='Set to testing mode. Simplifies some aspects of training for faster debugging')
+    parser.add_argument('--league_type', required=False, help='Override league_type from config (e.g., selfplay, strategy_diverse, fcp, mixed50, etc.)')
 
     args = parser.parse_args()
     version = args.version if args.version else 'main'
@@ -514,6 +515,11 @@ if __name__ == "__main__":
     config['seed'] = int(args.seed) if args.seed else 99
     config['n_envs'] = num_envs
     config['config_filename'] = config_filename
+
+    # Override league_type from CLI if provided
+    if args.league_type:
+        config['league_type'] = args.league_type
+        print(f"[CLI Override] league_type set to: {args.league_type}")
 
     # An example of different training versions you can set up here. Specify using the --version arg.
     if version == 'main':
@@ -582,6 +588,10 @@ if __name__ == "__main__":
         current_params = dict(zip(param_names, param_combination))
         for param_name, param_value in current_params.items():
             config[param_name] = param_value
+
+        # CLI overrides take precedence over hyperparameters
+        if args.league_type:
+            config['league_type'] = args.league_type
 
         param_strings = []
         for param_name, param_value in current_params.items():

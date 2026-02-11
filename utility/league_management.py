@@ -9,8 +9,11 @@ import pygame
 from stable_baselines3 import PPO
 import gymnasium as gym
 import math
+import torch
+import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional, List
+from stable_baselines3.common.policies import ActorCriticPolicy
 from base_env import MaisrEnv
 
 class SubPolicy(ABC):
@@ -71,10 +74,12 @@ class TeammateManager:
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
-        self.maxent_teammate_dir = f'trained_models/maxent_population'
+        self.maxent_teammate_dir = 'partner_pools/maxent'
+        self.bc_teammate_dir = 'partner_pools/bc'
+        self.trajedi_teammate_dir = 'partner_pools/trajedi'
 
         # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
+        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75','bc','maxent','trajedi']
         if league_type not in valid_league_types:
             raise ValueError(f"league_type is {league_type} must be one of {valid_league_types}")
 
@@ -90,7 +95,7 @@ class TeammateManager:
 
         self.mode_selector_options = {
             'baseline': ["none"],
-            'vanilla': ["none", "heuristic"],
+            'vanilla': ["heuristic"],
             'strategy_diverse': ["heuristic"],
             'strategy_diverse_nohighrisk': ["heuristic"],
             'strategy_diverse_nolowrisk': ["heuristic"],
@@ -98,7 +103,7 @@ class TeammateManager:
         }
         self.risk_tolerance_options = {
             'baseline': ["none"],
-            "vanilla": ["none"],
+            "vanilla": ["medium"],
             "strategy_diverse": ["low", "medium", "high", "max_greedy"],
             "strategy_diverse_nohighrisk": ["low", "medium", "max_greedy"],
             "strategy_diverse_nolowrisk": ["high", "medium", "max_greedy"],
@@ -163,6 +168,10 @@ class TeammateManager:
             return self._create_baseline_teammate()
         elif self.league_type == 'maxent':
             return self._create_rl_teammate('maxent')
+        elif self.league_type == 'trajedi':
+            return self._create_rl_teammate('trajedi')
+        elif self.league_type == 'bc':
+            return self._create_bc_teammate()
 
         elif self.league_type == "vanilla":
             # 25% selfplay, 25% heuristic , 50% RL
@@ -256,8 +265,12 @@ class TeammateManager:
             checkpoint_dir = self.maxent_teammate_dir
             fallback_prefix = "Maxent"
             selection_strategy_enabled = False
+        elif teammate_type == "trajedi":
+            checkpoint_dir = self.trajedi_teammate_dir
+            fallback_prefix = "TrajeDi"
+            selection_strategy_enabled = False
         else:
-            raise ValueError(f"teammate_type must be 'selfplay' or 'pretrained', got {teammate_type}")
+            raise ValueError(f"teammate_type must be 'selfplay', 'pretrained', 'maxent', or 'trajedi', got {teammate_type}")
 
 
 
@@ -266,7 +279,7 @@ class TeammateManager:
             print(f"Warning: No {teammate_type}_checkpoint_dir specified, falling back to baseline teammate")
             raise ValueError
 
-        if not os.path.exists(checkpoint_dir) and teammate_type != 'maxent':
+        if not os.path.exists(checkpoint_dir) and teammate_type not in ('maxent', 'trajedi'):
             print(f"Warning: {teammate_type.title()} directory {checkpoint_dir} does not exist, falling back to baseline")
             raise ValueError
 
@@ -392,6 +405,104 @@ class TeammateManager:
             teammate.name = f"{fallback_prefix}_LoadError_Fallback"
             return teammate
 
+
+    def _create_bc_teammate(self):
+        """Create a BC teammate by loading a .pth + .json pair from partner_pools/bc/"""
+
+        def _space_from_json(space_spec):
+            stype = space_spec.get("type", None)
+            if stype == "Box":
+                shape = tuple(space_spec["shape"])
+                return gym.spaces.Box(low=-np.inf, high=np.inf, shape=shape, dtype=np.float32)
+            if stype == "Discrete":
+                return gym.spaces.Discrete(int(space_spec["n"]))
+            raise ValueError(f"Unsupported space type in BC json: {stype}")
+
+        checkpoint_dir = self.bc_teammate_dir
+
+        if not os.path.exists(checkpoint_dir):
+            print(f"Warning: BC directory {checkpoint_dir} does not exist, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "BC_NoDirFound_Fallback"
+            return teammate
+
+        # Find json metadata files
+        json_patterns = [
+            os.path.join(checkpoint_dir, "*.json"),
+            os.path.join(checkpoint_dir, "**/*.json"),
+        ]
+        json_files = []
+        for pattern in json_patterns:
+            json_files.extend(glob.glob(pattern, recursive=True))
+
+        # Filter to valid BC metadata jsons
+        policy_json_files = []
+        for jp in list(set(json_files)):
+            try:
+                with open(jp, "r") as f:
+                    meta = json.load(f)
+                if isinstance(meta, dict) and "obs_space" in meta and "act_space" in meta and "net_arch" in meta:
+                    policy_json_files.append(jp)
+            except Exception:
+                continue
+
+        if not policy_json_files:
+            print(f"Warning: No valid BC policy jsons found in {checkpoint_dir}, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "BC_NoCheckpoints_Fallback"
+            return teammate
+
+        # Pick one at random
+        selected_json = random.choice(policy_json_files)
+        prefix = os.path.splitext(selected_json)[0]
+        pth_path = prefix + ".pth"
+
+        if not os.path.exists(pth_path):
+            print(f"Warning: Missing .pth for {selected_json}, falling back to baseline")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "BC_MissingWeights_Fallback"
+            return teammate
+
+        try:
+            with open(selected_json, "r") as f:
+                meta = json.load(f)
+
+            obs_space = _space_from_json(meta["obs_space"])
+            act_space = _space_from_json(meta["act_space"])
+
+            arch = meta["net_arch"]
+            if isinstance(arch, list) and all(isinstance(x, int) for x in arch):
+                net_arch = dict(pi=arch, vf=arch)
+            else:
+                net_arch = arch
+
+            try:
+                state_dict = torch.load(pth_path, weights_only=True, map_location="cpu")
+            except TypeError:
+                state_dict = torch.load(pth_path, map_location="cpu")
+
+            policy = ActorCriticPolicy(
+                observation_space=obs_space,
+                action_space=act_space,
+                lr_schedule=lambda _: 0.0,
+                net_arch=net_arch,
+            )
+            policy.load_state_dict(state_dict)
+            policy.eval()
+
+            bc_name = os.path.splitext(os.path.basename(selected_json))[0]
+            bc_teammate = BCTeammatePolicy(model=policy, env=None, name=f"BC_{bc_name}")
+            self.current_teammate = bc_teammate
+            if self.verbose:
+                print(f"Loaded BC teammate: {bc_teammate.name}")
+            return bc_teammate
+
+        except Exception as e:
+            print(f"Error loading BC policy {selected_json}: {e}")
+            print("Falling back to baseline teammate")
+            teammate = self._create_baseline_teammate()
+            teammate.name = "BC_LoadError_Fallback"
+            return teammate
 
     def _create_overfit_test_teammate(self):
         """Create teammate with specific configuration for overfit testing"""
@@ -938,6 +1049,59 @@ class RLTeammatePolicy(TeammatePolicy):
         # Implementation would depend on environment structure
         # For now, return False as placeholder
         return False
+
+
+class BCTeammatePolicy(TeammatePolicy):
+    """Wrapper for BC policies to work as MAISR teammates.
+
+    Mirrors RLTeammatePolicy structure but without VecNormalize stats.
+    BC models are trained on raw observations and predict actions directly.
+    """
+
+    def __init__(self, model: ActorCriticPolicy, env, name: str):
+        self.model = model
+        self.env = env
+        self.name = name
+        self.last_observation = None
+        self.device = next(model.parameters()).device
+
+    def choose_subpolicy(self, observation, current_subpolicy):
+        """Get action from BC policy.
+
+        Args:
+            observation: Raw observation from environment
+            current_subpolicy: Ignored (BC doesn't use subpolicies)
+
+        Returns:
+            action: Discrete action
+        """
+        self.last_observation = observation
+
+        obs_tensor = torch.as_tensor(observation).unsqueeze(0).float()
+        obs_tensor = obs_tensor.to(self.device)
+
+        with torch.no_grad():
+            action, _, _ = self.model.forward(obs_tensor, deterministic=True)
+
+        return action.cpu().numpy()[0]
+
+    def get_action(self):
+        """Called by environment wrapper to get teammate action."""
+        if self.last_observation is None:
+            return 0
+
+        obs_tensor = torch.as_tensor(self.last_observation).unsqueeze(0).float()
+        obs_tensor = obs_tensor.to(self.device)
+
+        with torch.no_grad():
+            action, _, _ = self.model.forward(obs_tensor, deterministic=True)
+
+        return action.cpu().numpy()[0]
+
+    def reset(self):
+        """Reset policy state between episodes."""
+        self.last_observation = None
+
 
 class PolicySelector:
     """
