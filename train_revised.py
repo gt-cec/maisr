@@ -434,7 +434,7 @@ def train_generic(
     print('\n\n###### Running model.learn... ######\n')
 
     # TODO make this work even if not using PPO
-    if algo == 'ppo':
+    if algo == 'PPO':
         model.learn(
             total_timesteps=int(env_config['num_timesteps']),
             callback=callbacks,
@@ -524,18 +524,18 @@ if __name__ == "__main__":
     # An example of different training versions you can set up here. Specify using the --version arg.
     if version == 'main':
         run_prefix = '' + machine[0].upper()
-        project_name = 'Add your project name here' # For WandB
+        project_name = 'maisr-bc' # For WandB
 
         # If you want to sweep over multiple hyperparameter settings, you can define them here. These will override the values in the config.json
         # Note: All dictionary keys need to be enclosed in lists, even if they are single items.
         hyperparams = {
-            "network_size": [128, 196],
-            "lr": [0.001, 0.0015],
-            'entropy_regularization': [0.07, 0.08],
-            "teammate_reward_scale": [0.5, 0.75],
+            "network_size": [128],
+            "lr": [0.001],
+            'entropy_regularization': [0.07],
+            "teammate_reward_scale": [0.75],
             "teammate_active_at_start": [True],
             "league_type": ['strategy_diverse'], # ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75']
-            "obs_noise": [0.00, 0.01],
+            "obs_noise": [0.01],
         }
 
         load_path = None # You can specify a policy .zip file here if you want to continue training from a prior run

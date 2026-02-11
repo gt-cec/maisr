@@ -328,7 +328,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 
         elif self.teammate_manager or self.teammate_policy:
             # Get teammate observation (and normalize it)
-            if self.env.config['league_type'] in ['selfplay','fcp']:
+            if self.env.config['league_type'] in ['selfplay','fcp', 'bc']:
 
                 if hasattr(self.current_teammate, 'model'):
                     teammate_obs = self.current_teammate._normalize_observation(self.env.get_observation_nearest_n(1))
@@ -344,8 +344,10 @@ class MaisrLocalSearchWrapper(gym.Env):
                 teammate_action = self.env._direction_to_waypoint(direction_to_move, 1)
                 return teammate_action
 
-            else:
+            elif hasattr(self.current_teammate, "_normalize_observation"):
                 teammate_obs = self.current_teammate._normalize_observation(self.get_observation(1))
+            else:
+                teammate_obs = self.get_observation(1)
 
             self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
             #print(f'teammate chose subpolicy {self.teammate_subpolicy_choice}')

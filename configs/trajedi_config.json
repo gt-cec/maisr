@@ -1,5 +1,5 @@
 {
-  "n_seeds": 2,
+  "n_seeds": 1,
   "n_populations": 6,
   "training_rounds": 292,
   "steps_per_phase": 10240,
