@@ -1,6 +1,7 @@
+import warnings
+warnings.filterwarnings("ignore", message=".*AVX2 capable but pygame was not built with support for it.*", category=RuntimeWarning, module="importlib")
 import json
 import os
-
 import cv2
 import gymnasium as gym
 import numpy as np
