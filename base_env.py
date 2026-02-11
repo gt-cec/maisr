@@ -2,7 +2,7 @@ import warnings
 warnings.filterwarnings("ignore", message=".*AVX2 capable but pygame was not built with support for it.*", category=RuntimeWarning, module="importlib")
 import json
 import os
-import cv2
+#import cv2
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -1121,7 +1121,7 @@ class MaisrEnv(gym.Env):
         grayscale_array = np.dot(pixel_array[..., :3], [0.299, 0.587, 0.114])
 
         # Resize to 84x84 using OpenCV for better quality
-        resized_array = cv2.resize(grayscale_array.astype(np.uint8), (84, 84), interpolation=cv2.INTER_AREA)
+        resized_array = grayscale_array # TODO temporarily commented out #cv2.resize(grayscale_array.astype(np.uint8), (84, 84), interpolation=cv2.INTER_AREA)
 
         # Add channel dimension to match expected observation space (84, 84, 1)
         observation = np.expand_dims(resized_array, axis=2).astype(np.uint8)
