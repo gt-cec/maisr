@@ -1065,6 +1065,10 @@ class BCTeammatePolicy(TeammatePolicy):
         self.last_observation = None
         self.device = next(model.parameters()).device
 
+    def _normalize_observation(self, obs):
+        # No obs normalization for BC. Simple passthrough
+        return obs
+
     def choose_subpolicy(self, observation, current_subpolicy):
         """Get action from BC policy.
 

@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=maisr_maxent        # Job name
+#SBATCH --account=ae                # Tracking account
 #SBATCH --output=logs/maxent_%j.out    # Standard output log (%j = job ID)
 #SBATCH --error=logs/maxent_%j.err     # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
@@ -10,9 +11,6 @@
 #SBATCH --mail-type=END,FAIL           # Email notifications
 #SBATCH --mail-user=rbowers32@gatech.edu # Email address (update this!)
 
-# Load required modules (adjust for your HPC environment)
-# module load python/3.10
-# module load cuda/11.8  # If GPU needed
 
 # Print job information
 echo "Job ID: $SLURM_JOB_ID"
@@ -25,9 +23,8 @@ echo "Working directory: $(pwd)"
 mkdir -p logs
 
 # Activate virtual environment (adjust path as needed)
-# source /path/to/your/venv/bin/activate
-# OR if using conda:
-# source activate maisr
+source ~/scratch/miniconda/bin/activate
+source activate maisr-rl
 
 # Set environment variables
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
@@ -41,6 +38,8 @@ SEED=42
 ENT_COEF=0.01
 CONFIG_PATH="configs/maxent_config.json"
 PROJECT_NAME="maisr-mep-hpc"
+
+cd ~/scratch/MAISR_revisions/maisr
 
 # Run training
 python train_maxent.py \
