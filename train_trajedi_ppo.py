@@ -142,14 +142,12 @@ def main():
         action="store_true",
         help="Testing mode with reduced parameters",
     )
-
     parser.add_argument(
         "--project",
         type=str,
         default="maisr-trajedi",
         help="WandB project name",
     )
-
     args = parser.parse_args()
 
     print(f"\n{'#'*60}")
@@ -157,16 +155,13 @@ def main():
     print(f"{'#'*60}\n")
 
     # Load configs
-
     env_config = load_env_config("configs/main_config.json")
     trajedi_config = load_trajedi_config("configs/trajedi_config.json")
 
-    # Override seed
     env_config["seed"] = args.seed
 
     # Force selfplay league type for TrajeDi (teammates are managed internally)
     env_config["league_type"] = "selfplay"
-
     trajedi_config["n_envs_per_agent"] = multiprocessing.cpu_count()
 
     # Testing overrides

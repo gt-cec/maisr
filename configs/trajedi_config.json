@@ -1,7 +1,7 @@
 {
   "n_seeds": 2,
-  "n_populations": 3,
-  "training_rounds": 20,
+  "n_populations": 6,
+  "training_rounds": 292,
   "steps_per_phase": 10240,
   "eval_frequency": 2,
   "n_eval_episodes": 10,
