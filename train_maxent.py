@@ -816,7 +816,11 @@ def train_population(env_config, args, run_name):
 
     try:
         # Create multiprocessing pool for parallel agent training
-        with multiprocessing.Pool(processes=n_parallel_agents) as pool:
+        # IMPORTANT: Use 'spawn' context to avoid fork-related deadlocks.
+        # The default 'fork' method copies parent threads (wandb, PyTorch OpenMP)
+        # into child processes in a broken state, causing hangs — especially on SLURM.
+        mp_context = multiprocessing.get_context('spawn')
+        with mp_context.Pool(processes=n_parallel_agents) as pool:
             for iteration in range(num_iterations):
                 print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
 
