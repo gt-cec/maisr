@@ -319,17 +319,13 @@ def run_single_human_eval(env, agent_model, human_trajectory_file, level, render
 def main():
     config_filename = '../../configs/main_config.json'
     config = load_env_config(config_filename)
-
-    #config['tick_rate'] = tick_rate
-    #config['game_speed'] /= time_factor
-    #config['max_steps'] *= (1700 / 1500) * time_factor
     config['use_stuck_detection'] = False
     config['prob_detect'] = 0  # 0.0003
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 20
-    num_human_episodes = 20 # Should eb 250
+    num_episodes = 250
+    num_human_episodes = 250 # Should eb 250
 
     ####################################     Pygame setup     ####################################
     if render:
@@ -347,7 +343,7 @@ def main():
         clock = None
 
     ####################################     Instantiate testing agents     ####################################
-    testing_agent_dir = 'revisions_bc' # Agents being tested
+    testing_agent_dir = 'revisions_ego_with_bcteammate' # Agents being tested
     heldout_agent_dir = 'heldout_agents' # Held out agents to test with
     human_trajectory_dir = 'heldout_humans' # human_trajectories_for_training # Held out humans to test with
 
@@ -482,9 +478,12 @@ def main():
         all_agents.add(agent_name)
     for (agent_name, _, _) in human_results.keys():
         all_agents.add(agent_name)
-    display_map = build_unique_display_names(list(all_agents))
+    display_map = None
+    if len(all_agents) > 1:
+        display_map = build_unique_display_names(list(all_agents))
 
-    def extract_agent_info(agent_name: str, display_map):
+    def extract_agent_info(agent_name: str, display_map=None):
+
         """Return a unique agent id + a coarse type label for coloring."""
         base = os.path.basename(agent_name)
         base = base.replace("_model.zip", "").replace(".zip", "").replace(".pth", "").replace(".pt", "")
@@ -504,8 +503,11 @@ def main():
         else:
             agent_type = "unknown"
 
-        unique_part = display_map.get(agent_name, base[-20:])
-        display = f"{agent_type}-{unique_part}"
+        if display_map is None:
+            display = agent_type
+        else:
+            unique_part = display_map.get(agent_name, base[-20:])
+            display = f"{agent_type}-{unique_part}"
 
         return agent_type, display
 
@@ -546,6 +548,14 @@ def main():
     rl_stats = rl_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
     human_stats = human_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
 
+    # Calculate target_ids and threat_ids statistics
+    rl_target_stats = rl_df.groupby(["agent", "agent_type"])["target_ids"].agg(["mean", "std", "count"]).reset_index()
+    human_target_stats = human_df.groupby(["agent", "agent_type"])["target_ids"].agg(
+        ["mean", "std", "count"]).reset_index()
+    rl_threat_stats = rl_df.groupby(["agent", "agent_type"])["threat_ids"].agg(["mean", "std", "count"]).reset_index()
+    human_threat_stats = human_df.groupby(["agent", "agent_type"])["threat_ids"].agg(
+        ["mean", "std", "count"]).reset_index()
+
     # Define consistent colors and label mapping for agent types
     agent_colors = {
         "bc": "#4C72B0",
@@ -568,30 +578,77 @@ def main():
     # Sort so bars are grouped nicely by type then name
     rl_stats = rl_stats.sort_values(["agent_type", "agent"])
     human_stats = human_stats.sort_values(["agent_type", "agent"])
+    rl_target_stats = rl_target_stats.sort_values(["agent_type", "agent"])
+    human_target_stats = human_target_stats.sort_values(["agent_type", "agent"])
+    rl_threat_stats = rl_threat_stats.sort_values(["agent_type", "agent"])
+    human_threat_stats = human_threat_stats.sort_values(["agent_type", "agent"])
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    # Create 3x2 subplot grid (3 rows: reward, targets, threats; 2 cols: RL, Human)
+    fig, axes = plt.subplots(3, 2, figsize=(14, 14))
 
-    # RL subplot
+    # Row 1: Reward
     rl_colors = [agent_colors.get(t, "#808080") for t in rl_stats["agent_type"]]
-    ax1.bar(range(len(rl_stats)), rl_stats["mean"], yerr=rl_stats["std"], capsize=5, alpha=0.9, color=rl_colors)
-    ax1.set_title("Performance with Held-Out RL Teammates", fontsize=16)
-    ax1.set_xlabel("Testing agent")
-    ax1.set_ylabel("Average reward")
-    ax1.set_xticks(range(len(rl_stats)))
-    ax1.set_xticklabels(rl_stats["agent"], rotation=45, ha="right")
-    ax1.set_ylim(0, 45)
-    ax1.grid(axis="y", alpha=0.3)
+    axes[0, 0].bar(range(len(rl_stats)), rl_stats["mean"], yerr=rl_stats["std"], capsize=5, alpha=0.9, color=rl_colors)
+    axes[0, 0].set_title("Performance with Held-Out RL Teammates", fontsize=16)
+    axes[0, 0].set_xlabel("Testing agent")
+    axes[0, 0].set_ylabel("Average reward")
+    axes[0, 0].set_xticks(range(len(rl_stats)))
+    axes[0, 0].set_xticklabels(rl_stats["agent"], rotation=45, ha="right")
+    axes[0, 0].set_ylim(0, 45)
+    axes[0, 0].grid(axis="y", alpha=0.3)
 
-    # Human subplot
     human_colors = [agent_colors.get(t, "#808080") for t in human_stats["agent_type"]]
-    ax2.bar(range(len(human_stats)), human_stats["mean"], yerr=human_stats["std"], capsize=5, alpha=0.9, color=human_colors)
-    ax2.set_title("Performance with Recorded Human Teammates", fontsize=16)
-    ax2.set_xlabel("Testing agent")
-    ax2.set_ylabel("Average reward")
-    ax2.set_xticks(range(len(human_stats)))
-    ax2.set_xticklabels(human_stats["agent"], rotation=45, ha="right")
-    ax2.set_ylim(0, 45)  # (bugfix: this used to incorrectly set ax1 twice)
-    ax2.grid(axis="y", alpha=0.3)
+    axes[0, 1].bar(range(len(human_stats)), human_stats["mean"], yerr=human_stats["std"], capsize=5, alpha=0.9,
+                   color=human_colors)
+    axes[0, 1].set_title("Performance with Recorded Human Teammates", fontsize=16)
+    axes[0, 1].set_xlabel("Testing agent")
+    axes[0, 1].set_ylabel("Average reward")
+    axes[0, 1].set_xticks(range(len(human_stats)))
+    axes[0, 1].set_xticklabels(human_stats["agent"], rotation=45, ha="right")
+    axes[0, 1].set_ylim(0, 45)
+    axes[0, 1].grid(axis="y", alpha=0.3)
+
+    # Row 2: Target IDs
+    rl_target_colors = [agent_colors.get(t, "#808080") for t in rl_target_stats["agent_type"]]
+    axes[1, 0].bar(range(len(rl_target_stats)), rl_target_stats["mean"], yerr=rl_target_stats["std"], capsize=5,
+                   alpha=0.9, color=rl_target_colors)
+    axes[1, 0].set_title("Target IDs with Held-Out RL Teammates", fontsize=16)
+    axes[1, 0].set_xlabel("Testing agent")
+    axes[1, 0].set_ylabel("Average target IDs")
+    axes[1, 0].set_xticks(range(len(rl_target_stats)))
+    axes[1, 0].set_xticklabels(rl_target_stats["agent"], rotation=45, ha="right")
+    axes[1, 0].grid(axis="y", alpha=0.3)
+
+    human_target_colors = [agent_colors.get(t, "#808080") for t in human_target_stats["agent_type"]]
+    axes[1, 1].bar(range(len(human_target_stats)), human_target_stats["mean"], yerr=human_target_stats["std"],
+                   capsize=5, alpha=0.9, color=human_target_colors)
+    axes[1, 1].set_title("Target IDs with Recorded Human Teammates", fontsize=16)
+    axes[1, 1].set_xlabel("Testing agent")
+    axes[1, 1].set_ylabel("Average target IDs")
+    axes[1, 1].set_xticks(range(len(human_target_stats)))
+    axes[1, 1].set_xticklabels(human_target_stats["agent"], rotation=45, ha="right")
+    axes[1, 1].grid(axis="y", alpha=0.3)
+
+    # Row 3: Threat IDs
+    rl_threat_colors = [agent_colors.get(t, "#808080") for t in rl_threat_stats["agent_type"]]
+    axes[2, 0].bar(range(len(rl_threat_stats)), rl_threat_stats["mean"], yerr=rl_threat_stats["std"], capsize=5,
+                   alpha=0.9, color=rl_threat_colors)
+    axes[2, 0].set_title("Threat IDs with Held-Out RL Teammates", fontsize=16)
+    axes[2, 0].set_xlabel("Testing agent")
+    axes[2, 0].set_ylabel("Average threat IDs")
+    axes[2, 0].set_xticks(range(len(rl_threat_stats)))
+    axes[2, 0].set_xticklabels(rl_threat_stats["agent"], rotation=45, ha="right")
+    axes[2, 0].grid(axis="y", alpha=0.3)
+
+    human_threat_colors = [agent_colors.get(t, "#808080") for t in human_threat_stats["agent_type"]]
+    axes[2, 1].bar(range(len(human_threat_stats)), human_threat_stats["mean"], yerr=human_threat_stats["std"],
+                   capsize=5, alpha=0.9, color=human_threat_colors)
+    axes[2, 1].set_title("Threat IDs with Recorded Human Teammates", fontsize=16)
+    axes[2, 1].set_xlabel("Testing agent")
+    axes[2, 1].set_ylabel("Average threat IDs")
+    axes[2, 1].set_xticks(range(len(human_threat_stats)))
+    axes[2, 1].set_xticklabels(human_threat_stats["agent"], rotation=45, ha="right")
+    axes[2, 1].grid(axis="y", alpha=0.3)
 
     # Legend (type -> color)
     legend_handles = []
@@ -603,18 +660,108 @@ def main():
             legend_labels.append(agent_labels[t])
     fig.legend(legend_handles, legend_labels, loc="upper center", ncol=len(legend_labels))
 
-    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
     print(f'\n====== RL AGENT PERFORMANCE SUMMARY ======')
     for _, row in rl_stats.iterrows():
-        agent_label = agent_labels.get(row["agent"], row["agent"])
-        print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+        agent_label = agent_labels.get(row["agent_type"], row["agent"])
+        print(f'{row["agent"]}: Reward={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    print(f'\n====== RL AGENT TARGET IDs ======')
+    for _, row in rl_target_stats.iterrows():
+        print(f'{row["agent"]}: Targets={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    print(f'\n====== RL AGENT THREAT IDs ======')
+    for _, row in rl_threat_stats.iterrows():
+        print(f'{row["agent"]}: Threats={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
 
     print(f'\n====== HUMAN TRAJECTORY PERFORMANCE SUMMARY ======')
     for _, row in human_stats.iterrows():
-        agent_label = agent_labels.get(row["agent"], row["agent"])
-        print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+        agent_label = agent_labels.get(row["agent_type"], row["agent"])
+        print(f'{row["agent"]}: Reward={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    print(f'\n====== HUMAN TRAJECTORY TARGET IDs ======')
+    for _, row in human_target_stats.iterrows():
+        print(f'{row["agent"]}: Targets={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    print(f'\n====== HUMAN TRAJECTORY THREAT IDs ======')
+    for _, row in human_threat_stats.iterrows():
+        print(f'{row["agent"]}: Threats={row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+
+    # Calculate statistics PER TESTING AGENT (not collapsed by type)
+    # rl_stats = rl_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
+    # human_stats = human_df.groupby(["agent", "agent_type"])["reward"].agg(["mean", "std", "count"]).reset_index()
+    #
+    # # Define consistent colors and label mapping for agent types
+    # agent_colors = {
+    #     "bc": "#4C72B0",
+    #     "fcp": "#2E86AB",
+    #     "mixed75": "#A23B72",
+    #     "selfplay": "#F18F01",
+    #     "strat-finetuned": "#C73E1D",
+    #     "unknown": "#808080",
+    # }
+    #
+    # agent_labels = {
+    #     "fcp": "FCP",
+    #     "bc": "BC",
+    #     "mixed75": "Strat-FCP",
+    #     "selfplay": "SP",
+    #     "strat-finetuned": "Strat-SP",
+    #     "unknown": "Unknown",
+    # }
+    #
+    # # Sort so bars are grouped nicely by type then name
+    # rl_stats = rl_stats.sort_values(["agent_type", "agent"])
+    # human_stats = human_stats.sort_values(["agent_type", "agent"])
+    #
+    # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    #
+    # # RL subplot
+    # rl_colors = [agent_colors.get(t, "#808080") for t in rl_stats["agent_type"]]
+    # ax1.bar(range(len(rl_stats)), rl_stats["mean"], yerr=rl_stats["std"], capsize=5, alpha=0.9, color=rl_colors)
+    # ax1.set_title("Performance with Held-Out RL Teammates", fontsize=16)
+    # ax1.set_xlabel("Testing agent")
+    # ax1.set_ylabel("Average reward")
+    # ax1.set_xticks(range(len(rl_stats)))
+    # ax1.set_xticklabels(rl_stats["agent"], rotation=45, ha="right")
+    # ax1.set_ylim(0, 45)
+    # ax1.grid(axis="y", alpha=0.3)
+    #
+    # # Human subplot
+    # human_colors = [agent_colors.get(t, "#808080") for t in human_stats["agent_type"]]
+    # ax2.bar(range(len(human_stats)), human_stats["mean"], yerr=human_stats["std"], capsize=5, alpha=0.9, color=human_colors)
+    # ax2.set_title("Performance with Recorded Human Teammates", fontsize=16)
+    # ax2.set_xlabel("Testing agent")
+    # ax2.set_ylabel("Average reward")
+    # ax2.set_xticks(range(len(human_stats)))
+    # ax2.set_xticklabels(human_stats["agent"], rotation=45, ha="right")
+    # ax2.set_ylim(0, 45)  # (bugfix: this used to incorrectly set ax1 twice)
+    # ax2.grid(axis="y", alpha=0.3)
+    #
+    # # Legend (type -> color)
+    # legend_handles = []
+    # legend_labels = []
+    # for t in ["bc", "fcp", "mixed75", "selfplay", "strat-finetuned", "unknown"]:
+    #     if (rl_stats["agent_type"].eq(t).any()) or (human_stats["agent_type"].eq(t).any()):
+    #         legend_handles.append(plt.Line2D([0], [0], marker="s", color="w",
+    #                                          markerfacecolor=agent_colors[t], markersize=10))
+    #         legend_labels.append(agent_labels[t])
+    # fig.legend(legend_handles, legend_labels, loc="upper center", ncol=len(legend_labels))
+    #
+    # plt.tight_layout(rect=[0, 0, 1, 0.92])
+    # plt.show()
+    #
+    # print(f'\n====== RL AGENT PERFORMANCE SUMMARY ======')
+    # for _, row in rl_stats.iterrows():
+    #     agent_label = agent_labels.get(row["agent"], row["agent"])
+    #     print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
+    #
+    # print(f'\n====== HUMAN TRAJECTORY PERFORMANCE SUMMARY ======')
+    # for _, row in human_stats.iterrows():
+    #     agent_label = agent_labels.get(row["agent"], row["agent"])
+    #     print(f'{agent_label}: {row["mean"]:.2f} ± {row["std"]:.2f} (n={row["count"]})')
 
 
 if __name__ == '__main__':

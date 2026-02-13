@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=maisr_maxent        # Job name
-#SBATCH --account=ae                # Tracking account
+#SBATCH --account=gts-kf52                # Tracking account
 #SBATCH --output=logs/maxent_%j.out    # Standard output log (%j = job ID)
 #SBATCH --error=logs/maxent_%j.err     # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
-#SBATCH --cpus-per-task=16             # Number of CPU cores per task
+#SBATCH --cpus-per-task=24            # Number of CPU cores per task
 #SBATCH --mem=32G                      # Memory per node
 #SBATCH --time=18:00:00                # Time limit (48 hours)
 #SBATCH --mail-type=END,FAIL           # Email notifications
