@@ -467,10 +467,16 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
             if len(self.population_models) == 0:
                 return 0.0
 
+            # Early exit if no valid models available yet (during initialization)
+            if not any(m is not None for m in self.population_models):
+                return 0.0
+
             # Convert to batch tensor
             obs_batch = torch.as_tensor(observations).float()
-            if hasattr(self.population_models[0].policy, 'device'):
-                obs_batch = obs_batch.to(self.population_models[0].policy.device)
+            # Find first valid model to determine device
+            valid_model = next((m for m in self.population_models if m is not None), None)
+            if valid_model is not None and hasattr(valid_model.policy, 'device'):
+                obs_batch = obs_batch.to(valid_model.policy.device)
 
             # Collect action probs from all models in batch
             all_action_probs = []
@@ -527,6 +533,15 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
             else:
                 # Assume it's a live model reference (backward compatibility)
                 self.population_models.append(item)
+
+        # Warn if no valid models loaded (helps debugging)
+        valid_count = sum(1 for m in self.population_models if m is not None)
+        if valid_count == 0 and len(self.population_models) > 0:
+            import warnings
+            warnings.warn(
+                f"PE wrapper loaded {len(self.population_models)} models but all are None. "
+                "PE bonus will be 0 until models are initialized."
+            )
 
 
 def wrap_env_with_pe(env, population_checkpoint_paths, entropy_weight, agent_idx):
