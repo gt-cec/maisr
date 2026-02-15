@@ -162,7 +162,15 @@ def main():
 
     # Force selfplay league type for TrajeDi (teammates are managed internally)
     env_config["league_type"] = "selfplay"
-    trajedi_config["n_envs_per_agent"] = multiprocessing.cpu_count()
+    total_cores = multiprocessing.cpu_count()
+    total_agents = trajedi_config["n_seeds"] * (trajedi_config["n_populations"] + 1)  # +1 for BR
+    trajedi_config["n_envs_per_agent"] = max(1, total_cores // total_agents)
+
+    print(f"\nParallelization:")
+    print(f"  Total cores: {total_cores}")
+    print(f"  Total agents: {total_agents}")
+    print(f"  Envs per agent: {trajedi_config['n_envs_per_agent']}")
+    print(f"  Total parallel envs: {trajedi_config['n_envs_per_agent'] * total_agents}")
 
     # Testing overrides
     if args.testing:

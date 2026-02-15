@@ -545,6 +545,16 @@ def wrap_env_with_pe(env, population_checkpoint_paths, entropy_weight, agent_idx
     return PopulationEntropyVecWrapper(env, population_checkpoint_paths, entropy_weight, agent_idx)
 
 
+def is_worker_process():
+    """
+    Detect if running in a multiprocessing worker process.
+
+    Returns True if not in MainProcess, False otherwise.
+    This is used to avoid nested multiprocessing (daemon processes cannot spawn children).
+    """
+    return multiprocessing.current_process().name != 'MainProcess'
+
+
 def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_models, entropy_weight):
     """
     Create training and eval environments for a single agent.
@@ -614,8 +624,10 @@ def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_m
         make_wrapped_env(i, agent_seed + i, agent_run_name, save_episode_plots=False)#(i==0))
         for i in range(n_envs)
     ]
-    
-    if n_envs > 1:
+
+    # Use DummyVecEnv in worker processes to avoid nested multiprocessing
+    # (daemon processes cannot spawn children via SubprocVecEnv)
+    if n_envs > 1 and not is_worker_process():
         env = SubprocVecEnv(env_fns)
     else:
         env = DummyVecEnv(env_fns)
@@ -826,7 +838,11 @@ def train_population(env_config, args, run_name):
 
     try:
         # Create multiprocessing pool for parallel agent training
-        with multiprocessing.Pool(processes=n_parallel_agents) as pool:
+        # IMPORTANT: Use 'spawn' context to avoid fork-related deadlocks.
+        # The default 'fork' method copies parent threads (wandb, PyTorch OpenMP)
+        # into child processes in a broken state, causing hangs — especially on SLURM.
+        mp_context = multiprocessing.get_context('spawn')
+        with mp_context.Pool(processes=n_parallel_agents) as pool:
             for iteration in range(num_iterations):
                 print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
 

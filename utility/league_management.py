@@ -174,21 +174,7 @@ class TeammateManager:
             return self._create_bc_teammate()
 
         elif self.league_type == "vanilla":
-            # 25% selfplay, 25% heuristic , 50% RL
-            prob = random.random()
-            if prob < 0.25:
-                print(f'[_select_uniform_teammate] Creating selfplay teammate')
-                try:
-                    return self._create_selfplay_teammate()
-                except:
-                    print('Could not create selfplay, creating vanilla heuristic')
-                    return self._create_vanilla_heuristic_teammate()
-            elif prob < 0.50:
-                print(f'[_select_uniform_teammate] Creating selfplay teammate')
-                return self._create_vanilla_heuristic_teammate()
-            else:
-                print(f'[_select_uniform_teammate] Creating pretrained RL teammate')
-                return self._create_pretrained_rl_teammate()
+            return self._create_vanilla_heuristic_teammate()
 
         elif self.league_type == "strategy_diverse":
             return self._create_strategy_diverse_heuristic_teammate() # TEMP
@@ -271,7 +257,6 @@ class TeammateManager:
             selection_strategy_enabled = False
         else:
             raise ValueError(f"teammate_type must be 'selfplay', 'pretrained', 'maxent', or 'trajedi', got {teammate_type}")
-
 
 
         # Validation checks

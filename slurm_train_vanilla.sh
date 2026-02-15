@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=maisr_vanilla       # Job name
-#SBATCH --account=ae                # Tracking account
+#SBATCH --account=gts-kf52                # Tracking account
 #SBATCH --output=logs/vanilla_%j.out    # Standard output log (%j = job ID)
 #SBATCH --error=logs/vanilla_%j.err     # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
@@ -30,8 +30,7 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 # Training parameters
-TOTAL_TIMESTEPS=18e6
-POPULATION_SIZE=6
+TOTAL_TIMESTEPS=3e6
 NUM_CHECKPOINTS=18
 SEED=42
 CONFIG_PATH="configs/main_config.json"
@@ -42,13 +41,10 @@ cd ~/scratch/MAISR_revisions/maisr
 # Run training
 python train_revised.py \
     --total_timesteps $TOTAL_TIMESTEPS \
-    --population_size $POPULATION_SIZE \
-    --num_checkpoints $NUM_CHECKPOINTS \
     --league_type "vanilla" \
     --seed $SEED \
     --config $CONFIG_PATH \
     --project_name $PROJECT_NAME \
-    --n_envs $SLURM_CPUS_PER_TASK
 
 # Print completion time
 echo "End time: $(date)"

@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=maisr_trajedi       # Job name
-#SBATCH --account=ae                # Tracking account
+#SBATCH --account=gts-kf52                # Tracking account
 #SBATCH --output=logs/trajedi_%j.out   # Standard output log (%j = job ID)
 #SBATCH --error=logs/trajedi_%j.err    # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
 #SBATCH --cpus-per-task=24             # Number of CPU cores per task
-#SBATCH --mem=48G                      # Memory per node
+#SBATCH --mem=32G                      # Memory per node
 #SBATCH --time=18:00:00                # Time limit (72 hours)
 #SBATCH --mail-type=END,FAIL           # Email notifications
 #SBATCH --mail-user=rbowers32@gatech.edu # Email address (update this!)
