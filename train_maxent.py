@@ -99,6 +99,55 @@ def load_model_checkpoint(checkpoint_dict, env):
     return model, env
 
 
+def find_latest_checkpoints(run_name, population_size, steps_per_iteration):
+    """
+    Find the latest SB3 CheckpointCallback checkpoint for each agent in a previous run.
+
+    Args:
+        run_name: Run name to search (e.g. 'mep_phase1_pop6_alpha0.01_seed42_0224_1035')
+        population_size: Number of agents in the population
+        steps_per_iteration: Steps per training iteration (n_envs * 2048)
+
+    Returns:
+        tuple: (checkpoints, start_iteration) where checkpoints is a list of
+               {'model': path, 'vecnorm': path, 'steps': N} per agent,
+               and start_iteration is derived from the lowest step count across agents.
+    """
+    import re
+    checkpoints = []
+    for agent_idx in range(population_size):
+        ckpt_dir = f"outputs/maxent/{run_name}/agent_{agent_idx}/checkpoints"
+        pattern = os.path.join(ckpt_dir, f"agent{agent_idx}_checkpoint_*_steps.zip")
+        matches = glob.glob(pattern)
+        if not matches:
+            raise FileNotFoundError(
+                f"No checkpoints found for agent {agent_idx} at {ckpt_dir}. "
+                f"Run '{run_name}' may not exist or has no saved checkpoints."
+            )
+        # Parse step counts and pick the highest
+        best_steps = -1
+        best_model_path = None
+        for path in matches:
+            m = re.search(r'_(\d+)_steps\.zip$', path)
+            if m:
+                steps = int(m.group(1))
+                if steps > best_steps:
+                    best_steps = steps
+                    best_model_path = path
+        vecnorm_path = os.path.join(
+            ckpt_dir,
+            f"agent{agent_idx}_checkpoint_vecnormalize_{best_steps}_steps.pkl"
+        )
+        checkpoints.append({
+            'model': best_model_path,
+            'vecnorm': vecnorm_path,
+            'steps': best_steps,
+        })
+        print(f"  Agent {agent_idx}: latest checkpoint at step {best_steps} ({best_model_path})")
+    start_iteration = min(ck['steps'] for ck in checkpoints) // steps_per_iteration
+    return checkpoints, start_iteration
+
+
 def extract_training_metrics(model):
     """
     Extract training metrics from PPO model logger.
@@ -169,9 +218,18 @@ def train_agent_worker(agent_config):
 
         # 3. Train for steps_per_iteration
         print(f"[Worker] Agent {agent_idx} starting model.learn({agent_config['steps_per_iteration']} steps)...", flush=True)
+        checkpoint_save_freq = agent_config['steps_per_iteration'] // agent_config['n_envs']
+        checkpoint_callback = CheckpointCallback(
+            save_freq=checkpoint_save_freq,
+            save_path=os.path.join("outputs", "maxent", agent_config['run_name'], f"agent_{agent_idx}", "checkpoints"),
+            name_prefix=f"agent{agent_idx}_checkpoint",
+            save_vecnormalize=True,
+            verbose=1,
+        )
         model.learn(
             total_timesteps=agent_config['steps_per_iteration'],
             reset_num_timesteps=False,
+            callback=checkpoint_callback,
         )
         print(f"[Worker] Agent {agent_idx} model.learn() complete", flush=True)
 
@@ -452,7 +510,7 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
             self.episode_observations.append(self.last_obs)
             self.episode_actions.append(action)
 
-        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs, reward, truncated, terminated, info = self.env.step(action)
 
         # Compute PE bonus at episode end (batch processing)
         if terminated or truncated:
@@ -466,7 +524,7 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
                 info['pe_bonus_per_step'] = total_pe_bonus / len(self.episode_observations)
 
         self.last_obs = obs
-        return obs, reward, truncated, terminated, info
+        return obs, reward, terminated, truncated, info
     
     def _compute_pe_bonus_batch(self, observations, actions):
         """
@@ -538,9 +596,8 @@ class PopulationEntropyVecWrapper(gym.Wrapper):
             elif isinstance(item, dict) and 'model' in item:
                 # Load from checkpoint dict
                 try:
-                    # Create minimal dummy env for loading model
-                    dummy_env = DummyVecEnv([lambda: gym.make('CartPole-v1')])
-                    model, _ = load_model_checkpoint(item, dummy_env)
+                    # Load for inference only — no env needed, skips space validation
+                    model = PPO.load(item['model'], env=None)
                     self.population_models.append(model)
                 except Exception as e:
                     print(f"Warning: Failed to load model from checkpoint: {e}")
@@ -754,7 +811,7 @@ def train_agent_iteration(agent_idx, model, env, eval_env, teammate_manager,
     return model
 
 
-def train_population(env_config, args, run_name):
+def train_population(env_config, args, run_name, resume_checkpoints=None, start_iteration=0):
     """Train a population of agents with PE reward - MODIFIED for single wandb run"""
     machine = socket.gethostname()
     total_timesteps = int(args.total_timesteps)
@@ -817,9 +874,14 @@ def train_population(env_config, args, run_name):
         teammate_manager = teammate_managers[agent_idx]
 
         tb_log_dir = f"outputs/maxent/logs/tb_runs/{shared_wandb_run.id}"
-        model = create_agent_model(env_config, env, agent_idx, args.seed, tb_log_dir)
+        if resume_checkpoints:
+            model, env = load_model_checkpoint(resume_checkpoints[agent_idx], env)
+            environments[agent_idx] = env
+            print(f'  Agent {agent_idx} resumed from checkpoint (step {resume_checkpoints[agent_idx]["steps"]})')
+        else:
+            model = create_agent_model(env_config, env, agent_idx, args.seed, tb_log_dir)
+            print(f'  Agent {agent_idx} model created')
         population_models[agent_idx] = model
-        print(f'  Agent {agent_idx} model created')
 
         # Setup callbacks - pass shared wandb run
         callbacks = setup_callbacks(
@@ -836,12 +898,13 @@ def train_population(env_config, args, run_name):
         teammate_manager._create_selfplay_teammate()
         teammate_manager.current_teammate.env = env
 
-        # Save initial checkpoint
-        initial_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_0_steps.zip"
-        vecnorm_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_vecnormalize_0_steps.pkl"
-        model.save(initial_path)
-        if isinstance(env, VecNormalize):
-            env.save(vecnorm_path)
+        if not resume_checkpoints:
+            # Save initial checkpoint (skip on resume — checkpoints already exist)
+            initial_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_0_steps.zip"
+            vecnorm_path = f"outputs/maxent/{agent_run_name}/checkpoints/agent{agent_idx}_checkpoint_vecnormalize_0_steps.pkl"
+            model.save(initial_path)
+            if isinstance(env, VecNormalize):
+                env.save(vecnorm_path)
 
         shared_wandb_run.log({"curriculum/difficulty_level": 0}, step=0)
 
@@ -875,7 +938,7 @@ def train_population(env_config, args, run_name):
     # Training loop: train agents in parallel batches
     steps_per_iteration = args.n_envs * 2048
     num_iterations = total_timesteps // steps_per_iteration
-    global_step = 0
+    global_step = start_iteration * steps_per_iteration
     last_checkpoints = None  # Cache for checkpoint reuse
 
     try:
@@ -885,12 +948,12 @@ def train_population(env_config, args, run_name):
         # into child processes in a broken state, causing hangs — especially on SLURM.
         mp_context = multiprocessing.get_context('spawn')
         with mp_context.Pool(processes=n_parallel_agents) as pool:
-            for iteration in range(num_iterations):
+            for iteration in range(start_iteration, num_iterations):
                 print(f'\n--- Iteration {iteration + 1}/{num_iterations} ---')
 
                 # Save checkpoints - selective saving to reduce I/O
-                if iteration == 0:
-                    # First iteration: save all agents
+                if iteration == start_iteration:
+                    # First iteration of this run: save all agents to temp dir
                     population_checkpoints = []
                     for idx, (model, env) in enumerate(zip(population_models, environments)):
                         checkpoint = save_model_checkpoint(
@@ -1073,6 +1136,8 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, default='configs/maxent_config.json', help='Path to config JSON file')
     parser.add_argument('--project_name', type=str, default='maisr-mep-corrected', help='WandB project name')
     parser.add_argument('--oversubscription', type=float, default=1.5, help='CPU oversubscription factor (1.0=no sharing, 1.5=moderate, 2.0=aggressive)')
+    parser.add_argument('--resume_run_name', type=str, default=None,
+                        help='Run name to resume (e.g. mep_phase1_pop6_alpha0.01_seed42_0224_1035)')
     args = parser.parse_args()
 
     # Handle defaults
@@ -1092,9 +1157,20 @@ if __name__ == "__main__":
     env_config['seed'] = args.seed
     env_config['n_envs'] = args.n_envs
 
-    # Generate run name
-    timestamp = datetime.now().strftime("%m%d_%H%M")
-    run_name = f"mep_phase1_pop{args.population_size}_alpha{args.ent_coef}_seed{args.seed}_{timestamp}"
+    # Resolve run name and resume state
+    if args.resume_run_name:
+        run_name = args.resume_run_name
+        steps_per_iteration = args.n_envs * 2048
+        print(f'  Scanning checkpoints for run: {run_name}')
+        resume_checkpoints, start_iteration = find_latest_checkpoints(
+            args.resume_run_name, args.population_size, steps_per_iteration
+        )
+        print(f'  Resuming from iteration {start_iteration}')
+    else:
+        resume_checkpoints = None
+        start_iteration = 0
+        timestamp = datetime.now().strftime("%m%d_%H%M")
+        run_name = f"mep_phase1_pop{args.population_size}_alpha{args.ent_coef}_seed{args.seed}_{timestamp}"
 
     print(f'\n{"#" * 80}')
     print(f'  MEP Phase 1: Maximum Entropy Population Training (CORRECTED)')
@@ -1104,10 +1180,14 @@ if __name__ == "__main__":
     print(f'  Envs per agent: {args.n_envs}')
     print(f'  Base seed: {args.seed}')
     print(f'  Run name: {run_name}')
+    if args.resume_run_name:
+        print(f'  Resuming from iteration: {start_iteration}')
     print(f'{"#" * 80}\n')
 
     # Create top-level output directory
     os.makedirs(f"outputs/maxent/{run_name}", exist_ok=True)
 
     # Train population
-    train_population(env_config, args, run_name)
+    train_population(env_config, args, run_name,
+                     resume_checkpoints=resume_checkpoints,
+                     start_iteration=start_iteration)
