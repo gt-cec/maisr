@@ -40,8 +40,8 @@ export WANDB_MODE=offline   # Prevents hang on internet-restricted HPC nodes
 echo "[OK] Thread environment variables set (OMP/MKL=1, WANDB_MODE=offline)."
 
 # Training parameters
-TOTAL_TIMESTEPS=1e6 #18e6
-POPULATION_SIZE=2 # 6
+TOTAL_TIMESTEPS=4e6 #18e6
+POPULATION_SIZE=6 # 6
 NUM_CHECKPOINTS=9
 SEED=42
 ENT_COEF=0.01
