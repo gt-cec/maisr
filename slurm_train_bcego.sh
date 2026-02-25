@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=maisr_vanilla       # Job name
+#SBATCH --job-name=maisr_bcego       # Job name
 #SBATCH --account=gts-kf52                # Tracking account
-#SBATCH --output=logs/vanilla_%j.out    # Standard output log (%j = job ID)
-#SBATCH --error=logs/vanilla_%j.err     # Standard error log
+#SBATCH --output=logs/bcego_%j.out    # Standard output log (%j = job ID)
+#SBATCH --error=logs/bcego_%j.err     # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
 #SBATCH --cpus-per-task=16             # Number of CPU cores per task
 #SBATCH --mem=32G                      # Memory per node
@@ -29,10 +29,17 @@ source activate maisr-rl
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
+# Training parameters
+TOTAL_TIMESTEPS=3e6
+NUM_CHECKPOINTS=18
+SEED=42
+CONFIG_PATH="configs/main_config.json"
+PROJECT_NAME="maisr"
+
 cd ~/scratch/MAISR_revisions/maisr
 
 # Run training
-python train_revised.py --league_type "vanilla"
+python train_revised.py --league_type "bc"
 
 # Print completion time
 echo "End time: $(date)"
