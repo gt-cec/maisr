@@ -11,6 +11,7 @@
 	"max_steps": 1500,
 	"frame_skip": 35,
 	"action_rate": 20,
+	"action_rate": 20,
 
 	"num_targets": 15,
 	"num_threats": 4,

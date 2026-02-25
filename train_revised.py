@@ -41,7 +41,22 @@ while not import_complete:
         print(f'Import exception: {e}')
         import_complete = False
 
+import hashlib
 
+def make_short_run_name(prefix, seed, params):
+    """
+    Produces a short, stable run name.
+    Human readable timestamp + deterministic hash of hyperparameters.
+    """
+    # canonicalize param ordering
+    param_json = json.dumps(params, sort_keys=True)
+
+    # 8-char hash (collision risk negligible for your use)
+    sig = hashlib.sha1(param_json.encode()).hexdigest()[:8]
+
+    ts = datetime.now().strftime("%m%d_%H%M")
+
+    return f"{prefix}_{ts}_s{seed}_{sig}"
 
 def get_latest_checkpoint_and_vecnorm(seed: int, note_prefix: str = "pretrain") -> tuple[str, str]:
     """
@@ -500,7 +515,7 @@ if __name__ == "__main__":
     config_filename = 'configs/main_config.json'
     num_envs = 2 if args.testing else multiprocessing.cpu_count() # Use all CPU cores for multiprocessing, but only use 2 if args.testing (for faster init)
     train_type = 'monolith' # What type of agent to train. "monolith" for a single policy that chooses directional or target index control. "mode_selector" for a hybrid agent that chooses subpolicies (not currently implemented)
-    project_name = 'maisr-rl-mixedtraining'#'insert_wandb_project_name'
+    #'insert_wandb_project_name'
     save_episode_plots = True # If True, episode plots are saved to outputs/{run name}/episode_plots
     verbosity = {
         'league_manager': False,
@@ -524,7 +539,7 @@ if __name__ == "__main__":
     # An example of different training versions you can set up here. Specify using the --version arg.
     if version == 'main':
         run_prefix = '' + machine[0].upper()
-        project_name = 'maisr-bc' # For WandB
+        project_name = 'maisr-rl-purestrategy'
 
         # If you want to sweep over multiple hyperparameter settings, you can define them here. These will override the values in the config.json
         # Note: All dictionary keys need to be enclosed in lists, even if they are single items.
@@ -599,9 +614,9 @@ if __name__ == "__main__":
             except: param_key = param_name
             param_strings.append(f'{param_key}-{param_value}')
 
-        temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
-        #
-        run_name = f'{run_prefix}_' + datetime.now().strftime("%m%d_%H%M") + f'_seed{str(args.seed)}' + temp_identifier
+        #temp_identifier = '_'.join([s for s in param_strings if not s.startswith('overfittest-')])
+        #run_name = f'{run_prefix}_' + datetime.now().strftime("%m%d_%H%M") + f'_seed{str(args.seed)}' + temp_identifier
+        run_name = make_short_run_name(run_prefix, args.seed, current_params)
 
 
         print(f'\n--- Starting training run with params: {current_params} ---')
