@@ -668,7 +668,7 @@ class MaisrEnv(gym.Env):
         info['failed'] = getattr(self, 'failed', False)
 
         if self.terminated or self.truncated:
-            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps\n\n')
+            print(f'ROUND {self.episode_counter} COMPLETE ({self.targets_identified} IDs), reward {round(info["episode"]["r"], 1)}, {self.step_count_outer}({info["episode"]["l"]}) steps')
 
             if "teammate_checkpoint" in info:
                 self.teammate_checkpoint_info = info["teammate_checkpoint"]

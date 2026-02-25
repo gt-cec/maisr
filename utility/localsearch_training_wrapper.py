@@ -311,10 +311,11 @@ class MaisrLocalSearchWrapper(gym.Env):
         return action
 
     def get_teammate_action(self):
+       # print(f'env action type: {self.env.config['action_type'] }')
+      #  print(f'Current teammate model: {self.current_teammate.model}')
 
         # Get action from RL teammates
-        if self.env.config['action_type'] == 'target_index' and hasattr(self.current_teammate, 'model'):
-            print('target index or model is true')
+        if self.env.config['action_type'] == 'Discrete16' and hasattr(self.current_teammate, 'model'):
             raw_teammate_obs = self.env.get_observation_nearest_n(1)
             teammate_obs = self.current_teammate._normalize_observation(raw_teammate_obs)
 
@@ -349,8 +350,7 @@ class MaisrLocalSearchWrapper(gym.Env):
             else:
                 teammate_obs = self.get_observation(1)
 
-            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs,self.teammate_subpolicy_choice)
-            #print(f'teammate chose subpolicy {self.teammate_subpolicy_choice}')
+            self.teammate_subpolicy_choice = self.current_teammate.choose_subpolicy(teammate_obs, self.teammate_subpolicy_choice)
             teammate_subpolicy_observation = self.get_subpolicy_observation(self.teammate_subpolicy_choice, 1)
 
             if self.teammate_subpolicy_choice == 0:  # Local search
@@ -522,6 +522,7 @@ class MaisrLocalSearchWrapper(gym.Env):
 ########################################################################################################################
 
     def get_subpolicy_observation(self, selected_subpolicy, agent_id):
+        print(selected_subpolicy)
         if selected_subpolicy == 0:  # Get obs for local search
             observation = self.get_observation_localsearch(agent_id)
             # observation = self.normalize_local_search_obs(observation)

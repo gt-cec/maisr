@@ -324,8 +324,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 250
-    num_human_episodes = 250 # Should eb 250
+    num_episodes = 3 # 250
+    num_human_episodes = 3 # 250
 
     ####################################     Pygame setup     ####################################
     if render:
@@ -357,9 +357,7 @@ def main():
         testing_agents = populate_agent_list(testing_agent_dir, label='testagent')
 
     heldout_agents = populate_agent_list(heldout_agent_dir, label='heldout')
-
-    print('Contents of heldout_agents:')
-    print(heldout_agents)
+    print(f'Contents of heldout_agents:\n{heldout_agents}')
 
 
     ####################################################################################################################
@@ -379,9 +377,7 @@ def main():
     rl_results = {}
     human_results = {}
     for agent_tuple in testing_agents:
-        agent_model = agent_tuple[0]
-        agent_vecnorm = agent_tuple[1]
-        agent_name = agent_tuple[2]
+        agent_model, agent_vecnorm, agent_name = agent_tuple
 
         temp_teammate_policy = RLTeammatePolicy(agent_model, None, None, None, None, norm_stats_path=agent_vecnorm)
 
@@ -389,11 +385,10 @@ def main():
         env = DummyVecEnv(env_fns)
         env = load_vecnormalize_wrapper(agent_vecnorm, env)
         print(f'\n&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
-        print(f'&&&&&& NEW TESTING AGENT, loaded new vecnorm stats from {agent_vecnorm} &&&&&')
+        print(f'NEW TESTING AGENT, loaded new vecnorm stats from {agent_vecnorm}')
         print(f'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&\n')
         base_env = env.envs[0].env
         wrapper_env = env.envs[0]
-        print(f'BASE ENV IS {base_env}')
         base_env.teammate_active = True
         wrapper_env.teammate_active = True
 
@@ -403,13 +398,19 @@ def main():
         print(f'#########################################################\n')
 
 
-        for teammate_tuple in testing_agents:
-            print(f'%%%%%% Evaluating {teammate_tuple[2]} with held-out RL teammates for {num_episodes} episodes\n')
+        for teammate_tuple in heldout_agents:
+            print(f'\n%%%%%% Evaluating {teammate_tuple[2]} with held-out RL teammates for {num_episodes} episodes')
 
-            for run in range(num_episodes): # 20
+            for run in range(num_episodes):
                 teammate_model = teammate_tuple[0]
                 teammate_vecnorm = teammate_tuple[1]
                 teammate_name = teammate_tuple[2]
+
+                agent_basename = os.path.basename(agent_name[len('testagent'):])
+                teammate_basename = os.path.basename(teammate_name[len('heldout'):])
+                if agent_basename == teammate_basename:
+                    print(f'% Skipping self-play: {agent_name} vs {teammate_name}')
+                    continue
 
                 teammate = RLTeammatePolicy(teammate_model, env, None, None, None, norm_stats_path=teammate_vecnorm)
                 #print(f'teammate is using model {teammate_model} and norm stats {teammate_vecnorm}')
