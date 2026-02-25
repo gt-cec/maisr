@@ -83,11 +83,17 @@ def load_model_checkpoint(checkpoint_dict, env):
     Returns:
         tuple: (loaded_model, loaded_env)
     """
-    # Load VecNormalize stats if available
-    if 'vecnorm' in checkpoint_dict and os.path.exists(checkpoint_dict['vecnorm']):
-        env = VecNormalize.load(checkpoint_dict['vecnorm'], venv=env)
+    # Unwrap any existing VecNormalize layers before applying the saved one
+    # to avoid double-wrapping (VecNorm(VecNorm(...))) across iterations
+    base_env = env
+    while isinstance(base_env, VecNormalize):
+        base_env = base_env.venv
 
-    # Load PPO model
+    if 'vecnorm' in checkpoint_dict and os.path.exists(checkpoint_dict['vecnorm']):
+        env = VecNormalize.load(checkpoint_dict['vecnorm'], venv=base_env)
+    else:
+        env = base_env
+
     model = PPO.load(checkpoint_dict['model'], env=env)
 
     return model, env
@@ -140,31 +146,39 @@ def train_agent_worker(agent_config):
             - checkpoint: dict (updated model checkpoint paths)
             - metrics: dict (training metrics)
     """
+    agent_idx = agent_config['agent_idx']
+    print(f"[Worker] Agent {agent_idx} started (PID={os.getpid()})", flush=True)
     try:
         # 1. Create environment with SubprocVecEnv and PE wrapper
+        print(f"[Worker] Agent {agent_idx} creating env...", flush=True)
         env, eval_env, teammate_manager = create_agent_env(
             agent_config['env_config'],
             agent_config['n_envs'],
-            agent_config['agent_idx'],
+            agent_idx,
             agent_config['run_name'],
             agent_config['seed'],
             agent_config['population_checkpoint_paths'],
             agent_config['entropy_weight']
         )
+        print(f"[Worker] Agent {agent_idx} env created", flush=True)
 
         # 2. Load agent model from checkpoint
+        print(f"[Worker] Agent {agent_idx} loading checkpoint...", flush=True)
         model, env = load_model_checkpoint(agent_config['model_checkpoint'], env)
+        print(f"[Worker] Agent {agent_idx} checkpoint loaded", flush=True)
 
         # 3. Train for steps_per_iteration
+        print(f"[Worker] Agent {agent_idx} starting model.learn({agent_config['steps_per_iteration']} steps)...", flush=True)
         model.learn(
             total_timesteps=agent_config['steps_per_iteration'],
             reset_num_timesteps=False,
         )
+        print(f"[Worker] Agent {agent_idx} model.learn() complete", flush=True)
 
         # 4. Save updated checkpoint
         checkpoint = save_model_checkpoint(
             model, env, agent_config['temp_dir'],
-            agent_config['agent_idx'], agent_config['iteration']
+            agent_idx, agent_config['iteration']
         )
 
         # 5. Extract metrics
@@ -174,18 +188,19 @@ def train_agent_worker(agent_config):
         env.close()
         eval_env.close()
 
+        print(f"[Worker] Agent {agent_idx} done", flush=True)
         return {
-            'agent_idx': agent_config['agent_idx'],
+            'agent_idx': agent_idx,
             'checkpoint': checkpoint,
             'metrics': metrics
         }
 
     except Exception as e:
-        print(f"Worker error for agent {agent_config['agent_idx']}: {e}")
+        print(f"[Worker] ERROR for agent {agent_idx}: {e}", flush=True)
         import traceback
         traceback.print_exc()
         return {
-            'agent_idx': agent_config['agent_idx'],
+            'agent_idx': agent_idx,
             'checkpoint': None,
             'metrics': {},
             'error': str(e)
@@ -592,10 +607,6 @@ def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_m
 
     def make_wrapped_env(rank, seed, run_name, save_episode_plots=True):
         def _init():
-            if rank != 0:
-                import sys
-                sys.stdout = open(os.devnull, 'w')
-
             base_env = MaisrEnv(
                 config=env_config,
                 render_mode='headless',
@@ -667,7 +678,7 @@ def create_agent_env(env_config, n_envs, agent_idx, run_name, seed, population_m
         teammate_manager=teammate_manager
     )
     eval_env = Monitor(eval_env)
-    eval_env = DummyVecEnv([lambda: eval_env])
+    eval_env = DummyVecEnv([lambda e=eval_env: e])
     eval_env = VecNormalize(eval_env, norm_reward=False, training=False)
     eval_env.obs_rms = env.obs_rms
     eval_env.ret_rms = env.ret_rms
@@ -749,15 +760,30 @@ def train_population(env_config, args, run_name):
     total_timesteps = int(args.total_timesteps)
     population_size = args.population_size
 
-    print(f'\n[Phase 1] Initializing population of {population_size} agents...')
-
     population_models = [None] * population_size
     environments = []
     eval_environments = []
     teammate_managers = []
     all_callbacks = []
 
-    # CREATE SINGLE WANDB RUN (instead of one per agent)
+    # ── PHASE 1: Create ALL environments FIRST (no threads yet → clean fork) ──
+    # wandb.init() and PyTorch both start background threads. SubprocVecEnv uses
+    # Linux fork(), and forked children inherit thread mutexes in a potentially
+    # locked state → silent deadlock. Create all envs before any thread-starting calls.
+    print(f'\n[Phase 1] Creating environments for {population_size} agents...')
+    for agent_idx in range(population_size):
+        print(f'  Creating env for agent {agent_idx}...')
+        env, eval_env, teammate_manager = create_agent_env(
+            env_config, args.n_envs, agent_idx, run_name, args.seed,
+            population_models, args.ent_coef
+        )
+        environments.append(env)
+        eval_environments.append(eval_env)
+        teammate_managers.append(teammate_manager)
+        print(f'  Env for agent {agent_idx} ready')
+
+    # ── PHASE 2: Init wandb AFTER all SubprocVecEnv forks ──
+    print(f'\n[Phase 2] Initializing WandB (after all SubprocVecEnv forks)...')
     shared_wandb_run = wandb.init(
         project=args.project_name,
         name=f"{run_name}_{machine}_{args.n_envs}envs",
@@ -773,22 +799,23 @@ def train_population(env_config, args, run_name):
         sync_tensorboard=True,
         monitor_gym=True,
     )
-    shared_wandb_run.log_code(".")
+    # Exclude large output directories from log_code scan (avoids slow NFS crawl)
+    shared_wandb_run.log_code(
+        ".",
+        include_fn=lambda path: path.endswith(".py")
+                                and "/outputs/" not in path
+                                and "temp_checkpoints" not in path
+    )
 
+    # ── PHASE 3: Create models (PyTorch thread init safe — no more forking) ──
+    print(f'\n[Phase 3] Creating models for {population_size} agents...')
     for agent_idx in range(population_size):
-        print(f'  Creating agent {agent_idx}...')
+        print(f'  Creating model for agent {agent_idx}...')
         agent_run_name = f"{run_name}/agent_{agent_idx}"
+        env = environments[agent_idx]
+        eval_env = eval_environments[agent_idx]
+        teammate_manager = teammate_managers[agent_idx]
 
-        # Create environment (will reference population_models)
-        env, eval_env, teammate_manager = create_agent_env(
-            env_config, args.n_envs, agent_idx, run_name, args.seed,
-            population_models, args.ent_coef
-        )
-        environments.append(env)
-        eval_environments.append(eval_env)
-        teammate_managers.append(teammate_manager)
-
-        # Create model
         tb_log_dir = f"outputs/maxent/logs/tb_runs/{shared_wandb_run.id}"
         model = create_agent_model(env_config, env, agent_idx, args.seed, tb_log_dir)
         population_models[agent_idx] = model
@@ -796,7 +823,7 @@ def train_population(env_config, args, run_name):
 
         # Setup callbacks - pass shared wandb run
         callbacks = setup_callbacks(
-            env_config, eval_env, agent_idx, run_name, shared_wandb_run,  # Use shared run
+            env_config, eval_env, agent_idx, run_name, shared_wandb_run,
             args.n_envs, total_timesteps, args.num_checkpoints,
             teammate_manager, population_models
         )
@@ -818,7 +845,7 @@ def train_population(env_config, args, run_name):
 
         shared_wandb_run.log({"curriculum/difficulty_level": 0}, step=0)
 
-    print(f'\n[Phase 2] Training population with PE reward (PARALLEL)...')
+    print(f'\n[Phase 4] Training population with PE reward (PARALLEL)...')
     print(f'  All {population_size} agents initialized')
     print(f'  PE wrapper will compute π̄(a|s) from all {population_size} policies\n')
 
@@ -930,7 +957,13 @@ def train_population(env_config, args, run_name):
 
                 # Train agents in parallel
                 print(f'  Starting parallel training of {len(worker_configs)} agents...')
-                results = pool.map(train_agent_worker, worker_configs)
+                async_result = pool.map_async(train_agent_worker, worker_configs)
+                try:
+                    results = async_result.get(timeout=3600)  # 1 hour max per iteration
+                except multiprocessing.TimeoutError:
+                    print(f"ERROR: Workers timed out at iteration {iteration}! Terminating pool.", flush=True)
+                    pool.terminate()
+                    raise RuntimeError(f"Pool workers timed out at iteration {iteration}")
 
                 # Load updated models back into main process
                 for result in results:
@@ -1030,12 +1063,12 @@ def train_population(env_config, args, run_name):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--total_timesteps', type=float, default=3e6, help='Total timesteps per agent')
+    parser.add_argument('--total_timesteps', type=float, default=4e6, help='Total timesteps per agent')
     parser.add_argument('--num_checkpoints', type=int, default=9, help='Number of evenly spaced checkpoints per agent')
     parser.add_argument('--population_size', type=int, default=6, help='Number of agents in the population')
     parser.add_argument('--seed', type=int, default=42, help='Base random seed')
     parser.add_argument('--testing', action='store_true', help='Reduced timesteps/envs for debugging')
-    parser.add_argument('--n_envs', type=int, default=None, help='Parallel envs per agent (default: cpu_count)')
+    parser.add_argument('--n_envs', type=int, default=multiprocessing.cpu_count(), help='Parallel envs per agent (default: cpu_count)')
     parser.add_argument('--ent_coef', type=float, default=0.01, help='Population entropy weight (α in paper)')
     parser.add_argument('--config', type=str, default='configs/maxent_config.json', help='Path to config JSON file')
     parser.add_argument('--project_name', type=str, default='maisr-mep-corrected', help='WandB project name')

@@ -34,9 +34,10 @@ source activate maisr-rl
 echo "[OK] Conda environment activated: $CONDA_DEFAULT_ENV"
 
 # Set environment variables
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
-echo "[OK] Thread environment variables set (OMP/MKL threads: $SLURM_CPUS_PER_TASK)."
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export WANDB_MODE=offline   # Prevents hang on internet-restricted HPC nodes
+echo "[OK] Thread environment variables set (OMP/MKL=1, WANDB_MODE=offline)."
 
 # Training parameters
 TOTAL_TIMESTEPS=1e6 #18e6

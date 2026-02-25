@@ -529,7 +529,7 @@ if __name__ == "__main__":
         # If you want to sweep over multiple hyperparameter settings, you can define them here. These will override the values in the config.json
         # Note: All dictionary keys need to be enclosed in lists, even if they are single items.
         hyperparams = {
-            "network_size": [128],
+            "network_size": [64],
             "lr": [0.001],
             'entropy_regularization': [0.07],
             "teammate_reward_scale": [0.75],

@@ -343,7 +343,7 @@ def main():
         clock = None
 
     ####################################     Instantiate testing agents     ####################################
-    testing_agent_dir = 'revisions_ego_with_bcteammate' # Agents being tested
+    testing_agent_dir = 'revisions/vanilla'  # Agents being tested
     heldout_agent_dir = 'heldout_agents' # Held out agents to test with
     human_trajectory_dir = 'heldout_humans' # human_trajectories_for_training # Held out humans to test with
 
