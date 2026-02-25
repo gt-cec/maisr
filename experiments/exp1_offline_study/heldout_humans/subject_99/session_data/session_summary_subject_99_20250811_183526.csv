@@ -1,0 +1,4 @@
+subject_id,config,agent_type,level,agent_model_name,episode_start_time,episode_end_time,episode_duration_seconds,final_targets_identified,final_threats_identified,total_detections,total_timesteps,all_targets_identified,all_threats_identified,mission_success
+99,B1,B,1,./user_study/saved_agents/aug2b_baseline_model.zip,2025-08-11T18:35:29.399529,2025-08-11T18:35:34.209264,4.809735,0,0,0,7,False,False,False
+99,A1,A,1,./user_study/saved_agents/aug2b_finetuned_model.zip,2025-08-11T19:15:11.777030,2025-08-11T19:15:16.140529,4.363499,0,0,0,7,False,False,False
+99,C1,C,1,./user_study/saved_agents/aug2b_mixed75_35e5steps_model.zip,2025-08-11T19:15:18.187516,2025-08-11T19:15:22.551905,4.364389,0,0,0,7,False,False,False

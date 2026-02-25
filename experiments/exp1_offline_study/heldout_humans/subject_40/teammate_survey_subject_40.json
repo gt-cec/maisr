@@ -1,0 +1,86 @@
+[
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "green",
+    "performed_better": "green",
+    "adapted_better": "green",
+    "timestamp": 855495,
+    "episode_config": "B1",
+    "compared_agents": [
+      "purple",
+      "green"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "red",
+    "performed_better": "red",
+    "adapted_better": "red",
+    "timestamp": 924386,
+    "episode_config": "C1",
+    "compared_agents": [
+      "red",
+      "purple"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "red",
+    "performed_better": "red",
+    "adapted_better": "red",
+    "timestamp": 1003295,
+    "episode_config": "A3",
+    "compared_agents": [
+      "green",
+      "red"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "red",
+    "performed_better": "red",
+    "adapted_better": "red",
+    "timestamp": 1255075,
+    "episode_config": "C3",
+    "compared_agents": [
+      "red",
+      "purple"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "green",
+    "performed_better": "green",
+    "adapted_better": "green",
+    "timestamp": 1367455,
+    "episode_config": "B4",
+    "compared_agents": [
+      "purple",
+      "green"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "red",
+    "performed_better": "red",
+    "adapted_better": "red",
+    "timestamp": 1494480,
+    "episode_config": "A5",
+    "compared_agents": [
+      "green",
+      "red"
+    ]
+  },
+  {
+    "survey_type": "teammate_preference",
+    "preferred_overall": "purple",
+    "performed_better": "purple",
+    "adapted_better": "purple",
+    "timestamp": 1727013,
+    "episode_config": "B7",
+    "compared_agents": [
+      "purple",
+      "green"
+    ]
+  }
+]

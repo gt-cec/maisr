@@ -1,0 +1,20 @@
+[
+  {
+    "episode_config": "B1",
+    "timestamp": 2395008,
+    "mental_demand": 7,
+    "temporal_demand": 7,
+    "effort": 7,
+    "performance": 7,
+    "frustration": 7
+  },
+  {
+    "episode_config": "C1",
+    "timestamp": 2408601,
+    "mental_demand": 7,
+    "temporal_demand": 7,
+    "effort": 7,
+    "performance": 7,
+    "frustration": 7
+  }
+]

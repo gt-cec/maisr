@@ -1,0 +1,17 @@
+{
+  "subject_id": 23,
+  "config": "S3",
+  "agent_type": "S",
+  "level": 3,
+  "agent_model_name": "./user_study/saved_agents/bad_practice_agent_model.zip",
+  "episode_start_time": "2025-08-07T11:10:28.302013",
+  "episode_end_time": "2025-08-07T11:11:35.545014",
+  "episode_duration_seconds": 67.243001,
+  "final_targets_identified": 15,
+  "final_threats_identified": 2,
+  "total_detections": 0,
+  "total_timesteps": 406,
+  "all_targets_identified": true,
+  "all_threats_identified": false,
+  "mission_success": false
+}

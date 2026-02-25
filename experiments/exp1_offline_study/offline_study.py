@@ -342,21 +342,30 @@ def main():
         window = None
         clock = None
 
-    ####################################     Instantiate testing agents     ####################################
-    testing_agent_dir = 'revisions/vanilla'  # Agents being tested
+
+    ####################################################################################################################
+    ####################################     Instantiate testing agents     ############################################
+    ####################################################################################################################
+
+    testing_agent_dir = 'testing_agents/rl'  # Agents being tested
     heldout_agent_dir = 'heldout_agents' # Held out agents to test with
     human_trajectory_dir = 'heldout_humans' # human_trajectories_for_training # Held out humans to test with
 
-    if testing_agent_dir == 'revisions_bc':
+    if testing_agent_dir == 'testing_agents/bc':
         testing_agents = populate_agent_list_bc(testing_agent_dir, label = 'testagent')
     else:
         testing_agents = populate_agent_list(testing_agent_dir, label='testagent')
+
     heldout_agents = populate_agent_list(heldout_agent_dir, label='heldout')
 
     print('Contents of heldout_agents:')
     print(heldout_agents)
 
-    #################################### Load human trajectories ####################################
+
+    ####################################################################################################################
+    #################################### Load human trajectories #######################################################
+    ####################################################################################################################
+
     dual_trajectory_files = glob.glob(f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[ABC][13457]_*.json")
     solo_trajectory_files = glob.glob(f"{human_trajectory_dir}/subject_*/timestep_data/timesteps_[PS][13457]_*.json")
     if not dual_trajectory_files:
