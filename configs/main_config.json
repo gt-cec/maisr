@@ -76,7 +76,7 @@
 	"vf_coef":0.5,
 	"n_epochs":10,
 	"clip_range": 0.2,
-	"run_human_eval": true,
+	"run_human_eval": false,
 
 	"num_timesteps": 4e6,
 	"save_freq": 125000,

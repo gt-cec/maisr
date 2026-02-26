@@ -74,7 +74,7 @@ class TeammateManager:
         self.overfit_test = overfit_test
         self.selfplay_checkpoint_dir = selfplay_checkpoint_dir
         self.pretrained_teammate_dir = pretrained_teammate_dir
-        self.maxent_teammate_dir = 'partner_pools/maxent'
+        self.maxent_teammate_dir = 'partner_pools/mep'
         self.bc_teammate_dir = 'partner_pools/bc'
         self.trajedi_teammate_dir = 'partner_pools/trajedi'
 
@@ -357,6 +357,16 @@ class TeammateManager:
                         norm_stats_path = stat_path
                         break
 
+            # Pattern 2: simple _model -> _vecnormalize substitution (e.g. mep_agent0_4e6)
+            if norm_stats_path is None:
+                stem = checkpoint_filename.replace("_model.zip", "").replace(".zip", "")
+                expected_vecnorm_filename = f"{stem}_vecnormalize.pkl"
+
+                for stat_path in all_normstats:
+                    if os.path.basename(stat_path) == expected_vecnorm_filename:
+                        norm_stats_path = stat_path
+                        break
+
             # Create RL teammate policy using the loaded model
             rl_teammate = RLTeammatePolicy(
                 model=model,
@@ -371,6 +381,7 @@ class TeammateManager:
             if rl_teammate.norm_stats is None and hasattr(self, 'obs_rms') and hasattr(self, 'ret_rms'):
                 print('No teammate normstats file found. Using live stats')
                 print(f'Debug: norm_stats_path = {norm_stats_path}')
+
                 rl_teammate.set_live_normalization_stats(self.obs_rms, self.ret_rms)
 
             # Set name based on type

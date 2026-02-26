@@ -2381,8 +2381,8 @@ class MaisrEnv(gym.Env):
             plt.close()
 
 
-            try: print(f"Action history plot saved to ...{filename[-35:]}")
-            except: print(f"Action history plot saved to ...{filename[-20:]}")
+            # try: print(f"Action history plot saved to ...{filename[-35:]}")
+            # except: print(f"Action history plot saved to ...{filename[-20:]}")
 
         except ImportError as e:
             print(f"Could not save action history plot: {e}")

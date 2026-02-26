@@ -589,7 +589,7 @@ if __name__ == "__main__":
         config["eval_freq"] = 50
         config['num_eval_episodes'] = 5
         config['save_freq'] = 500
-        config['num_timesteps'] = 5e5
+        config['num_timesteps'] = 1e5
         project_name = 'maisr-tests'
 
     ################################################
