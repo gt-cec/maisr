@@ -324,8 +324,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 1 # 250
-    num_human_episodes = 1 # 250
+    num_episodes = 200 # 250
+    num_human_episodes = 200 # 250
 
     ####################################     Pygame setup     ####################################
     if render:
