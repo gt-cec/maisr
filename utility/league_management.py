@@ -79,10 +79,10 @@ class TeammateManager:
         self.trajedi_teammate_dir = 'partner_pools/trajedi'
         self.fcp_teammate_dir = 'partner_pools/fcp'
 
-        # Validate league type
-        valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75','bc','maxent','trajedi']
-        if league_type not in valid_league_types:
-            raise ValueError(f"league_type is {league_type} must be one of {valid_league_types}")
+        # # Validate league type
+        # valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75','bc','maxent','trajedi']
+        # if league_type not in valid_league_types:
+        #     raise ValueError(f"league_type is {league_type} must be one of {valid_league_types}")
 
         # Validate balance method
         valid_balance_methods = ["uniform", "complex"]
