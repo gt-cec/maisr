@@ -77,6 +77,7 @@ class TeammateManager:
         self.maxent_teammate_dir = 'partner_pools/mep'
         self.bc_teammate_dir = 'partner_pools/bc'
         self.trajedi_teammate_dir = 'partner_pools/trajedi'
+        self.fcp_teammate_dir = 'partner_pools/fcp'
 
         # Validate league type
         valid_league_types = ["baseline", "vanilla", "strategy_diverse", "selfplay", 'fcp','mixed50','mixed25','mixed75','bc','maxent','trajedi']
@@ -224,7 +225,7 @@ class TeammateManager:
 
     def _create_pretrained_rl_teammate(self):
         """Create pretrained RL mode selector teammate"""
-        return self._create_rl_teammate("pretrained")
+        return self._create_rl_teammate("fcp")
 
     def _create_rl_teammate(self, teammate_type):
         """
@@ -243,8 +244,8 @@ class TeammateManager:
             checkpoint_dir = self.selfplay_checkpoint_dir
             fallback_prefix = "SelfPlay"
             selection_strategy_enabled = True  # Only selfplay uses strategy selection
-        elif teammate_type == "pretrained":
-            checkpoint_dir = self.pretrained_teammate_dir
+        elif teammate_type == "fcp":
+            checkpoint_dir = self.fcp_teammate_dir
             fallback_prefix = "Pretrained"
             selection_strategy_enabled = False  # Pretrained uses simple random selection
         elif teammate_type == "maxent":
