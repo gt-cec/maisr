@@ -55,13 +55,32 @@ class TruncateObsWrapper(ObservationWrapper):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def populate_agent_list(agent_dir, label='nolabel'):
+    """
+    Loads a collection of RL agents to be evaluated in the offline evaluation.
+    Returns a list containing tuples containing:
+        * The model object for the agent's policy
+        * The vecnormalize stats to load when running the agent
+        * The agent's name
+    """
+
+    def canonical_model_key(model_path):
+        stem = os.path.splitext(os.path.basename(model_path))[0]
+        if stem.endswith('_model'):
+            stem = stem[:-len('_model')]
+        return stem
+
+    def canonical_norm_key(norm_path):
+        stem = os.path.splitext(os.path.basename(norm_path))[0]
+        return stem.replace('_vecnormalize', '')
+
     model_patterns = [
-        os.path.join(agent_dir, "*_model.zip"),
-        os.path.join(agent_dir, "**/*_model.zip")
+        os.path.join(agent_dir, "*.zip"),
+        os.path.join(agent_dir, "**/*.zip")
     ]
+
     normstats_patterns = [
-        os.path.join(agent_dir, "*_vecnormalize.pkl"),
-        os.path.join(agent_dir, "**/*_vecnormalize.pkl")
+        os.path.join(agent_dir, "*.pkl"),
+        os.path.join(agent_dir, "**/*.pkl")
     ]
 
     all_checkpoints = []
@@ -72,20 +91,37 @@ def populate_agent_list(agent_dir, label='nolabel'):
     for pattern in normstats_patterns:
         all_normstats.extend(glob.glob(pattern, recursive=True))
 
-    all_checkpoints = list(set(all_checkpoints))
+    all_checkpoints = list(set(all_checkpoints))  # Remove duplicates and sort by modification time (newest first)
+    all_normstats = list(set(all_normstats))
     all_checkpoints.sort(key=lambda x: os.path.getmtime(x), reverse=True)
     all_normstats.sort(key=lambda x: os.path.getmtime(x), reverse=True)
 
-    # Return (model_path, vecnorm_path, name) — paths only, NOT loaded objects.
-    # Workers will load models themselves to avoid pickle issues.
+    normstats_by_key = {}
+    for norm_path in all_normstats:
+        key = canonical_norm_key(norm_path)
+        normstats_by_key.setdefault(key, []).append(norm_path)
+
+    for key in normstats_by_key:
+        normstats_by_key[key].sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        if len(normstats_by_key[key]) > 1:
+            print(f"[populate_agent_list] Multiple vecnormalize files matched key '{key}'. Using newest: {normstats_by_key[key][0]}")
+
     agent_list = []
     for agent_model_filename in all_checkpoints:
+        key = canonical_model_key(agent_model_filename)
+        matching_normstats = normstats_by_key.get(key, [])
+        if not matching_normstats:
+            raise ValueError(
+                f"[populate_agent_list] Missing vecnormalize stats for model '{agent_model_filename}' "
+                f"(canonical key '{key}')"
+            )
+
+        norm_stats_path = matching_normstats[0]
         name = label + agent_model_filename
-        prefix = agent_model_filename.replace('_model.zip', '')
-        expected_vecnorm_filename = f"{prefix}_vecnormalize.pkl"
-        norm_stats_path = expected_vecnorm_filename if os.path.exists(expected_vecnorm_filename) else None
+
         agent_list.append((agent_model_filename, norm_stats_path, name))
 
+    print(f'Found {len(all_checkpoints)} model .zip files and {len(all_normstats)} vecnormalize .pkl files in {agent_dir}')
     print(f'Populated {len(agent_list)} {label} agents from directory {agent_dir}')
     return agent_list
 
@@ -545,8 +581,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 2
-    num_human_episodes = 2
+    num_episodes = 30
+    num_human_episodes = 30
 
     # ── Pygame (main process only, for non-worker use) ─────────────────────
     pygame.font.init()

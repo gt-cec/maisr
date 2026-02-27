@@ -254,17 +254,7 @@ def run_single_rl_eval(env, agent_model, render):
 
     while not done:
 
-        # for event in pygame.event.get():
-        #     if event.type == pygame.QUIT:
-        #         done = True
-        #         break
-        #     elif event.type == pygame.KEYDOWN:
-        #         if event.key == pygame.K_ESCAPE:
-        #             done = True
-        #             break
-
         agent_action, _ = agent_model.predict(obs, deterministic=True)
-
         obses, rewards, dones, infos = env.step([agent_action])
 
         obs = obses[0]
@@ -348,8 +338,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 5 # 250
-    num_human_episodes = 5 # 250
+    num_episodes = 1 # 250
+    num_human_episodes = 1 # 250
 
     ####################################     Pygame setup     ####################################
     if render:
