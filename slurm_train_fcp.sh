@@ -1,15 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=maisr_vanilla       # Job name
+#SBATCH --job-name=maisr_fcp       # Job name
 #SBATCH --account=gts-kf52                # Tracking account
-#SBATCH --output=logs/vanilla_%j.out    # Standard output log (%j = job ID)
-#SBATCH --error=logs/vanilla_%j.err     # Standard error log
+#SBATCH --output=logs/fcp_%j.out    # Standard output log (%j = job ID)
+#SBATCH --error=logs/fcp_%j.err     # Standard error log
 #SBATCH --ntasks=1                     # Number of tasks (processes)
 #SBATCH --cpus-per-task=16             # Number of CPU cores per task
 #SBATCH --mem=32G                      # Memory per node
 #SBATCH --time=24:00:00                # Time limit (48 hours)
 #SBATCH --mail-type=END,FAIL           # Email notifications
 #SBATCH --mail-user=rbowers32@gatech.edu # Email address (update this!)
-
 
 # Print job information
 echo "Job ID: $SLURM_JOB_ID"
