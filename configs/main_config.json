@@ -81,7 +81,7 @@
 	"num_timesteps": 4e6,
 	"save_freq": 125000,
 	"n_eval_episodes": 7,
-	"eval_freq": 1000,
+	"eval_freq": 10000,
 
 	"teammate_active_at_start": true,
 	"twoship_switch_threshold": 6,

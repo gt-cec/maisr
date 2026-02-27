@@ -426,119 +426,117 @@ class EnhancedWandbCallback(BaseCallback):
                 eval_metrics.update({
                     f"eval_levels/level{level}_reward": np.mean(metrics["rewards"]),
                     f"eval_levels/level{level}_target_ids": np.mean(metrics["target_ids"]),
-                    f"eval_levels/level{level}_threat_ids": np.mean(metrics["threat_ids"]),
-                    #f"eval/level{level}_episode_length": np.mean(metrics["episode_lengths"]),
-                    #f"eval/level{level}_target_ids_per_step": np.mean(metrics["target_ids_per_step"]),
+                    f"eval_levels/level{level}_threat_ids": np.mean(metrics["threat_ids"])
                 })
 
-            #main_tag = self.eval_env.envs[0].env.env.tag
-            if self.run_human_eval:
-                print("\n\n ++++++++++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++++++++++ \n")
-
-                base_human_env = self.human_eval_env.envs[0].env.env
-                base_human_env.tag = 'human_eval0'
-
-                recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
-                num_trajectories = len(recorded_teammate_indices)
-
-                target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
-                mean_reward, std_reward, total_eval_reward = 0, 0, 0
-                eval_lengths = []
-                teammate_names = []
-
-                timescale_correction = 10
-
-                for level in range(7):
-
-                    # Pick a random teammate idx
-                    rand_idx = random.choice(recorded_teammate_indices)
-
-                    # Grab all json trajectories for that subject and level
-                    traj_pattern = f"./human_trajectories/subject_{rand_idx}/timesteps_A{level+1}_*.json"
-                    candidate_files = glob.glob(traj_pattern)
-                    if not candidate_files:
-                        print(f"[Eval] No trajectories found for subject {rand_idx} level {level}")
-                        continue
-
-                    # Pick a random json trajectory file
-                    trajectory_file = random.choice(candidate_files)
-
-                    base_human_env.level_idx = level
-                    base_human_env.config['force_specific_level'] = level
-
-
-                    with open(trajectory_file, 'r') as f:
-                        data = json.load(f)
-
-                    if isinstance(data, dict) and "timesteps" in data:
-                        timesteps = data["timesteps"]
-                    elif isinstance(data, list):
-                        timesteps = data
-
-                    waypoints = [entry["human_custom_waypoint"] for entry in timesteps]
-                    waypoints = waypoints[::10] # Timescale correction
-
-
-                    current_pos = base_human_env.agents[base_human_env.aircraft_ids[1]].x, base_human_env.agents[base_human_env.aircraft_ids[1]].y
-                    waypoints = [wp if wp is not None else current_pos for wp in waypoints]
-                    #print(f"[Eval] Waypoints: {waypoints}")
-
-                    print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
-                    obs = self.human_eval_env.reset()
-                    done = False
-                    ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
-                    step_idx = 0
-
-                    while not done:
-                        if step_idx < len(waypoints):
-                            base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
-                        else:
-                            base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
-
-                        action, other = self.model.predict(obs, deterministic=True)
-
-                        obses, rewards, dones, infos = self.human_eval_env.step([action])
-
-                        obs = obses[0]
-                        reward = rewards[0]
-                        info = infos[0]
-                        done = dones[0]
-
-                        ep_reward += reward
-                        ep_target_ids += info['new_target_ids']
-                        ep_threat_ids += info['new_threat_ids']
-
-                        step_idx += 1
-
-                        final_info = info
-
-                    ep_length = final_info["episode"]["l"]
-                    target_ids_list.append(ep_target_ids)
-                    threat_ids_list.append(ep_threat_ids)
-
-                    eval_lengths.append(ep_length)
-                    target_ids_per_step_list.append(ep_target_ids / ep_length)
-
-                    total_eval_reward += ep_reward
-
-                mean_reward = total_eval_reward / self.n_eval_episodes
-
-                # Log evaluation results
-                eval_metrics.update({
-                    "eval_with_human/mean_reward": mean_reward,
-                    "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
-                    "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
-                    "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
-                    "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
-                    "curriculum/difficulty_level": self.current_difficulty
-                })
-
-                self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
-                #except Exception as e:
-                    #print(f"[Eval] Failed to run recorded teammate eval: {e}")
-
-            print("++++++++ [Human Eval] Human eval complete ++++++++\n")
-            self.eval_env.envs[0].env.env.config['force_specific_level'] = 99
+            # #main_tag = self.eval_env.envs[0].env.env.tag
+            # if self.run_human_eval:
+            #     print("\n\n ++++++++++++++++ [Eval] Running additional evaluation with recorded human trajectory ++++++++++++++++ \n")
+            #
+            #     base_human_env = self.human_eval_env.envs[0].env.env
+            #     base_human_env.tag = 'human_eval0'
+            #
+            #     recorded_teammate_indices = [0, 1]  # <-- set to your actual indices
+            #     num_trajectories = len(recorded_teammate_indices)
+            #
+            #     target_ids_list, threat_ids_list, target_ids_per_step_list = [], [], []
+            #     mean_reward, std_reward, total_eval_reward = 0, 0, 0
+            #     eval_lengths = []
+            #     teammate_names = []
+            #
+            #     timescale_correction = 10
+            #
+            #     for level in range(7):
+            #
+            #         # Pick a random teammate idx
+            #         rand_idx = random.choice(recorded_teammate_indices)
+            #
+            #         # Grab all json trajectories for that subject and level
+            #         traj_pattern = f"./human_trajectories/subject_{rand_idx}/timesteps_A{level+1}_*.json"
+            #         candidate_files = glob.glob(traj_pattern)
+            #         if not candidate_files:
+            #             print(f"[Eval] No trajectories found for subject {rand_idx} level {level}")
+            #             continue
+            #
+            #         # Pick a random json trajectory file
+            #         trajectory_file = random.choice(candidate_files)
+            #
+            #         base_human_env.level_idx = level
+            #         base_human_env.config['force_specific_level'] = level
+            #
+            #
+            #         with open(trajectory_file, 'r') as f:
+            #             data = json.load(f)
+            #
+            #         if isinstance(data, dict) and "timesteps" in data:
+            #             timesteps = data["timesteps"]
+            #         elif isinstance(data, list):
+            #             timesteps = data
+            #
+            #         waypoints = [entry["human_custom_waypoint"] for entry in timesteps]
+            #         waypoints = waypoints[::10] # Timescale correction
+            #
+            #
+            #         current_pos = base_human_env.agents[base_human_env.aircraft_ids[1]].x, base_human_env.agents[base_human_env.aircraft_ids[1]].y
+            #         waypoints = [wp if wp is not None else current_pos for wp in waypoints]
+            #         #print(f"[Eval] Waypoints: {waypoints}")
+            #
+            #         print(f'Selected human trajectory {rand_idx}. Loaded trajectory from trajectory_file with timescale correction {timescale_correction}')
+            #         obs = self.human_eval_env.reset()
+            #         done = False
+            #         ep_reward, ep_target_ids, ep_threat_ids = 0, 0, 0
+            #         step_idx = 0
+            #
+            #         while not done:
+            #             if step_idx < len(waypoints):
+            #                 base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[step_idx])
+            #             else:
+            #                 base_human_env.agents[base_human_env.aircraft_ids[1]].waypoint_override = tuple(waypoints[-1])  # hold last
+            #
+            #             action, other = self.model.predict(obs, deterministic=True)
+            #
+            #             obses, rewards, dones, infos = self.human_eval_env.step([action])
+            #
+            #             obs = obses[0]
+            #             reward = rewards[0]
+            #             info = infos[0]
+            #             done = dones[0]
+            #
+            #             ep_reward += reward
+            #             ep_target_ids += info['new_target_ids']
+            #             ep_threat_ids += info['new_threat_ids']
+            #
+            #             step_idx += 1
+            #
+            #             final_info = info
+            #
+            #         ep_length = final_info["episode"]["l"]
+            #         target_ids_list.append(ep_target_ids)
+            #         threat_ids_list.append(ep_threat_ids)
+            #
+            #         eval_lengths.append(ep_length)
+            #         target_ids_per_step_list.append(ep_target_ids / ep_length)
+            #
+            #         total_eval_reward += ep_reward
+            #
+            #     mean_reward = total_eval_reward / self.n_eval_episodes
+            #
+            #     # Log evaluation results
+            #     eval_metrics.update({
+            #         "eval_with_human/mean_reward": mean_reward,
+            #         "eval_with_human/mean_target_ids": np.mean(target_ids_list) if target_ids_list else 0,
+            #         "eval_with_human/mean_threat_ids": np.mean(threat_ids_list) if threat_ids_list else 0,
+            #         "eval_with_human/mean_episode_length": np.mean(eval_lengths) if eval_lengths else 0,
+            #         "eval_with_human/mean_target_ids_per_step": np.mean(target_ids_per_step_list) if target_ids_per_step_list else 0,
+            #         "curriculum/difficulty_level": self.current_difficulty
+            #     })
+            #
+            #     self.run.log({"eval_with_human/mean_reward": mean_reward}, step=self.num_timesteps)
+            #     #except Exception as e:
+            #         #print(f"[Eval] Failed to run recorded teammate eval: {e}")
+            #
+            # print("++++++++ [Human Eval] Human eval complete ++++++++\n")
+            # self.eval_env.envs[0].env.env.config['force_specific_level'] = 99
             #self.eval_env.envs[0].env.env.tag = main_tag
 
 
