@@ -32,7 +32,7 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 cd ~/scratch/MAISR_revisions/maisr
 
 # Run training
-python train_revised.py -- league_type 'heuristic_fcp'
+python train_revised.py --league_type 'heuristic_fcp'
 
 # Print completion time
 echo "End time: $(date)"
