@@ -177,6 +177,12 @@ class TeammateManager:
         elif self.league_type == "vanilla":
             return self._create_vanilla_heuristic_teammate()
 
+        elif self.league_type == 'heuristic_fcp':
+            if random.random() < 0.75:
+                return self._create_pretrained_rl_teammate()
+            else:
+                return self._create_strategy_diverse_heuristic_teammate()
+
         elif self.league_type == "strategy_diverse":
             return self._create_strategy_diverse_heuristic_teammate() # TEMP
 
@@ -199,12 +205,7 @@ class TeammateManager:
             ratio = int(self.league_type[-2:])/100
             if random.random() < ratio:
                 return self._create_selfplay_teammate()
-                # if random.random() < 0.25:
-                #     print(f'[Teammate Manager - {self.league_type}] Creating selfplay teammate')
-                #     return self._create_selfplay_teammate()
-                # else:
-                #     print(f'[Teammate Manager - {self.league_type}] Creating pretrained RL teammate')
-                #     return self._create_pretrained_rl_teammate()
+
             else:
                 print(f'[Teammate Manager - {self.league_type}] Creating strategy heuristic teammate')
                 return self._create_strategy_diverse_heuristic_teammate()

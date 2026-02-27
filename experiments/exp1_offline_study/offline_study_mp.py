@@ -581,8 +581,8 @@ def main():
     config['action_type'] = 'Discrete16'
 
     render = False
-    num_episodes = 10
-    num_human_episodes = 10
+    num_episodes = 100
+    num_human_episodes = 100
 
     # ── Pygame (main process only, for non-worker use) ─────────────────────
     pygame.font.init()
