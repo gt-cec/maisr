@@ -389,8 +389,8 @@ def main():
 
     # Configuration - modify these variables to change agent setups
     AGENT0_TYPE = "rl"  # Options: "rl", "heuristic", "human"
-    AGENT0_MODEL_PATH = "./experiments/exp2_user_study/saved_agents/aug2b_finetuned_model.zip"
-    AGENT0_VECNORM_PATH = "./experiments/exp2_user_study/saved_agents/aug2b_finetuned_vecnormalize.pkl"
+    AGENT0_MODEL_PATH = "experiments/user_study/saved_agents/aug2b_finetuned_model.zip"
+    AGENT0_VECNORM_PATH = "experiments/user_study/saved_agents/aug2b_finetuned_vecnormalize.pkl"
     AGENT0_HEURISTIC_TYPE = "conservative"  # Options: "conservative", "aggressive", "coordinated", "greedy"
 
     AGENT1_TYPE = "human"  # Options: "rl", "heuristic", "human", "none"

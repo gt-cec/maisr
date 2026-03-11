@@ -1056,7 +1056,7 @@ def main():
     # ============================================= CONFIGURE HELD-OUT TEAMMATES =======================================
     # Example 1: Held-out RL agents
     heldout_rl_loader = RLAgentLoader(
-        agent_dir='experiments/exp2_user_study/saved_agents',
+        agent_dir='experiments/user_study/saved_agents',
         label='heldout_rl'
     )
     rl_teammate_provider = RLTeammateProvider(heldout_rl_loader)
